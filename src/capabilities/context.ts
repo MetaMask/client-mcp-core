@@ -4,6 +4,7 @@ import type {
   ChainCapability,
   ContractSeedingCapability,
   StateSnapshotCapability,
+  MockServerCapability,
 } from "./types.js";
 
 /**
@@ -103,6 +104,7 @@ export type WorkflowContext = {
   chain?: ChainCapability;
   contractSeeding?: ContractSeedingCapability;
   stateSnapshot?: StateSnapshotCapability;
+  mockServer?: MockServerCapability;
   config: EnvironmentConfig;
 };
 

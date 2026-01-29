@@ -160,6 +160,7 @@ export type ChainCapability = {
   start(): Promise<void>;
   stop(): Promise<void>;
   isRunning(): boolean;
+  setPort(port: number): void;
 };
 
 export type ContractSeedingCapability = {
@@ -178,9 +179,18 @@ export type ContractSeedingCapability = {
   listDeployedContracts(): ContractInfo[];
   getAvailableContracts(): string[];
   clearRegistry(): void;
+  initialize(): void;
 };
 
 export type StateSnapshotCapability = {
   getState(page: Page, options: StateOptions): Promise<StateSnapshot>;
   detectCurrentScreen(page: Page): Promise<string>;
+};
+
+export type MockServerCapability = {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  isRunning(): boolean;
+  getServer(): unknown;
+  getPort(): number;
 };

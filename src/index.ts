@@ -45,6 +45,8 @@ export * from "./mcp-server/tools/discovery-tools.js";
 export * from "./mcp-server/tools/screenshot.js";
 export * from "./mcp-server/tools/knowledge.js";
 export * from "./mcp-server/tools/batch.js";
+export * from "./mcp-server/tools/context.js";
+export * from "./mcp-server/tools/clipboard.js";
 
 // Run tool utility
 export * from "./mcp-server/tools/run-tool.js";

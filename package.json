@@ -1,5 +1,5 @@
 {
-  "name": "@metamask/metamask-mcp-core",
+  "name": "@metamask/client-mcp-core",
   "version": "0.1.0",
   "description": "MCP server for MetaMask Extension visual testing with LLM agents",
   "license": "MIT",
@@ -44,7 +44,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/MetaMask/metamask-mcp-core.git"
+    "url": "https://github.com/MetaMask/client-mcp-core.git"
   },
   "engines": {
     "node": ">=24.0.0"

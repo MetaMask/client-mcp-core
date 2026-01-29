@@ -133,3 +133,9 @@ export type CloseTabResult = {
   closed: boolean;
   closedUrl: string;
 };
+
+export type ClipboardResult = {
+  action: "write" | "read";
+  success: boolean;
+  text?: string;
+};

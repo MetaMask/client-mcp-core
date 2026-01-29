@@ -6,7 +6,12 @@ import type {
   ErrorCode,
 } from "../types/index.js";
 import { ErrorCodes } from "../types/index.js";
-import { createSuccessResponse, createErrorResponse, extractErrorMessage, debugWarn } from "../utils/index.js";
+import {
+  createSuccessResponse,
+  createErrorResponse,
+  extractErrorMessage,
+  debugWarn,
+} from "../utils/index.js";
 import type { ExtensionState } from "../../capabilities/types.js";
 import { getSessionManager } from "../session-manager.js";
 import { knowledgeStore } from "../knowledge-store.js";
@@ -72,16 +77,16 @@ export async function runTool<TInput, TResult>(
   const effectivePolicy =
     config.options?.observationPolicy ?? config.observationPolicy ?? "default";
 
-   try {
-     if (requiresSession && !sessionManager.hasActiveSession()) {
-       return createErrorResponse(
-         ErrorCodes.MM_NO_ACTIVE_SESSION,
-         "No active session. Call launch first.",
-         { input: config.input },
-         undefined,
-         startTime,
-       );
-     }
+  try {
+    if (requiresSession && !sessionManager.hasActiveSession()) {
+      return createErrorResponse(
+        ErrorCodes.MM_NO_ACTIVE_SESSION,
+        "No active session. Call launch first.",
+        { input: config.input },
+        undefined,
+        startTime,
+      );
+    }
 
     const context: ToolExecutionContext = {
       sessionId,
@@ -128,6 +133,7 @@ export async function runTool<TInput, TResult>(
         outcome: { ok: true },
         observation: observation ?? createEmptyObservation(),
         durationMs: Date.now() - startTime,
+        context: sessionManager.getEnvironmentMode(),
       });
     }
 
@@ -140,23 +146,23 @@ export async function runTool<TInput, TResult>(
 
     let failureObservation: StepRecordObservation = createEmptyObservation();
 
-     if (requiresSession && sessionManager.hasActiveSession()) {
-       if (effectivePolicy === "failures" || effectivePolicy === "default") {
-         try {
-           const page = sessionManager.getPage();
-           failureObservation = await collectObservation(page, "full");
-         } catch (collectError) {
-           debugWarn("run-tool.collectObservation", collectError);
-           failureObservation = await collectObservation(undefined, "minimal");
-         }
-       } else if (effectivePolicy === "none") {
-         try {
-           failureObservation = await collectObservation(undefined, "minimal");
-         } catch (collectError) {
-           debugWarn("run-tool.collectObservation", collectError);
-         }
-       }
-     }
+    if (requiresSession && sessionManager.hasActiveSession()) {
+      if (effectivePolicy === "failures" || effectivePolicy === "default") {
+        try {
+          const page = sessionManager.getPage();
+          failureObservation = await collectObservation(page, "full");
+        } catch (collectError) {
+          debugWarn("run-tool.collectObservation", collectError);
+          failureObservation = await collectObservation(undefined, "minimal");
+        }
+      } else if (effectivePolicy === "none") {
+        try {
+          failureObservation = await collectObservation(undefined, "minimal");
+        } catch (collectError) {
+          debugWarn("run-tool.collectObservation", collectError);
+        }
+      }
+    }
 
     if (sessionId) {
       const recordInput = config.sanitizeInputForRecording
@@ -174,6 +180,7 @@ export async function runTool<TInput, TResult>(
         },
         observation: failureObservation,
         durationMs: Date.now() - startTime,
+        context: sessionManager.getEnvironmentMode(),
       });
     }
 

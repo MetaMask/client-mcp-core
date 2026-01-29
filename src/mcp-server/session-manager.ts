@@ -264,6 +264,23 @@ export interface ISessionManager {
    * @returns 'e2e' for testing environment, 'prod' for production-like environment
    */
   getEnvironmentMode(): EnvironmentMode;
+
+  /**
+   * Set the current context (e2e or prod).
+   * @throws Error with code MM_CONTEXT_SWITCH_BLOCKED if session is active
+   */
+  setContext?(context: "e2e" | "prod"): void;
+
+  /**
+   * Get current context information.
+   */
+  getContextInfo?(): {
+    currentContext: "e2e" | "prod";
+    hasActiveSession: boolean;
+    sessionId: string | null;
+    capabilities: { available: string[] };
+    canSwitchContext: boolean;
+  };
 }
 
 /**

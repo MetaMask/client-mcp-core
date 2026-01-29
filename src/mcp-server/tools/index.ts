@@ -7,3 +7,4 @@ export * from "./discovery-tools.js";
 export * from "./screenshot.js";
 export * from "./knowledge.js";
 export * from "./batch.js";
+export * from "./clipboard.js";

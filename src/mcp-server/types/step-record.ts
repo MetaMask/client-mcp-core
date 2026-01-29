@@ -87,6 +87,7 @@ export type StepRecord = {
   schemaVersion: 1;
   timestamp: string;
   sessionId: string;
+  context?: "e2e" | "prod";
   environment?: StepRecordEnvironment;
   git?: StepRecordGit;
   build?: StepRecordBuild;

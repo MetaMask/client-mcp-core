@@ -1,4 +1,4 @@
-# @metamask/metamask-mcp-core
+# @metamask/client-mcp-core
 
 MCP (Model Context Protocol) server for MetaMask Extension visual testing with LLM agents.
 
@@ -6,10 +6,15 @@ MCP (Model Context Protocol) server for MetaMask Extension visual testing with L
 
 This package provides the core MCP server infrastructure for enabling LLM agents to interact with the MetaMask browser extension through Playwright.
 
+## Requirements
+
+- **Node.js >= 24.0.0** (required)
+- Playwright `^1.49.0` (peer dependency)
+
 ## Installation
 
 ```bash
-yarn add @metamask/metamask-mcp-core
+yarn add @metamask/client-mcp-core
 ```
 
 ## Architecture
@@ -25,7 +30,7 @@ yarn add @metamask/metamask-mcp-core
                                   │ MCP Protocol (stdio)
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    @metamask/metamask-mcp-core                     │
+│                    @metamask/client-mcp-core                     │
 │                                                                         │
 │  Core MCP Server + Generic Tools                                        │
 │  - Session management                                                   │
@@ -100,13 +105,13 @@ The package follows a **capability-based dependency injection** pattern that sep
 
 ### Core Components
 
-| Component | Description |
-|-----------|-------------|
-| `createMcpServer()` | Factory function that creates the MCP server instance |
-| `ISessionManager` | Interface that consumers must implement for session management |
-| `setSessionManager()` | Injects the consumer's session manager into the core |
-| `WorkflowContext` | Container for browser capability and optional capabilities |
-| `EnvironmentConfig` | Configuration discriminated by `'e2e'` or `'prod'` mode |
+| Component             | Description                                                    |
+| --------------------- | -------------------------------------------------------------- |
+| `createMcpServer()`   | Factory function that creates the MCP server instance          |
+| `ISessionManager`     | Interface that consumers must implement for session management |
+| `setSessionManager()` | Injects the consumer's session manager into the core           |
+| `WorkflowContext`     | Container for browser capability and optional capabilities     |
+| `EnvironmentConfig`   | Configuration discriminated by `'e2e'` or `'prod'` mode        |
 
 ### Capability System
 
@@ -120,17 +125,17 @@ Enables the `mm_build` tool. Implement this to allow LLM agents to build the ext
 type BuildCapability = {
   // Build the extension (e.g., yarn build:test)
   build(options?: BuildOptions): Promise<BuildResult>;
-  
+
   // Get path to built extension directory
   getExtensionPath(): string;
-  
+
   // Check if extension is already built
   isBuilt(): Promise<boolean>;
 };
 
 type BuildOptions = {
-  buildType?: string;  // e.g., "build:test"
-  force?: boolean;     // Force rebuild even if exists
+  buildType?: string; // e.g., "build:test"
+  force?: boolean; // Force rebuild even if exists
 };
 
 type BuildResult = {
@@ -151,22 +156,22 @@ Enables wallet state management through fixtures. Essential for E2E testing wher
 type FixtureCapability = {
   // Start fixture server with given wallet state
   start(state: WalletState): Promise<void>;
-  
+
   // Stop fixture server
   stop(): Promise<void>;
-  
+
   // Get default pre-onboarded wallet state (25 ETH, unlocked)
   getDefaultState(): WalletState;
-  
+
   // Get fresh onboarding state (no wallet configured)
   getOnboardingState(): WalletState;
-  
+
   // Resolve a named preset to fixture data
   resolvePreset(presetName: string): WalletState;
 };
 
 type WalletState = {
-  data: Record<string, unknown>;  // Extension storage state
+  data: Record<string, unknown>; // Extension storage state
   meta?: { version: number };
 };
 ```
@@ -181,12 +186,15 @@ Manages local blockchain (Anvil) for E2E testing. Required for contract interact
 type ChainCapability = {
   // Start the local Anvil node
   start(): Promise<void>;
-  
+
   // Stop the Anvil node
   stop(): Promise<void>;
-  
+
   // Check if Anvil is running
   isRunning(): boolean;
+
+  // Set the port for the Anvil node
+  setPort(port: number): void;
 };
 ```
 
@@ -199,35 +207,45 @@ Enables smart contract deployment tools (`mm_seed_contract`, `mm_seed_contracts`
 ```typescript
 type ContractSeedingCapability = {
   // Deploy a single contract
-  deployContract(name: string, options?: DeployOptions): Promise<ContractDeployment>;
-  
+  deployContract(
+    name: string,
+    options?: DeployOptions,
+  ): Promise<ContractDeployment>;
+
   // Deploy multiple contracts in sequence
-  deployContracts(names: string[], options?: DeployOptions): Promise<{
+  deployContracts(
+    names: string[],
+    options?: DeployOptions,
+  ): Promise<{
     deployed: ContractDeployment[];
     failed: { name: string; error: string }[];
   }>;
-  
+
   // Get deployed contract address by name
   getContractAddress(name: string): string | null;
-  
+
   // List all deployed contracts in this session
   listDeployedContracts(): ContractInfo[];
-  
+
   // Get available contract names
   getAvailableContracts(): string[];
-  
+
   // Clear the deployment registry
   clearRegistry(): void;
+
+  // Initialize the capability (called during session launch)
+  initialize(): void;
 };
 
 type DeployOptions = {
-  hardfork?: string;  // EVM hardfork (default: "prague")
+  hardfork?: string; // EVM hardfork (default: "prague")
   deployerOptions?: {
-    fromAddress?: string;     // Impersonate address
-    fromPrivateKey?: string;  // Deploy from specific key
+    fromAddress?: string; // Impersonate address
+    fromPrivateKey?: string; // Deploy from specific key
   };
 };
 ```
+
 ---
 
 #### StateSnapshotCapability (Optional)
@@ -236,7 +254,7 @@ type DeployOptions = {
 type StateSnapshotCapability = {
   // Get detailed state snapshot
   getState(page: Page, options: StateOptions): Promise<StateSnapshot>;
-  
+
   // Detect current screen from page content
   detectCurrentScreen(page: Page): Promise<string>;
 };
@@ -244,6 +262,31 @@ type StateSnapshotCapability = {
 type StateOptions = {
   extensionId?: string;
   chainId?: number;
+};
+```
+
+---
+
+#### MockServerCapability (Optional)
+
+Enables mock server for API testing scenarios.
+
+```typescript
+type MockServerCapability = {
+  // Start the mock server
+  start(): Promise<void>;
+
+  // Stop the mock server
+  stop(): Promise<void>;
+
+  // Check if mock server is running
+  isRunning(): boolean;
+
+  // Get the server instance
+  getServer(): unknown;
+
+  // Get the port the server is running on
+  getPort(): number;
 };
 ```
 
@@ -278,7 +321,7 @@ import {
   setSessionManager,
   ISessionManager,
   type McpServerConfig,
-} from '@metamask/metamask-mcp-core';
+} from "@metamask/client-mcp-core";
 
 // 1. Implement the ISessionManager interface
 class MyExtensionSessionManager implements ISessionManager {
@@ -292,8 +335,8 @@ setSessionManager(sessionManager);
 
 // 3. Create and start the MCP server
 const config: McpServerConfig = {
-  name: 'my-extension-mcp',
-  version: '1.0.0',
+  name: "my-extension-mcp",
+  version: "1.0.0",
   onCleanup: async () => {
     // Optional cleanup logic
   },
@@ -319,8 +362,8 @@ import {
   type ChainCapability,
   type ContractSeedingCapability,
   type EnvironmentMode,
-} from '@metamask/metamask-mcp-core';
-import type { Page, BrowserContext } from '@playwright/test';
+} from "@metamask/client-mcp-core";
+import type { Page, BrowserContext } from "@playwright/test";
 
 class MetaMaskSessionManager implements ISessionManager {
   private context?: BrowserContext;
@@ -328,7 +371,7 @@ class MetaMaskSessionManager implements ISessionManager {
   private extensionId?: string;
   private sessionId?: string;
   private refMap = new Map<string, string>();
-  
+
   // Capabilities (inject via constructor or lazy-load)
   private buildCapability?: BuildCapability;
   private fixtureCapability?: FixtureCapability;
@@ -349,16 +392,16 @@ class MetaMaskSessionManager implements ISessionManager {
     if (this.chainCapability) {
       await this.chainCapability.start();
     }
-    
+
     // 2. Start fixture server if needed
-    if (this.fixtureCapability && input.stateMode !== 'onboarding') {
+    if (this.fixtureCapability && input.stateMode !== "onboarding") {
       const fixture = input.fixture ?? this.fixtureCapability.getDefaultState();
       await this.fixtureCapability.start(fixture);
     }
-    
+
     // 3. Launch browser with extension
     // ... Playwright browser launch logic
-    
+
     // 4. Return session info
     return {
       sessionId: this.sessionId!,
@@ -369,12 +412,12 @@ class MetaMaskSessionManager implements ISessionManager {
 
   async cleanup(): Promise<boolean> {
     if (!this.hasActiveSession()) return false;
-    
+
     // Close browser, stop services
     await this.context?.close();
     await this.chainCapability?.stop();
     await this.fixtureCapability?.stop();
-    
+
     this.context = undefined;
     this.activePage = undefined;
     return true;
@@ -382,7 +425,7 @@ class MetaMaskSessionManager implements ISessionManager {
 
   // Page Management
   getPage(): Page {
-    if (!this.activePage) throw new Error('No active session');
+    if (!this.activePage) throw new Error("No active session");
     return this.activePage;
   }
 
@@ -396,7 +439,7 @@ class MetaMaskSessionManager implements ISessionManager {
   }
 
   getContext(): BrowserContext {
-    if (!this.context) throw new Error('No active session');
+    if (!this.context) throw new Error("No active session");
     return this.context;
   }
 
@@ -405,10 +448,10 @@ class MetaMaskSessionManager implements ISessionManager {
     // Query extension for current state
     return {
       isLoaded: true,
-      currentUrl: this.activePage?.url() ?? '',
-      extensionId: this.extensionId ?? '',
+      currentUrl: this.activePage?.url() ?? "",
+      extensionId: this.extensionId ?? "",
       isUnlocked: false,
-      currentScreen: 'unknown',
+      currentScreen: "unknown",
       accountAddress: null,
       networkName: null,
       chainId: null,
@@ -433,30 +476,70 @@ class MetaMaskSessionManager implements ISessionManager {
     return this.refMap.get(ref);
   }
 
+  // Navigation
+  async navigateToHome(): Promise<void> {
+    // Navigate to extension home page
+  }
+
+  async navigateToSettings(): Promise<void> {
+    // Navigate to extension settings page
+  }
+
+  async navigateToUrl(url: string): Promise<Page> {
+    // Open URL in new tab and return the page
+    return this.activePage!;
+  }
+
+  async navigateToNotification(): Promise<Page> {
+    // Navigate to notification page
+    return this.activePage!;
+  }
+
+  async waitForNotificationPage(timeoutMs: number): Promise<Page> {
+    // Wait for notification popup to appear
+    return this.activePage!;
+  }
+
   // Screenshots
   async screenshot(options: { name: string; fullPage?: boolean }) {
     // ... screenshot logic
-    return { path: '', base64: '', width: 0, height: 0 };
+    return { path: "", base64: "", width: 0, height: 0 };
   }
 
   // Capabilities
-  getBuildCapability() { return this.buildCapability; }
-  getFixtureCapability() { return this.fixtureCapability; }
-  getChainCapability() { return this.chainCapability; }
-  getContractSeedingCapability() { return this.contractSeedingCapability; }
-  getStateSnapshotCapability() { return undefined; }
+  getBuildCapability() {
+    return this.buildCapability;
+  }
+  getFixtureCapability() {
+    return this.fixtureCapability;
+  }
+  getChainCapability() {
+    return this.chainCapability;
+  }
+  getContractSeedingCapability() {
+    return this.contractSeedingCapability;
+  }
+  getStateSnapshotCapability() {
+    return undefined;
+  }
 
   // Environment
   getEnvironmentMode(): EnvironmentMode {
-    return 'e2e';
+    return "e2e";
   }
 
   // Required by interface but implementation-specific
-  classifyPageRole(page: Page): 'extension' | 'notification' | 'dapp' | 'other' {
-    return 'extension';
+  classifyPageRole(
+    page: Page,
+  ): "extension" | "notification" | "dapp" | "other" {
+    return "extension";
   }
-  getSessionState() { return undefined; }
-  getSessionMetadata() { return undefined; }
+  getSessionState() {
+    return undefined;
+  }
+  getSessionMetadata() {
+    return undefined;
+  }
 }
 
 // Bootstrap the server
@@ -465,8 +548,8 @@ async function main() {
   setSessionManager(sessionManager);
 
   const server = createMcpServer({
-    name: 'metamask-mcp',
-    version: '1.0.0',
+    name: "metamask-mcp",
+    version: "1.0.0",
   });
 
   await server.start();
@@ -482,11 +565,11 @@ The package supports two environment modes:
 ```typescript
 // E2E Testing Environment
 const e2eConfig: E2EEnvironmentConfig = {
-  environment: 'e2e',
-  extensionName: 'MetaMask',
-  defaultPassword: 'password123',
-  toolPrefix: 'mm',
-  artifactsDir: './test-artifacts',
+  environment: "e2e",
+  extensionName: "MetaMask",
+  defaultPassword: "password123",
+  toolPrefix: "mm",
+  artifactsDir: "./test-artifacts",
   defaultChainId: 1337,
   ports: {
     anvil: 8545,
@@ -496,9 +579,9 @@ const e2eConfig: E2EEnvironmentConfig = {
 
 // Production-like Environment
 const prodConfig: ProdEnvironmentConfig = {
-  environment: 'prod',
-  extensionName: 'MetaMask',
-  toolPrefix: 'mm',
+  environment: "prod",
+  extensionName: "MetaMask",
+  toolPrefix: "mm",
 };
 ```
 
@@ -507,10 +590,10 @@ const prodConfig: ProdEnvironmentConfig = {
 The package provides a fixed set of tools prefixed with `mm_`. Custom tool injection is currently not supported. You can inspect the available tool definitions using `getToolDefinitions()`:
 
 ```typescript
-import { getToolDefinitions } from '@metamask/metamask-mcp-core';
+import { getToolDefinitions } from "@metamask/client-mcp-core";
 
 const tools = getToolDefinitions();
-console.log(`Available tools: ${tools.map(t => t.name).join(', ')}`);
+console.log(`Available tools: ${tools.map((t) => t.name).join(", ")}`);
 ```
 
 ### Registering Custom Tool Handlers
@@ -523,12 +606,13 @@ All tools are prefixed with `mm_` and return a standardized response format:
 
 ```typescript
 type ToolResponse<T> = {
-  ok: boolean;           // Whether the operation succeeded
-  ts: number;            // Timestamp (ms since epoch)
-  sessionId?: string;    // Current session ID
-  durationMs: number;    // Operation duration
-  result?: T;            // Success payload
-  error?: {              // Error details (when ok=false)
+  ok: boolean; // Whether the operation succeeded
+  ts: number; // Timestamp (ms since epoch)
+  sessionId?: string; // Current session ID
+  durationMs: number; // Operation duration
+  result?: T; // Success payload
+  error?: {
+    // Error details (when ok=false)
     code: string;
     message: string;
     details?: unknown;
@@ -551,14 +635,16 @@ Build the extension from source. Requires `BuildCapability`.
 | `force` | `boolean` | `false` | Force rebuild even if build exists |
 
 **Output:**
+
 ```typescript
 {
   buildType: "build:test";
-  extensionPathResolved: string;  // Absolute path to built extension
+  extensionPathResolved: string; // Absolute path to built extension
 }
 ```
 
 **Example:**
+
 ```json
 { "buildType": "build:test", "force": true }
 ```
@@ -586,11 +672,13 @@ Launch a headed Chrome browser with the extension loaded. This is typically the 
 | `seedContracts` | `string[]` | - | Contracts to deploy on launch |
 
 **State Modes:**
+
 - `default` - Pre-onboarded wallet with 25 ETH, ready to use
 - `onboarding` - Fresh state, requires wallet setup flow
 - `custom` - Use provided fixture or preset
 
 **Output:**
+
 ```typescript
 {
   sessionId: string;        // Unique session identifier
@@ -604,6 +692,7 @@ Launch a headed Chrome browser with the extension loaded. This is typically the 
 ```
 
 **Example:**
+
 ```json
 {
   "stateMode": "default",
@@ -625,9 +714,10 @@ Stop the browser and all services (Anvil, fixture server). Always call when done
 | `sessionId` | `string` | - | Optional session ID to clean up |
 
 **Output:**
+
 ```typescript
 {
-  cleanedUp: boolean;  // Whether cleanup was performed
+  cleanedUp: boolean; // Whether cleanup was performed
 }
 ```
 
@@ -642,6 +732,7 @@ Get current extension state including screen, balance, network, and account.
 **Input:** None
 
 **Output:**
+
 ```typescript
 {
   state: {
@@ -674,6 +765,7 @@ List all visible `data-testid` attributes on the current page. Use to discover i
 | `limit` | `number` | `150` | Maximum items to return (1-500) |
 
 **Output:**
+
 ```typescript
 {
   items: [{
@@ -686,12 +778,28 @@ List all visible `data-testid` attributes on the current page. Use to discover i
 ```
 
 **Example Output:**
+
 ```json
 {
   "items": [
-    { "testId": "account-menu-icon", "tag": "button", "text": "", "visible": true },
-    { "testId": "eth-overview-send", "tag": "button", "text": "Send", "visible": true },
-    { "testId": "token-balance", "tag": "span", "text": "25 ETH", "visible": true }
+    {
+      "testId": "account-menu-icon",
+      "tag": "button",
+      "text": "",
+      "visible": true
+    },
+    {
+      "testId": "eth-overview-send",
+      "tag": "button",
+      "text": "Send",
+      "visible": true
+    },
+    {
+      "testId": "token-balance",
+      "tag": "span",
+      "text": "25 ETH",
+      "visible": true
+    }
   ]
 }
 ```
@@ -708,10 +816,12 @@ Get a trimmed accessibility tree with deterministic refs (e1, e2, ...). Refs can
 | `rootSelector` | `string` | - | CSS selector to scope the snapshot |
 
 **Included Roles:**
+
 - **Actionable:** button, link, checkbox, radio, switch, textbox, combobox, menuitem
 - **Important:** dialog, alert, status, heading
 
 **Output:**
+
 ```typescript
 {
   nodes: [{
@@ -727,6 +837,7 @@ Get a trimmed accessibility tree with deterministic refs (e1, e2, ...). Refs can
 ```
 
 **Example Output:**
+
 ```json
 {
   "nodes": [
@@ -751,6 +862,7 @@ Comprehensive screen state combining extension state, testIds, and accessibility
 | `includeScreenshotBase64` | `boolean` | `false` | Include base64 in response |
 
 **Output:**
+
 ```typescript
 {
   state: ExtensionState;
@@ -783,6 +895,7 @@ Click an element. Specify exactly ONE of: `a11yRef`, `testId`, or `selector`.
 | `timeoutMs` | `number` | `15000` | Max wait time (0-60000) |
 
 **Output:**
+
 ```typescript
 {
   clicked: boolean;
@@ -792,6 +905,7 @@ Click an element. Specify exactly ONE of: `a11yRef`, `testId`, or `selector`.
 ```
 
 **Examples:**
+
 ```json
 { "a11yRef": "e5" }
 { "testId": "confirm-btn" }
@@ -814,6 +928,7 @@ Type text into an input element. Specify exactly ONE of: `a11yRef`, `testId`, or
 | `timeoutMs` | `number` | `15000` | Max wait time |
 
 **Output:**
+
 ```typescript
 {
   typed: boolean;
@@ -823,6 +938,7 @@ Type text into an input element. Specify exactly ONE of: `a11yRef`, `testId`, or
 ```
 
 **Example:**
+
 ```json
 { "testId": "amount-input", "text": "0.5" }
 ```
@@ -842,11 +958,49 @@ Wait for an element to become visible. Specify exactly ONE of: `a11yRef`, `testI
 | `timeoutMs` | `number` | `15000` | Max wait time (100-120000) |
 
 **Output:**
+
 ```typescript
 {
   found: boolean;
   target: string;
 }
+```
+
+---
+
+#### `mm_clipboard`
+
+Read from or write to the browser clipboard. Useful for pasting content (e.g., Secret Recovery Phrase) into components that support paste functionality.
+
+**Input:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `action` | `"write" \| "read"` | **required** | Clipboard action |
+| `text` | `string` | - | Text to write (required when `action="write"`) |
+
+**Output:**
+
+```typescript
+{
+  action: "write" | "read";
+  success: boolean;
+  text?: string;  // Present when action="read" and successful
+}
+```
+
+**Examples:**
+
+```json
+{ "action": "write", "text": "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12" }
+{ "action": "read" }
+```
+
+**Use Case - Fast SRP Entry:**
+
+```
+1. mm_clipboard { "action": "write", "text": "abandon abandon ... about" }
+2. mm_click { "testId": "srp-input-import__paste-button" }
+→ All 12 words populated instantly via paste
 ```
 
 ---
@@ -862,6 +1016,7 @@ Navigate to a specific screen in the extension.
 | `url` | `string` | - | Required when `screen="url"` |
 
 **Output:**
+
 ```typescript
 {
   navigated: boolean;
@@ -870,6 +1025,7 @@ Navigate to a specific screen in the extension.
 ```
 
 **Examples:**
+
 ```json
 { "screen": "home" }
 { "screen": "settings" }
@@ -890,6 +1046,7 @@ Wait for a notification popup to appear (e.g., after dApp interaction). Sets the
 | `timeoutMs` | `number` | `15000` | Max wait time (1000-60000) |
 
 **Output:**
+
 ```typescript
 {
   found: boolean;
@@ -910,17 +1067,19 @@ Switch the active page for subsequent interactions.
 | `url` | `string` | - | URL prefix to match |
 
 **Output:**
+
 ```typescript
 {
   switched: boolean;
   activeTab: {
     role: TabRole;
     url: string;
-  };
+  }
 }
 ```
 
 **Example:**
+
 ```json
 { "role": "dapp" }
 { "url": "https://app.uniswap.org" }
@@ -939,6 +1098,7 @@ Close a specific tab. Cannot close the extension home page.
 | `url` | `string` | - | URL prefix to match |
 
 **Output:**
+
 ```typescript
 {
   closed: boolean;
@@ -963,6 +1123,7 @@ Capture a screenshot and save to `test-artifacts/screenshots/`.
 | `includeBase64` | `boolean` | `false` | Include base64 in response |
 
 **Output:**
+
 ```typescript
 {
   path: string;      // File path
@@ -1002,11 +1163,12 @@ Deploy a smart contract to the local Anvil node. Requires `ContractSeedingCapabi
 | `verifyingPaymaster` | ERC-4337 paymaster |
 
 **Output:**
+
 ```typescript
 {
   contractName: string;
   contractAddress: string;
-  deployedAt: string;  // ISO timestamp
+  deployedAt: string; // ISO timestamp
 }
 ```
 
@@ -1023,6 +1185,7 @@ Deploy multiple contracts in sequence.
 | `hardfork` | `string` | `"prague"` | EVM hardfork |
 
 **Output:**
+
 ```typescript
 {
   deployed: [{ contractName, contractAddress, deployedAt }];
@@ -1042,6 +1205,7 @@ Get the deployed address of a contract.
 | `contractName` | `string` | Contract name to look up |
 
 **Output:**
+
 ```typescript
 {
   contractName: string;
@@ -1058,6 +1222,7 @@ List all contracts deployed in this session.
 **Input:** None
 
 **Output:**
+
 ```typescript
 {
   contracts: [{
@@ -1090,6 +1255,7 @@ Get the last N step records from the knowledge store.
 | `filters.gitBranch` | `string` | - | Filter by git branch |
 
 **Output:**
+
 ```typescript
 {
   steps: [{
@@ -1119,6 +1285,7 @@ Search step records by tool name, screen, testId, or accessibility names.
 | `filters` | `KnowledgeFilters` | - | Additional filters |
 
 **Output:**
+
 ```typescript
 {
   matches: KnowledgeStepSummary[];
@@ -1138,6 +1305,7 @@ Generate a recipe-like summary of steps taken in a session.
 | `scope` | `"current" \| { sessionId }` | `"current"` | Session to summarize |
 
 **Output:**
+
 ```typescript
 {
   sessionId: string;
@@ -1163,6 +1331,7 @@ List recent sessions with metadata.
 | `filters` | `KnowledgeFilters` | - | Filter options |
 
 **Output:**
+
 ```typescript
 {
   sessions: [{
@@ -1194,6 +1363,7 @@ Execute multiple tools in sequence. Reduces round trips for multi-step flows.
 | `includeObservations` | `"none" \| "failures" \| "all"` | `"all"` | When to include state observations |
 
 **Output:**
+
 ```typescript
 {
   steps: [{
@@ -1214,6 +1384,7 @@ Execute multiple tools in sequence. Reduces round trips for multi-step flows.
 ```
 
 **Example:**
+
 ```json
 {
   "steps": [
@@ -1246,7 +1417,7 @@ yarn test
 yarn build && yalc publish
 
 # In consumer repo
-yalc add @metamask/metamask-mcp-core
+yalc add @metamask/client-mcp-core
 ```
 
 ## License

@@ -167,16 +167,16 @@ export class KnowledgeStore {
 
     const filepath = path.join(this.knowledgeRoot, sessionId, "session.json");
 
-     try {
-       const content = await fs.readFile(filepath, "utf-8");
-       const metadata = JSON.parse(content) as SessionMetadata;
-       this.sessionMetadataCache.set(sessionId, metadata);
-       return metadata;
-     } catch (error) {
-       debugWarn("knowledge-store.readSessionMetadata", error);
-       this.sessionMetadataCache.set(sessionId, null);
-       return null;
-     }
+    try {
+      const content = await fs.readFile(filepath, "utf-8");
+      const metadata = JSON.parse(content) as SessionMetadata;
+      this.sessionMetadataCache.set(sessionId, metadata);
+      return metadata;
+    } catch (error) {
+      debugWarn("knowledge-store.readSessionMetadata", error);
+      this.sessionMetadataCache.set(sessionId, null);
+      return null;
+    }
   }
 
   async listSessions(
@@ -289,6 +289,7 @@ export class KnowledgeStore {
     durationMs?: number;
     screenshotPath?: string;
     screenshotDimensions?: { width: number; height: number };
+    context?: "e2e" | "prod";
   }): Promise<string> {
     const timestamp = new Date();
     const filesafeTimestamp = generateFilesafeTimestamp(timestamp);
@@ -308,6 +309,7 @@ export class KnowledgeStore {
       schemaVersion: SCHEMA_VERSION,
       timestamp: timestamp.toISOString(),
       sessionId: params.sessionId,
+      context: params.context,
       environment: this.getEnvironmentInfo(),
       git: this.getGitInfo(),
       tool: {
@@ -596,18 +598,18 @@ export class KnowledgeStore {
       const entries = await fs.readdir(this.knowledgeRoot, {
         withFileTypes: true,
       });
-       return entries
-         .filter(
-           (e) =>
-             e.isDirectory() &&
-             (e.name.startsWith("mm-") ||
-               e.name.startsWith(this.sessionIdPrefix)),
-         )
-         .map((e) => e.name);
-     } catch (error) {
-       debugWarn("knowledge-store.getAllSessionIds", error);
-       return [];
-     }
+      return entries
+        .filter(
+          (e) =>
+            e.isDirectory() &&
+            (e.name.startsWith("mm-") ||
+              e.name.startsWith(this.sessionIdPrefix)),
+        )
+        .map((e) => e.name);
+    } catch (error) {
+      debugWarn("knowledge-store.getAllSessionIds", error);
+      return [];
+    }
   }
 
   getGitInfoSync(): StepRecordGit {
@@ -625,24 +627,24 @@ export class KnowledgeStore {
 
       const steps: { step: StepRecord; filepath: string }[] = [];
 
-       for (const file of jsonFiles) {
-         const filepath = path.join(stepsDir, file);
-         try {
-           const content = await fs.readFile(filepath, "utf-8");
-           const step = JSON.parse(content) as StepRecord;
-           steps.push({ step, filepath });
-         } catch (error) {
-           debugWarn("knowledge-store.loadSessionSteps", error);
-           continue;
-         }
-       }
+      for (const file of jsonFiles) {
+        const filepath = path.join(stepsDir, file);
+        try {
+          const content = await fs.readFile(filepath, "utf-8");
+          const step = JSON.parse(content) as StepRecord;
+          steps.push({ step, filepath });
+        } catch (error) {
+          debugWarn("knowledge-store.loadSessionSteps", error);
+          continue;
+        }
+      }
 
-       return steps;
-     } catch (error) {
-       debugWarn("knowledge-store.loadSessionSteps", error);
-       return [];
-     }
-   }
+      return steps;
+    } catch (error) {
+      debugWarn("knowledge-store.loadSessionSteps", error);
+      return [];
+    }
+  }
 
   private sanitizeInput(
     toolName: string,
@@ -718,15 +720,15 @@ export class KnowledgeStore {
         stdio: ["pipe", "pipe", "pipe"],
       });
 
-       return {
-         branch,
-         commit,
-         dirty: status.trim().length > 0,
-       };
-     } catch (error) {
-       debugWarn("knowledge-store.getGitInfo", error);
-       return {};
-     }
+      return {
+        branch,
+        commit,
+        dirty: status.trim().length > 0,
+      };
+    } catch (error) {
+      debugWarn("knowledge-store.getGitInfo", error);
+      return {};
+    }
   }
 
   private summarizeStep(

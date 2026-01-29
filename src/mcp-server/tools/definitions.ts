@@ -25,6 +25,9 @@ import {
   getContractAddressInputSchema,
   listDeployedContractsInputSchema,
   runStepsInputSchema,
+  setContextInputSchema,
+  getContextInputSchema,
+  clipboardInputSchema,
 } from "../schemas.js";
 
 import type {
@@ -56,6 +59,7 @@ import {
   handleDescribeScreen,
 } from "./discovery-tools.js";
 import { handleClick, handleType, handleWaitFor } from "./interaction.js";
+import { handleClipboard } from "./clipboard.js";
 import { handleScreenshot } from "./screenshot.js";
 import {
   handleKnowledgeLast,
@@ -69,6 +73,7 @@ import {
   handleGetContractAddress,
   handleListDeployedContracts,
 } from "./seeding.js";
+import { handleSetContext, handleGetContext } from "./context.js";
 
 export const TOOL_PREFIX = "mm";
 
@@ -258,8 +263,7 @@ const tools: Record<string, ToolEntry> = {
   },
   knowledge_summarize: {
     schema: knowledgeSummarizeInputSchema,
-    description:
-      "Generate a recipe-like summary of steps taken in a session.",
+    description: "Generate a recipe-like summary of steps taken in a session.",
     handler: handleKnowledgeSummarize as ToolHandler,
   },
   knowledge_sessions: {
@@ -295,17 +299,144 @@ const tools: Record<string, ToolEntry> = {
       "Execute multiple tools in sequence. Reduces round trips for multi-step flows.",
     handler: handleRunSteps as ToolHandler,
   },
+  set_context: {
+    schema: setContextInputSchema,
+    description:
+      "Switch workflow context (e2e or prod). Cannot switch during active session.",
+    handler: handleSetContext as ToolHandler,
+  },
+  get_context: {
+    schema: getContextInputSchema,
+    description:
+      "Get current context, available capabilities, and whether context can be switched.",
+    handler: handleGetContext as ToolHandler,
+  },
+  clipboard: {
+    schema: clipboardInputSchema,
+    description:
+      "Write text to or read text from the browser clipboard. Use action='write' with text parameter to write, or action='read' to read current clipboard content. Useful for pasting SRP or other data into components that have paste handlers.",
+    handler: handleClipboard as ToolHandler,
+  },
 };
+
+/**
+ * Zod v4's toJSONSchema() marks properties with defaults as required.
+ * This is incorrect for MCP tool input schemas where LLM clients shouldn't
+ * be required to provide values that have defaults. This function recursively
+ * removes those properties from the required array.
+ */
+function removeDefaultsFromRequired(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...schema };
+
+  if (Array.isArray(result.allOf)) {
+    result.allOf = result.allOf.map((item: Record<string, unknown>) =>
+      removeDefaultsFromRequired(item),
+    );
+  }
+
+  if (Array.isArray(result.anyOf)) {
+    result.anyOf = result.anyOf.map((item: Record<string, unknown>) =>
+      removeDefaultsFromRequired(item),
+    );
+  }
+
+  if (Array.isArray(result.oneOf)) {
+    result.oneOf = result.oneOf.map((item: Record<string, unknown>) =>
+      removeDefaultsFromRequired(item),
+    );
+  }
+
+  if (
+    result.properties &&
+    typeof result.properties === "object" &&
+    result.properties !== null
+  ) {
+    const newProperties: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(
+      result.properties as Record<string, unknown>,
+    )) {
+      if (value && typeof value === "object") {
+        newProperties[key] = removeDefaultsFromRequired(
+          value as Record<string, unknown>,
+        );
+      } else {
+        newProperties[key] = value;
+      }
+    }
+    result.properties = newProperties;
+  }
+
+  if (
+    Array.isArray(result.required) &&
+    result.properties &&
+    typeof result.properties === "object"
+  ) {
+    const properties = result.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    result.required = result.required.filter((propName: string) => {
+      const prop = properties[propName];
+      return prop && !("default" in prop);
+    });
+
+    if ((result.required as string[]).length === 0) {
+      delete result.required;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * MCP protocol doesn't support allOf/oneOf/anyOf at the top level of input schemas.
+ * This flattens allOf into a single merged object schema.
+ */
+function flattenTopLevelAllOf(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!Array.isArray(schema.allOf)) {
+    return schema;
+  }
+
+  const mergedProperties: Record<string, unknown> = {};
+  const mergedRequired: string[] = [];
+
+  for (const subSchema of schema.allOf as Record<string, unknown>[]) {
+    if (subSchema.properties && typeof subSchema.properties === "object") {
+      Object.assign(mergedProperties, subSchema.properties);
+    }
+    if (Array.isArray(subSchema.required)) {
+      mergedRequired.push(...subSchema.required);
+    }
+  }
+
+  const result: Record<string, unknown> = {
+    type: "object",
+    properties: mergedProperties,
+    additionalProperties: false,
+  };
+
+  if (mergedRequired.length > 0) {
+    result.required = [...new Set(mergedRequired)];
+  }
+
+  return result;
+}
 
 function zodSchemaToJsonSchema(schema: ZodSchema): Record<string, unknown> {
   const jsonSchema = schema.toJSONSchema();
   const { $schema: _, ...rest } = jsonSchema;
 
-  if (rest.type === "object" && !("additionalProperties" in rest)) {
-    rest.additionalProperties = false;
+  const flattened = flattenTopLevelAllOf(rest);
+
+  if (flattened.type === "object" && !("additionalProperties" in flattened)) {
+    flattened.additionalProperties = false;
   }
 
-  return rest;
+  return removeDefaultsFromRequired(flattened);
 }
 
 export function getToolDefinitions(): ToolDefinition[] {

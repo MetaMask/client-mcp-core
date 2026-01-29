@@ -447,6 +447,43 @@ export const runStepsInputSchema = z.object({
     ),
 });
 
+export const setContextInputSchema = z.object({
+  context: z.enum(["e2e", "prod"]).describe("Target context to switch to"),
+});
+
+export const getContextInputSchema = z
+  .object({})
+  .describe("No parameters required");
+
+export const clipboardInputSchema = z
+  .object({
+    action: z
+      .enum(["write", "read"])
+      .describe(
+        "Action to perform: write text to clipboard or read from clipboard",
+      ),
+    text: z
+      .string()
+      .describe("Text to write to clipboard (required when action is 'write')")
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.action === "write" && !data.text) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "text is required when action is 'write'",
+      path: ["text"],
+    },
+  );
+
+export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
+export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
+export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
+
 export const toolSchemas = {
   build: buildInputSchema,
   launch: launchInputSchema,
@@ -472,6 +509,9 @@ export const toolSchemas = {
   get_contract_address: getContractAddressInputSchema,
   list_contracts: listDeployedContractsInputSchema,
   run_steps: runStepsInputSchema,
+  set_context: setContextInputSchema,
+  get_context: getContextInputSchema,
+  clipboard: clipboardInputSchema,
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;

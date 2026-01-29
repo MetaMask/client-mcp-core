@@ -135,3 +135,8 @@ export type CloseTabInput = {
   role?: "notification" | "dapp" | "other";
   url?: string;
 };
+
+export type ClipboardInput = {
+  action: "write" | "read";
+  text?: string;
+};

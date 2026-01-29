@@ -120,11 +120,17 @@ export function classifyNavigationError(error: unknown): {
 
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_NAVIGATION_FAILED, message: `Page closed during navigation: ${message}` };
+      return {
+        code: ErrorCodes.MM_NAVIGATION_FAILED,
+        message: `Page closed during navigation: ${message}`,
+      };
     }
   }
 
-  return { code: ErrorCodes.MM_NAVIGATION_FAILED, message: `Navigation failed: ${message}` };
+  return {
+    code: ErrorCodes.MM_NAVIGATION_FAILED,
+    message: `Navigation failed: ${message}`,
+  };
 }
 
 /**
@@ -148,11 +154,17 @@ export function classifyTabError(error: unknown): {
 
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_NAVIGATION_FAILED, message: `Tab operation failed - page closed: ${message}` };
+      return {
+        code: ErrorCodes.MM_NAVIGATION_FAILED,
+        message: `Tab operation failed - page closed: ${message}`,
+      };
     }
   }
 
-  return { code: ErrorCodes.MM_NAVIGATION_FAILED, message: `Tab operation failed: ${message}` };
+  return {
+    code: ErrorCodes.MM_NAVIGATION_FAILED,
+    message: `Tab operation failed: ${message}`,
+  };
 }
 
 /**
@@ -166,17 +178,26 @@ export function classifyNotificationError(error: unknown): {
 
   for (const pattern of ERROR_PATTERNS.timeout) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_NOTIFICATION_TIMEOUT, message: `Notification popup did not appear: ${message}` };
+      return {
+        code: ErrorCodes.MM_NOTIFICATION_TIMEOUT,
+        message: `Notification popup did not appear: ${message}`,
+      };
     }
   }
 
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_NOTIFICATION_TIMEOUT, message: `Browser closed while waiting for notification: ${message}` };
+      return {
+        code: ErrorCodes.MM_NOTIFICATION_TIMEOUT,
+        message: `Browser closed while waiting for notification: ${message}`,
+      };
     }
   }
 
-  return { code: ErrorCodes.MM_NOTIFICATION_TIMEOUT, message: `Notification popup did not appear: ${message}` };
+  return {
+    code: ErrorCodes.MM_NOTIFICATION_TIMEOUT,
+    message: `Notification popup did not appear: ${message}`,
+  };
 }
 
 /**
@@ -190,17 +211,26 @@ export function classifyDiscoveryError(error: unknown): {
 
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_PAGE_CLOSED, message: `Page closed during discovery: ${message}` };
+      return {
+        code: ErrorCodes.MM_PAGE_CLOSED,
+        message: `Page closed during discovery: ${message}`,
+      };
     }
   }
 
   for (const pattern of ERROR_PATTERNS.timeout) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_WAIT_TIMEOUT, message: `Discovery timed out: ${message}` };
+      return {
+        code: ErrorCodes.MM_WAIT_TIMEOUT,
+        message: `Discovery timed out: ${message}`,
+      };
     }
   }
 
-  return { code: ErrorCodes.MM_DISCOVERY_FAILED, message: `Discovery failed: ${message}` };
+  return {
+    code: ErrorCodes.MM_DISCOVERY_FAILED,
+    message: `Discovery failed: ${message}`,
+  };
 }
 
 /**
@@ -214,11 +244,17 @@ export function classifyScreenshotError(error: unknown): {
 
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_PAGE_CLOSED, message: `Page closed during screenshot: ${message}` };
+      return {
+        code: ErrorCodes.MM_PAGE_CLOSED,
+        message: `Page closed during screenshot: ${message}`,
+      };
     }
   }
 
-  return { code: ErrorCodes.MM_SCREENSHOT_FAILED, message: `Screenshot failed: ${message}` };
+  return {
+    code: ErrorCodes.MM_SCREENSHOT_FAILED,
+    message: `Screenshot failed: ${message}`,
+  };
 }
 
 /**
@@ -232,11 +268,17 @@ export function classifyStateError(error: unknown): {
 
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
-      return { code: ErrorCodes.MM_PAGE_CLOSED, message: `Page closed during state retrieval: ${message}` };
+      return {
+        code: ErrorCodes.MM_PAGE_CLOSED,
+        message: `Page closed during state retrieval: ${message}`,
+      };
     }
   }
 
-  return { code: ErrorCodes.MM_STATE_FAILED, message: `State retrieval failed: ${message}` };
+  return {
+    code: ErrorCodes.MM_STATE_FAILED,
+    message: `State retrieval failed: ${message}`,
+  };
 }
 
 /**
@@ -252,5 +294,27 @@ export function classifySeedingError(error: unknown): {
     return { code: ErrorCodes.MM_CONTRACT_NOT_FOUND, message };
   }
 
-  return { code: ErrorCodes.MM_SEED_FAILED, message: `Contract operation failed: ${message}` };
+  return {
+    code: ErrorCodes.MM_SEED_FAILED,
+    message: `Contract operation failed: ${message}`,
+  };
+}
+
+/**
+ * Classify a context switching error.
+ */
+export function classifyContextError(error: unknown): {
+  code: string;
+  message: string;
+} {
+  const message = extractErrorMessage(error);
+
+  if (message.includes(ErrorCodes.MM_CONTEXT_SWITCH_BLOCKED)) {
+    return { code: ErrorCodes.MM_CONTEXT_SWITCH_BLOCKED, message };
+  }
+
+  return {
+    code: ErrorCodes.MM_SET_CONTEXT_FAILED,
+    message: `Context switch failed: ${message}`,
+  };
 }

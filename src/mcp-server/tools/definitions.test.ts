@@ -14,9 +14,9 @@ describe("tool-definitions", () => {
       }
     });
 
-    it("creates 24 tool definitions", () => {
+    it("creates 26 tool definitions", () => {
       const definitions = getToolDefinitions();
-      expect(definitions.length).toBe(24);
+      expect(definitions.length).toBe(26);
     });
 
     it("includes all expected tools", () => {
@@ -48,6 +48,8 @@ describe("tool-definitions", () => {
         "mm_get_contract_address",
         "mm_list_contracts",
         "mm_run_steps",
+        "mm_set_context",
+        "mm_get_context",
       ];
 
       for (const expected of expectedTools) {
@@ -92,9 +94,7 @@ describe("tool-definitions", () => {
         allOf?: SchemaObj[];
       };
 
-      const getAllProperties = (
-        schema: SchemaObj,
-      ): Record<string, unknown> => {
+      const getAllProperties = (schema: SchemaObj): Record<string, unknown> => {
         if (schema.properties) {
           return schema.properties;
         }
@@ -146,10 +146,9 @@ describe("tool-definitions", () => {
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
         expect(required).toContain("screen");
 
-        const props = getAllProperties(tool?.inputSchema as SchemaObj) as Record<
-          string,
-          { enum?: string[] }
-        >;
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<string, { enum?: string[] }>;
         expect(props.screen?.enum).toEqual([
           "home",
           "settings",
@@ -173,10 +172,9 @@ describe("tool-definitions", () => {
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
         expect(required).toContain("steps");
 
-        const props = getAllProperties(tool?.inputSchema as SchemaObj) as Record<
-          string,
-          { type?: string; items?: { type: string } }
-        >;
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<string, { type?: string; items?: { type: string } }>;
         expect(props.steps?.type).toBe("array");
       });
 
@@ -187,10 +185,9 @@ describe("tool-definitions", () => {
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
         expect(required).toContain("contractName");
 
-        const props = getAllProperties(tool?.inputSchema as SchemaObj) as Record<
-          string,
-          { enum?: string[] }
-        >;
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<string, { enum?: string[] }>;
         expect(props.contractName?.enum).toContain("hst");
         expect(props.contractName?.enum).toContain("nfts");
       });
@@ -199,10 +196,9 @@ describe("tool-definitions", () => {
         const tool = findTool("mm_launch");
         expect(tool).toBeDefined();
 
-        const props = getAllProperties(tool?.inputSchema as SchemaObj) as Record<
-          string,
-          { enum?: string[] }
-        >;
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<string, { enum?: string[] }>;
         expect(props.stateMode?.enum).toEqual([
           "default",
           "onboarding",
@@ -214,10 +210,9 @@ describe("tool-definitions", () => {
         const tool = findTool("mm_switch_to_tab");
         expect(tool).toBeDefined();
 
-        const props = getAllProperties(tool?.inputSchema as SchemaObj) as Record<
-          string,
-          { enum?: string[] }
-        >;
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<string, { enum?: string[] }>;
         expect(props.role?.enum).toEqual([
           "extension",
           "notification",
