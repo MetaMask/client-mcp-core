@@ -1,7 +1,18 @@
 /* eslint-disable id-length */
 import { describe, it, expect, beforeAll } from 'vitest';
 
-import { getToolDefinitions, TOOL_PREFIX } from './definitions.js';
+import {
+  getToolDefinitions,
+  TOOL_PREFIX,
+  extractBaseName,
+  validateToolInput,
+  safeValidateToolInput,
+  getToolNames,
+  getPrefixedToolNames,
+  buildToolHandlersRecord,
+  getToolHandler,
+  hasToolHandler,
+} from './definitions.js';
 import type { ToolDefinition } from './definitions.js';
 
 describe('tool-definitions', () => {
@@ -251,72 +262,430 @@ describe('tool-definitions', () => {
             enum?: string[];
           }
         >;
-        expect(props.contractName?.enum).toContain('hst');
-        expect(props.contractName?.enum).toContain('nfts');
-      });
+       expect(props.contractName?.enum).toContain('hst');
+         expect(props.contractName?.enum).toContain('nfts');
+       });
 
-      it('mm_launch has stateMode enum', () => {
-        const tool = findTool('mm_launch');
-        expect(tool).toBeDefined();
+       it('mm_launch has stateMode enum', () => {
+         const tool = findTool('mm_launch');
+         expect(tool).toBeDefined();
 
-        const props = getAllProperties(
-          tool?.inputSchema as SchemaObj,
-        ) as Record<
-          string,
-          {
-            /**
-             *
-             */
-            enum?: string[];
-          }
-        >;
-        expect(props.stateMode?.enum).toStrictEqual([
-          'default',
-          'onboarding',
-          'custom',
-        ]);
-      });
+         const props = getAllProperties(
+           tool?.inputSchema as SchemaObj,
+         ) as Record<
+           string,
+           {
+             /**
+              *
+              */
+             enum?: string[];
+           }
+         >;
+         expect(props.stateMode?.enum).toStrictEqual([
+           'default',
+           'onboarding',
+           'custom',
+         ]);
+       });
 
-      it('mm_switch_to_tab has role enum', () => {
-        const tool = findTool('mm_switch_to_tab');
-        expect(tool).toBeDefined();
+       it('mm_switch_to_tab has role enum', () => {
+         const tool = findTool('mm_switch_to_tab');
+         expect(tool).toBeDefined();
 
-        const props = getAllProperties(
-          tool?.inputSchema as SchemaObj,
-        ) as Record<
-          string,
-          {
-            /**
-             *
-             */
-            enum?: string[];
-          }
-        >;
-        expect(props.role?.enum).toStrictEqual([
-          'extension',
-          'notification',
-          'dapp',
-          'other',
-        ]);
-      });
+         const props = getAllProperties(
+           tool?.inputSchema as SchemaObj,
+         ) as Record<
+           string,
+           {
+             /**
+              *
+              */
+             enum?: string[];
+           }
+         >;
+         expect(props.role?.enum).toStrictEqual([
+           'extension',
+           'notification',
+           'dapp',
+           'other',
+         ]);
+       });
 
-      it('mm_knowledge_search has required query property', () => {
-        const tool = findTool('mm_knowledge_search');
-        expect(tool).toBeDefined();
+       it('mm_knowledge_search has required query property', () => {
+         const tool = findTool('mm_knowledge_search');
+         expect(tool).toBeDefined();
 
-        const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain('query');
-      });
+         const required = getAllRequired(tool?.inputSchema as SchemaObj);
+         expect(required).toContain('query');
+       });
+     });
+
+     it('uses mm_ prefix in descriptions', () => {
+       const definitions = getToolDefinitions();
+
+       const a11yTool = definitions.find(
+         (d) => d.name === 'mm_accessibility_snapshot',
+       );
+       expect(a11yTool?.description).toContain('mm_click');
+       expect(a11yTool?.description).toContain('mm_type');
+     });
+
+     it('all schemas have additionalProperties set to false', () => {
+       const definitions = getToolDefinitions();
+
+       for (const def of definitions) {
+         const schema = def.inputSchema as Record<string, unknown>;
+         if (schema.type === 'object') {
+           expect(schema.additionalProperties).toBe(false);
+         }
+       }
+     });
+
+     it('all schemas have properties defined', () => {
+       const definitions = getToolDefinitions();
+
+       for (const def of definitions) {
+         const schema = def.inputSchema as Record<string, unknown>;
+         expect(
+           schema.properties || schema.allOf || schema.anyOf || schema.oneOf,
+         ).toBeDefined();
+       }
+     });
+
+     it('all required properties are defined in properties', () => {
+       const definitions = getToolDefinitions();
+
+       for (const def of definitions) {
+         const schema = def.inputSchema as Record<string, unknown>;
+         if (Array.isArray(schema.required) && schema.properties) {
+           const props = schema.properties as Record<string, unknown>;
+           for (const req of schema.required) {
+             expect(props[req as string]).toBeDefined();
+           }
+         }
+       }
+     });
+   });
+
+  describe('extractBaseName', () => {
+    it('removes mm_ prefix from tool name', () => {
+      const result = extractBaseName('mm_click');
+
+      expect(result).toBe('click');
     });
 
-    it('uses mm_ prefix in descriptions', () => {
-      const definitions = getToolDefinitions();
+    it('returns original name when no prefix', () => {
+      const result = extractBaseName('click');
 
-      const a11yTool = definitions.find(
-        (d) => d.name === 'mm_accessibility_snapshot',
-      );
-      expect(a11yTool?.description).toContain('mm_click');
-      expect(a11yTool?.description).toContain('mm_type');
+      expect(result).toBe('click');
+    });
+
+    it('handles multiple underscores correctly', () => {
+      const result = extractBaseName('mm_wait_for_notification');
+
+      expect(result).toBe('wait_for_notification');
+    });
+
+    it('handles empty string', () => {
+      const result = extractBaseName('');
+
+      expect(result).toBe('');
+    });
+
+    it('handles string with only prefix', () => {
+      const result = extractBaseName('mm_');
+
+      expect(result).toBe('');
+    });
+
+    it('handles all tool names from getToolNames', () => {
+      const baseNames = getToolNames();
+
+      for (const baseName of baseNames) {
+        const prefixed = `${TOOL_PREFIX}_${baseName}`;
+        const extracted = extractBaseName(prefixed);
+        expect(extracted).toBe(baseName);
+      }
+    });
+  });
+
+  describe('validateToolInput', () => {
+    it('parses valid input for known tool', () => {
+      const result = validateToolInput('mm_click', { testId: 'button' });
+
+      expect(result).toBeDefined();
+      expect(result).toHaveProperty('testId', 'button');
+    });
+
+    it('throws error for unknown tool', () => {
+      expect(() => {
+        validateToolInput('mm_unknown_tool', {});
+      }).toThrow('Unknown tool: mm_unknown_tool');
+    });
+
+    it('throws error for invalid input schema', () => {
+      expect(() => {
+        validateToolInput('mm_type', { text: 123 });
+      }).toThrow();
+    });
+
+    it('accepts input without prefix', () => {
+      const result = validateToolInput('click', { testId: 'button' });
+
+      expect(result).toBeDefined();
+      expect(result).toHaveProperty('testId', 'button');
+    });
+
+    it('parses input with multiple valid properties', () => {
+      const result = validateToolInput('mm_click', {
+        testId: 'button',
+        timeoutMs: 5000,
+      });
+
+      expect(result).toBeDefined();
+      expect(result).toHaveProperty('testId', 'button');
+      expect(result).toHaveProperty('timeoutMs', 5000);
+    });
+  });
+
+  describe('safeValidateToolInput', () => {
+    it('returns success with data for valid input', () => {
+      const result = safeValidateToolInput('mm_click', { testId: 'button' });
+
+      expect(result.success).toBe(true);
+      expect(result).toHaveProperty('data');
+      if (result.success) {
+        expect(result.data).toHaveProperty('testId', 'button');
+      }
+    });
+
+    it('returns failure for unknown tool', () => {
+      const result = safeValidateToolInput('mm_unknown_tool', {});
+
+      expect(result.success).toBe(false);
+      expect(result).toHaveProperty('error');
+      if (!result.success) {
+        expect(result.error).toContain('Unknown tool');
+      }
+    });
+
+    it('returns failure for invalid input', () => {
+      const result = safeValidateToolInput('mm_type', { text: 123 });
+
+      expect(result.success).toBe(false);
+      expect(result).toHaveProperty('error');
+    });
+
+    it('accepts input without prefix', () => {
+      const result = safeValidateToolInput('click', { testId: 'button' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveProperty('testId', 'button');
+      }
+    });
+
+    it('returns success with multiple valid properties', () => {
+      const result = safeValidateToolInput('mm_click', {
+        testId: 'button',
+        timeoutMs: 5000,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveProperty('testId', 'button');
+        expect(result.data).toHaveProperty('timeoutMs', 5000);
+      }
+    });
+
+    it('includes error message with path for validation errors', () => {
+      const result = safeValidateToolInput('mm_type', { text: 123 });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toMatch(/text/);
+      }
+    });
+  });
+
+  describe('getToolNames', () => {
+    it('returns array of tool base names', () => {
+      const names = getToolNames();
+
+      expect(Array.isArray(names)).toBe(true);
+      expect(names.length).toBeGreaterThan(0);
+    });
+
+    it('includes expected tool names without prefix', () => {
+      const names = getToolNames();
+
+      expect(names).toContain('click');
+      expect(names).toContain('type');
+      expect(names).toContain('launch');
+      expect(names).toContain('cleanup');
+    });
+
+    it('does not include mm_ prefix in names', () => {
+      const names = getToolNames();
+
+      for (const name of names) {
+        expect(name).not.toMatch(/^mm_/);
+      }
+    });
+
+    it('returns 27 tool names', () => {
+      const names = getToolNames();
+
+      expect(names.length).toBe(27);
+    });
+
+    it('all names are strings', () => {
+      const names = getToolNames();
+
+      for (const name of names) {
+        expect(typeof name).toBe('string');
+        expect(name.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('getPrefixedToolNames', () => {
+    it('returns array of prefixed tool names', () => {
+      const names = getPrefixedToolNames();
+
+      expect(Array.isArray(names)).toBe(true);
+      expect(names.length).toBeGreaterThan(0);
+    });
+
+    it('includes mm_ prefix in all names', () => {
+      const names = getPrefixedToolNames();
+
+      for (const name of names) {
+        expect(name).toMatch(/^mm_/);
+      }
+    });
+
+    it('includes expected prefixed tool names', () => {
+      const names = getPrefixedToolNames();
+
+      expect(names).toContain('mm_click');
+      expect(names).toContain('mm_type');
+      expect(names).toContain('mm_launch');
+      expect(names).toContain('mm_cleanup');
+    });
+
+    it('has same count as getToolNames', () => {
+      const baseNames = getToolNames();
+      const prefixedNames = getPrefixedToolNames();
+
+      expect(prefixedNames.length).toBe(baseNames.length);
+    });
+  });
+
+  describe('buildToolHandlersRecord', () => {
+    it('returns record mapping prefixed names to handlers', () => {
+      const handlers = buildToolHandlersRecord();
+
+      expect(typeof handlers).toBe('object');
+      expect(handlers).not.toBeNull();
+    });
+
+    it('includes all prefixed tool names as keys', () => {
+      const handlers = buildToolHandlersRecord();
+      const prefixedNames = getPrefixedToolNames();
+
+      for (const name of prefixedNames) {
+        expect(handlers).toHaveProperty(name);
+      }
+    });
+
+    it('all values are functions', () => {
+      const handlers = buildToolHandlersRecord();
+
+      for (const [, handler] of Object.entries(handlers)) {
+        expect(typeof handler).toBe('function');
+      }
+    });
+
+    it('has same count as getPrefixedToolNames', () => {
+      const handlers = buildToolHandlersRecord();
+      const prefixedNames = getPrefixedToolNames();
+
+      expect(Object.keys(handlers).length).toBe(prefixedNames.length);
+    });
+
+    it('does not include base names without prefix', () => {
+      const handlers = buildToolHandlersRecord();
+      const baseNames = getToolNames();
+
+      for (const baseName of baseNames) {
+        expect(handlers).not.toHaveProperty(baseName);
+      }
+    });
+  });
+
+  describe('getToolHandler', () => {
+    it('returns handler for prefixed tool name', () => {
+      const handler = getToolHandler('mm_click');
+
+      expect(handler).toBeDefined();
+      expect(typeof handler).toBe('function');
+    });
+
+    it('returns handler for base tool name', () => {
+      const handler = getToolHandler('click');
+
+      expect(handler).toBeDefined();
+      expect(typeof handler).toBe('function');
+    });
+
+    it('returns undefined for unknown tool', () => {
+      const handler = getToolHandler('mm_unknown_tool');
+
+      expect(handler).toBeUndefined();
+    });
+
+    it('returns same handler for prefixed and base names', () => {
+      const prefixedHandler = getToolHandler('mm_click');
+      const baseHandler = getToolHandler('click');
+
+      expect(prefixedHandler).toBe(baseHandler);
+    });
+  });
+
+  describe('hasToolHandler', () => {
+    it('returns true for existing prefixed tool', () => {
+      const exists = hasToolHandler('mm_click');
+
+      expect(exists).toBe(true);
+    });
+
+    it('returns true for existing base tool name', () => {
+      const exists = hasToolHandler('click');
+
+      expect(exists).toBe(true);
+    });
+
+    it('returns false for unknown tool', () => {
+      const exists = hasToolHandler('mm_unknown_tool');
+
+      expect(exists).toBe(false);
+    });
+
+    it('returns true for all prefixed tool names', () => {
+      const prefixedNames = getPrefixedToolNames();
+
+      for (const name of prefixedNames) {
+        expect(hasToolHandler(name)).toBe(true);
+      }
+    });
+
+    it('returns true for all base tool names', () => {
+      const baseNames = getToolNames();
+
+      for (const name of baseNames) {
+        expect(hasToolHandler(name)).toBe(true);
+      }
     });
   });
 });

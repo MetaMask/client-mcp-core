@@ -37,12 +37,12 @@ export default defineConfig({
         // above the current thresholds.
         autoUpdate: true,
 
-        // Start with 0% thresholds since existing coverage is low
-        // These will auto-update upward as coverage improves
-        branches: 7.82,
-        functions: 10.58,
-        lines: 12.58,
-        statements: 12.39,
+        // Target thresholds per plan: 95% lines, 95% functions, 85% branches
+        // Current: 89.65% lines, 85.66% functions, 82.05% branches
+        branches: 82.05,
+        functions: 85.66,
+        lines: 89.65,
+        statements: 89.48,
       },
     },
 
