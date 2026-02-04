@@ -39,10 +39,10 @@ export default defineConfig({
 
         // Start with 0% thresholds since existing coverage is low
         // These will auto-update upward as coverage improves
-        branches: 0,
-        functions: 0,
-        lines: 0,
-        statements: 0,
+        branches: 7.82,
+        functions: 10.58,
+        lines: 12.6,
+        statements: 12.39,
       },
     },
 

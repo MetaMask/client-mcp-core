@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   setToolRegistry,
   getToolRegistry,
@@ -14,40 +15,40 @@ import { setSessionManager, type ISessionManager } from "../session-manager.js";
 const createMockSessionManager = (
   hasActive: boolean = true,
 ): ISessionManager => ({
-  hasActiveSession: jest.fn().mockReturnValue(hasActive),
-  getSessionId: jest
+  hasActiveSession: vi.fn().mockReturnValue(hasActive),
+  getSessionId: vi
     .fn()
     .mockReturnValue(hasActive ? "test-session" : undefined),
-  getSessionState: jest.fn().mockReturnValue(undefined),
-  getSessionMetadata: jest.fn().mockReturnValue(undefined),
-  launch: jest.fn().mockResolvedValue({
+  getSessionState: vi.fn().mockReturnValue(undefined),
+  getSessionMetadata: vi.fn().mockReturnValue(undefined),
+  launch: vi.fn().mockResolvedValue({
     sessionId: "test-session",
     extensionId: "ext-123",
     state: {},
   }),
-  cleanup: jest.fn().mockResolvedValue(true),
-  getPage: jest.fn(),
-  setActivePage: jest.fn(),
-  getTrackedPages: jest.fn().mockReturnValue([]),
-  classifyPageRole: jest.fn().mockReturnValue("extension"),
-  getContext: jest.fn(),
-  getExtensionState: jest.fn().mockResolvedValue({ screen: "home" }),
-  setRefMap: jest.fn(),
-  getRefMap: jest.fn().mockReturnValue(new Map()),
-  clearRefMap: jest.fn(),
-  resolveA11yRef: jest.fn(),
-  navigateToHome: jest.fn().mockResolvedValue(undefined),
-  navigateToSettings: jest.fn().mockResolvedValue(undefined),
-  navigateToUrl: jest.fn(),
-  navigateToNotification: jest.fn(),
-  waitForNotificationPage: jest.fn(),
-  screenshot: jest.fn().mockResolvedValue({ path: "/path/to/screenshot.png" }),
-  getBuildCapability: jest.fn().mockReturnValue(undefined),
-  getFixtureCapability: jest.fn().mockReturnValue(undefined),
-  getChainCapability: jest.fn().mockReturnValue(undefined),
-  getContractSeedingCapability: jest.fn().mockReturnValue(undefined),
-  getStateSnapshotCapability: jest.fn().mockReturnValue(undefined),
-  getEnvironmentMode: jest.fn().mockReturnValue("e2e"),
+  cleanup: vi.fn().mockResolvedValue(true),
+  getPage: vi.fn(),
+  setActivePage: vi.fn(),
+  getTrackedPages: vi.fn().mockReturnValue([]),
+  classifyPageRole: vi.fn().mockReturnValue("extension"),
+  getContext: vi.fn(),
+  getExtensionState: vi.fn().mockResolvedValue({ screen: "home" }),
+  setRefMap: vi.fn(),
+  getRefMap: vi.fn().mockReturnValue(new Map()),
+  clearRefMap: vi.fn(),
+  resolveA11yRef: vi.fn(),
+  navigateToHome: vi.fn().mockResolvedValue(undefined),
+  navigateToSettings: vi.fn().mockResolvedValue(undefined),
+  navigateToUrl: vi.fn(),
+  navigateToNotification: vi.fn(),
+  waitForNotificationPage: vi.fn(),
+  screenshot: vi.fn().mockResolvedValue({ path: "/path/to/screenshot.png" }),
+  getBuildCapability: vi.fn().mockReturnValue(undefined),
+  getFixtureCapability: vi.fn().mockReturnValue(undefined),
+  getChainCapability: vi.fn().mockReturnValue(undefined),
+  getContractSeedingCapability: vi.fn().mockReturnValue(undefined),
+  getStateSnapshotCapability: vi.fn().mockReturnValue(undefined),
+  getEnvironmentMode: vi.fn().mockReturnValue("e2e"),
 });
 
 function clearToolValidator(): void {
@@ -63,7 +64,7 @@ describe("batch", () => {
 
   describe("setToolRegistry / getToolRegistry", () => {
     it("sets and gets tool registry", () => {
-      const mockHandler: ToolHandler = jest
+      const mockHandler: ToolHandler = vi
         .fn()
         .mockResolvedValue({ ok: true });
       const registry: ToolRegistry = {
@@ -77,8 +78,8 @@ describe("batch", () => {
     });
 
     it("replaces existing registry", () => {
-      const registry1: ToolRegistry = { tool1: jest.fn() };
-      const registry2: ToolRegistry = { tool2: jest.fn() };
+      const registry1: ToolRegistry = { tool1: vi.fn() };
+      const registry2: ToolRegistry = { tool2: vi.fn() };
 
       setToolRegistry(registry1);
       setToolRegistry(registry2);
@@ -96,14 +97,14 @@ describe("batch", () => {
     });
 
     it("returns true when registry has handlers", () => {
-      setToolRegistry({ mm_click: jest.fn() });
+      setToolRegistry({ mm_click: vi.fn() });
       expect(hasToolRegistry()).toBe(true);
     });
   });
 
   describe("setToolValidator / getToolValidator", () => {
     it("sets and gets tool validator", () => {
-      const validator: ToolValidator = jest
+      const validator: ToolValidator = vi
         .fn()
         .mockReturnValue({ success: true });
       setToolValidator(validator);
@@ -136,11 +137,11 @@ describe("batch", () => {
 
     it("executes steps in sequence", async () => {
       const executionOrder: string[] = [];
-      const clickHandler = jest.fn().mockImplementation(async () => {
+      const clickHandler = vi.fn().mockImplementation(async () => {
         executionOrder.push("click");
         return { ok: true, result: "clicked" };
       });
-      const typeHandler = jest.fn().mockImplementation(async () => {
+      const typeHandler = vi.fn().mockImplementation(async () => {
         executionOrder.push("type");
         return { ok: true, result: "typed" };
       });
@@ -182,11 +183,11 @@ describe("batch", () => {
     });
 
     it("stops on error when stopOnError is true", async () => {
-      const clickHandler = jest.fn().mockResolvedValue({
+      const clickHandler = vi.fn().mockResolvedValue({
         ok: false,
         error: { code: "ERR", message: "fail" },
       });
-      const typeHandler = jest.fn().mockResolvedValue({ ok: true });
+      const typeHandler = vi.fn().mockResolvedValue({ ok: true });
 
       setToolRegistry({
         mm_click: clickHandler,
@@ -209,11 +210,11 @@ describe("batch", () => {
     });
 
     it("continues on error when stopOnError is false", async () => {
-      const clickHandler = jest.fn().mockResolvedValue({
+      const clickHandler = vi.fn().mockResolvedValue({
         ok: false,
         error: { code: "ERR", message: "fail" },
       });
-      const typeHandler = jest
+      const typeHandler = vi
         .fn()
         .mockResolvedValue({ ok: true, result: "typed" });
 
@@ -240,10 +241,10 @@ describe("batch", () => {
     });
 
     it("uses tool validator when set", async () => {
-      const clickHandler = jest.fn().mockResolvedValue({ ok: true });
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
       setToolRegistry({ mm_click: clickHandler });
 
-      const validator: ToolValidator = jest.fn().mockReturnValue({
+      const validator: ToolValidator = vi.fn().mockReturnValue({
         success: false,
         error: { message: "Invalid testId" },
       });
@@ -262,12 +263,12 @@ describe("batch", () => {
     });
 
     it("passes validation when validator returns success", async () => {
-      const clickHandler = jest
+      const clickHandler = vi
         .fn()
         .mockResolvedValue({ ok: true, result: "clicked" });
       setToolRegistry({ mm_click: clickHandler });
 
-      const validator: ToolValidator = jest
+      const validator: ToolValidator = vi
         .fn()
         .mockReturnValue({ success: true });
       setToolValidator(validator);
@@ -283,7 +284,7 @@ describe("batch", () => {
     });
 
     it("handles exceptions from tool handlers", async () => {
-      const clickHandler = jest.fn().mockRejectedValue(new Error("Timeout"));
+      const clickHandler = vi.fn().mockRejectedValue(new Error("Timeout"));
       setToolRegistry({ mm_click: clickHandler });
 
       const result = await handleRunSteps({
@@ -298,7 +299,7 @@ describe("batch", () => {
     });
 
     it("includes duration in step results", async () => {
-      const clickHandler = jest.fn().mockImplementation(async () => {
+      const clickHandler = vi.fn().mockImplementation(async () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
         return { ok: true };
       });
@@ -316,7 +317,7 @@ describe("batch", () => {
     });
 
     it("includes total duration in summary", async () => {
-      const clickHandler = jest.fn().mockResolvedValue({ ok: true });
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
       setToolRegistry({ mm_click: clickHandler });
 
       const result = await handleRunSteps({
@@ -332,7 +333,7 @@ describe("batch", () => {
     });
 
     it("defaults args to empty object when not provided", async () => {
-      const clickHandler = jest.fn().mockResolvedValue({ ok: true });
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
       setToolRegistry({ mm_click: clickHandler });
 
       await handleRunSteps({

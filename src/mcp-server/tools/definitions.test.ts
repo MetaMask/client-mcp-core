@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import {
   getToolDefinitions,
   TOOL_PREFIX,
@@ -14,9 +15,9 @@ describe("tool-definitions", () => {
       }
     });
 
-    it("creates 26 tool definitions", () => {
+    it("creates 27 tool definitions", () => {
       const definitions = getToolDefinitions();
-      expect(definitions.length).toBe(26);
+      expect(definitions.length).toBe(27);
     });
 
     it("includes all expected tools", () => {
