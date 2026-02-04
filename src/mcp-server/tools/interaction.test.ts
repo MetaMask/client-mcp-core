@@ -17,6 +17,7 @@ import * as sessionManagerModule from '../session-manager.js';
 import * as discoveryModule from '../discovery.js';
 import * as runToolModule from './run-tool.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as utilsModule from '../utils/index.js';
 
 describe('interaction', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -160,36 +161,54 @@ describe('interaction', () => {
     });
 
     describe('with invalid target selection', () => {
-      it('returns error when no target specified', async () => {
-        // Arrange
-        const startTime = Date.now();
+       it('returns error when no target specified', async () => {
+         // Arrange
+         const startTime = Date.now();
 
-        // Act
-        const result = await handleClick({} as any);
+         // Act
+         const result = await handleClick({} as any);
 
-        // Assert
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-          expect(result.error.message).toContain('Exactly one');
-        }
-      });
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toContain('Exactly one');
+         }
+       });
 
-      it('returns error when multiple targets specified', async () => {
-        // Act
-        const result = await handleClick({
-          testId: 'button',
-          selector: '.button',
-        } as any);
+       it('returns error when multiple targets specified', async () => {
+         // Act
+         const result = await handleClick({
+           testId: 'button',
+           selector: '.button',
+         } as any);
 
-        // Assert
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-          expect(result.error.message).toContain('Exactly one');
-        }
-      });
-    });
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toContain('Exactly one');
+         }
+       });
+
+       it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
+         // Arrange
+         vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
+           valid: true,
+           // Missing type and value properties - will fail isValidTargetSelection
+         } as any);
+
+         // Act
+         const result = await handleClick({ testId: 'button' });
+
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toBe('Invalid target selection');
+         }
+       });
+     });
 
     describe('with page closure after click', () => {
       it('handles page closure gracefully', async () => {
@@ -434,34 +453,52 @@ describe('interaction', () => {
     });
 
     describe('with invalid target selection', () => {
-      it('returns error when no target specified', async () => {
-        // Act
-        const result = await handleType({ text: 'test' } as any);
+       it('returns error when no target specified', async () => {
+         // Act
+         const result = await handleType({ text: 'test' } as any);
 
-        // Assert
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-          expect(result.error.message).toContain('Exactly one');
-        }
-      });
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toContain('Exactly one');
+         }
+       });
 
-      it('returns error when multiple targets specified', async () => {
-        // Act
-        const result = await handleType({
-          testId: 'input',
-          selector: 'input',
-          text: 'test',
-        } as any);
+       it('returns error when multiple targets specified', async () => {
+         // Act
+         const result = await handleType({
+           testId: 'input',
+           selector: 'input',
+           text: 'test',
+         } as any);
 
-        // Assert
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-          expect(result.error.message).toContain('Exactly one');
-        }
-      });
-    });
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toContain('Exactly one');
+         }
+       });
+
+       it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
+         // Arrange
+         vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
+           valid: true,
+           // Missing type and value properties - will fail isValidTargetSelection
+         } as any);
+
+         // Act
+         const result = await handleType({ testId: 'input', text: 'test' });
+
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toBe('Invalid target selection');
+         }
+       });
+     });
 
     describe('with type errors', () => {
       it('returns error when fill fails', async () => {
@@ -637,33 +674,51 @@ describe('interaction', () => {
     });
 
     describe('with invalid target selection', () => {
-      it('returns error when no target specified', async () => {
-        // Act
-        const result = await handleWaitFor({} as any);
+       it('returns error when no target specified', async () => {
+         // Act
+         const result = await handleWaitFor({} as any);
 
-        // Assert
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-          expect(result.error.message).toContain('Exactly one');
-        }
-      });
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toContain('Exactly one');
+         }
+       });
 
-      it('returns error when multiple targets specified', async () => {
-        // Act
-        const result = await handleWaitFor({
-          testId: 'element',
-          selector: '.element',
-        } as any);
+       it('returns error when multiple targets specified', async () => {
+         // Act
+         const result = await handleWaitFor({
+           testId: 'element',
+           selector: '.element',
+         } as any);
 
-        // Assert
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-          expect(result.error.message).toContain('Exactly one');
-        }
-      });
-    });
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toContain('Exactly one');
+         }
+       });
+
+       it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
+         // Arrange
+         vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
+           valid: true,
+           // Missing type and value properties - will fail isValidTargetSelection
+         } as any);
+
+         // Act
+         const result = await handleWaitFor({ testId: 'element' });
+
+         // Assert
+         expect(result.ok).toBe(false);
+         if (!result.ok) {
+           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+           expect(result.error.message).toBe('Invalid target selection');
+         }
+       });
+     });
 
     describe('with timeout errors', () => {
       it('returns error when element not found within timeout', async () => {

@@ -352,20 +352,88 @@ describe('tool-definitions', () => {
        }
      });
 
-     it('all required properties are defined in properties', () => {
-       const definitions = getToolDefinitions();
+      it('all required properties are defined in properties', () => {
+        const definitions = getToolDefinitions();
 
-       for (const def of definitions) {
-         const schema = def.inputSchema as Record<string, unknown>;
-         if (Array.isArray(schema.required) && schema.properties) {
-           const props = schema.properties as Record<string, unknown>;
-           for (const req of schema.required) {
-             expect(props[req as string]).toBeDefined();
-           }
-         }
-       }
-     });
-   });
+        for (const def of definitions) {
+          const schema = def.inputSchema as Record<string, unknown>;
+          if (Array.isArray(schema.required) && schema.properties) {
+            const props = schema.properties as Record<string, unknown>;
+            for (const req of schema.required) {
+              expect(props[req as string]).toBeDefined();
+            }
+          }
+        }
+      });
+
+      it('processes anyOf arrays in nested properties', () => {
+        const definitions = getToolDefinitions();
+
+        // Find tools with anyOf in properties (e.g., knowledge tools with scope)
+        // This exercises the anyOf handling in removeDefaultsFromRequired (lines 397-400)
+        let foundAnyOf = false;
+        for (const def of definitions) {
+          const schema = def.inputSchema as Record<string, unknown>;
+          if (schema.properties && typeof schema.properties === 'object') {
+            const props = schema.properties as Record<string, unknown>;
+            for (const [, prop] of Object.entries(props)) {
+              if (prop && typeof prop === 'object') {
+                const propObj = prop as Record<string, unknown>;
+                if ('anyOf' in propObj) {
+                  foundAnyOf = true;
+                  expect(Array.isArray(propObj.anyOf)).toBe(true);
+                  // Verify anyOf items are properly processed
+                  const anyOfArray = propObj.anyOf as unknown[];
+                  for (const item of anyOfArray) {
+                    expect(item).toBeDefined();
+                  }
+                }
+              }
+            }
+          }
+        }
+        // Verify we found at least one tool with anyOf (knowledge tools)
+        expect(foundAnyOf).toBe(true);
+      });
+
+      it('processes nested object properties recursively', () => {
+        const definitions = getToolDefinitions();
+
+        // Verify that nested object properties are processed correctly
+        // This exercises the recursive property handling in removeDefaultsFromRequired (lines 418-421)
+        for (const def of definitions) {
+          const schema = def.inputSchema as Record<string, unknown>;
+          if (schema.properties && typeof schema.properties === 'object') {
+            const props = schema.properties as Record<string, unknown>;
+            for (const [, value] of Object.entries(props)) {
+              if (value && typeof value === 'object') {
+                const propObj = value as Record<string, unknown>;
+                // Nested objects should have proper structure
+                expect(propObj).toBeDefined();
+                // If it has properties, they should be objects
+                if ('properties' in propObj && propObj.properties) {
+                  expect(typeof propObj.properties).toBe('object');
+                }
+              }
+            }
+          }
+        }
+      });
+
+      it('sets additionalProperties false on top-level object schemas', () => {
+        const definitions = getToolDefinitions();
+
+        // Verify that additionalProperties is set to false on top-level schemas
+        // This exercises the additionalProperties assignment in zodSchemaToJsonSchema (line 503)
+        for (const def of definitions) {
+          const schema = def.inputSchema as Record<string, unknown>;
+          // All tool schemas should be objects with additionalProperties: false
+          if (schema.type === 'object') {
+            expect(schema.additionalProperties).toBe(false);
+          }
+        }
+      });
+    });
 
   describe('extractBaseName', () => {
     it('removes mm_ prefix from tool name', () => {

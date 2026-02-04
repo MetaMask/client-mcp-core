@@ -39,10 +39,10 @@ export default defineConfig({
 
         // Target thresholds per plan: 95% lines, 95% functions, 85% branches
         // Current: 89.65% lines, 85.66% functions, 82.05% branches
-        branches: 82.05,
-        functions: 85.66,
-        lines: 89.65,
-        statements: 89.48,
+        branches: 83.97,
+        functions: 90.68,
+        lines: 91.29,
+        statements: 91.09,
       },
     },
 

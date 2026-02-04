@@ -26,7 +26,14 @@ vi.mock('child_process', () => ({
   execSync: vi.fn().mockReturnValue('main\n'),
 }));
 
-import { KnowledgeStore, type KnowledgeStoreConfig } from './knowledge-store.js';
+import {
+  KnowledgeStore,
+  type KnowledgeStoreConfig,
+  setKnowledgeStore,
+  getKnowledgeStore,
+  hasKnowledgeStore,
+  knowledgeStore,
+} from './knowledge-store.js';
 import type { SessionMetadata, StepRecordOutcome, StepRecordObservation } from './types/index.js';
 import type { ExtensionState } from '../capabilities/types.js';
 import { promises as fs } from 'fs';
@@ -2397,15 +2404,285 @@ describe('session', () => {
       expect(result).toEqual([]);
     });
 
-    it('returns specific sessionId for scope object', async () => {
+     it('returns specific sessionId for scope object', async () => {
+       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+
+       const result = await store.resolveSessionIds(
+         { sessionId: 'specific-session' },
+         'current-session'
+       );
+
+       expect(result).toEqual(['specific-session']);
+     });
+   });
+
+  describe('hasKnowledgeStore', () => {
+    afterEach(() => {
+      setKnowledgeStore(undefined as any);
+    });
+
+    it('returns false when knowledge store not initialized', () => {
+      setKnowledgeStore(undefined as any);
+
+      const result = hasKnowledgeStore();
+
+      expect(result).toBe(false);
+    });
+
+    it('returns true when knowledge store is initialized', () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+      setKnowledgeStore(store);
 
-      const result = await store.resolveSessionIds(
-        { sessionId: 'specific-session' },
-        'current-session'
+      const result = hasKnowledgeStore();
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('knowledgeStore facade', () => {
+    let store: KnowledgeStore;
+
+    beforeEach(() => {
+      store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+      setKnowledgeStore(store);
+    });
+
+    afterEach(() => {
+      setKnowledgeStore(undefined as any);
+    });
+
+    it('recordStep delegates to underlying KnowledgeStore instance', async () => {
+      const params = {
+        sessionId: 'test-session',
+        toolName: 'mm_click',
+        observation: createObservation(),
+        outcome: { ok: true } as StepRecordOutcome,
+      };
+
+      vi.spyOn(store, 'recordStep').mockResolvedValueOnce('/test/path');
+
+      const result = await knowledgeStore.recordStep(params);
+
+      expect(store.recordStep).toHaveBeenCalledWith(params);
+      expect(result).toBe('/test/path');
+    });
+
+    it('recordStep throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      const params = {
+        sessionId: 'test-session',
+        toolName: 'mm_click',
+        observation: createObservation(),
+        outcome: { ok: true } as StepRecordOutcome,
+      };
+
+      await expect(knowledgeStore.recordStep(params)).rejects.toThrow(
+        'Knowledge store not initialized'
       );
+    });
 
-      expect(result).toEqual(['specific-session']);
+    it('getLastSteps delegates to underlying KnowledgeStore instance', async () => {
+      const mockSteps = [
+        {
+          timestamp: '2024-01-15T10:30:00.000Z',
+          tool: 'mm_click',
+          screen: 'home' as const,
+          snippet: 'Clicked button',
+        },
+      ];
+
+      vi.spyOn(store, 'getLastSteps').mockResolvedValueOnce(mockSteps);
+
+      const result = await knowledgeStore.getLastSteps(10, { sessionId: 'test-session' }, undefined);
+
+      expect(store.getLastSteps).toHaveBeenCalledWith(10, { sessionId: 'test-session' }, undefined);
+      expect(result).toEqual(mockSteps);
+    });
+
+    it('getLastSteps throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      await expect(knowledgeStore.getLastSteps(10, { sessionId: 'test-session' }, undefined)).rejects.toThrow(
+        'Knowledge store not initialized'
+      );
+    });
+
+    it('searchSteps delegates to underlying KnowledgeStore instance', async () => {
+      const mockResults = [
+        {
+          timestamp: '2024-01-15T10:30:00.000Z',
+          tool: 'mm_click',
+          screen: 'home' as const,
+          snippet: 'Clicked send button',
+        },
+      ];
+
+      vi.spyOn(store, 'searchSteps').mockResolvedValueOnce(mockResults);
+
+      const result = await knowledgeStore.searchSteps('click', 10, 'all', undefined);
+
+      expect(store.searchSteps).toHaveBeenCalledWith('click', 10, 'all', undefined);
+      expect(result).toEqual(mockResults);
+    });
+
+    it('searchSteps throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      await expect(knowledgeStore.searchSteps('click', 10, 'all', undefined)).rejects.toThrow(
+        'Knowledge store not initialized'
+      );
+    });
+
+    it('summarizeSession delegates to underlying KnowledgeStore instance', async () => {
+      const mockSummary = {
+        sessionId: 'test-session',
+        stepCount: 5,
+        recipe: [
+          { stepNumber: 1, tool: 'mm_click', notes: 'Clicked send' },
+        ],
+      };
+
+      vi.spyOn(store, 'summarizeSession').mockResolvedValueOnce(mockSummary);
+
+      const result = await knowledgeStore.summarizeSession('test-session');
+
+      expect(store.summarizeSession).toHaveBeenCalledWith('test-session');
+      expect(result).toEqual(mockSummary);
+    });
+
+    it('summarizeSession throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      await expect(knowledgeStore.summarizeSession('test-session')).rejects.toThrow(
+        'Knowledge store not initialized'
+      );
+    });
+
+    it('listSessions delegates to underlying KnowledgeStore instance', async () => {
+      const mockSessions = [
+        {
+          sessionId: 'test-session-1',
+          createdAt: '2024-01-15T10:30:00.000Z',
+          flowTags: ['send'],
+          tags: [],
+        },
+      ];
+
+      vi.spyOn(store, 'listSessions').mockResolvedValueOnce(mockSessions);
+
+      const result = await knowledgeStore.listSessions(10);
+
+      expect(store.listSessions).toHaveBeenCalledWith(10);
+      expect(result).toEqual(mockSessions);
+    });
+
+    it('listSessions throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      await expect(knowledgeStore.listSessions(10)).rejects.toThrow(
+        'Knowledge store not initialized'
+      );
+    });
+
+    it('generatePriorKnowledge delegates to underlying KnowledgeStore instance', async () => {
+      const mockPriorKnowledge = {
+        schemaVersion: 1 as const,
+        generatedAt: '2024-01-15T10:30:00.000Z',
+        query: {
+          windowHours: 24,
+          usedFlowTags: [],
+          usedFilters: {},
+          candidateSessions: 0,
+          candidateSteps: 0,
+        },
+        relatedSessions: [],
+        similarSteps: [],
+        suggestedNextActions: [],
+      };
+
+      vi.spyOn(store, 'generatePriorKnowledge').mockResolvedValueOnce(mockPriorKnowledge);
+
+      const context = {
+        currentScreen: 'home',
+        visibleTestIds: [],
+        a11yNodes: [],
+      };
+      const result = await knowledgeStore.generatePriorKnowledge(context);
+
+      expect(store.generatePriorKnowledge).toHaveBeenCalledWith(context);
+      expect(result).toEqual(mockPriorKnowledge);
+    });
+
+    it('generatePriorKnowledge throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      const context = {
+        currentScreen: 'home',
+        visibleTestIds: [],
+        a11yNodes: [],
+      };
+      await expect(knowledgeStore.generatePriorKnowledge(context)).rejects.toThrow(
+        'Knowledge store not initialized'
+      );
+    });
+
+    it('writeSessionMetadata delegates to underlying KnowledgeStore instance', async () => {
+      const metadata: SessionMetadata = {
+        schemaVersion: 1,
+        sessionId: 'test-session',
+        createdAt: '2024-01-15T10:30:00.000Z',
+        flowTags: [],
+        tags: [],
+        launch: { stateMode: 'default' },
+      };
+
+      vi.spyOn(store, 'writeSessionMetadata').mockResolvedValueOnce('/test/path');
+
+      const result = await knowledgeStore.writeSessionMetadata(metadata);
+
+      expect(store.writeSessionMetadata).toHaveBeenCalledWith(metadata);
+      expect(result).toBe('/test/path');
+    });
+
+    it('writeSessionMetadata throws error when knowledge store not initialized', async () => {
+      setKnowledgeStore(undefined as any);
+
+      const metadata: SessionMetadata = {
+        schemaVersion: 1,
+        sessionId: 'test-session',
+        createdAt: '2024-01-15T10:30:00.000Z',
+        flowTags: [],
+        tags: [],
+        launch: { stateMode: 'default' },
+      };
+
+      await expect(knowledgeStore.writeSessionMetadata(metadata)).rejects.toThrow(
+        'Knowledge store not initialized'
+      );
+    });
+
+    it('getGitInfoSync delegates to underlying KnowledgeStore instance', () => {
+      const mockGitInfo = {
+        branch: 'main',
+        commit: 'abc123',
+        dirty: false,
+      };
+
+      vi.spyOn(store, 'getGitInfoSync').mockReturnValueOnce(mockGitInfo);
+
+      const result = knowledgeStore.getGitInfoSync();
+
+      expect(store.getGitInfoSync).toHaveBeenCalled();
+      expect(result).toEqual(mockGitInfo);
+    });
+
+    it('getGitInfoSync throws error when knowledge store not initialized', () => {
+      setKnowledgeStore(undefined as any);
+
+      expect(() => knowledgeStore.getGitInfoSync()).toThrow(
+        'Knowledge store not initialized'
+      );
     });
   });
 });
