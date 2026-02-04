@@ -1,3 +1,11 @@
+import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../constants.js';
+import { getSessionManager } from '../session-manager.js';
+import {
+  classifyNavigationError,
+  classifyTabError,
+  classifyNotificationError,
+} from './error-classification.js';
+import { runTool } from './run-tool.js';
 import type {
   NavigateInput,
   NavigateResult,
@@ -9,18 +17,17 @@ import type {
   CloseTabResult,
   McpResponse,
   HandlerOptions,
-} from "../types/index.js";
-import { ErrorCodes } from "../types/index.js";
-import { createErrorResponse } from "../utils/index.js";
-import { getSessionManager } from "../session-manager.js";
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from "../constants.js";
-import { runTool } from "./run-tool.js";
-import {
-  classifyNavigationError,
-  classifyTabError,
-  classifyNotificationError,
-} from "./error-classification.js";
+} from '../types';
+import { ErrorCodes } from '../types';
+import { createErrorResponse } from '../utils';
 
+/**
+ * Handles navigation to a specific screen or URL.
+ *
+ * @param input The navigate input containing target screen and optional URL
+ * @param options Optional handler configuration
+ * @returns Promise resolving to navigate result with current URL information
+ */
 export async function handleNavigate(
   input: NavigateInput,
   options?: HandlerOptions,
@@ -29,7 +36,7 @@ export async function handleNavigate(
   const sessionManager = getSessionManager();
   const sessionId = sessionManager.getSessionId();
 
-  if (input.screen === "url" && !input.url) {
+  if (input.screen === 'url' && !input.url) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
       'url is required when screen is "url"',
@@ -39,7 +46,7 @@ export async function handleNavigate(
     );
   }
 
-  const validScreens = ["home", "settings", "url", "notification"];
+  const validScreens = ['home', 'settings', 'url', 'notification'];
   if (!validScreens.includes(input.screen)) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
@@ -51,24 +58,31 @@ export async function handleNavigate(
   }
 
   return runTool<NavigateInput, NavigateResult>({
-    toolName: "mm_navigate",
+    toolName: 'mm_navigate',
     input,
     options,
 
+    /**
+     * Executes the navigation action to the target screen.
+     *
+     * @param context The tool execution context containing page and reference map
+     * @returns Promise resolving to navigate result with success status and URL
+     */
     execute: async (context) => {
       switch (input.screen) {
-        case "home":
+        case 'home':
           await sessionManager.navigateToHome();
           break;
-        case "settings":
+        case 'settings':
           await sessionManager.navigateToSettings();
           break;
-        case "url":
-          await sessionManager.navigateToUrl(input.url!);
+        case 'url':
+          await sessionManager.navigateToUrl(input.url as string);
           break;
-        case "notification":
+        case 'notification':
           await sessionManager.navigateToNotification();
           break;
+        default:
       }
 
       return {
@@ -79,6 +93,11 @@ export async function handleNavigate(
 
     classifyError: classifyNavigationError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with screen and URL information
+     */
     sanitizeInputForRecording: () => ({
       screen: input.screen,
       url: input.url,
@@ -86,6 +105,13 @@ export async function handleNavigate(
   });
 }
 
+/**
+ * Handles waiting for a notification popup to appear.
+ *
+ * @param input The wait input containing timeout options
+ * @param options Optional handler configuration
+ * @returns Promise resolving to wait result with notification page URL
+ */
 export async function handleWaitForNotification(
   input: WaitForNotificationInput,
   options?: HandlerOptions,
@@ -94,10 +120,15 @@ export async function handleWaitForNotification(
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
 
   return runTool<WaitForNotificationInput, WaitForNotificationResult>({
-    toolName: "mm_wait_for_notification",
+    toolName: 'mm_wait_for_notification',
     input,
     options,
 
+    /**
+     * Executes the wait action for notification popup.
+     *
+     * @returns Promise resolving to wait result with notification page URL
+     */
     execute: async () => {
       const notificationPage =
         await sessionManager.waitForNotificationPage(timeoutMs);
@@ -111,10 +142,22 @@ export async function handleWaitForNotification(
 
     classifyError: classifyNotificationError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with timeout information
+     */
     sanitizeInputForRecording: () => ({ timeoutMs }),
   });
 }
 
+/**
+ * Handles switching to a different tab by role or URL.
+ *
+ * @param input The switch input containing tab role or URL to match
+ * @param options Optional handler configuration
+ * @returns Promise resolving to switch result with active tab information
+ */
 export async function handleSwitchToTab(
   input: SwitchToTabInput,
   options?: HandlerOptions,
@@ -126,7 +169,7 @@ export async function handleSwitchToTab(
   if (!input.role && !input.url) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
-      "Either role or url must be provided",
+      'Either role or url must be provided',
       { input },
       sessionId,
       startTime,
@@ -134,26 +177,32 @@ export async function handleSwitchToTab(
   }
 
   return runTool<SwitchToTabInput, SwitchToTabResult>({
-    toolName: "mm_switch_to_tab",
+    toolName: 'mm_switch_to_tab',
     input,
     options,
 
+    /**
+     * Executes the tab switch action.
+     *
+     * @param context The tool execution context containing page and reference map
+     * @returns Promise resolving to switch result with active tab information
+     */
     execute: async (context) => {
       const trackedPages = sessionManager.getTrackedPages();
-      const targetPage = trackedPages.find((p) => {
+      const targetPage = trackedPages.find((trackedPage) => {
         if (input.role) {
-          return p.role === input.role;
+          return trackedPage.role === input.role;
         }
         if (input.url) {
-          return p.url.startsWith(input.url);
+          return trackedPage.url.startsWith(input.url);
         }
         return false;
       });
 
       if (!targetPage) {
-        const availableTabs = trackedPages.map((p) => ({
-          role: p.role,
-          url: p.url,
+        const availableTabs = trackedPages.map((trackedPage) => ({
+          role: trackedPage.role,
+          url: trackedPage.url,
         }));
         throw new Error(
           `No tab found matching: ${input.role ?? input.url}. Available tabs: ${JSON.stringify(availableTabs)}`,
@@ -165,13 +214,13 @@ export async function handleSwitchToTab(
 
       const updatedTrackedPages = sessionManager.getTrackedPages();
       const activeTabInfo = updatedTrackedPages.find(
-        (p) => p.page === targetPage.page,
+        (trackedPage) => trackedPage.page === targetPage.page,
       );
 
       return {
         switched: true,
         activeTab: {
-          role: activeTabInfo?.role ?? "other",
+          role: activeTabInfo?.role ?? 'other',
           url: context.page.url(),
         },
       };
@@ -179,6 +228,11 @@ export async function handleSwitchToTab(
 
     classifyError: classifyTabError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with role and URL information
+     */
     sanitizeInputForRecording: () => ({
       role: input.role,
       url: input.url,
@@ -186,6 +240,13 @@ export async function handleSwitchToTab(
   });
 }
 
+/**
+ * Handles closing a tab by role or URL.
+ *
+ * @param input The close input containing tab role or URL to match
+ * @param options Optional handler configuration
+ * @returns Promise resolving to close result with closed tab URL
+ */
 export async function handleCloseTab(
   input: CloseTabInput,
   options?: HandlerOptions,
@@ -197,7 +258,7 @@ export async function handleCloseTab(
   if (!input.role && !input.url) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
-      "Either role or url must be provided",
+      'Either role or url must be provided',
       { input },
       sessionId,
       startTime,
@@ -205,18 +266,24 @@ export async function handleCloseTab(
   }
 
   return runTool<CloseTabInput, CloseTabResult>({
-    toolName: "mm_close_tab",
+    toolName: 'mm_close_tab',
     input,
     options,
 
+    /**
+     * Executes the tab close action.
+     *
+     * @param context The tool execution context containing page and reference map
+     * @returns Promise resolving to close result with closed tab URL
+     */
     execute: async (context) => {
       const trackedPages = sessionManager.getTrackedPages();
-      const targetPage = trackedPages.find((p) => {
+      const targetPage = trackedPages.find((trackedPage) => {
         if (input.role) {
-          return p.role === input.role;
+          return trackedPage.role === input.role;
         }
         if (input.url) {
-          return p.url.startsWith(input.url);
+          return trackedPage.url.startsWith(input.url);
         }
         return false;
       });
@@ -229,7 +296,9 @@ export async function handleCloseTab(
 
       const currentActivePage = context.page;
       if (targetPage.page === currentActivePage) {
-        const extensionPage = trackedPages.find((p) => p.role === "extension");
+        const extensionPage = trackedPages.find(
+          (trackedPage) => trackedPage.role === 'extension',
+        );
         if (extensionPage) {
           await extensionPage.page.bringToFront();
           sessionManager.setActivePage(extensionPage.page);
@@ -246,6 +315,11 @@ export async function handleCloseTab(
 
     classifyError: classifyTabError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with role and URL information
+     */
     sanitizeInputForRecording: () => ({
       role: input.role,
       url: input.url,

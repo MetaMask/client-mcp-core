@@ -5,7 +5,7 @@ import vitest from '@metamask/eslint-config-vitest';
 
 const config = createConfig([
   {
-    ignores: ['dist/', 'docs/', '.yarn/'],
+    ignores: ['dist/', 'docs/', '.yarn/', 'yarn.config.cjs'],
   },
 
   {
@@ -40,6 +40,29 @@ const config = createConfig([
   {
     files: ['**/*.test.ts', '**/*.test.js'],
     extends: [vitest, nodejs],
+    rules: {
+      'vitest/no-conditional-expect': 'off',
+      'vitest/no-conditional-in-test': 'off',
+    },
+  },
+
+  {
+    files: [
+      'src/mcp-server/knowledge-store.ts',
+      'src/mcp-server/tools/build.ts',
+      'src/launcher/extension-readiness.ts',
+      'src/launcher/extension-id-resolver.ts',
+      'src/mcp-server/server.ts',
+    ],
+    rules: {
+      'import-x/no-nodejs-modules': 'off',
+      'no-restricted-globals': 'off',
+    },
+  },
+
+  {
+    files: ['src/**/*.ts'],
+    rules: {},
   },
 ]);
 

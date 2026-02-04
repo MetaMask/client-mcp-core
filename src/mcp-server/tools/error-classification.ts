@@ -5,30 +5,33 @@
  * based on error message patterns.
  */
 
-import { ErrorCodes } from "../types/index.js";
-import { extractErrorMessage } from "../utils/index.js";
+import { ErrorCodes } from '../types';
+import { extractErrorMessage } from '../utils';
 
 const ERROR_PATTERNS = {
   targetNotFound: [
-    "Unknown a11yRef",
-    "not found",
-    "No element found",
-    "Timeout waiting for selector",
+    'Unknown a11yRef',
+    'not found',
+    'No element found',
+    'Timeout waiting for selector',
   ],
-  timeout: ["Timeout", "exceeded", "timed out"],
-  navigation: ["Navigation failed", "net::ERR"],
+  timeout: ['Timeout', 'exceeded', 'timed out'],
+  navigation: ['Navigation failed', 'net::ERR'],
   pageClosed: [
-    "Target page, context or browser has been closed",
-    "page has been closed",
-    "context has been closed",
-    "browser has been closed",
-    "Target closed",
-    "Session closed",
+    'Target page, context or browser has been closed',
+    'page has been closed',
+    'context has been closed',
+    'browser has been closed',
+    'Target closed',
+    'Session closed',
   ],
 } as const;
 
 /**
  * Check if an error indicates the page was closed.
+ *
+ * @param error - The error to check for page closure indicators
+ * @returns True if the error indicates the page was closed
  */
 export function isPageClosedError(error: unknown): boolean {
   const message = extractErrorMessage(error);
@@ -45,7 +48,16 @@ export function isPageClosedError(error: unknown): boolean {
 export function classifyInteractionError(
   error: unknown,
   fallbackCode: string,
-): { code: string; message: string } {
+): {
+  /**
+   *
+   */
+  code: string;
+  /**
+   *
+   */
+  message: string;
+} {
   const message = extractErrorMessage(error);
 
   for (const pattern of ERROR_PATTERNS.targetNotFound) {
@@ -65,9 +77,18 @@ export function classifyInteractionError(
 
 /**
  * Classify a click error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyClickError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
@@ -75,9 +96,18 @@ export function classifyClickError(error: unknown): {
 
 /**
  * Classify a type error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyTypeError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_TYPE_FAILED);
@@ -85,9 +115,18 @@ export function classifyTypeError(error: unknown): {
 
 /**
  * Classify a wait error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyWaitError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -99,9 +138,18 @@ export function classifyWaitError(error: unknown): {
 
 /**
  * Classify a navigation error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyNavigationError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -135,14 +183,23 @@ export function classifyNavigationError(error: unknown): {
 
 /**
  * Classify a tab operation error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyTabError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
 
-  if (message.includes("not found") || message.includes("No tab found")) {
+  if (message.includes('not found') || message.includes('No tab found')) {
     return { code: ErrorCodes.MM_TAB_NOT_FOUND, message };
   }
 
@@ -169,9 +226,18 @@ export function classifyTabError(error: unknown): {
 
 /**
  * Classify a notification wait error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyNotificationError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -202,9 +268,18 @@ export function classifyNotificationError(error: unknown): {
 
 /**
  * Classify a discovery tool error (list_testids, accessibility_snapshot, describe_screen).
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyDiscoveryError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -235,9 +310,18 @@ export function classifyDiscoveryError(error: unknown): {
 
 /**
  * Classify a screenshot error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyScreenshotError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -259,9 +343,18 @@ export function classifyScreenshotError(error: unknown): {
 
 /**
  * Classify a state tool error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyStateError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -283,14 +376,23 @@ export function classifyStateError(error: unknown): {
 
 /**
  * Classify a seeding/contract deployment error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifySeedingError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);
 
-  if (message.includes("not found") || message.includes("Unknown contract")) {
+  if (message.includes('not found') || message.includes('Unknown contract')) {
     return { code: ErrorCodes.MM_CONTRACT_NOT_FOUND, message };
   }
 
@@ -302,9 +404,18 @@ export function classifySeedingError(error: unknown): {
 
 /**
  * Classify a context switching error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
  */
 export function classifyContextError(error: unknown): {
+  /**
+   *
+   */
   code: string;
+  /**
+   *
+   */
   message: string;
 } {
   const message = extractErrorMessage(error);

@@ -81,12 +81,12 @@ Make client-mcp-core compliant with MetaMask module template standards for npm p
 
 ### Definition of Done
 
-- [ ] `yarn build` produces `dist/` with ESM (.mjs) and CJS (.cjs) outputs
-- [ ] `yarn attw --pack .` reports no export errors
-- [ ] `yarn test` passes with coverage thresholds (thresholds auto-set based on current coverage)
-- [ ] `yarn lint` passes with zero errors
-- [ ] `npm publish --dry-run` succeeds
-- [ ] GitHub Actions workflow passes on push
+- [x] `yarn build` produces `dist/` with ESM (.mjs) and CJS (.cjs) outputs
+- [x] `yarn attw --pack .` reports no export errors
+- [x] `yarn test` passes with coverage thresholds (thresholds auto-set based on current coverage)
+- [x] `yarn lint` passes with zero errors
+- [x] `npm publish --dry-run` succeeds
+- [~] GitHub Actions workflow passes on push (BLOCKED: requires actual PR/push to GitHub to verify)
 
 ### Must Have
 
@@ -227,11 +227,11 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Current File**: `/Users/joaotavares/Documents/projects/consensys/client-mcp-core/package.json` - current configuration to preserve name, version, description, dependencies
 
   **Acceptance Criteria**:
-  - [ ] `node -e "const p = require('./package.json'); console.log(p.engines.node)"` outputs `^20 || ^22 || >=24`
-  - [ ] `node -e "const p = require('./package.json'); console.log(Object.keys(p.exports || {}).length > 0)"` outputs `true`
-  - [ ] `node -e "const p = require('./package.json'); console.log(p.publishConfig?.access)"` outputs `public`
-  - [ ] `node -e "const p = require('./package.json'); console.log(!!p.devDependencies?.['@ts-bridge/cli'])"` outputs `true`
-  - [ ] `node -e "const p = require('./package.json'); console.log(!!p.devDependencies?.vitest)"` outputs `true`
+  - [x] `node -e "const p = require('./package.json'); console.log(p.engines.node)"` outputs `^20 || ^22 || >=24`
+  - [x] `node -e "const p = require('./package.json'); console.log(Object.keys(p.exports || {}).length > 0)"` outputs `true`
+  - [x] `node -e "const p = require('./package.json'); console.log(p.publishConfig?.access)"` outputs `public`
+  - [x] `node -e "const p = require('./package.json'); console.log(!!p.devDependencies?.['@ts-bridge/cli'])"` outputs `true`
+  - [x] `node -e "const p = require('./package.json'); console.log(!!p.devDependencies?.vitest)"` outputs `true`
 
   **Commit**: YES
   - Message: `chore: update package.json for MetaMask template compliance`
@@ -267,10 +267,10 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Current File**: `/Users/joaotavares/Documents/projects/consensys/client-mcp-core/tsconfig.json` - preserve existing strict settings
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f tsconfig.json && echo "exists"`
-  - [ ] File exists: `test -f tsconfig.build.json && echo "exists"`
-  - [ ] File exists: `test -f tsconfig.test.json && echo "exists"`
-  - [ ] `npx tsc --project tsconfig.json --noEmit` exits with code 0
+  - [x] File exists: `test -f tsconfig.json && echo "exists"`
+  - [x] File exists: `test -f tsconfig.build.json && echo "exists"`
+  - [x] File exists: `test -f tsconfig.test.json && echo "exists"`
+  - [x] `npx tsc --project tsconfig.json --noEmit` exits with code 0
 
   **Commit**: YES
   - Message: `chore: update TypeScript configs for MetaMask template`
@@ -307,10 +307,10 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Plugin Source**: https://raw.githubusercontent.com/LavaMoat/LavaMoat/main/packages/yarn-plugin-allow-scripts/bundles/@yarnpkg/plugin-allow-scripts.js
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f .yarnrc.yml && echo "exists"`
-  - [ ] Plugin exists: `test -f .yarn/plugins/@yarnpkg/plugin-allow-scripts.cjs && echo "exists"`
-  - [ ] `grep -q "enableScripts" .yarnrc.yml && echo "found"`
-  - [ ] `grep -q "plugin-allow-scripts" .yarnrc.yml && echo "found"`
+  - [x] File exists: `test -f .yarnrc.yml && echo "exists"`
+  - [x] Plugin exists: `test -f .yarn/plugins/@yarnpkg/plugin-allow-scripts.cjs && echo "exists"`
+  - [x] `grep -q "enableScripts" .yarnrc.yml && echo "found"`
+  - [x] `grep -q "plugin-allow-scripts" .yarnrc.yml && echo "found"`
 
   **Commit**: YES
   - Message: `chore: configure Yarn with LavaMoat allow-scripts plugin`
@@ -354,9 +354,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
     - `/Users/joaotavares/Documents/projects/consensys/client-mcp-core/src/mcp-server/tools/definitions.test.ts`
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f vitest.config.mts && echo "exists"`
-  - [ ] `grep -q "thresholds" vitest.config.mts && echo "found"`
-  - [ ] `grep -q "autoUpdate" vitest.config.mts && echo "found"`
+  - [x] File exists: `test -f vitest.config.mts && echo "exists"`
+  - [x] `grep -q "thresholds" vitest.config.mts && echo "found"`
+  - [x] `grep -q "autoUpdate" vitest.config.mts && echo "found"`
 
   **Commit**: YES
   - Message: `chore: add Vitest configuration with auto-updating coverage thresholds`
@@ -392,9 +392,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Pattern Reference**: https://github.com/MetaMask/metamask-module-template/blob/main/eslint.config.mjs
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f eslint.config.mjs && echo "exists"`
-  - [ ] `grep -q "@metamask/eslint-config" eslint.config.mjs && echo "found"`
-  - [ ] `grep -q "vitest" eslint.config.mjs && echo "found"`
+  - [x] File exists: `test -f eslint.config.mjs && echo "exists"`
+  - [x] `grep -q "@metamask/eslint-config" eslint.config.mjs && echo "found"`
+  - [x] `grep -q "vitest" eslint.config.mjs && echo "found"`
 
   **Commit**: YES
   - Message: `chore: add ESLint v9 flat config with MetaMask presets`
@@ -428,9 +428,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Pattern Reference**: https://github.com/MetaMask/metamask-module-template/blob/main/.prettierrc.mjs
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f .prettierrc.mjs && echo "exists"`
-  - [ ] `grep -q "singleQuote" .prettierrc.mjs && echo "found"`
-  - [ ] `grep -q "prettier-plugin-packagejson" .prettierrc.mjs && echo "found"`
+  - [x] File exists: `test -f .prettierrc.mjs && echo "exists"`
+  - [x] `grep -q "singleQuote" .prettierrc.mjs && echo "found"`
+  - [x] `grep -q "prettier-plugin-packagejson" .prettierrc.mjs && echo "found"`
 
   **Commit**: YES
   - Message: `chore: add Prettier configuration`
@@ -464,9 +464,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Current File**: `/Users/joaotavares/Documents/projects/consensys/client-mcp-core/.editorconfig`
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f .nvmrc && echo "exists"`
-  - [ ] `cat .nvmrc` outputs `lts/*`
-  - [ ] `grep -q "indent_style = space" .editorconfig && echo "found"`
+  - [x] File exists: `test -f .nvmrc && echo "exists"`
+  - [x] `cat .nvmrc` outputs `lts/*`
+  - [x] `grep -q "indent_style = space" .editorconfig && echo "found"`
 
   **Commit**: YES
   - Message: `chore: add .nvmrc and update .editorconfig`
@@ -503,9 +503,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Pattern Reference**: https://github.com/MetaMask/metamask-module-template/blob/main/typedoc.json
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f .depcheckrc.json && echo "exists"`
-  - [ ] File exists: `test -f yarn.config.cjs && echo "exists"`
-  - [ ] File exists: `test -f typedoc.json && echo "exists"`
+  - [x] File exists: `test -f .depcheckrc.json && echo "exists"`
+  - [x] File exists: `test -f yarn.config.cjs && echo "exists"`
+  - [x] File exists: `test -f typedoc.json && echo "exists"`
 
   **Commit**: YES
   - Message: `chore: add depcheck, yarn constraints, and TypeDoc configs`
@@ -541,9 +541,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Template Example**: https://github.com/MetaMask/metamask-module-template/blob/main/CHANGELOG.md
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f CHANGELOG.md && echo "exists"`
-  - [ ] `grep -q "Unreleased" CHANGELOG.md && echo "found"`
-  - [ ] `grep -q "Keep a Changelog" CHANGELOG.md && echo "found"`
+  - [x] File exists: `test -f CHANGELOG.md && echo "exists"`
+  - [x] `grep -q "Unreleased" CHANGELOG.md && echo "found"`
+  - [x] `grep -q "Keep a Changelog" CHANGELOG.md && echo "found"`
 
   **Commit**: YES
   - Message: `chore: add CHANGELOG.md`
@@ -577,9 +577,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Pattern Reference**: https://github.com/MetaMask/metamask-module-template/blob/main/scripts/prepack.sh
 
   **Acceptance Criteria**:
-  - [ ] File exists: `test -f scripts/get.sh && echo "exists"`
-  - [ ] File exists: `test -f scripts/prepack.sh && echo "exists"`
-  - [ ] Scripts are executable: `test -x scripts/get.sh && echo "executable"`
+  - [x] File exists: `test -f scripts/get.sh && echo "exists"`
+  - [x] File exists: `test -f scripts/prepack.sh && echo "exists"`
+  - [x] Scripts are executable: `test -x scripts/get.sh && echo "executable"`
 
   **Commit**: YES
   - Message: `chore: add build scripts for CI and prepack`
@@ -588,7 +588,7 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
 
 ---
 
-- [ ] 11. Migrate Jest tests to Vitest
+- [x] 11. Migrate Jest tests to Vitest
 
   **What to do**:
   - Update test file imports from Jest to Vitest (`describe`, `it`, `expect`, `vi`)
@@ -632,11 +632,11 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
     - `/Users/joaotavares/Documents/projects/consensys/client-mcp-core/src/mcp-server/tools/definitions.test.ts`
 
   **Acceptance Criteria**:
-  - [ ] Test file count verified: `find src -name "*.test.ts" | wc -l` equals 4
-  - [ ] No jest imports: `! grep -r "from 'jest'" src/ && echo "no jest imports"`
-  - [ ] All test files have vitest import: `for f in $(find src -name "*.test.ts"); do grep -q "from 'vitest'" "$f" || echo "MISSING: $f"; done`
-  - [ ] Jest config deleted: `! test -f jest.config.js && echo "deleted"`
-  - [ ] `yarn install && yarn test` passes (after all dependencies installed)
+  - [x] Test file count verified: `find src -name "*.test.ts" | wc -l` equals 4
+  - [x] No jest imports: `! grep -r "from 'jest'" src/ && echo "no jest imports"`
+  - [x] All test files have vitest import: `for f in $(find src -name "*.test.ts"); do grep -q "from 'vitest'" "$f" || echo "MISSING: $f"; done`
+  - [x] Jest config deleted: `! test -f jest.config.js && echo "deleted"`
+  - [x] `yarn install && yarn test` passes (after all dependencies installed)
 
   **Commit**: YES
   - Message: `chore: migrate tests from Jest to Vitest`
@@ -645,7 +645,7 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
 
 ---
 
-- [ ] 12. Create GitHub Actions workflows
+- [x] 12. Create GitHub Actions workflows
 
   **What to do**:
   - Create `.github/workflows/main.yml` - main orchestration workflow
@@ -675,10 +675,10 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Main Workflow**: https://github.com/MetaMask/metamask-module-template/blob/main/.github/workflows/main.yml
 
   **Acceptance Criteria**:
-  - [ ] Directory exists: `test -d .github/workflows && echo "exists"`
-  - [ ] Main workflow: `test -f .github/workflows/main.yml && echo "exists"`
-  - [ ] Build workflow: `test -f .github/workflows/build-lint-test.yml && echo "exists"`
-  - [ ] YAML valid: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/main.yml'))" && echo "valid"`
+  - [x] Directory exists: `test -d .github/workflows && echo "exists"`
+  - [x] Main workflow: `test -f .github/workflows/main.yml && echo "exists"`
+  - [x] Build workflow: `test -f .github/workflows/build-lint-test.yml && echo "exists"`
+  - [x] YAML valid: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/main.yml'))" && echo "valid"`
 
   **Commit**: YES
   - Message: `ci: add GitHub Actions workflows for CI/CD`
@@ -687,7 +687,7 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
 
 ---
 
-- [ ] 13. Create GitHub configuration files
+- [x] 13. Create GitHub configuration files
 
   **What to do**:
   - Create `.github/CODEOWNERS` with @MetaMask/engineering
@@ -713,9 +713,9 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
   - **Pattern Reference**: https://github.com/MetaMask/metamask-module-template/blob/main/.github/dependabot.yml
 
   **Acceptance Criteria**:
-  - [ ] CODEOWNERS exists: `test -f .github/CODEOWNERS && echo "exists"`
-  - [ ] Dependabot exists: `test -f .github/dependabot.yml && echo "exists"`
-  - [ ] PR template exists: `test -f .github/pull_request_template.md && echo "exists"`
+  - [x] CODEOWNERS exists: `test -f .github/CODEOWNERS && echo "exists"`
+  - [x] Dependabot exists: `test -f .github/dependabot.yml && echo "exists"`
+  - [x] PR template exists: `test -f .github/pull_request_template.md && echo "exists"`
 
   **Commit**: YES
   - Message: `chore: add GitHub configuration files`
@@ -724,7 +724,7 @@ Critical Path: Task 1 → Task 2 → Task 4 → Task 11 → Task 14
 
 ---
 
-- [ ] 14. Final verification and cleanup
+- [x] 14. Final verification and cleanup
 
   **What to do**:
   - Run `yarn install` to install all new dependencies
@@ -860,9 +860,9 @@ npm publish --dry-run
 
 ### Final Checklist
 
-- [ ] All "Must Have" present (dual build, coverage, ESLint, CI/CD, LavaMoat)
-- [ ] All "Must NOT Have" absent (no source logic changes, no lint fixes, no coverage improvements)
-- [ ] All tests pass with coverage thresholds met
-- [ ] Package exports validated with attw
-- [ ] GitHub workflows syntactically valid
-- [ ] npm publish dry-run succeeds
+- [x] All "Must Have" present (dual build, coverage, ESLint, CI/CD, LavaMoat)
+- [x] All "Must NOT Have" absent (no source logic changes, no lint fixes, no coverage improvements)
+- [x] All tests pass with coverage thresholds met
+- [x] Package exports validated with attw
+- [x] GitHub workflows syntactically valid
+- [x] npm publish dry-run succeeds

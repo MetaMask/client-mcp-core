@@ -1,13 +1,12 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
-import {
-  getToolDefinitions,
-  TOOL_PREFIX,
-  type ToolDefinition,
-} from "./definitions.js";
+/* eslint-disable id-length */
+import { describe, it, expect, beforeAll } from 'vitest';
 
-describe("tool-definitions", () => {
-  describe("getToolDefinitions", () => {
-    it("creates tool definitions with mm_ prefix", () => {
+import { getToolDefinitions, TOOL_PREFIX } from './definitions.js';
+import type { ToolDefinition } from './definitions.js';
+
+describe('tool-definitions', () => {
+  describe('getToolDefinitions', () => {
+    it('creates tool definitions with mm_ prefix', () => {
       const definitions = getToolDefinitions();
 
       for (const def of definitions) {
@@ -15,42 +14,42 @@ describe("tool-definitions", () => {
       }
     });
 
-    it("creates 27 tool definitions", () => {
+    it('creates 27 tool definitions', () => {
       const definitions = getToolDefinitions();
-      expect(definitions.length).toBe(27);
+      expect(definitions).toHaveLength(27);
     });
 
-    it("includes all expected tools", () => {
+    it('includes all expected tools', () => {
       const definitions = getToolDefinitions();
       const toolNames = definitions.map((d) => d.name);
 
       const expectedTools = [
-        "mm_build",
-        "mm_launch",
-        "mm_cleanup",
-        "mm_get_state",
-        "mm_navigate",
-        "mm_wait_for_notification",
-        "mm_switch_to_tab",
-        "mm_close_tab",
-        "mm_list_testids",
-        "mm_accessibility_snapshot",
-        "mm_describe_screen",
-        "mm_screenshot",
-        "mm_click",
-        "mm_type",
-        "mm_wait_for",
-        "mm_knowledge_last",
-        "mm_knowledge_search",
-        "mm_knowledge_summarize",
-        "mm_knowledge_sessions",
-        "mm_seed_contract",
-        "mm_seed_contracts",
-        "mm_get_contract_address",
-        "mm_list_contracts",
-        "mm_run_steps",
-        "mm_set_context",
-        "mm_get_context",
+        'mm_build',
+        'mm_launch',
+        'mm_cleanup',
+        'mm_get_state',
+        'mm_navigate',
+        'mm_wait_for_notification',
+        'mm_switch_to_tab',
+        'mm_close_tab',
+        'mm_list_testids',
+        'mm_accessibility_snapshot',
+        'mm_describe_screen',
+        'mm_screenshot',
+        'mm_click',
+        'mm_type',
+        'mm_wait_for',
+        'mm_knowledge_last',
+        'mm_knowledge_search',
+        'mm_knowledge_summarize',
+        'mm_knowledge_sessions',
+        'mm_seed_contract',
+        'mm_seed_contracts',
+        'mm_get_contract_address',
+        'mm_list_contracts',
+        'mm_run_steps',
+        'mm_set_context',
+        'mm_get_context',
       ];
 
       for (const expected of expectedTools) {
@@ -58,43 +57,67 @@ describe("tool-definitions", () => {
       }
     });
 
-    it("all tools have valid input schema", () => {
+    it('all tools have valid input schema', () => {
       const definitions = getToolDefinitions();
 
       for (const def of definitions) {
         expect(def.inputSchema).toBeDefined();
-        const hasObjectType = def.inputSchema.type === "object";
+        const hasObjectType = def.inputSchema.type === 'object';
         const hasAllOf = Array.isArray(def.inputSchema.allOf);
         expect(hasObjectType || hasAllOf).toBe(true);
       }
     });
 
-    it("all tools have descriptions", () => {
+    it('all tools have descriptions', () => {
       const definitions = getToolDefinitions();
 
       for (const def of definitions) {
         expect(def.description).toBeDefined();
-        expect(typeof def.description).toBe("string");
+        expect(typeof def.description).toBe('string');
         expect(def.description.length).toBeGreaterThan(10);
       }
     });
 
-    describe("specific tool schemas", () => {
+    describe('specific tool schemas', () => {
       let definitions: ToolDefinition[];
 
       beforeAll(() => {
         definitions = getToolDefinitions();
       });
 
+      /**
+       * Find a tool definition by its name.
+       *
+       * @param name The tool name to search for
+       * @returns The matching tool definition or undefined if not found
+       */
       const findTool = (name: string): ToolDefinition | undefined =>
         definitions.find((d) => d.name === name);
 
+      /**
+       * Schema object structure for testing.
+       */
       type SchemaObj = {
+        /**
+         * Object properties mapping
+         */
         properties?: Record<string, unknown>;
+        /**
+         * Required property names
+         */
         required?: string[];
+        /**
+         * Array of schemas to combine
+         */
         allOf?: SchemaObj[];
       };
 
+      /**
+       * Get all properties from a schema, including those in allOf.
+       *
+       * @param schema The schema object to extract properties from
+       * @returns Combined properties from schema and allOf items
+       */
       const getAllProperties = (schema: SchemaObj): Record<string, unknown> => {
         if (schema.properties) {
           return schema.properties;
@@ -108,6 +131,12 @@ describe("tool-definitions", () => {
         return {};
       };
 
+      /**
+       * Get all required properties from a schema, including those in allOf.
+       *
+       * @param schema The schema object to extract required properties from
+       * @returns Combined required property names from schema and allOf items
+       */
       const getAllRequired = (schema: SchemaObj): string[] => {
         const required: string[] = [];
         if (schema.required) {
@@ -121,8 +150,8 @@ describe("tool-definitions", () => {
         return required;
       };
 
-      it("mm_click has correct schema", () => {
-        const tool = findTool("mm_click");
+      it('mm_click has correct schema', () => {
+        const tool = findTool('mm_click');
         expect(tool).toBeDefined();
 
         const props = getAllProperties(tool?.inputSchema as SchemaObj);
@@ -132,113 +161,162 @@ describe("tool-definitions", () => {
         expect(props.timeoutMs).toBeDefined();
       });
 
-      it("mm_type has required text property", () => {
-        const tool = findTool("mm_type");
+      it('mm_type has required text property', () => {
+        const tool = findTool('mm_type');
         expect(tool).toBeDefined();
 
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain("text");
+        expect(required).toContain('text');
       });
 
-      it("mm_navigate has required screen property", () => {
-        const tool = findTool("mm_navigate");
+      it('mm_navigate has required screen property', () => {
+        const tool = findTool('mm_navigate');
         expect(tool).toBeDefined();
 
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain("screen");
+        expect(required).toContain('screen');
 
         const props = getAllProperties(
           tool?.inputSchema as SchemaObj,
-        ) as Record<string, { enum?: string[] }>;
-        expect(props.screen?.enum).toEqual([
-          "home",
-          "settings",
-          "notification",
-          "url",
+        ) as Record<
+          string,
+          {
+            /**
+             *
+             */
+            enum?: string[];
+          }
+        >;
+        expect(props.screen?.enum).toStrictEqual([
+          'home',
+          'settings',
+          'notification',
+          'url',
         ]);
       });
 
-      it("mm_screenshot has required name property", () => {
-        const tool = findTool("mm_screenshot");
+      it('mm_screenshot has required name property', () => {
+        const tool = findTool('mm_screenshot');
         expect(tool).toBeDefined();
 
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain("name");
+        expect(required).toContain('name');
       });
 
-      it("mm_run_steps has required steps property", () => {
-        const tool = findTool("mm_run_steps");
+      it('mm_run_steps has required steps property', () => {
+        const tool = findTool('mm_run_steps');
         expect(tool).toBeDefined();
 
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain("steps");
+        expect(required).toContain('steps');
 
         const props = getAllProperties(
           tool?.inputSchema as SchemaObj,
-        ) as Record<string, { type?: string; items?: { type: string } }>;
-        expect(props.steps?.type).toBe("array");
+        ) as Record<
+          string,
+          {
+            /**
+             * The JSON schema type
+             */
+            type?: string;
+            /**
+             * Array item schema definition
+             */
+            items?: {
+              /**
+               * The item type
+               */
+              type: string;
+            };
+          }
+        >;
+        expect(props.steps?.type).toBe('array');
       });
 
-      it("mm_seed_contract has required contractName property", () => {
-        const tool = findTool("mm_seed_contract");
+      it('mm_seed_contract has required contractName property', () => {
+        const tool = findTool('mm_seed_contract');
         expect(tool).toBeDefined();
 
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain("contractName");
+        expect(required).toContain('contractName');
 
         const props = getAllProperties(
           tool?.inputSchema as SchemaObj,
-        ) as Record<string, { enum?: string[] }>;
-        expect(props.contractName?.enum).toContain("hst");
-        expect(props.contractName?.enum).toContain("nfts");
+        ) as Record<
+          string,
+          {
+            /**
+             *
+             */
+            enum?: string[];
+          }
+        >;
+        expect(props.contractName?.enum).toContain('hst');
+        expect(props.contractName?.enum).toContain('nfts');
       });
 
-      it("mm_launch has stateMode enum", () => {
-        const tool = findTool("mm_launch");
+      it('mm_launch has stateMode enum', () => {
+        const tool = findTool('mm_launch');
         expect(tool).toBeDefined();
 
         const props = getAllProperties(
           tool?.inputSchema as SchemaObj,
-        ) as Record<string, { enum?: string[] }>;
-        expect(props.stateMode?.enum).toEqual([
-          "default",
-          "onboarding",
-          "custom",
+        ) as Record<
+          string,
+          {
+            /**
+             *
+             */
+            enum?: string[];
+          }
+        >;
+        expect(props.stateMode?.enum).toStrictEqual([
+          'default',
+          'onboarding',
+          'custom',
         ]);
       });
 
-      it("mm_switch_to_tab has role enum", () => {
-        const tool = findTool("mm_switch_to_tab");
+      it('mm_switch_to_tab has role enum', () => {
+        const tool = findTool('mm_switch_to_tab');
         expect(tool).toBeDefined();
 
         const props = getAllProperties(
           tool?.inputSchema as SchemaObj,
-        ) as Record<string, { enum?: string[] }>;
-        expect(props.role?.enum).toEqual([
-          "extension",
-          "notification",
-          "dapp",
-          "other",
+        ) as Record<
+          string,
+          {
+            /**
+             *
+             */
+            enum?: string[];
+          }
+        >;
+        expect(props.role?.enum).toStrictEqual([
+          'extension',
+          'notification',
+          'dapp',
+          'other',
         ]);
       });
 
-      it("mm_knowledge_search has required query property", () => {
-        const tool = findTool("mm_knowledge_search");
+      it('mm_knowledge_search has required query property', () => {
+        const tool = findTool('mm_knowledge_search');
         expect(tool).toBeDefined();
 
         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-        expect(required).toContain("query");
+        expect(required).toContain('query');
       });
     });
 
-    it("uses mm_ prefix in descriptions", () => {
+    it('uses mm_ prefix in descriptions', () => {
       const definitions = getToolDefinitions();
 
       const a11yTool = definitions.find(
-        (d) => d.name === "mm_accessibility_snapshot",
+        (d) => d.name === 'mm_accessibility_snapshot',
       );
-      expect(a11yTool?.description).toContain("mm_click");
-      expect(a11yTool?.description).toContain("mm_type");
+      expect(a11yTool?.description).toContain('mm_click');
+      expect(a11yTool?.description).toContain('mm_type');
     });
   });
 });

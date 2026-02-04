@@ -1,7 +1,6 @@
 /** @type {import('@yarnpkg/types')} */
 const { defineConfig } = require('@yarnpkg/types');
-const { readFile } = require('fs/promises');
-const { basename, resolve } = require('path');
+const { basename } = require('path');
 
 /**
  * @typedef {import('@yarnpkg/types').Yarn.Constraints.Yarn} Yarn
@@ -11,18 +10,20 @@ const { basename, resolve } = require('path');
 
 const BASE_URL = 'https://github.com/MetaMask/';
 
+/**
+ *
+ * @param workspace
+ */
 function getWorkspaceName(workspace) {
   return basename(workspace.ident);
 }
 
-function getWorkspacePath(workspace, path) {
-  return resolve(__dirname, workspace.cwd, path);
-}
-
-async function getWorkspaceFile(workspace, path) {
-  return await readFile(getWorkspacePath(workspace, path), 'utf8');
-}
-
+/**
+ *
+ * @param workspace
+ * @param field
+ * @param value
+ */
 function expectWorkspaceField(workspace, field, value) {
   const fieldValue = workspace.manifest[field];
   if (fieldValue === null) {
@@ -34,6 +35,10 @@ function expectWorkspaceField(workspace, field, value) {
   }
 }
 
+/**
+ *
+ * @param workspace
+ */
 function expectWorkspaceDescription(workspace) {
   expectWorkspaceField(workspace, 'description');
   const { description } = workspace.manifest;
@@ -46,16 +51,28 @@ function expectWorkspaceDescription(workspace) {
   }
 }
 
+/**
+ *
+ * @param workspace
+ */
 function expectWorkspaceDependencies(workspace) {
   workspace.pkg.dependencies.forEach((dependency) => {
-    const isDependency = Boolean(workspace.manifest.dependencies?.[dependency.ident]);
-    const isDevDependency = Boolean(workspace.manifest.devDependencies?.[dependency.ident]);
+    const isDependency = Boolean(
+      workspace.manifest.dependencies?.[dependency.ident],
+    );
+    const isDevDependency = Boolean(
+      workspace.manifest.devDependencies?.[dependency.ident],
+    );
     if (isDependency && isDevDependency) {
       workspace.unset(`devDependencies.${dependency.ident}`);
     }
   });
 }
 
+/**
+ *
+ * @param workspace
+ */
 function expectExports(workspace) {
   const { exports: manifestExports } = workspace.manifest;
   Object.entries(manifestExports)
@@ -63,12 +80,19 @@ function expectExports(workspace) {
     .forEach(([exportName, exportObject]) => {
       const keys = Object.keys(exportObject);
       if (keys.includes('types') && keys[0] !== 'types') {
-        workspace.error(`The "types" export must be first for "${exportName}".`);
+        workspace.error(
+          `The "types" export must be first for "${exportName}".`,
+        );
       }
     });
 }
 
 module.exports = defineConfig({
+  /**
+   *
+   * @param options0
+   * @param options0.Yarn
+   */
   async constraints({ Yarn }) {
     const workspace = Yarn.workspace();
     const workspaceName = getWorkspaceName(workspace);

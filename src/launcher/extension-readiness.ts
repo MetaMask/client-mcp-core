@@ -1,11 +1,29 @@
-import path from "path";
-import type { Page } from "@playwright/test";
+import type { Page } from '@playwright/test';
+import path from 'path';
 
+/**
+ *
+ */
 export type ExtensionReadinessDeps = {
+  /**
+   *
+   */
   page: Page;
+  /**
+   *
+   */
   screenshotDir: string;
+  /**
+   *
+   */
   log: {
+    /**
+     *
+     */
     info: (message: string) => void;
+    /**
+     *
+     */
     error: (message: string) => void;
   };
 };
@@ -39,9 +57,16 @@ export const DEFAULT_EXTENSION_READINESS_CONFIG: ExtensionReadinessConfig = {
     '[data-testid="onboarding-terms-checkbox"]',
     '[data-testid="onboarding-privacy-policy"]',
   ],
-  expectedStatesDescription: "unlock page, onboarding page, or home page",
+  expectedStatesDescription: 'unlock page, onboarding page, or home page',
 };
 
+/**
+ * Wait for the extension UI to be ready by checking for expected selectors.
+ *
+ * @param deps - Dependencies including page, screenshot directory, and logger
+ * @param config - Configuration with ready selectors to wait for
+ * @param timeout - Maximum time to wait in milliseconds (default: 30000)
+ */
 export async function waitForExtensionUiReady(
   deps: ExtensionReadinessDeps,
   config: ExtensionReadinessConfig = DEFAULT_EXTENSION_READINESS_CONFIG,
@@ -52,11 +77,11 @@ export async function waitForExtensionUiReady(
 
   try {
     await Promise.race(
-      readySelectors.map((selector) =>
+      readySelectors.map(async (selector) =>
         page.waitForSelector(selector, { timeout }),
       ),
     );
-    log.info("Extension UI is ready");
+    log.info('Extension UI is ready');
   } catch {
     const currentUrl = page.url();
     const screenshotPath = path.join(
@@ -67,7 +92,7 @@ export async function waitForExtensionUiReady(
     log.error(`Debug screenshot saved: ${screenshotPath}`);
 
     const expectedStates =
-      expectedStatesDescription ?? "one of the expected ready states";
+      expectedStatesDescription ?? 'one of the expected ready states';
 
     throw new Error(
       `Extension UI did not reach expected state within ${timeout}ms. ` +

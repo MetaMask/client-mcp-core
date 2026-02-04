@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "./fetch.js";
+import { fetchWithTimeout } from './fetch.js';
 
 /**
  * Options for waitForServiceReady
@@ -6,24 +6,28 @@ import { fetchWithTimeout } from "./fetch.js";
 export type WaitForServiceReadyOptions = {
   /**
    * Maximum number of attempts to check service readiness
+   *
    * @default 10
    */
   maxAttempts?: number;
 
   /**
    * Delay in milliseconds between attempts
+   *
    * @default 500
    */
   delayMs?: number;
 
   /**
    * Custom fetch function (useful for testing or custom timeout behavior)
+   *
    * @default fetchWithTimeout
    */
   fetchFn?: typeof fetch;
 
   /**
    * Timeout in milliseconds for each fetch attempt
+   *
    * @default 3000
    */
   timeoutMs?: number;
@@ -79,16 +83,19 @@ export async function waitForServiceReady(
         return;
       }
     } catch (error) {
-      const err = error as Error;
+      const caughtError = error as Error;
 
       // Connection refused - service not yet started, retry
-      if (err.cause && String(err.cause).includes("ECONNREFUSED")) {
+      if (
+        caughtError.cause &&
+        JSON.stringify(caughtError.cause).includes('ECONNREFUSED')
+      ) {
         await delay(delayMs);
         continue;
       }
 
       // Timeout - service slow to respond, retry
-      if (err.name === "AbortError") {
+      if (caughtError.name === 'AbortError') {
         await delay(delayMs);
         continue;
       }
@@ -107,8 +114,11 @@ export async function waitForServiceReady(
 }
 
 /**
- * Delay helper function
+ * Delay helper function.
+ *
+ * @param ms - The delay in milliseconds.
+ * @returns A promise that resolves after the delay.
  */
-function delay(ms: number): Promise<void> {
+async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

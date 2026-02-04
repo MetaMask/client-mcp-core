@@ -1,10 +1,10 @@
+import { buildToolHandlersRecord } from './definitions.js';
+
 export {
   getToolHandler,
   hasToolHandler,
   buildToolHandlersRecord,
-  type ToolHandler,
-} from "./definitions.js";
-
-import { buildToolHandlersRecord } from "./definitions.js";
+} from './definitions.js';
+export type { ToolHandler } from './batch.js';
 
 export const toolHandlers = buildToolHandlersRecord();

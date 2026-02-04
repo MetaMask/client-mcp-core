@@ -2,10 +2,22 @@
   "name": "@metamask/client-mcp-core",
   "version": "0.1.0",
   "description": "MCP server for MetaMask Extension visual testing with LLM agents",
+  "keywords": [
+    "mcp",
+    "playwright",
+    "llm",
+    "visual-testing",
+    "browser-extension"
+  ],
+  "homepage": "https://github.com/MetaMask/client-mcp-core#readme",
+  "bugs": {
+    "url": "https://github.com/MetaMask/client-mcp-core/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MetaMask/client-mcp-core.git"
+  },
   "license": "MIT",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.cts",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -20,6 +32,9 @@
     },
     "./package.json": "./package.json"
   },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
   "files": [
     "dist"
   ],
@@ -81,25 +96,14 @@
     "@playwright/test": "^1.49.0",
     "playwright": "^1.49.0"
   },
+  "packageManager": "yarn@4.11.0",
+  "engines": {
+    "node": "^20 || ^22 || >=24"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "keywords": [
-    "mcp",
-    "playwright",
-    "llm",
-    "visual-testing",
-    "browser-extension"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/MetaMask/client-mcp-core.git"
-  },
-  "engines": {
-    "node": "^20 || ^22 || >=24"
-  },
-  "packageManager": "yarn@4.11.0",
   "lavamoat": {
     "allowScripts": {
       "@lavamoat/preinstall-always-fail": false,

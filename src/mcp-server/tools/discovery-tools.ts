@@ -1,3 +1,15 @@
+import {
+  DEFAULT_TESTID_LIMIT,
+  OBSERVATION_TESTID_LIMIT,
+} from '../constants.js';
+import { collectTestIds, collectTrimmedA11ySnapshot } from '../discovery.js';
+import {
+  knowledgeStore,
+  createDefaultObservation,
+} from '../knowledge-store.js';
+import { getSessionManager } from '../session-manager.js';
+import { classifyDiscoveryError } from './error-classification.js';
+import { runTool } from './run-tool.js';
 import type {
   ListTestIdsInput,
   ListTestIdsResult,
@@ -8,17 +20,15 @@ import type {
   McpResponse,
   PriorKnowledgeContext,
   HandlerOptions,
-} from "../types/index.js";
-import { getSessionManager } from "../session-manager.js";
-import {
-  knowledgeStore,
-  createDefaultObservation,
-} from "../knowledge-store.js";
-import { collectTestIds, collectTrimmedA11ySnapshot } from "../discovery.js";
-import { DEFAULT_TESTID_LIMIT, OBSERVATION_TESTID_LIMIT } from "../constants.js";
-import { runTool } from "./run-tool.js";
-import { classifyDiscoveryError } from "./error-classification.js";
+} from '../types';
 
+/**
+ * Handle listing all visible data-testid attributes on the current page.
+ *
+ * @param input The input containing optional limit for number of items
+ * @param options Optional handler options for the operation
+ * @returns Promise resolving to list of visible test IDs with metadata
+ */
 export async function handleListTestIds(
   input: ListTestIdsInput,
   options?: HandlerOptions,
@@ -26,11 +36,17 @@ export async function handleListTestIds(
   const limit = input.limit ?? DEFAULT_TESTID_LIMIT;
 
   return runTool<ListTestIdsInput, ListTestIdsResult>({
-    toolName: "mm_list_testids",
+    toolName: 'mm_list_testids',
     input,
     options,
-    observationPolicy: "custom",
+    observationPolicy: 'custom',
 
+    /**
+     * Execute the list test IDs operation.
+     *
+     * @param context The workflow context containing the page
+     * @returns The result with test ID items and observation data
+     */
     execute: async (context) => {
       const items = await collectTestIds(context.page, limit);
       const state = await getSessionManager().getExtensionState();
@@ -46,20 +62,38 @@ export async function handleListTestIds(
 
     classifyError: classifyDiscoveryError,
 
+    /**
+     * Sanitizes input for recording by extracting only the limit parameter.
+     *
+     * @returns Sanitized input with limit value
+     */
     sanitizeInputForRecording: () => ({ limit }),
   });
 }
 
+/**
+ * Handle getting a trimmed accessibility tree with deterministic refs.
+ *
+ * @param input The input containing optional root selector for scoping
+ * @param options Optional handler options for the operation
+ * @returns Promise resolving to accessibility nodes with deterministic refs
+ */
 export async function handleAccessibilitySnapshot(
   input: AccessibilitySnapshotInput,
   options?: HandlerOptions,
 ): Promise<McpResponse<AccessibilitySnapshotResult>> {
   return runTool<AccessibilitySnapshotInput, AccessibilitySnapshotResult>({
-    toolName: "mm_accessibility_snapshot",
+    toolName: 'mm_accessibility_snapshot',
     input,
     options,
-    observationPolicy: "custom",
+    observationPolicy: 'custom',
 
+    /**
+     * Execute the accessibility snapshot operation.
+     *
+     * @param context The workflow context containing the page
+     * @returns The result with accessibility nodes and observation data
+     */
     execute: async (context) => {
       const { nodes, refMap } = await collectTrimmedA11ySnapshot(
         context.page,
@@ -69,7 +103,10 @@ export async function handleAccessibilitySnapshot(
       getSessionManager().setRefMap(refMap);
 
       const state = await getSessionManager().getExtensionState();
-      const testIds = await collectTestIds(context.page, OBSERVATION_TESTID_LIMIT);
+      const testIds = await collectTestIds(
+        context.page,
+        OBSERVATION_TESTID_LIMIT,
+      );
 
       return {
         result: { nodes },
@@ -79,23 +116,41 @@ export async function handleAccessibilitySnapshot(
 
     classifyError: classifyDiscoveryError,
 
+    /**
+     * Sanitizes input for recording by extracting only the root selector.
+     *
+     * @returns Sanitized input with rootSelector value
+     */
     sanitizeInputForRecording: () => ({ rootSelector: input.rootSelector }),
   });
 }
 
+/**
+ * Handle getting comprehensive screen state with state, testIds, a11y, and optional screenshot.
+ *
+ * @param input The input containing screenshot options and selector
+ * @param options Optional handler options for the operation
+ * @returns Promise resolving to comprehensive screen description with prior knowledge
+ */
 export async function handleDescribeScreen(
   input: DescribeScreenInput,
   options?: HandlerOptions,
 ): Promise<McpResponse<DescribeScreenResult>> {
   return runTool<DescribeScreenInput, DescribeScreenResult>({
-    toolName: "mm_describe_screen",
+    toolName: 'mm_describe_screen',
     input,
     options,
-    observationPolicy: "custom",
+    observationPolicy: 'custom',
 
+    /**
+     * Execute the describe screen operation.
+     *
+     * @param context The workflow context containing the page
+     * @returns The result with state, testIds, a11y, screenshot, and prior knowledge
+     */
     execute: async (context) => {
       const sessionManager = getSessionManager();
-      const page = context.page;
+      const { page } = context;
 
       const state = await sessionManager.getExtensionState();
       const testIds = await collectTestIds(page, DEFAULT_TESTID_LIMIT);
@@ -103,10 +158,10 @@ export async function handleDescribeScreen(
 
       sessionManager.setRefMap(refMap);
 
-      let screenshot: DescribeScreenResult["screenshot"] = null;
+      let screenshot: DescribeScreenResult['screenshot'] = null;
 
       if (input.includeScreenshot) {
-        const screenshotName = input.screenshotName ?? "describe-screen";
+        const screenshotName = input.screenshotName ?? 'describe-screen';
         const result = await sessionManager.screenshot({
           name: screenshotName,
           fullPage: true,
@@ -155,6 +210,11 @@ export async function handleDescribeScreen(
 
     classifyError: classifyDiscoveryError,
 
+    /**
+     * Sanitizes input for recording by extracting screenshot-related parameters.
+     *
+     * @returns Sanitized input with screenshot options
+     */
     sanitizeInputForRecording: () => ({
       includeScreenshot: input.includeScreenshot,
       screenshotName: input.screenshotName,

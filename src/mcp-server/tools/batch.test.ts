@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import {
   setToolRegistry,
   getToolRegistry,
@@ -6,33 +7,36 @@ import {
   setToolValidator,
   getToolValidator,
   handleRunSteps,
-  type ToolRegistry,
-  type ToolHandler,
-  type ToolValidator,
-} from "./batch.js";
-import { setSessionManager, type ISessionManager } from "../session-manager.js";
+} from './batch.js';
+import type { ToolRegistry, ToolHandler, ToolValidator } from './batch.js';
+import { setSessionManager } from '../session-manager.js';
+import type { ISessionManager } from '../session-manager.js';
 
+/**
+ * Creates a mock session manager for testing.
+ *
+ * @param hasActive Whether the mock session should be active
+ * @returns Mock session manager instance
+ */
 const createMockSessionManager = (
   hasActive: boolean = true,
 ): ISessionManager => ({
   hasActiveSession: vi.fn().mockReturnValue(hasActive),
-  getSessionId: vi
-    .fn()
-    .mockReturnValue(hasActive ? "test-session" : undefined),
+  getSessionId: vi.fn().mockReturnValue(hasActive ? 'test-session' : undefined),
   getSessionState: vi.fn().mockReturnValue(undefined),
   getSessionMetadata: vi.fn().mockReturnValue(undefined),
   launch: vi.fn().mockResolvedValue({
-    sessionId: "test-session",
-    extensionId: "ext-123",
+    sessionId: 'test-session',
+    extensionId: 'ext-123',
     state: {},
   }),
   cleanup: vi.fn().mockResolvedValue(true),
   getPage: vi.fn(),
   setActivePage: vi.fn(),
   getTrackedPages: vi.fn().mockReturnValue([]),
-  classifyPageRole: vi.fn().mockReturnValue("extension"),
+  classifyPageRole: vi.fn().mockReturnValue('extension'),
   getContext: vi.fn(),
-  getExtensionState: vi.fn().mockResolvedValue({ screen: "home" }),
+  getExtensionState: vi.fn().mockResolvedValue({ screen: 'home' }),
   setRefMap: vi.fn(),
   getRefMap: vi.fn().mockReturnValue(new Map()),
   clearRefMap: vi.fn(),
@@ -42,31 +46,32 @@ const createMockSessionManager = (
   navigateToUrl: vi.fn(),
   navigateToNotification: vi.fn(),
   waitForNotificationPage: vi.fn(),
-  screenshot: vi.fn().mockResolvedValue({ path: "/path/to/screenshot.png" }),
+  screenshot: vi.fn().mockResolvedValue({ path: '/path/to/screenshot.png' }),
   getBuildCapability: vi.fn().mockReturnValue(undefined),
   getFixtureCapability: vi.fn().mockReturnValue(undefined),
   getChainCapability: vi.fn().mockReturnValue(undefined),
   getContractSeedingCapability: vi.fn().mockReturnValue(undefined),
   getStateSnapshotCapability: vi.fn().mockReturnValue(undefined),
-  getEnvironmentMode: vi.fn().mockReturnValue("e2e"),
+  getEnvironmentMode: vi.fn().mockReturnValue('e2e'),
 });
 
+/**
+ * Clears the tool validator by resetting it to undefined.
+ */
 function clearToolValidator(): void {
   setToolValidator((() => ({ success: true })) as ToolValidator);
   setToolValidator(undefined as unknown as ToolValidator);
 }
 
-describe("batch", () => {
+describe('batch', () => {
   beforeEach(() => {
     setToolRegistry({});
     clearToolValidator();
   });
 
-  describe("setToolRegistry / getToolRegistry", () => {
-    it("sets and gets tool registry", () => {
-      const mockHandler: ToolHandler = vi
-        .fn()
-        .mockResolvedValue({ ok: true });
+  describe('setToolRegistry / getToolRegistry', () => {
+    it('sets and gets tool registry', () => {
+      const mockHandler: ToolHandler = vi.fn().mockResolvedValue({ ok: true });
       const registry: ToolRegistry = {
         mm_click: mockHandler,
       };
@@ -77,7 +82,7 @@ describe("batch", () => {
       expect(getToolRegistry().mm_click).toBe(mockHandler);
     });
 
-    it("replaces existing registry", () => {
+    it('replaces existing registry', () => {
       const registry1: ToolRegistry = { tool1: vi.fn() };
       const registry2: ToolRegistry = { tool2: vi.fn() };
 
@@ -90,20 +95,20 @@ describe("batch", () => {
     });
   });
 
-  describe("hasToolRegistry", () => {
-    it("returns false for empty registry", () => {
+  describe('hasToolRegistry', () => {
+    it('returns false for empty registry', () => {
       setToolRegistry({});
       expect(hasToolRegistry()).toBe(false);
     });
 
-    it("returns true when registry has handlers", () => {
+    it('returns true when registry has handlers', () => {
       setToolRegistry({ mm_click: vi.fn() });
       expect(hasToolRegistry()).toBe(true);
     });
   });
 
-  describe("setToolValidator / getToolValidator", () => {
-    it("sets and gets tool validator", () => {
+  describe('setToolValidator / getToolValidator', () => {
+    it('sets and gets tool validator', () => {
       const validator: ToolValidator = vi
         .fn()
         .mockReturnValue({ success: true });
@@ -112,38 +117,38 @@ describe("batch", () => {
       expect(getToolValidator()).toBe(validator);
     });
 
-    it("returns undefined when not set", () => {
+    it('returns undefined when not set', () => {
       expect(getToolValidator()).toBeUndefined();
     });
   });
 
-  describe("handleRunSteps", () => {
+  describe('handleRunSteps', () => {
     beforeEach(() => {
       setSessionManager(createMockSessionManager(true));
     });
 
-    it("returns error when no active session", async () => {
+    it('returns error when no active session', async () => {
       setSessionManager(createMockSessionManager(false));
 
       const result = await handleRunSteps({
-        steps: [{ tool: "mm_click", args: { testId: "button" } }],
+        steps: [{ tool: 'mm_click', args: { testId: 'button' } }],
       });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error?.code).toBe("MM_NO_ACTIVE_SESSION");
+        expect(result.error?.code).toBe('MM_NO_ACTIVE_SESSION');
       }
     });
 
-    it("executes steps in sequence", async () => {
+    it('executes steps in sequence', async () => {
       const executionOrder: string[] = [];
       const clickHandler = vi.fn().mockImplementation(async () => {
-        executionOrder.push("click");
-        return { ok: true, result: "clicked" };
+        executionOrder.push('click');
+        return { ok: true, result: 'clicked' };
       });
       const typeHandler = vi.fn().mockImplementation(async () => {
-        executionOrder.push("type");
-        return { ok: true, result: "typed" };
+        executionOrder.push('type');
+        return { ok: true, result: 'typed' };
       });
 
       setToolRegistry({
@@ -153,13 +158,13 @@ describe("batch", () => {
 
       const result = await handleRunSteps({
         steps: [
-          { tool: "mm_click", args: { testId: "button" } },
-          { tool: "mm_type", args: { testId: "input", text: "hello" } },
+          { tool: 'mm_click', args: { testId: 'button' } },
+          { tool: 'mm_type', args: { testId: 'input', text: 'hello' } },
         ],
       });
 
       expect(result.ok).toBe(true);
-      expect(executionOrder).toEqual(["click", "type"]);
+      expect(executionOrder).toStrictEqual(['click', 'type']);
       if (result.ok) {
         expect(result.result?.summary.total).toBe(2);
         expect(result.result?.summary.succeeded).toBe(2);
@@ -167,25 +172,25 @@ describe("batch", () => {
       }
     });
 
-    it("returns error for unknown tool", async () => {
+    it('returns error for unknown tool', async () => {
       setToolRegistry({});
 
       const result = await handleRunSteps({
-        steps: [{ tool: "unknown_tool", args: {} }],
+        steps: [{ tool: 'unknown_tool', args: {} }],
       });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.result?.steps[0].ok).toBe(false);
-        expect(result.result?.steps[0].error?.code).toBe("MM_UNKNOWN_TOOL");
+        expect(result.result?.steps[0].error?.code).toBe('MM_UNKNOWN_TOOL');
         expect(result.result?.summary.failed).toBe(1);
       }
     });
 
-    it("stops on error when stopOnError is true", async () => {
+    it('stops on error when stopOnError is true', async () => {
       const clickHandler = vi.fn().mockResolvedValue({
         ok: false,
-        error: { code: "ERR", message: "fail" },
+        error: { code: 'ERR', message: 'fail' },
       });
       const typeHandler = vi.fn().mockResolvedValue({ ok: true });
 
@@ -196,8 +201,8 @@ describe("batch", () => {
 
       const result = await handleRunSteps({
         steps: [
-          { tool: "mm_click", args: {} },
-          { tool: "mm_type", args: { text: "hello" } },
+          { tool: 'mm_click', args: {} },
+          { tool: 'mm_type', args: { text: 'hello' } },
         ],
         stopOnError: true,
       });
@@ -209,14 +214,14 @@ describe("batch", () => {
       }
     });
 
-    it("continues on error when stopOnError is false", async () => {
+    it('continues on error when stopOnError is false', async () => {
       const clickHandler = vi.fn().mockResolvedValue({
         ok: false,
-        error: { code: "ERR", message: "fail" },
+        error: { code: 'ERR', message: 'fail' },
       });
       const typeHandler = vi
         .fn()
-        .mockResolvedValue({ ok: true, result: "typed" });
+        .mockResolvedValue({ ok: true, result: 'typed' });
 
       setToolRegistry({
         mm_click: clickHandler,
@@ -225,8 +230,8 @@ describe("batch", () => {
 
       const result = await handleRunSteps({
         steps: [
-          { tool: "mm_click", args: {} },
-          { tool: "mm_type", args: { text: "hello" } },
+          { tool: 'mm_click', args: {} },
+          { tool: 'mm_type', args: { text: 'hello' } },
         ],
         stopOnError: false,
       });
@@ -240,32 +245,32 @@ describe("batch", () => {
       }
     });
 
-    it("uses tool validator when set", async () => {
+    it('uses tool validator when set', async () => {
       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
       setToolRegistry({ mm_click: clickHandler });
 
       const validator: ToolValidator = vi.fn().mockReturnValue({
         success: false,
-        error: { message: "Invalid testId" },
+        error: { message: 'Invalid testId' },
       });
       setToolValidator(validator);
 
       const result = await handleRunSteps({
-        steps: [{ tool: "mm_click", args: { testId: "" } }],
+        steps: [{ tool: 'mm_click', args: { testId: '' } }],
       });
 
-      expect(validator).toHaveBeenCalledWith("mm_click", { testId: "" });
+      expect(validator).toHaveBeenCalledWith('mm_click', { testId: '' });
       expect(clickHandler).not.toHaveBeenCalled();
       if (result.ok) {
         expect(result.result?.steps[0].ok).toBe(false);
-        expect(result.result?.steps[0].error?.code).toBe("MM_INVALID_INPUT");
+        expect(result.result?.steps[0].error?.code).toBe('MM_INVALID_INPUT');
       }
     });
 
-    it("passes validation when validator returns success", async () => {
+    it('passes validation when validator returns success', async () => {
       const clickHandler = vi
         .fn()
-        .mockResolvedValue({ ok: true, result: "clicked" });
+        .mockResolvedValue({ ok: true, result: 'clicked' });
       setToolRegistry({ mm_click: clickHandler });
 
       const validator: ToolValidator = vi
@@ -274,7 +279,7 @@ describe("batch", () => {
       setToolValidator(validator);
 
       const result = await handleRunSteps({
-        steps: [{ tool: "mm_click", args: { testId: "btn" } }],
+        steps: [{ tool: 'mm_click', args: { testId: 'btn' } }],
       });
 
       expect(clickHandler).toHaveBeenCalled();
@@ -283,22 +288,22 @@ describe("batch", () => {
       }
     });
 
-    it("handles exceptions from tool handlers", async () => {
-      const clickHandler = vi.fn().mockRejectedValue(new Error("Timeout"));
+    it('handles exceptions from tool handlers', async () => {
+      const clickHandler = vi.fn().mockRejectedValue(new Error('Timeout'));
       setToolRegistry({ mm_click: clickHandler });
 
       const result = await handleRunSteps({
-        steps: [{ tool: "mm_click", args: {} }],
+        steps: [{ tool: 'mm_click', args: {} }],
       });
 
       if (result.ok) {
         expect(result.result?.steps[0].ok).toBe(false);
-        expect(result.result?.steps[0].error?.code).toBe("MM_INTERNAL_ERROR");
-        expect(result.result?.steps[0].error?.message).toContain("Timeout");
+        expect(result.result?.steps[0].error?.code).toBe('MM_INTERNAL_ERROR');
+        expect(result.result?.steps[0].error?.message).toContain('Timeout');
       }
     });
 
-    it("includes duration in step results", async () => {
+    it('includes duration in step results', async () => {
       const clickHandler = vi.fn().mockImplementation(async () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
         return { ok: true };
@@ -306,7 +311,7 @@ describe("batch", () => {
       setToolRegistry({ mm_click: clickHandler });
 
       const result = await handleRunSteps({
-        steps: [{ tool: "mm_click", args: {} }],
+        steps: [{ tool: 'mm_click', args: {} }],
       });
 
       if (result.ok) {
@@ -316,14 +321,14 @@ describe("batch", () => {
       }
     });
 
-    it("includes total duration in summary", async () => {
+    it('includes total duration in summary', async () => {
       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
       setToolRegistry({ mm_click: clickHandler });
 
       const result = await handleRunSteps({
         steps: [
-          { tool: "mm_click", args: {} },
-          { tool: "mm_click", args: {} },
+          { tool: 'mm_click', args: {} },
+          { tool: 'mm_click', args: {} },
         ],
       });
 
@@ -332,12 +337,12 @@ describe("batch", () => {
       }
     });
 
-    it("defaults args to empty object when not provided", async () => {
+    it('defaults args to empty object when not provided', async () => {
       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
       setToolRegistry({ mm_click: clickHandler });
 
       await handleRunSteps({
-        steps: [{ tool: "mm_click" }],
+        steps: [{ tool: 'mm_click' }],
       });
 
       expect(clickHandler).toHaveBeenCalledWith({}, expect.any(Object));
