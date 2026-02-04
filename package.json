@@ -104,7 +104,9 @@
     "allowScripts": {
       "@lavamoat/preinstall-always-fail": false,
       "eslint-plugin-import-x>unrs-resolver": false,
-      "vite>esbuild": false
+      "vite>esbuild": false,
+      "vitest>vite-node>vite>esbuild": false,
+      "vitest>vite>esbuild": false
     }
   }
 }
