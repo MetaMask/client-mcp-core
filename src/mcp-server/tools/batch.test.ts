@@ -261,21 +261,25 @@ describe('batch', () => {
     });
 
     it('includes duration in step results', async () => {
+      vi.useFakeTimers();
       const clickHandler = vi.fn().mockImplementation(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return { ok: true };
       });
       setToolRegistry({ mm_click: clickHandler });
 
-      const result = await handleRunSteps({
+      const resultPromise = handleRunSteps({
         steps: [{ tool: 'mm_click', args: {} }],
       });
 
+      await vi.advanceTimersByTimeAsync(100);
+      const result = await resultPromise;
+
       if (result.ok) {
-        expect(result.result?.steps[0].meta?.durationMs).toBeGreaterThanOrEqual(
-          10,
-        );
+        expect(result.result?.steps[0].meta?.durationMs).toBe(100);
       }
+
+      vi.useRealTimers();
     });
 
     it('includes total duration in summary', async () => {
