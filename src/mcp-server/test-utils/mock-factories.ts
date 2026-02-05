@@ -172,9 +172,5 @@ export function createMockKnowledgeStore(
     listSessions: vi.fn().mockResolvedValue(options.sessions ?? []),
     generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
     writeSessionMetadata: vi.fn().mockResolvedValue('test-session-123'),
-    getGitInfoSync: vi.fn().mockReturnValue({
-      branch: 'main',
-      commit: 'abc123',
-    }),
   };
 }

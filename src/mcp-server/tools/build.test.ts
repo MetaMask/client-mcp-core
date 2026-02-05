@@ -45,9 +45,6 @@ describe('build', () => {
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi
-        .fn()
-        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     } as any);
 
     mockBuildCapability = {

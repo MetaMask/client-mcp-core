@@ -26,7 +26,6 @@ describe('runTool', () => {
     listSessions: ReturnType<typeof vi.fn>;
     generatePriorKnowledge: ReturnType<typeof vi.fn>;
     writeSessionMetadata: ReturnType<typeof vi.fn>;
-    getGitInfoSync: ReturnType<typeof vi.fn>;
   };
   let mockPage: Page;
 
@@ -57,9 +56,6 @@ describe('runTool', () => {
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi
-        .fn()
-        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     };
     vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue(
       mockKnowledgeStore as any,

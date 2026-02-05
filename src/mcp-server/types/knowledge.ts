@@ -190,19 +190,6 @@ export type PriorKnowledgeRelatedSession = {
    *
    */
   tags: string[];
-  /**
-   *
-   */
-  git?: {
-    /**
-     *
-     */
-    branch?: string;
-    /**
-     *
-     */
-    commit?: string;
-  };
 };
 
 /**
@@ -409,19 +396,6 @@ export type SessionSummary = {
    *
    */
   tags: string[];
-  /**
-   *
-   */
-  git?: {
-    /**
-     *
-     */
-    branch?: string;
-    /**
-     *
-     */
-    commit?: string;
-  };
 };
 
 /**

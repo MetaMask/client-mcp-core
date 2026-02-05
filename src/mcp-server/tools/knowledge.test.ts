@@ -52,9 +52,6 @@ describe('knowledge', () => {
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi
-        .fn()
-        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     };
     vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue(
       mockKnowledgeStore,
@@ -558,7 +555,6 @@ describe('knowledge', () => {
       const filters = {
         flowTag: 'send',
         sinceHours: 48,
-        gitBranch: 'main',
       };
 
       // Act

@@ -276,10 +276,6 @@ export type KnowledgeFilters = {
    *
    */
   sinceHours?: number;
-  /**
-   *
-   */
-  gitBranch?: string;
 };
 
 /**

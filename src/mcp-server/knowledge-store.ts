@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-disable id-length */
-import { execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
@@ -22,7 +21,6 @@ import type {
   KnowledgeScope,
   KnowledgeFilters,
   SessionSummary,
-  StepRecordGit,
   PriorKnowledgeV1,
   PriorKnowledgeContext,
   PriorKnowledgeSimilarStep,
@@ -272,9 +270,6 @@ export class KnowledgeStore {
       goal: s.metadata.goal,
       flowTags: s.metadata.flowTags,
       tags: s.metadata.tags,
-      git: s.metadata.git
-        ? { branch: s.metadata.git.branch, commit: s.metadata.git.commit }
-        : undefined,
     }));
   }
 
@@ -298,10 +293,6 @@ export class KnowledgeStore {
     }
 
     if (filters.tag && !metadata.tags.includes(filters.tag)) {
-      return false;
-    }
-
-    if (filters.gitBranch && metadata.git?.branch !== filters.gitBranch) {
       return false;
     }
 
@@ -445,7 +436,6 @@ export class KnowledgeStore {
       sessionId: params.sessionId,
       context: params.context,
       environment: this.#getEnvironmentInfo(),
-      git: this.#getGitInfo(),
       tool: {
         name: params.toolName,
         input: sanitizedInput.input,
@@ -845,15 +835,6 @@ export class KnowledgeStore {
   }
 
   /**
-   * Get git information synchronously
-   *
-   * @returns Git information (branch, commit, dirty status)
-   */
-  getGitInfoSync(): StepRecordGit {
-    return this.#getGitInfo();
-  }
-
-  /**
    * Load all step records from a session
    *
    * @param sessionId - Session ID to load steps from
@@ -995,52 +976,6 @@ export class KnowledgeStore {
   }
 
   /**
-   * Get git repository information
-   *
-   * @returns Git details (branch, commit, dirty status)
-   */
-  #getGitInfo(): {
-    /**
-     * Current git branch name
-     */
-    branch?: string;
-    /**
-     * Current git commit hash
-     */
-    commit?: string;
-    /**
-     * Whether working directory has uncommitted changes
-     */
-    dirty?: boolean;
-  } {
-    try {
-      const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-
-      const commit = execSync('git rev-parse --short HEAD', {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-
-      const status = execSync('git status --porcelain', {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      return {
-        branch,
-        commit,
-        dirty: status.trim().length > 0,
-      };
-    } catch (error) {
-      debugWarn('knowledge-store.getGitInfo', error);
-      return {};
-    }
-  }
-
-  /**
    * Create a summary of a step record
    *
    * @param step - Step record to summarize
@@ -1169,16 +1104,6 @@ export class KnowledgeStore {
       for (const tag of metadata.tags) {
         if (tag.toLowerCase().includes(token)) {
           score += 4;
-          break;
-        }
-      }
-    }
-
-    if (metadata.git?.branch) {
-      const branchTokens = tokenize(metadata.git.branch);
-      for (const token of queryTokens) {
-        if (branchTokens.includes(token)) {
-          score += 2;
           break;
         }
       }
@@ -1421,9 +1346,6 @@ export class KnowledgeStore {
         goal: metadata.goal,
         flowTags: metadata.flowTags,
         tags: metadata.tags,
-        git: metadata.git
-          ? { branch: metadata.git.branch, commit: metadata.git.commit }
-          : undefined,
       });
     }
 
@@ -2040,13 +1962,5 @@ export const knowledgeStore = {
    */
   writeSessionMetadata: async (metadata: SessionMetadata) => {
     return getKnowledgeStore().writeSessionMetadata(metadata);
-  },
-  /**
-   * Get git information synchronously
-   *
-   * @returns Git information (branch, commit, dirty status)
-   */
-  getGitInfoSync: (): StepRecordGit => {
-    return getKnowledgeStore().getGitInfoSync();
   },
 };

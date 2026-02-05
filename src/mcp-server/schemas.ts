@@ -71,11 +71,6 @@ export const knowledgeFiltersSchema = z
       .max(720)
       .describe('Only include sessions/steps from the last N hours')
       .optional(),
-    gitBranch: z
-      .string()
-      .min(1)
-      .describe('Filter by git branch name')
-      .optional(),
   })
   .optional();
 

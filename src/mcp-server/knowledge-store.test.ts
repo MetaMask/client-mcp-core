@@ -1,10 +1,8 @@
-/* eslint-disable n/no-sync */
 /**
  * Unit tests for KnowledgeStore core operations (Part 1).
  * Part 1 focuses on lines 1-500: initialization, recordStep, session lifecycle.
  */
 
-import { execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -37,10 +35,6 @@ vi.mock('fs', () => ({
     readdir: vi.fn().mockResolvedValue([]),
     stat: vi.fn().mockResolvedValue({ isDirectory: () => true }),
   },
-}));
-
-vi.mock('child_process', () => ({
-  execSync: vi.fn().mockReturnValue('main\n'),
 }));
 
 function createObservation(
@@ -190,26 +184,6 @@ describe('core', () => {
       expect(fs.writeFile).toHaveBeenCalledWith(
         expect.any(String),
         expect.stringContaining('"goal": "Test send flow"'),
-      );
-    });
-
-    it('includes git info in metadata when present', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const metadata: SessionMetadata = {
-        schemaVersion: 1,
-        sessionId: 'session-004',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        flowTags: [],
-        tags: [],
-        git: { branch: 'feature/test', commit: 'abc123def' },
-        launch: { stateMode: 'default' },
-      };
-
-      await store.writeSessionMetadata(metadata);
-
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.stringContaining('"branch": "feature/test"'),
       );
     });
   });
@@ -478,30 +452,6 @@ describe('core', () => {
       expect(writtenData.labels).toContain('error-recovery');
     });
 
-    it('includes git info from execSync', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const outcome: StepRecordOutcome = { ok: true };
-      const observation = createObservation();
-
-      vi.mocked(execSync)
-        .mockReturnValueOnce('feature-branch\n')
-        .mockReturnValueOnce('abc123def456\n')
-        .mockReturnValueOnce('');
-
-      await store.recordStep({
-        sessionId: 'session-step-010',
-        toolName: 'mm_click',
-        outcome,
-        observation,
-      });
-
-      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
-      const writtenData = JSON.parse(writeCall[1] as string);
-
-      expect(writtenData.git).toBeDefined();
-      expect(writtenData.git.branch).toBe('feature-branch');
-    });
-
     it('records step with e2e context', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
       const outcome: StepRecordOutcome = { ok: true };
@@ -707,41 +657,6 @@ describe('core', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].sessionId).toBe('mm-session-test');
-    });
-
-    it('filters by gitBranch', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const mainMetadata: SessionMetadata = {
-        schemaVersion: 1,
-        sessionId: 'mm-session-main',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        git: { branch: 'main', commit: 'abc123' },
-        launch: { stateMode: 'default' },
-      };
-      const featureMetadata: SessionMetadata = {
-        schemaVersion: 1,
-        sessionId: 'mm-session-feature',
-        createdAt: '2024-01-14T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        git: { branch: 'feature/test', commit: 'def456' },
-        launch: { stateMode: 'default' },
-      };
-
-      vi.mocked(fs.readdir).mockResolvedValueOnce([
-        createDirent('mm-session-main'),
-        createDirent('mm-session-feature'),
-      ] as any);
-      vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(mainMetadata))
-        .mockResolvedValueOnce(JSON.stringify(featureMetadata));
-
-      const result = await store.listSessions(10, { gitBranch: 'main' });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].sessionId).toBe('mm-session-main');
     });
 
     it('filters by sinceHours', async () => {
@@ -1366,32 +1281,6 @@ describe('similarity', () => {
         'all',
         undefined,
       );
-
-      expect(results.length).toBeGreaterThan(0);
-    });
-
-    it('scores sessions with matching git branch', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const metadata = {
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        git: { branch: 'feature/send-flow', commit: 'abc123' },
-        launch: { stateMode: 'default' },
-      };
-
-      vi.mocked(fs.readdir).mockResolvedValueOnce([
-        createDirent('mm-session-1'),
-      ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
-      vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(
-        JSON.stringify(createStepRecord()),
-      );
-
-      const results = await store.searchSteps('feature', 10, 'all', undefined);
 
       expect(results.length).toBeGreaterThan(0);
     });
@@ -2067,7 +1956,6 @@ describe('session', () => {
       tags: overrides.tags ?? [],
       launch: overrides.launch ?? { stateMode: 'default' },
       goal: overrides.goal,
-      git: overrides.git,
     };
   }
 
@@ -2376,41 +2264,10 @@ describe('session', () => {
       expect(result[0].sessionId).toBe('mm-session-recent');
     });
 
-    it('filters sessions by gitBranch', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-
-      vi.mocked(fs.readdir).mockResolvedValueOnce([
-        createDirent('mm-session-main'),
-        createDirent('mm-session-feature'),
-      ] as any);
-
-      vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(
-          JSON.stringify(
-            createSessionMetadata({
-              sessionId: 'mm-session-main',
-              git: { branch: 'main', commit: 'abc123' },
-            }),
-          ),
-        )
-        .mockResolvedValueOnce(
-          JSON.stringify(
-            createSessionMetadata({
-              sessionId: 'mm-session-feature',
-              git: { branch: 'feature/send', commit: 'def456' },
-            }),
-          ),
-        );
-
-      const result = await store.listSessions(10, { gitBranch: 'main' });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].sessionId).toBe('mm-session-main');
-    });
-
     it('combines multiple filters', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
       const recentDate = new Date(Date.now() - 6 * 60 * 60 * 1000);
+      const oldDate = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
@@ -2425,7 +2282,6 @@ describe('session', () => {
               sessionId: 'mm-session-1',
               createdAt: recentDate.toISOString(),
               flowTags: ['send'],
-              git: { branch: 'main' },
             }),
           ),
         )
@@ -2435,7 +2291,6 @@ describe('session', () => {
               sessionId: 'mm-session-2',
               createdAt: recentDate.toISOString(),
               flowTags: ['swap'],
-              git: { branch: 'main' },
             }),
           ),
         )
@@ -2443,16 +2298,14 @@ describe('session', () => {
           JSON.stringify(
             createSessionMetadata({
               sessionId: 'mm-session-3',
-              createdAt: recentDate.toISOString(),
+              createdAt: oldDate.toISOString(),
               flowTags: ['send'],
-              git: { branch: 'feature/test' },
             }),
           ),
         );
 
       const result = await store.listSessions(10, {
         flowTag: 'send',
-        gitBranch: 'main',
         sinceHours: 24,
       });
 
@@ -2929,29 +2782,6 @@ describe('session', () => {
       await expect(
         knowledgeStore.writeSessionMetadata(metadata),
       ).rejects.toThrowError('Knowledge store not initialized');
-    });
-
-    it('getGitInfoSync delegates to underlying KnowledgeStore instance', () => {
-      const mockGitInfo = {
-        branch: 'main',
-        commit: 'abc123',
-        dirty: false,
-      };
-
-      vi.spyOn(store, 'getGitInfoSync').mockReturnValueOnce(mockGitInfo);
-
-      const result = knowledgeStore.getGitInfoSync();
-
-      expect(store.getGitInfoSync).toHaveBeenCalled();
-      expect(result).toStrictEqual(mockGitInfo);
-    });
-
-    it('getGitInfoSync throws error when knowledge store not initialized', () => {
-      setKnowledgeStore(undefined as any);
-
-      expect(() => knowledgeStore.getGitInfoSync()).toThrowError(
-        'Knowledge store not initialized',
-      );
     });
   });
 });

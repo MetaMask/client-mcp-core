@@ -123,8 +123,6 @@ describe('mock-factories', () => {
       expect(typeof mock.listSessions).toBe('function');
       expect(typeof mock.generatePriorKnowledge).toBe('function');
       expect(typeof mock.writeSessionMetadata).toBe('function');
-      // eslint-disable-next-line n/no-sync
-      expect(typeof mock.getGitInfoSync).toBe('function');
     });
 
     it('returns sensible defaults', async () => {

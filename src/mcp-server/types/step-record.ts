@@ -51,24 +51,6 @@ export type StepRecordEnvironment = {
 /**
  *
  */
-export type StepRecordGit = {
-  /**
-   *
-   */
-  branch?: string;
-  /**
-   *
-   */
-  commit?: string;
-  /**
-   *
-   */
-  dirty?: boolean;
-};
-
-/**
- *
- */
 export type StepRecordBuild = {
   /**
    *
@@ -233,10 +215,6 @@ export type StepRecord = {
   /**
    *
    */
-  git?: StepRecordGit;
-  /**
-   *
-   */
   build?: StepRecordBuild;
   /**
    *
@@ -292,10 +270,6 @@ export type SessionMetadata = {
    *
    */
   tags: string[];
-  /**
-   *
-   */
-  git?: StepRecordGit;
   /**
    *
    */

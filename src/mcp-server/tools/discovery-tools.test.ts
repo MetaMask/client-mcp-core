@@ -42,7 +42,6 @@ describe('discovery-tools', () => {
         goal: 'Test discovery',
         flowTags: ['discovery'],
         tags: [],
-        git: { branch: 'main', commit: 'abc123' },
         launch: {
           stateMode: 'default' as const,
         },
@@ -67,10 +66,6 @@ describe('discovery-tools', () => {
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session-123'),
-      getGitInfoSync: vi.fn().mockReturnValue({
-        branch: 'main',
-        commit: 'abc123',
-      }),
     } as any);
   });
 
