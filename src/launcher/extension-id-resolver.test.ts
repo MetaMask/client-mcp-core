@@ -4,13 +4,14 @@
  * Tests extension ID resolution via service workers and chrome://extensions fallback.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BrowserContext, Page } from '@playwright/test';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import {
   resolveExtensionId,
   DEFAULT_EXTENSION_ID_CONFIG,
-  type ExtensionIdResolverConfig,
 } from './extension-id-resolver.js';
+import type { ExtensionIdResolverConfig } from './extension-id-resolver.js';
 
 function createMockLog() {
   return {
@@ -25,25 +26,35 @@ function createMockServiceWorker(url: string) {
   };
 }
 
-function createMockPage(options: {
-  readyResults?: boolean[];
-  extensionId?: string | undefined;
-  gotoError?: Error;
-  evaluateError?: Error;
-} = {}) {
-  const { readyResults = [true], extensionId = undefined, gotoError, evaluateError } = options;
+function createMockPage(
+  options: {
+    readyResults?: boolean[];
+    extensionId?: string | undefined;
+    gotoError?: Error;
+    evaluateError?: Error;
+  } = {},
+) {
+  const {
+    readyResults = [true],
+    extensionId = undefined,
+    gotoError,
+    evaluateError,
+  } = options;
   let evaluateCallIndex = 0;
-  
+
   const page = {
-    goto: gotoError ? vi.fn().mockRejectedValue(gotoError) : vi.fn().mockResolvedValue(undefined),
+    goto: gotoError
+      ? vi.fn().mockRejectedValue(gotoError)
+      : vi.fn().mockResolvedValue(undefined),
     waitForLoadState: vi.fn().mockResolvedValue(undefined),
     evaluate: vi.fn().mockImplementation(async () => {
-      const callIndex = evaluateCallIndex++;
-      
+      const callIndex = evaluateCallIndex;
+      evaluateCallIndex += 1;
+
       if (evaluateError) {
         throw evaluateError;
       }
-      
+
       // readyResults determine waitForExtensionsPageReady behavior
       // Once all readyResults used, return extensionId for findExtension call
       if (callIndex < readyResults.length) {
@@ -57,12 +68,14 @@ function createMockPage(options: {
   return page as unknown as Page;
 }
 
-function createMockContext(options: {
-  existingWorkers?: Array<{ url: () => string }>;
-  newWorker?: { url: () => string } | null;
-  pages?: Page[];
-  waitForEventError?: Error;
-} = {}) {
+function createMockContext(
+  options: {
+    existingWorkers?: { url: () => string }[];
+    newWorker?: { url: () => string } | null;
+    pages?: Page[];
+    waitForEventError?: Error;
+  } = {},
+) {
   const context = {
     serviceWorkers: vi.fn().mockReturnValue(options.existingWorkers ?? []),
     waitForEvent: vi.fn(),
@@ -140,7 +153,9 @@ describe('extension-id-resolver', () => {
 
       it('skips workers without chrome-extension URL', async () => {
         const worker = createMockServiceWorker('https://example.com/sw.js');
-        const page = createMockPage({ extensionId: 'validextensionidabcdefghijklmnop' });
+        const page = createMockPage({
+          extensionId: 'validextensionidabcdefghijklmnop',
+        });
         const context = createMockContext({
           existingWorkers: [worker],
           newWorker: null,
@@ -159,8 +174,12 @@ describe('extension-id-resolver', () => {
       });
 
       it('skips workers with invalid extension ID format (must be 32 lowercase letters)', async () => {
-        const worker = createMockServiceWorker('chrome-extension://INVALID/background.js');
-        const page = createMockPage({ extensionId: 'validextensionidabcdefghijklmnop' });
+        const worker = createMockServiceWorker(
+          'chrome-extension://INVALID/background.js',
+        );
+        const page = createMockPage({
+          extensionId: 'validextensionidabcdefghijklmnop',
+        });
         const context = createMockContext({
           existingWorkers: [worker],
           newWorker: null,
@@ -176,7 +195,9 @@ describe('extension-id-resolver', () => {
       });
 
       it('handles service worker error and falls back to extensions page', async () => {
-        const page = createMockPage({ extensionId: 'fallbackextensionidabcdefghijklm' });
+        const page = createMockPage({
+          extensionId: 'fallbackextensionidabcdefghijklm',
+        });
         const context = createMockContext({
           existingWorkers: [],
           waitForEventError: new Error('Service worker error'),
@@ -196,7 +217,9 @@ describe('extension-id-resolver', () => {
       });
 
       it('iterates through multiple existing workers to find valid extension ID', async () => {
-        const invalidWorker = createMockServiceWorker('https://example.com/sw.js');
+        const invalidWorker = createMockServiceWorker(
+          'https://example.com/sw.js',
+        );
         const validExtensionId = 'foundextensionidabcdefghijklmnop';
         const validWorker = createMockServiceWorker(
           `chrome-extension://${validExtensionId}/sw.js`,
@@ -214,7 +237,9 @@ describe('extension-id-resolver', () => {
 
     describe('extensions page fallback', () => {
       it('uses existing page if available', async () => {
-        const page = createMockPage({ extensionId: 'existingpageextensionidabcdefgh' });
+        const page = createMockPage({
+          extensionId: 'existingpageextensionidabcdefgh',
+        });
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -231,7 +256,9 @@ describe('extension-id-resolver', () => {
       });
 
       it('creates new page if none exist', async () => {
-        const page = createMockPage({ extensionId: 'newpageextensionidabcdefghijklm' });
+        const page = createMockPage({
+          extensionId: 'newpageextensionidabcdefghijklm',
+        });
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -249,7 +276,9 @@ describe('extension-id-resolver', () => {
       });
 
       it('navigates to chrome://extensions', async () => {
-        const page = createMockPage({ extensionId: 'navextensionidabcdefghijklmnopq' });
+        const page = createMockPage({
+          extensionId: 'navextensionidabcdefghijklmnopq',
+        });
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -266,7 +295,9 @@ describe('extension-id-resolver', () => {
       });
 
       it('uses string pattern for extension name matching', async () => {
-        const page = createMockPage({ extensionId: 'stringpatternextensionidabcdefg' });
+        const page = createMockPage({
+          extensionId: 'stringpatternextensionidabcdefg',
+        });
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -281,14 +312,16 @@ describe('extension-id-resolver', () => {
         await vi.runAllTimersAsync();
         await promise;
 
-        expect(page.evaluate).toHaveBeenCalledWith(
-          expect.any(Function),
-          { pattern: 'MyExtension', useRegex: false },
-        );
+        expect(page.evaluate).toHaveBeenCalledWith(expect.any(Function), {
+          pattern: 'MyExtension',
+          useRegex: false,
+        });
       });
 
       it('uses regex pattern for extension name matching', async () => {
-        const page = createMockPage({ extensionId: 'regexpatternextensionidabcdefgh' });
+        const page = createMockPage({
+          extensionId: 'regexpatternextensionidabcdefgh',
+        });
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -303,20 +336,24 @@ describe('extension-id-resolver', () => {
         await vi.runAllTimersAsync();
         await promise;
 
-        expect(page.evaluate).toHaveBeenCalledWith(
-          expect.any(Function),
-          { pattern: 'Meta[Mm]ask', useRegex: true },
-        );
+        expect(page.evaluate).toHaveBeenCalledWith(expect.any(Function), {
+          pattern: 'Meta[Mm]ask',
+          useRegex: true,
+        });
       });
 
       it('returns undefined when extension not found after all retries (no error)', async () => {
         const page = createMockPage();
         let callCount = 0;
-        (page.evaluate as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-          callCount++;
-          if (callCount % 2 === 1) return true;
-          return undefined;
-        });
+        (page.evaluate as ReturnType<typeof vi.fn>).mockImplementation(
+          async () => {
+            callCount += 1;
+            if (callCount % 2 === 1) {
+              return true;
+            }
+            return undefined;
+          },
+        );
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -340,17 +377,23 @@ describe('extension-id-resolver', () => {
       it('retries on error and succeeds on subsequent attempt', async () => {
         const page = createMockPage();
         let callCount = 0;
-        (page.evaluate as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-          callCount++;
-          // First 2 calls: page ready check + find extension - both fail
-          if (callCount <= 2) {
-            if (callCount === 1) return true; // Page ready
-            throw new Error('First attempt failed');
-          }
-          // Second attempt: page ready check + find extension - succeeds
-          if (callCount === 3) return true; // Page ready
-          return 'retrysuccessextensionidabcdefgh';
-        });
+        (page.evaluate as ReturnType<typeof vi.fn>).mockImplementation(
+          async () => {
+            callCount += 1;
+            // First 2 calls: page ready check + find extension - both fail
+            if (callCount <= 2) {
+              if (callCount === 1) {
+                return true;
+              } // Page ready
+              throw new Error('First attempt failed');
+            }
+            // Second attempt: page ready check + find extension - succeeds
+            if (callCount === 3) {
+              return true;
+            } // Page ready
+            return 'retrysuccessextensionidabcdefgh';
+          },
+        );
         const context = createMockContext({
           existingWorkers: [],
           newWorker: null,
@@ -369,32 +412,34 @@ describe('extension-id-resolver', () => {
         );
       });
 
-       it('throws error after all retry attempts fail with error', async () => {
-         const page = createMockPage({
-           evaluateError: new Error('Persistent error'),
-         });
-         const context = createMockContext({
-           existingWorkers: [],
-           newWorker: null,
-           pages: [page],
-         });
-         const log = createMockLog();
+      it('throws error after all retry attempts fail with error', async () => {
+        const page = createMockPage({
+          evaluateError: new Error('Persistent error'),
+        });
+        const context = createMockContext({
+          existingWorkers: [],
+          newWorker: null,
+          pages: [page],
+        });
+        const log = createMockLog();
 
-         let caughtError: unknown;
-         const promise = resolveExtensionId({ context, log }).catch((error) => {
-           caughtError = error;
-         });
-         await vi.runAllTimersAsync();
-         await promise;
+        let caughtError: unknown;
+        const promise = resolveExtensionId({ context, log }).catch((error) => {
+          caughtError = error;
+        });
+        await vi.runAllTimersAsync();
+        await promise;
 
-         expect(caughtError).toBeInstanceOf(Error);
-         expect((caughtError as Error).message).toContain('Failed to get extension ID after 3 attempts');
-       });
+        expect(caughtError).toBeInstanceOf(Error);
+        expect((caughtError as Error).message).toContain(
+          'Failed to get extension ID after 3 attempts',
+        );
+      });
     });
 
     describe('page readiness waiting', () => {
       it('waits for extensions page to be ready with polling', async () => {
-        const page = createMockPage({ 
+        const page = createMockPage({
           readyResults: [false, false, true], // Not ready, not ready, ready
           extensionId: 'readypageextensionidabcdefghijkl',
         });
@@ -410,29 +455,33 @@ describe('extension-id-resolver', () => {
         const result = await promise;
 
         expect(result).toBe('readypageextensionidabcdefghijkl');
-        expect((page.evaluate as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(4);
+        expect(
+          (page.evaluate as ReturnType<typeof vi.fn>).mock.calls.length,
+        ).toBeGreaterThanOrEqual(4);
       });
 
-       it('throws error when page does not become ready after max attempts', async () => {
-         const page = createMockPage();
-         (page.evaluate as ReturnType<typeof vi.fn>).mockResolvedValue(false);
-         const context = createMockContext({
-           existingWorkers: [],
-           newWorker: null,
-           pages: [page],
-         });
-         const log = createMockLog();
+      it('throws error when page does not become ready after max attempts', async () => {
+        const page = createMockPage();
+        (page.evaluate as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+        const context = createMockContext({
+          existingWorkers: [],
+          newWorker: null,
+          pages: [page],
+        });
+        const log = createMockLog();
 
-         let caughtError: unknown;
-         const promise = resolveExtensionId({ context, log }).catch((error) => {
-           caughtError = error;
-         });
-         await vi.runAllTimersAsync();
-         await promise;
+        let caughtError: unknown;
+        const promise = resolveExtensionId({ context, log }).catch((error) => {
+          caughtError = error;
+        });
+        await vi.runAllTimersAsync();
+        await promise;
 
-         expect(caughtError).toBeInstanceOf(Error);
-         expect((caughtError as Error).message).toContain('Failed to get extension ID after 3 attempts');
-       });
+        expect(caughtError).toBeInstanceOf(Error);
+        expect((caughtError as Error).message).toContain(
+          'Failed to get extension ID after 3 attempts',
+        );
+      });
     });
   });
 });

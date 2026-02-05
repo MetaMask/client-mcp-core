@@ -25,8 +25,11 @@ describe('waitForServiceReady', () => {
 
       await promise;
 
-      expect(mockFetch).toHaveBeenCalledOnce();
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8545', {}, 3000);
+      expect(mockFetch).toHaveBeenCalledExactlyOnceWith(
+        'http://localhost:8545',
+        {},
+        3000,
+      );
     });
 
     it('returns immediately on 503 Service Unavailable response', async () => {

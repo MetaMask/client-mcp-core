@@ -5,13 +5,15 @@
  * error classification, timeout handling, and page closure detection.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Page } from '@playwright/test';
-import { runTool, type ToolExecutionConfig } from './run-tool';
-import { ErrorCodes } from '../types';
-import { createMockSessionManager } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+import { runTool } from './run-tool';
+import type { ToolExecutionConfig } from './run-tool';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils';
+import { ErrorCodes } from '../types';
 import * as helpersModule from './helpers.js';
 
 describe('runTool', () => {
@@ -38,8 +40,8 @@ describe('runTool', () => {
       url: () => 'chrome-extension://test/home.html',
       isClosed: () => false,
     } as unknown as Page;
-    mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-    mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+    vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+    vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
     vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
       mockSessionManager,
@@ -55,7 +57,9 @@ describe('runTool', () => {
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     };
     vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue(
       mockKnowledgeStore as any,
@@ -100,11 +104,12 @@ describe('runTool', () => {
         a11y: { nodes: [] },
       });
       const executeFn = vi.fn().mockResolvedValue({ result: 'ok' });
-      const config: ToolExecutionConfig<{ value: string }, { result: string }> = {
-        toolName: 'mm_test_tool',
-        input: { value: 'test' },
-        execute: executeFn,
-      };
+      const config: ToolExecutionConfig<{ value: string }, { result: string }> =
+        {
+          toolName: 'mm_test_tool',
+          input: { value: 'test' },
+          execute: executeFn,
+        };
 
       // Act
       await runTool(config);
@@ -125,7 +130,7 @@ describe('runTool', () => {
         testIds: [{ testId: 'custom', tag: 'div', text: '', visible: true }],
         a11y: { nodes: [] },
       };
-      const config: ToolExecutionConfig<{}, { data: string }> = {
+      const config: ToolExecutionConfig<object, { data: string }> = {
         toolName: 'mm_test_tool',
         input: {},
         observationPolicy: 'custom',
@@ -141,7 +146,7 @@ describe('runTool', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual({ data: 'test' });
+        expect(result.result).toStrictEqual({ data: 'test' });
       }
       expect(mockKnowledgeStore.recordStep).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -154,8 +159,8 @@ describe('runTool', () => {
   describe('session validation', () => {
     it('returns error when no active session and requiresSession is true', async () => {
       // Arrange
-      mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
-      const config: ToolExecutionConfig<{}, {}> = {
+      vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_test_tool',
         input: {},
         requiresSession: true,
@@ -169,16 +174,18 @@ describe('runTool', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
-        expect(result.error.message).toBe('No active session. Call launch first.');
+        expect(result.error.message).toBe(
+          'No active session. Call launch first.',
+        );
       }
       expect(config.execute).not.toHaveBeenCalled();
     });
 
     it('executes tool when no active session but requiresSession is false', async () => {
       // Arrange
-      mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+      vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
       const executeFn = vi.fn().mockResolvedValue({ done: true });
-      const config: ToolExecutionConfig<{}, { done: boolean }> = {
+      const config: ToolExecutionConfig<object, { done: boolean }> = {
         toolName: 'mm_build',
         input: {},
         requiresSession: false,
@@ -195,8 +202,8 @@ describe('runTool', () => {
 
     it('defaults requiresSession to true when not specified', async () => {
       // Arrange
-      mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
-      const config: ToolExecutionConfig<{}, {}> = {
+      vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
         execute: vi.fn(),
@@ -224,7 +231,7 @@ describe('runTool', () => {
             testIds: [],
             a11y: { nodes: [] },
           });
-        const config: ToolExecutionConfig<{}, {}> = {
+        const config: ToolExecutionConfig<object, object> = {
           toolName: 'mm_test_tool',
           input: {},
           observationPolicy: 'none',
@@ -249,7 +256,7 @@ describe('runTool', () => {
             testIds: [],
             a11y: { nodes: [] },
           });
-        const config: ToolExecutionConfig<{}, {}> = {
+        const config: ToolExecutionConfig<object, object> = {
           toolName: 'mm_test_tool',
           input: {},
           observationPolicy: 'default',
@@ -274,7 +281,7 @@ describe('runTool', () => {
             testIds: [],
             a11y: { nodes: [] },
           });
-        const config: ToolExecutionConfig<{}, {}> = {
+        const config: ToolExecutionConfig<object, object> = {
           toolName: 'mm_test_tool',
           input: {},
           observationPolicy: 'failures',
@@ -297,7 +304,7 @@ describe('runTool', () => {
             testIds: [],
             a11y: { nodes: [] },
           });
-        const config: ToolExecutionConfig<{}, {}> = {
+        const config: ToolExecutionConfig<object, object> = {
           toolName: 'mm_test_tool',
           input: {},
           observationPolicy: 'failures',
@@ -318,10 +325,15 @@ describe('runTool', () => {
         const customObservation = {
           state: { isLoaded: true } as any,
           testIds: [],
-          a11y: { nodes: [{ ref: 'e1', role: 'button', name: 'Test', path: [] }] },
+          a11y: {
+            nodes: [{ ref: 'e1', role: 'button', name: 'Test', path: [] }],
+          },
         };
-        const collectObservationSpy = vi.spyOn(helpersModule, 'collectObservation');
-        const config: ToolExecutionConfig<{}, { data: string }> = {
+        const collectObservationSpy = vi.spyOn(
+          helpersModule,
+          'collectObservation',
+        );
+        const config: ToolExecutionConfig<object, { data: string }> = {
           toolName: 'mm_test_tool',
           input: {},
           observationPolicy: 'custom',
@@ -353,7 +365,7 @@ describe('runTool', () => {
           testIds: [],
           a11y: { nodes: [] },
         });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_test_tool',
         input: {},
         observationPolicy: 'default',
@@ -370,9 +382,12 @@ describe('runTool', () => {
 
     it('skips observation collection when requiresSession is false', async () => {
       // Arrange
-      mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
-      const collectObservationSpy = vi.spyOn(helpersModule, 'collectObservation');
-      const config: ToolExecutionConfig<{}, {}> = {
+      vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
+      const collectObservationSpy = vi.spyOn(
+        helpersModule,
+        'collectObservation',
+      );
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_build',
         input: {},
         requiresSession: false,
@@ -396,13 +411,15 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{ testId: string }, { clicked: boolean }> =
-        {
-          toolName: 'mm_click',
-          input: { testId: 'send-button' },
-          execute: vi.fn().mockResolvedValue({ clicked: true }),
-          getTarget: (input) => ({ testId: input.testId }),
-        };
+      const config: ToolExecutionConfig<
+        { testId: string },
+        { clicked: boolean }
+      > = {
+        toolName: 'mm_click',
+        input: { testId: 'send-button' },
+        execute: vi.fn().mockResolvedValue({ clicked: true }),
+        getTarget: (input) => ({ testId: input.testId }),
+      };
 
       // Act
       await runTool(config);
@@ -427,7 +444,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{ testId: string }, {}> = {
+      const config: ToolExecutionConfig<{ testId: string }, object> = {
         toolName: 'mm_click',
         input: { testId: 'missing-button' },
         execute: vi.fn().mockRejectedValue(new Error('Element not found')),
@@ -490,14 +507,14 @@ describe('runTool', () => {
 
     it('skips recording when sessionId is undefined', async () => {
       // Arrange
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue(undefined);
-      mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(true);
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(undefined);
+      vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(true);
       vi.spyOn(helpersModule, 'collectObservation').mockResolvedValue({
         state: {} as any,
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_test_tool',
         input: {},
         execute: vi.fn().mockResolvedValue({}),
@@ -519,10 +536,12 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
-        execute: vi.fn().mockRejectedValue(new Error('Timeout waiting for selector')),
+        execute: vi
+          .fn()
+          .mockRejectedValue(new Error('Timeout waiting for selector')),
         classifyError: () => ({
           code: 'MM_WAIT_TIMEOUT',
           message: 'Element wait timeout',
@@ -547,7 +566,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_my_tool',
         input: {},
         execute: vi.fn().mockRejectedValue(new Error('Something went wrong')),
@@ -571,7 +590,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
         execute: vi.fn().mockRejectedValue(new Error('Click failed')),
@@ -596,7 +615,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{ testId: string }, {}> = {
+      const config: ToolExecutionConfig<{ testId: string }, object> = {
         toolName: 'mm_click',
         input: { testId: 'test-button' },
         execute: vi.fn().mockRejectedValue(new Error('Execution failed')),
@@ -609,7 +628,9 @@ describe('runTool', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.message).toBe('Execution failed');
-        expect(result.error.details).toEqual({ input: { testId: 'test-button' } });
+        expect(result.error.details).toStrictEqual({
+          input: { testId: 'test-button' },
+        });
       }
     });
 
@@ -622,7 +643,7 @@ describe('runTool', () => {
           testIds: [],
           a11y: { nodes: [] },
         });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
         observationPolicy: 'default',
@@ -645,7 +666,7 @@ describe('runTool', () => {
           testIds: [],
           a11y: { nodes: [] },
         });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
         observationPolicy: 'none',
@@ -669,7 +690,7 @@ describe('runTool', () => {
           testIds: [],
           a11y: { nodes: [] },
         });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
         observationPolicy: 'failures',
@@ -691,16 +712,18 @@ describe('runTool', () => {
   describe('page closure detection', () => {
     it('creates empty observation when page is closed during failure handling', async () => {
       // Arrange
-      mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(true);
+      vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(true);
       const collectObservationSpy = vi
         .spyOn(helpersModule, 'collectObservation')
-        .mockRejectedValueOnce(new Error('Target page, context or browser has been closed'))
+        .mockRejectedValueOnce(
+          new Error('Target page, context or browser has been closed'),
+        )
         .mockResolvedValue({
           state: {} as any,
           testIds: [],
           a11y: { nodes: [] },
         });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_click',
         input: {},
         observationPolicy: 'default',
@@ -712,23 +735,27 @@ describe('runTool', () => {
 
       // Assert
       expect(collectObservationSpy).toHaveBeenCalledTimes(2);
-      expect(collectObservationSpy).toHaveBeenLastCalledWith(undefined, 'minimal');
+      expect(collectObservationSpy).toHaveBeenLastCalledWith(
+        undefined,
+        'minimal',
+      );
     });
   });
 
   describe('timeout handling', () => {
     it('includes duration in response even on timeout error', async () => {
       // Arrange
+      vi.useFakeTimers();
       vi.spyOn(helpersModule, 'collectObservation').mockResolvedValue({
         state: {} as any,
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_wait_for',
         input: {},
         execute: vi.fn().mockImplementation(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           throw new Error('Timeout waiting for element');
         }),
         classifyError: () => ({
@@ -738,11 +765,16 @@ describe('runTool', () => {
       };
 
       // Act
-      const result = await runTool(config);
+      const resultPromise = runTool(config);
+      await vi.advanceTimersByTimeAsync(100);
+      const result = await resultPromise;
 
       // Assert
       expect(result.ok).toBe(false);
-      expect(result.meta.durationMs).toBeGreaterThanOrEqual(10);
+      expect(result.meta.durationMs).toBe(100);
+
+      // Cleanup
+      vi.useRealTimers();
     });
   });
 
@@ -756,7 +788,7 @@ describe('runTool', () => {
       });
       const config: ToolExecutionConfig<
         { testId?: string; selector?: string; a11yRef?: string },
-        {}
+        object
       > = {
         toolName: 'mm_click',
         input: { testId: 'send-button', selector: '.btn' },
@@ -774,7 +806,11 @@ describe('runTool', () => {
       // Assert
       expect(mockKnowledgeStore.recordStep).toHaveBeenCalledWith(
         expect.objectContaining({
-          target: { testId: 'send-button', selector: '.btn', a11yRef: undefined },
+          target: {
+            testId: 'send-button',
+            selector: '.btn',
+            a11yRef: undefined,
+          },
         }),
       );
     });
@@ -786,7 +822,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{ testId: string }, {}> = {
+      const config: ToolExecutionConfig<{ testId: string }, object> = {
         toolName: 'mm_click',
         input: { testId: 'send-button' },
         execute: vi.fn().mockResolvedValue({}),
@@ -812,7 +848,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, { simple: string }> = {
+      const config: ToolExecutionConfig<object, { simple: string }> = {
         toolName: 'mm_test_tool',
         input: {},
         execute: vi.fn().mockResolvedValue({ simple: 'value' }),
@@ -824,7 +860,7 @@ describe('runTool', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual({ simple: 'value' });
+        expect(result.result).toStrictEqual({ simple: 'value' });
       }
     });
 
@@ -835,7 +871,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, { wrapped: string }> = {
+      const config: ToolExecutionConfig<object, { wrapped: string }> = {
         toolName: 'mm_test_tool',
         input: {},
         execute: vi.fn().mockResolvedValue({
@@ -849,7 +885,7 @@ describe('runTool', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual({ wrapped: 'value' });
+        expect(result.result).toStrictEqual({ wrapped: 'value' });
       }
     });
 
@@ -860,7 +896,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, null> = {
+      const config: ToolExecutionConfig<object, null> = {
         toolName: 'mm_test_tool',
         input: {},
         execute: vi.fn().mockResolvedValue(null),
@@ -883,7 +919,7 @@ describe('runTool', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, string> = {
+      const config: ToolExecutionConfig<object, string> = {
         toolName: 'mm_test_tool',
         input: {},
         execute: vi.fn().mockResolvedValue('string-result'),
@@ -903,13 +939,13 @@ describe('runTool', () => {
   describe('createEmptyObservation', () => {
     it('creates empty observation when session has no ID on failure', async () => {
       // Arrange
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue(undefined);
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(undefined);
       vi.spyOn(helpersModule, 'collectObservation').mockResolvedValue({
         state: {} as any,
         testIds: [],
         a11y: { nodes: [] },
       });
-      const config: ToolExecutionConfig<{}, {}> = {
+      const config: ToolExecutionConfig<object, object> = {
         toolName: 'mm_test_tool',
         input: {},
         execute: vi.fn().mockRejectedValue(new Error('Failed')),

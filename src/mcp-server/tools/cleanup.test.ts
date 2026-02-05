@@ -5,9 +5,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { handleCleanup } from './cleanup.js';
-import { createMockSessionManager } from '../test-utils/mock-factories.js';
 import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils/mock-factories.js';
 
 describe('handleCleanup', () => {
   beforeEach(() => {
@@ -19,8 +20,10 @@ describe('handleCleanup', () => {
       hasActive: true,
       sessionId: 'test-session-123',
     });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(true);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(true);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({});
 
@@ -34,8 +37,10 @@ describe('handleCleanup', () => {
 
   it('returns false when no session to clean up', async () => {
     const mockSessionManager = createMockSessionManager({ hasActive: false });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(false);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(false);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({});
 
@@ -50,8 +55,10 @@ describe('handleCleanup', () => {
       hasActive: true,
       sessionId: 'current-session',
     });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(true);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(true);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({ sessionId: 'custom-session-456' });
 
@@ -66,8 +73,10 @@ describe('handleCleanup', () => {
       hasActive: true,
       sessionId: 'test-session-789',
     });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(true);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(true);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({});
 
@@ -79,8 +88,10 @@ describe('handleCleanup', () => {
 
   it('handles cleanup when sessionId is undefined', async () => {
     const mockSessionManager = createMockSessionManager({ hasActive: false });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(false);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(false);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({});
 
@@ -92,8 +103,10 @@ describe('handleCleanup', () => {
 
   it('includes timestamp in response', async () => {
     const mockSessionManager = createMockSessionManager({ hasActive: true });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(true);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(true);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({});
 
@@ -107,8 +120,10 @@ describe('handleCleanup', () => {
 
   it('includes durationMs in response', async () => {
     const mockSessionManager = createMockSessionManager({ hasActive: true });
-    mockSessionManager.cleanup = vi.fn().mockResolvedValue(true);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(mockSessionManager, 'cleanup').mockResolvedValue(true);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result = await handleCleanup({});
 
@@ -121,10 +136,12 @@ describe('handleCleanup', () => {
 
   it('cleans up multiple times without error', async () => {
     const mockSessionManager = createMockSessionManager({ hasActive: true });
-    mockSessionManager.cleanup = vi.fn()
+    vi.spyOn(mockSessionManager, 'cleanup')
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
 
     const result1 = await handleCleanup({});
     const result2 = await handleCleanup({});

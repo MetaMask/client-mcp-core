@@ -5,10 +5,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { handleClipboard } from './clipboard.js';
-import { createMockSessionManager } from '../test-utils/mock-factories.js';
-import * as sessionManagerModule from '../session-manager.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils/mock-factories.js';
 import { ErrorCodes } from '../types/errors.js';
 
 describe('handleClipboard', () => {
@@ -26,16 +27,22 @@ describe('handleClipboard', () => {
   });
 
   beforeEach(() => {
-    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
     vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
       recordStep: vi.fn().mockResolvedValue(undefined),
       getLastSteps: vi.fn().mockResolvedValue([]),
       searchSteps: vi.fn().mockResolvedValue([]),
-      summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+      summarizeSession: vi
+        .fn()
+        .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     } as any);
   });
 
@@ -50,9 +57,12 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
-      const result = await handleClipboard({ action: 'write', text: 'test content' });
+      const result = await handleClipboard({
+        action: 'write',
+        text: 'test content',
+      });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -78,7 +88,7 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'write', text: 'test' });
 
@@ -100,7 +110,7 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'read' });
 
@@ -129,7 +139,7 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'read' });
 
@@ -149,7 +159,7 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'read' });
 
@@ -171,7 +181,7 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'read' });
 
@@ -192,14 +202,16 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'write', text: 'test' });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('MM_CLIPBOARD_LAVAMOAT_BLOCKED');
-        expect(result.error.message).toContain('Clipboard blocked by LavaMoat policy');
+        expect(result.error.message).toContain(
+          'Clipboard blocked by LavaMoat policy',
+        );
       }
     });
 
@@ -213,7 +225,7 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
 
       const result = await handleClipboard({ action: 'read' });
 
@@ -236,24 +248,28 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
       const recordStepSpy = vi.fn().mockResolvedValue(undefined);
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: recordStepSpy,
         getLastSteps: vi.fn().mockResolvedValue([]),
         searchSteps: vi.fn().mockResolvedValue([]),
-        summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+        summarizeSession: vi
+          .fn()
+          .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
         listSessions: vi.fn().mockResolvedValue([]),
         generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
         writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-        getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+        getGitInfoSync: vi
+          .fn()
+          .mockReturnValue({ branch: 'main', commit: 'abc123' }),
       } as any);
 
       await handleClipboard({ action: 'write', text: 'sensitive password' });
 
       expect(recordStepSpy).toHaveBeenCalled();
       const recordedInput = recordStepSpy.mock.calls[0][0].input;
-      expect(recordedInput).toEqual({
+      expect(recordedInput).toStrictEqual({
         action: 'write',
         textLength: 18,
       });
@@ -262,7 +278,9 @@ describe('handleClipboard', () => {
 
     it('sanitizes read input for recording', async () => {
       const mockCdpSession = {
-        send: vi.fn().mockResolvedValue({ result: { value: 'clipboard content' } }),
+        send: vi
+          .fn()
+          .mockResolvedValue({ result: { value: 'clipboard content' } }),
         detach: vi.fn().mockResolvedValue(undefined),
       };
       const mockPage = {
@@ -270,24 +288,28 @@ describe('handleClipboard', () => {
           newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
         }),
       };
-      mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
       const recordStepSpy = vi.fn().mockResolvedValue(undefined);
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: recordStepSpy,
         getLastSteps: vi.fn().mockResolvedValue([]),
         searchSteps: vi.fn().mockResolvedValue([]),
-        summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+        summarizeSession: vi
+          .fn()
+          .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
         listSessions: vi.fn().mockResolvedValue([]),
         generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
         writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-        getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+        getGitInfoSync: vi
+          .fn()
+          .mockReturnValue({ branch: 'main', commit: 'abc123' }),
       } as any);
 
       await handleClipboard({ action: 'read' });
 
       expect(recordStepSpy).toHaveBeenCalled();
       const recordedInput = recordStepSpy.mock.calls[0][0].input;
-      expect(recordedInput).toEqual({
+      expect(recordedInput).toStrictEqual({
         action: 'read',
         textLength: 0,
       });
@@ -297,7 +319,9 @@ describe('handleClipboard', () => {
   describe('session validation', () => {
     it('returns error when no active session', async () => {
       const noSessionManager = createMockSessionManager({ hasActive: false });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(noSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        noSessionManager,
+      );
 
       const result = await handleClipboard({ action: 'read' });
 

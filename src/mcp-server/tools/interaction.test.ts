@@ -6,18 +6,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  handleClick,
-  handleType,
-  handleWaitFor,
-} from './interaction';
-import { ErrorCodes } from '../types';
-import { createMockSessionManager, createMockPage, createMockLocator } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
+
+import { handleClick, handleType, handleWaitFor } from './interaction';
 import * as discoveryModule from '../discovery.js';
-import * as runToolModule from './run-tool.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
-import * as utilsModule from '../utils/index.js';
+import * as sessionManagerModule from '../session-manager.js';
+import {
+  createMockSessionManager,
+  createMockPage,
+  createMockLocator,
+} from '../test-utils';
+import { ErrorCodes } from '../types';
+import * as utilsModule from '../utils';
 
 describe('interaction', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -35,11 +35,15 @@ describe('interaction', () => {
       recordStep: vi.fn().mockResolvedValue(undefined),
       getLastSteps: vi.fn().mockResolvedValue([]),
       searchSteps: vi.fn().mockResolvedValue([]),
-      summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+      summarizeSession: vi
+        .fn()
+        .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     } as any);
   });
 
@@ -53,11 +57,13 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockPage.locator = vi.fn().mockReturnValue(mockLocator);
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockPage, 'locator').mockReturnValue(mockLocator);
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleClick({ testId: 'my-button' });
@@ -82,10 +88,12 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         await handleClick({ testId: 'my-button', timeoutMs: 5000 });
@@ -106,10 +114,12 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleClick({ selector: 'button.primary' });
@@ -136,10 +146,12 @@ describe('interaction', () => {
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
         const refMap = new Map([['e5', 'button[aria-label="Submit"]']]);
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(refMap);
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(refMap);
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleClick({ a11yRef: 'e5' });
@@ -161,67 +173,66 @@ describe('interaction', () => {
     });
 
     describe('with invalid target selection', () => {
-       it('returns error when no target specified', async () => {
-         // Arrange
-         const startTime = Date.now();
+      it('returns error when no target specified', async () => {
+        // Act
+        const result = await handleClick({} as any);
 
-         // Act
-         const result = await handleClick({} as any);
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toContain('Exactly one');
+        }
+      });
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toContain('Exactly one');
-         }
-       });
+      it('returns error when multiple targets specified', async () => {
+        // Act
+        const result = await handleClick({
+          testId: 'button',
+          selector: '.button',
+        } as any);
 
-       it('returns error when multiple targets specified', async () => {
-         // Act
-         const result = await handleClick({
-           testId: 'button',
-           selector: '.button',
-         } as any);
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toContain('Exactly one');
+        }
+      });
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toContain('Exactly one');
-         }
-       });
+      it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
+        // Arrange
+        vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
+          valid: true,
+          // Missing type and value properties - will fail isValidTargetSelection
+        } as any);
 
-       it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
-         // Arrange
-         vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
-           valid: true,
-           // Missing type and value properties - will fail isValidTargetSelection
-         } as any);
+        // Act
+        const result = await handleClick({ testId: 'button' });
 
-         // Act
-         const result = await handleClick({ testId: 'button' });
-
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toBe('Invalid target selection');
-         }
-       });
-     });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toBe('Invalid target selection');
+        }
+      });
+    });
 
     describe('with page closure after click', () => {
       it('handles page closure gracefully', async () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockLocator.click = vi.fn().mockRejectedValue(
+        vi.spyOn(mockLocator, 'click').mockRejectedValue(
           new Error('Target page, context or browser has been closed'),
         );
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleClick({ testId: 'close-btn' });
@@ -239,13 +250,15 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockLocator.click = vi.fn().mockRejectedValue(
+        vi.spyOn(mockLocator, 'click').mockRejectedValue(
           new Error('browser has been closed'),
         );
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleClick({ testId: 'close-btn' });
@@ -263,13 +276,15 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockLocator.click = vi.fn().mockRejectedValue(
+        vi.spyOn(mockLocator, 'click').mockRejectedValue(
           new Error('Element is not clickable'),
         );
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleClick({ testId: 'my-button' });
@@ -284,8 +299,8 @@ describe('interaction', () => {
       it('returns error when element not found', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
         vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
           new Error('Timeout waiting for element'),
@@ -305,7 +320,7 @@ describe('interaction', () => {
     describe('without active session', () => {
       it('returns error when no session active', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
 
         // Act
         const result = await handleClick({ testId: 'my-button' });
@@ -325,14 +340,19 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockPage.locator = vi.fn().mockReturnValue(mockLocator);
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockPage, 'locator').mockReturnValue(mockLocator);
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
-        const result = await handleType({ testId: 'amount-input', text: '0.5' });
+        const result = await handleType({
+          testId: 'amount-input',
+          text: '0.5',
+        });
 
         // Assert
         expect(result.ok).toBe(true);
@@ -355,10 +375,12 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         await handleType({ testId: 'input', text: 'test', timeoutMs: 3000 });
@@ -379,13 +401,18 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
-        const result = await handleType({ selector: 'input[name="email"]', text: 'test@example.com' });
+        const result = await handleType({
+          selector: 'input[name="email"]',
+          text: 'test@example.com',
+        });
 
         // Assert
         expect(result.ok).toBe(true);
@@ -404,10 +431,12 @@ describe('interaction', () => {
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
         const refMap = new Map([['e3', 'input[aria-label="Amount"]']]);
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(refMap);
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(refMap);
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleType({ a11yRef: 'e3', text: '100' });
@@ -434,10 +463,12 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleType({ testId: 'input', text: '' });
@@ -453,65 +484,67 @@ describe('interaction', () => {
     });
 
     describe('with invalid target selection', () => {
-       it('returns error when no target specified', async () => {
-         // Act
-         const result = await handleType({ text: 'test' } as any);
+      it('returns error when no target specified', async () => {
+        // Act
+        const result = await handleType({ text: 'test' } as any);
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toContain('Exactly one');
-         }
-       });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toContain('Exactly one');
+        }
+      });
 
-       it('returns error when multiple targets specified', async () => {
-         // Act
-         const result = await handleType({
-           testId: 'input',
-           selector: 'input',
-           text: 'test',
-         } as any);
+      it('returns error when multiple targets specified', async () => {
+        // Act
+        const result = await handleType({
+          testId: 'input',
+          selector: 'input',
+          text: 'test',
+        } as any);
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toContain('Exactly one');
-         }
-       });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toContain('Exactly one');
+        }
+      });
 
-       it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
-         // Arrange
-         vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
-           valid: true,
-           // Missing type and value properties - will fail isValidTargetSelection
-         } as any);
+      it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
+        // Arrange
+        vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
+          valid: true,
+          // Missing type and value properties - will fail isValidTargetSelection
+        } as any);
 
-         // Act
-         const result = await handleType({ testId: 'input', text: 'test' });
+        // Act
+        const result = await handleType({ testId: 'input', text: 'test' });
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toBe('Invalid target selection');
-         }
-       });
-     });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toBe('Invalid target selection');
+        }
+      });
+    });
 
     describe('with type errors', () => {
       it('returns error when fill fails', async () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockLocator.fill = vi.fn().mockRejectedValue(
+        vi.spyOn(mockLocator, 'fill').mockRejectedValue(
           new Error('Element is not editable'),
         );
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleType({ testId: 'input', text: 'test' });
@@ -526,15 +559,18 @@ describe('interaction', () => {
       it('returns error when element not found', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
         vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
           new Error('Timeout waiting for element'),
         );
 
         // Act
-        const result = await handleType({ testId: 'nonexistent', text: 'test' });
+        const result = await handleType({
+          testId: 'nonexistent',
+          text: 'test',
+        });
 
         // Assert
         expect(result.ok).toBe(false);
@@ -547,7 +583,7 @@ describe('interaction', () => {
     describe('without active session', () => {
       it('returns error when no session active', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
 
         // Act
         const result = await handleType({ testId: 'input', text: 'test' });
@@ -567,11 +603,13 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockPage.locator = vi.fn().mockReturnValue(mockLocator);
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockPage, 'locator').mockReturnValue(mockLocator);
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleWaitFor({ testId: 'loading-spinner' });
@@ -595,10 +633,12 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         await handleWaitFor({ testId: 'element', timeoutMs: 30000 });
@@ -619,10 +659,12 @@ describe('interaction', () => {
         // Arrange
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleWaitFor({ selector: '.success-message' });
@@ -649,10 +691,12 @@ describe('interaction', () => {
         const mockPage = createMockPage();
         const mockLocator = createMockLocator();
         const refMap = new Map([['e10', 'button[aria-label="Confirm"]']]);
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(refMap);
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(refMap);
 
-        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(mockLocator as any);
+        vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+          mockLocator as any,
+        );
 
         // Act
         const result = await handleWaitFor({ a11yRef: 'e10' });
@@ -674,58 +718,58 @@ describe('interaction', () => {
     });
 
     describe('with invalid target selection', () => {
-       it('returns error when no target specified', async () => {
-         // Act
-         const result = await handleWaitFor({} as any);
+      it('returns error when no target specified', async () => {
+        // Act
+        const result = await handleWaitFor({} as any);
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toContain('Exactly one');
-         }
-       });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toContain('Exactly one');
+        }
+      });
 
-       it('returns error when multiple targets specified', async () => {
-         // Act
-         const result = await handleWaitFor({
-           testId: 'element',
-           selector: '.element',
-         } as any);
+      it('returns error when multiple targets specified', async () => {
+        // Act
+        const result = await handleWaitFor({
+          testId: 'element',
+          selector: '.element',
+        } as any);
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toContain('Exactly one');
-         }
-       });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toContain('Exactly one');
+        }
+      });
 
-       it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
-         // Arrange
-         vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
-           valid: true,
-           // Missing type and value properties - will fail isValidTargetSelection
-         } as any);
+      it('returns error when validation result is invalid but not caught by isInvalidTargetSelection', async () => {
+        // Arrange
+        vi.spyOn(utilsModule, 'validateTargetSelection').mockReturnValue({
+          valid: true,
+          // Missing type and value properties - will fail isValidTargetSelection
+        } as any);
 
-         // Act
-         const result = await handleWaitFor({ testId: 'element' });
+        // Act
+        const result = await handleWaitFor({ testId: 'element' });
 
-         // Assert
-         expect(result.ok).toBe(false);
-         if (!result.ok) {
-           expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-           expect(result.error.message).toBe('Invalid target selection');
-         }
-       });
-     });
+        // Assert
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+          expect(result.error.message).toBe('Invalid target selection');
+        }
+      });
+    });
 
     describe('with timeout errors', () => {
       it('returns error when element not found within timeout', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
         vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
           new Error('Timeout 15000ms exceeded'),
@@ -744,8 +788,8 @@ describe('interaction', () => {
       it('returns error when page closed during wait', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
         vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
           new Error('Target page has been closed'),
@@ -765,7 +809,7 @@ describe('interaction', () => {
     describe('without active session', () => {
       it('returns error when no session active', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
 
         // Act
         const result = await handleWaitFor({ testId: 'element' });

@@ -55,21 +55,14 @@ export async function handleSetContext(
      */
     execute: async () => {
       const sessionManager = getSessionManager();
-
-      if (!sessionManager.setContext) {
-        throw new Error(
-          'Context switching not supported by this session manager',
-        );
-      }
-
       const previousContext = sessionManager.getEnvironmentMode();
       sessionManager.setContext(input.context);
-      const info = sessionManager.getContextInfo?.();
+      const info = sessionManager.getContextInfo();
 
       return {
         previousContext,
         newContext: input.context,
-        availableCapabilities: info?.capabilities.available ?? [],
+        availableCapabilities: info.capabilities.available,
       };
     },
 
@@ -133,18 +126,7 @@ export async function handleGetContext(
      */
     execute: async () => {
       const sessionManager = getSessionManager();
-
-      if (sessionManager.getContextInfo) {
-        return sessionManager.getContextInfo();
-      }
-
-      return {
-        currentContext: sessionManager.getEnvironmentMode(),
-        hasActiveSession: sessionManager.hasActiveSession(),
-        sessionId: sessionManager.getSessionId() ?? null,
-        capabilities: { available: [] },
-        canSwitchContext: !sessionManager.hasActiveSession(),
-      };
+      return sessionManager.getContextInfo();
     },
   });
 }

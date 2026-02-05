@@ -9,11 +9,12 @@
  */
 
 import { vi } from 'vitest';
-import type { ISessionManager, TrackedPage, SessionLaunchResult } from '../session-manager.js';
+
+import type { ExtensionState } from '../../capabilities/types.js';
 import type { KnowledgeStore } from '../knowledge-store.js';
+import type { TrackedPage, SessionLaunchResult } from '../session-manager.js';
 import type { SessionState } from '../types/session.js';
 import type { SessionMetadata } from '../types/step-record.js';
-import type { ExtensionState } from '../../capabilities/types.js';
 
 /**
  * Options for customizing mock session manager behavior
@@ -34,10 +35,10 @@ export type MockSessionManagerOptions = {
  * Options for customizing mock knowledge store behavior
  */
 export type MockKnowledgeStoreOptions = {
-  lastSteps?: Array<Record<string, unknown>>;
-  searchResults?: Array<Record<string, unknown>>;
+  lastSteps?: Record<string, unknown>[];
+  searchResults?: Record<string, unknown>[];
   sessionSummary?: Record<string, unknown>;
-  sessions?: Array<Record<string, unknown>>;
+  sessions?: Record<string, unknown>[];
 };
 
 /**
@@ -51,15 +52,15 @@ export type MockKnowledgeStoreOptions = {
  */
 export function createMockSessionManager(
   options: MockSessionManagerOptions = {},
-): ISessionManager {
+) {
   return {
     // Session Lifecycle
     hasActiveSession: vi.fn().mockReturnValue(options.hasActive ?? false),
     getSessionId: vi.fn().mockReturnValue(options.sessionId ?? undefined),
     getSessionState: vi.fn().mockReturnValue(options.sessionState ?? undefined),
-    getSessionMetadata: vi.fn().mockReturnValue(
-      options.sessionMetadata ?? undefined,
-    ),
+    getSessionMetadata: vi
+      .fn()
+      .mockReturnValue(options.sessionMetadata ?? undefined),
     launch: vi.fn().mockResolvedValue(
       options.launchResult ?? {
         sessionId: 'test-session-123',
@@ -129,7 +130,19 @@ export function createMockSessionManager(
     getStateSnapshotCapability: vi.fn().mockReturnValue(undefined),
 
     // Environment
-    getEnvironmentMode: vi.fn().mockReturnValue(options.environmentMode ?? 'e2e'),
+    getEnvironmentMode: vi
+      .fn()
+      .mockReturnValue(options.environmentMode ?? 'e2e'),
+
+    // Context
+    setContext: vi.fn().mockReturnValue(undefined),
+    getContextInfo: vi.fn().mockReturnValue({
+      currentContext: options.environmentMode ?? 'e2e',
+      hasActiveSession: options.hasActive ?? false,
+      sessionId: options.sessionId ?? null,
+      capabilities: { available: [] },
+      canSwitchContext: !(options.hasActive ?? false),
+    }),
   };
 }
 

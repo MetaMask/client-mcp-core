@@ -1,4 +1,3 @@
-/* eslint-disable id-length */
 import { describe, it, expect } from 'vitest';
 
 import {

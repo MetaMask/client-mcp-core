@@ -38,31 +38,26 @@ const config = createConfig([
   },
 
   {
-    files: ['**/*.test.ts', '**/*.test.js'],
+    files: ['**/*.test.ts', '**/*.test.js', '**/test-utils/**'],
     extends: [vitest, nodejs],
     rules: {
       'vitest/no-conditional-expect': 'off',
       'vitest/no-conditional-in-test': 'off',
-    },
-  },
-
-  {
-    files: [
-      'src/mcp-server/knowledge-store.ts',
-      'src/mcp-server/tools/build.ts',
-      'src/launcher/extension-readiness.ts',
-      'src/launcher/extension-id-resolver.ts',
-      'src/mcp-server/server.ts',
-    ],
-    rules: {
-      'import-x/no-nodejs-modules': 'off',
+      'jsdoc/require-jsdoc': 'off',
+      'id-length': 'off',
+      'no-empty-function': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/unbound-method': 'off',
       'no-restricted-globals': 'off',
     },
   },
 
   {
     files: ['src/**/*.ts'],
-    rules: {},
+    rules: {
+      'import-x/no-nodejs-modules': 'off',
+      'no-restricted-globals': 'off',
+    },
   },
 ]);
 

@@ -1,7 +1,7 @@
+/* eslint-disable n/no-unsupported-features/node-builtins */
 /**
  * Tests for fetchWithTimeout utility function
  *
- * @module utils/fetch.test
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -27,8 +27,7 @@ describe('fetchWithTimeout', () => {
       const result = await promise;
 
       expect(result).toBe(mockResponse);
-      expect(mockFetch).toHaveBeenCalledOnce();
-      expect(mockFetch).toHaveBeenCalledWith('http://example.com', {
+      expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://example.com', {
         signal: expect.any(AbortSignal),
       });
     });
@@ -67,7 +66,7 @@ describe('fetchWithTimeout', () => {
 
   describe('timeout behavior', () => {
     it('uses default timeout of 5000ms', async () => {
-      const mockFetch = vi.fn().mockImplementation(() => {
+      const mockFetch = vi.fn().mockImplementation(async () => {
         return new Promise(() => {});
       });
       vi.stubGlobal('fetch', mockFetch);
@@ -91,17 +90,13 @@ describe('fetchWithTimeout', () => {
     });
 
     it('uses custom timeout when provided', async () => {
-      const mockFetch = vi.fn().mockImplementation(() => {
+      const mockFetch = vi.fn().mockImplementation(async () => {
         return new Promise(() => {});
       });
       vi.stubGlobal('fetch', mockFetch);
 
       const customTimeout = 3000;
-      const promise = fetchWithTimeout(
-        'http://example.com',
-        {},
-        customTimeout,
-      );
+      const promise = fetchWithTimeout('http://example.com', {}, customTimeout);
 
       // Advance time to just before custom timeout
       await vi.advanceTimersByTimeAsync(2999);
@@ -119,15 +114,15 @@ describe('fetchWithTimeout', () => {
     });
 
     it('aborts fetch when timeout exceeded', async () => {
-      const mockFetch = vi.fn().mockImplementation(
-        (_url, options: { signal: AbortSignal }) => {
-          return new Promise((_, reject) => {
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(async (_url, options: { signal: AbortSignal }) => {
+          return new Promise((_resolve, reject) => {
             options.signal.addEventListener('abort', () => {
               reject(new Error('The operation was aborted'));
             });
           });
-        },
-      );
+        });
       vi.stubGlobal('fetch', mockFetch);
 
       let caughtError: unknown;
@@ -152,7 +147,7 @@ describe('fetchWithTimeout', () => {
       vi.stubGlobal('fetch', mockFetch);
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
-      await expect(fetchWithTimeout('http://example.com')).rejects.toThrow(
+      await expect(fetchWithTimeout('http://example.com')).rejects.toThrowError(
         'Network error',
       );
 
@@ -164,7 +159,7 @@ describe('fetchWithTimeout', () => {
       const mockFetch = vi.fn().mockRejectedValue(networkError);
       vi.stubGlobal('fetch', mockFetch);
 
-      await expect(fetchWithTimeout('http://example.com')).rejects.toThrow(
+      await expect(fetchWithTimeout('http://example.com')).rejects.toThrowError(
         'Failed to fetch',
       );
     });

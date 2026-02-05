@@ -6,11 +6,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { handleScreenshot } from './screenshot.js';
-import { ErrorCodes } from '../types/errors.js';
-import { createMockSessionManager } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils';
+import { ErrorCodes } from '../types/errors.js';
 
 describe('screenshot', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -36,11 +37,15 @@ describe('screenshot', () => {
       recordStep: vi.fn().mockResolvedValue(undefined),
       getLastSteps: vi.fn().mockResolvedValue([]),
       searchSteps: vi.fn().mockResolvedValue([]),
-      summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+      summarizeSession: vi
+        .fn()
+        .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     } as any);
   });
 
@@ -52,7 +57,7 @@ describe('screenshot', () => {
     describe('basic screenshot', () => {
       it('captures full page screenshot by default', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/screenshot.png',
           width: 1280,
           height: 720,
@@ -79,7 +84,7 @@ describe('screenshot', () => {
 
       it('captures viewport-only screenshot when fullPage is false', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/screenshot.png',
           width: 1280,
           height: 720,
@@ -105,11 +110,12 @@ describe('screenshot', () => {
     describe('with base64 encoding', () => {
       it('includes base64 when includeBase64 is true', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/screenshot.png',
           width: 1280,
           height: 720,
-          base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          base64:
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         });
 
         // Act
@@ -121,17 +127,20 @@ describe('screenshot', () => {
         // Assert
         expect(result.ok).toBe(true);
         if (result.ok) {
-          expect(result.result.base64).toBe('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+          expect(result.result.base64).toBe(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          );
         }
       });
 
       it('excludes base64 when includeBase64 is false', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/screenshot.png',
           width: 1280,
           height: 720,
-          base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          base64:
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         });
 
         // Act
@@ -151,7 +160,7 @@ describe('screenshot', () => {
     describe('with selector scoping', () => {
       it('captures screenshot of specific element', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/element-screenshot.png',
           width: 400,
           height: 200,
@@ -179,7 +188,7 @@ describe('screenshot', () => {
 
       it('combines selector with fullPage false', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/element-screenshot.png',
           width: 400,
           height: 200,
@@ -206,7 +215,7 @@ describe('screenshot', () => {
     describe('error handling', () => {
       it('returns error when no active session', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
 
         // Act
         const result = await handleScreenshot({ name: 'test-screenshot' });
@@ -220,7 +229,7 @@ describe('screenshot', () => {
 
       it('returns error when screenshot fails', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockRejectedValue(
+        vi.spyOn(mockSessionManager, 'screenshot').mockRejectedValue(
           new Error('Screenshot failed'),
         );
 
@@ -237,7 +246,7 @@ describe('screenshot', () => {
 
       it('returns error when page is closed', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockRejectedValue(
+        vi.spyOn(mockSessionManager, 'screenshot').mockRejectedValue(
           new Error('Target page, context or browser has been closed'),
         );
 
@@ -255,7 +264,7 @@ describe('screenshot', () => {
     describe('input sanitization', () => {
       it('sanitizes input for knowledge store recording', async () => {
         // Arrange
-        mockSessionManager.screenshot = vi.fn().mockResolvedValue({
+        vi.spyOn(mockSessionManager, 'screenshot').mockResolvedValue({
           path: '/path/to/screenshot.png',
           width: 1280,
           height: 720,
@@ -263,16 +272,24 @@ describe('screenshot', () => {
         });
 
         const recordStepMock = vi.fn().mockResolvedValue(undefined);
-        vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
-          recordStep: recordStepMock,
-          getLastSteps: vi.fn().mockResolvedValue([]),
-          searchSteps: vi.fn().mockResolvedValue([]),
-          summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
-          listSessions: vi.fn().mockResolvedValue([]),
-          generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
-          writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-          getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
-        } as any);
+        vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue(
+          {
+            recordStep: recordStepMock,
+            getLastSteps: vi.fn().mockResolvedValue([]),
+            searchSteps: vi.fn().mockResolvedValue([]),
+            summarizeSession: vi.fn().mockResolvedValue({
+              sessionId: 'test',
+              stepCount: 0,
+              recipe: [],
+            }),
+            listSessions: vi.fn().mockResolvedValue([]),
+            generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
+            writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
+            getGitInfoSync: vi
+              .fn()
+              .mockReturnValue({ branch: 'main', commit: 'abc123' }),
+          } as any,
+        );
 
         // Act
         await handleScreenshot({
@@ -284,7 +301,7 @@ describe('screenshot', () => {
         // Assert
         expect(recordStepMock).toHaveBeenCalled();
         const recordedInput = recordStepMock.mock.calls[0][0].input;
-        expect(recordedInput).toEqual({
+        expect(recordedInput).toStrictEqual({
           name: 'test-screenshot',
           fullPage: undefined,
           selector: '[data-testid="test"]',

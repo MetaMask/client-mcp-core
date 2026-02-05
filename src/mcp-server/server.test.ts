@@ -1,19 +1,22 @@
+/* eslint-disable @typescript-eslint/naming-convention */
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { MockInstance } from 'vitest';
+
+import { createMcpServer } from './server.js';
+import type { McpServerConfig } from './server.js';
+import * as sessionManagerModule from './session-manager.js';
+import { flushPromises } from './test-utils';
+import * as batchModule from './tools/batch.js';
+import * as definitionsModule from './tools/definitions.js';
+import { ErrorCodes } from './types';
 
 vi.mock('@modelcontextprotocol/sdk/server/index.js');
 vi.mock('@modelcontextprotocol/sdk/server/stdio.js');
 vi.mock('./session-manager.js');
 vi.mock('./tools/definitions.js');
 vi.mock('./tools/batch.js');
-
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createMcpServer, type McpServerConfig } from './server.js';
-import * as sessionManagerModule from './session-manager.js';
-import * as definitionsModule from './tools/definitions.js';
-import * as batchModule from './tools/batch.js';
-import { ErrorCodes } from './types/index.js';
 
 describe('createMcpServer', () => {
   let processExitSpy: MockInstance;
@@ -30,7 +33,9 @@ describe('createMcpServer', () => {
   ];
 
   const mockToolHandlers = {
-    mm_click: vi.fn().mockResolvedValue({ ok: true, result: { clicked: true } }),
+    mm_click: vi
+      .fn()
+      .mockResolvedValue({ ok: true, result: { clicked: true } }),
     mm_type: vi.fn().mockResolvedValue({ ok: true, result: { typed: true } }),
   };
 
@@ -41,15 +46,21 @@ describe('createMcpServer', () => {
     mockConnect = vi.fn().mockResolvedValue(undefined);
     mockClose = vi.fn().mockResolvedValue(undefined);
 
-    vi.mocked(Server).mockImplementation(() => ({
-      setRequestHandler: mockSetRequestHandler,
-      connect: mockConnect,
-      close: mockClose,
-    }) as unknown as InstanceType<typeof Server>);
+    vi.mocked(Server).mockImplementation(
+      () =>
+        ({
+          setRequestHandler: mockSetRequestHandler,
+          connect: mockConnect,
+          close: mockClose,
+        }) as unknown as InstanceType<typeof Server>,
+    );
 
-    vi.mocked(StdioServerTransport).mockImplementation(() => ({
-      type: 'stdio',
-    }) as unknown as InstanceType<typeof StdioServerTransport>);
+    vi.mocked(StdioServerTransport).mockImplementation(
+      () =>
+        ({
+          type: 'stdio',
+        }) as unknown as InstanceType<typeof StdioServerTransport>,
+    );
 
     vi.mocked(sessionManagerModule.getSessionManager).mockReturnValue({
       getSessionId: vi.fn().mockReturnValue('test-session-123'),
@@ -57,10 +68,14 @@ describe('createMcpServer', () => {
     } as unknown as ReturnType<typeof sessionManagerModule.getSessionManager>);
     vi.mocked(sessionManagerModule.hasSessionManager).mockReturnValue(true);
 
-    vi.mocked(definitionsModule.getToolDefinitions).mockReturnValue(mockToolDefinitions);
-    vi.mocked(definitionsModule.buildToolHandlersRecord).mockReturnValue(mockToolHandlers);
+    vi.mocked(definitionsModule.getToolDefinitions).mockReturnValue(
+      mockToolDefinitions,
+    );
+    vi.mocked(definitionsModule.buildToolHandlersRecord).mockReturnValue(
+      mockToolHandlers,
+    );
     vi.mocked(definitionsModule.getToolHandler).mockReturnValue(
-      vi.fn().mockResolvedValue({ ok: true, result: {} })
+      vi.fn().mockResolvedValue({ ok: true, result: {} }),
     );
     vi.mocked(definitionsModule.safeValidateToolInput).mockReturnValue({
       success: true,
@@ -71,18 +86,22 @@ describe('createMcpServer', () => {
     vi.mocked(batchModule.setToolRegistry).mockImplementation(() => {});
 
     signalHandlers = new Map();
-    processOnSpy = vi.spyOn(process, 'on').mockImplementation(
-      (event: string | symbol, handler: (...args: unknown[]) => void) => {
-        signalHandlers.set(String(event), handler as () => void);
-        return process;
-      }
-    );
+    processOnSpy = vi
+      .spyOn(process, 'on')
+      .mockImplementation(
+        (event: string | symbol, handler: (...args: unknown[]) => void) => {
+          signalHandlers.set(String(event), handler as () => void);
+          return process;
+        },
+      );
 
-    processExitSpy = vi.spyOn(process, 'exit').mockImplementation(
-      (_code?: string | number | null | undefined): never => {
-        throw new Error(`process.exit(${_code})`);
-      }
-    );
+    processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation(
+        (_code?: string | number | null | undefined): never => {
+          throw new Error(`process.exit(${_code})`);
+        },
+      );
 
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -118,7 +137,7 @@ describe('createMcpServer', () => {
 
       expect(Server).toHaveBeenCalledWith(
         { name: 'my-extension', version: '2.0.0' },
-        { capabilities: { tools: {} } }
+        { capabilities: { tools: {} } },
       );
     });
 
@@ -138,7 +157,10 @@ describe('createMcpServer', () => {
       });
 
       expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
-      expect(processOnSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+      expect(processOnSpy).toHaveBeenCalledWith(
+        'SIGTERM',
+        expect.any(Function),
+      );
     });
   });
 
@@ -161,7 +183,7 @@ describe('createMcpServer', () => {
 
       const toolDefs = server.getToolDefinitions();
 
-      expect(toolDefs).toEqual(mockToolDefinitions);
+      expect(toolDefs).toStrictEqual(mockToolDefinitions);
     });
   });
 
@@ -196,7 +218,7 @@ describe('createMcpServer', () => {
       await server.start();
 
       expect(customLogger).toHaveBeenCalledWith(
-        'my-server MCP Server v2.0.0 running on stdio'
+        'my-server MCP Server v2.0.0 running on stdio',
       );
     });
 
@@ -209,7 +231,7 @@ describe('createMcpServer', () => {
       await server.start();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'test-server MCP Server v1.0.0 running on stdio'
+        'test-server MCP Server v1.0.0 running on stdio',
       );
     });
   });
@@ -241,7 +263,7 @@ describe('createMcpServer', () => {
 
       const result = await listToolsHandler();
 
-      expect(result).toEqual({
+      expect(result).toStrictEqual({
         tools: mockToolDefinitions,
       });
     });
@@ -249,8 +271,10 @@ describe('createMcpServer', () => {
 
   describe('CallToolRequestSchema handler', () => {
     let callToolHandler: (
-      request: { params: { name: string; arguments?: Record<string, unknown> } },
-      extra?: { signal?: AbortSignal }
+      request: {
+        params: { name: string; arguments?: Record<string, unknown> };
+      },
+      extra?: { signal?: AbortSignal },
     ) => Promise<unknown>;
 
     beforeEach(() => {
@@ -268,7 +292,9 @@ describe('createMcpServer', () => {
         isError: true,
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
       expect(responseText.error.message).toContain('Unknown tool: mm_unknown');
     });
@@ -288,13 +314,19 @@ describe('createMcpServer', () => {
         isError: true,
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-      expect(responseText.error.message).toContain('Invalid input: name: Required');
+      expect(responseText.error.message).toContain(
+        'Invalid input: name: Required',
+      );
     });
 
     it('returns error when no handler registered', async () => {
-      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(undefined);
+      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(
+        undefined,
+      );
 
       const result = await callToolHandler({
         params: { name: 'mm_click', arguments: {} },
@@ -305,14 +337,22 @@ describe('createMcpServer', () => {
         isError: true,
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
-      expect(responseText.error.message).toContain('No handler registered for tool: mm_click');
+      expect(responseText.error.message).toContain(
+        'No handler registered for tool: mm_click',
+      );
     });
 
     it('executes handler and returns success response', async () => {
-      const mockHandler = vi.fn().mockResolvedValue({ ok: true, result: { clicked: true } });
-      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(mockHandler);
+      const mockHandler = vi
+        .fn()
+        .mockResolvedValue({ ok: true, result: { clicked: true } });
+      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(
+        mockHandler,
+      );
 
       const result = await callToolHandler({
         params: { name: 'mm_click', arguments: { testId: 'btn' } },
@@ -323,24 +363,28 @@ describe('createMcpServer', () => {
         isError: false,
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.ok).toBe(true);
       expect(responseText.result.clicked).toBe(true);
     });
 
     it('passes signal to handler', async () => {
       const mockHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
-      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(mockHandler);
+      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(
+        mockHandler,
+      );
       const mockSignal = new AbortController().signal;
 
       await callToolHandler(
         { params: { name: 'mm_click', arguments: {} } },
-        { signal: mockSignal }
+        { signal: mockSignal },
       );
 
       expect(mockHandler).toHaveBeenCalledWith(
         expect.any(Object),
-        expect.objectContaining({ signal: mockSignal })
+        expect.objectContaining({ signal: mockSignal }),
       );
     });
 
@@ -349,7 +393,9 @@ describe('createMcpServer', () => {
         ok: false,
         error: { code: 'MM_CLICK_FAILED', message: 'Click failed' },
       });
-      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(mockHandler);
+      vi.mocked(definitionsModule.getToolHandler).mockReturnValueOnce(
+        mockHandler,
+      );
 
       const result = await callToolHandler({
         params: { name: 'mm_click', arguments: {} },
@@ -365,13 +411,17 @@ describe('createMcpServer', () => {
       vi.mocked(sessionManagerModule.getSessionManager).mockReturnValue({
         getSessionId: vi.fn().mockReturnValue('session-abc'),
         cleanup: vi.fn(),
-      } as unknown as ReturnType<typeof sessionManagerModule.getSessionManager>);
+      } as unknown as ReturnType<
+        typeof sessionManagerModule.getSessionManager
+      >);
 
       const result = await callToolHandler({
         params: { name: 'mm_unknown', arguments: {} },
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.meta.sessionId).toBe('session-abc');
     });
 
@@ -382,7 +432,9 @@ describe('createMcpServer', () => {
         params: { name: 'mm_unknown', arguments: {} },
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.meta.sessionId).toBeUndefined();
     });
   });
@@ -400,7 +452,8 @@ describe('createMcpServer', () => {
       expect(sigintHandler).toBeDefined();
 
       try {
-        await sigintHandler!();
+        sigintHandler?.();
+        await flushPromises();
       } catch (e) {
         expect((e as Error).message).toBe('process.exit(0)');
       }
@@ -420,7 +473,8 @@ describe('createMcpServer', () => {
       expect(sigtermHandler).toBeDefined();
 
       try {
-        await sigtermHandler!();
+        sigtermHandler?.();
+        await flushPromises();
       } catch (e) {
         expect((e as Error).message).toBe('process.exit(0)');
       }
@@ -434,7 +488,9 @@ describe('createMcpServer', () => {
       vi.mocked(sessionManagerModule.getSessionManager).mockReturnValue({
         getSessionId: vi.fn().mockReturnValue('session-abc'),
         cleanup: mockCleanup,
-      } as unknown as ReturnType<typeof sessionManagerModule.getSessionManager>);
+      } as unknown as ReturnType<
+        typeof sessionManagerModule.getSessionManager
+      >);
 
       createMcpServer({
         name: 'test',
@@ -443,9 +499,8 @@ describe('createMcpServer', () => {
 
       const sigintHandler = signalHandlers.get('SIGINT');
 
-      try {
-        await sigintHandler!();
-      } catch { }
+      sigintHandler?.();
+      await flushPromises();
 
       expect(mockCleanup).toHaveBeenCalled();
     });
@@ -461,9 +516,8 @@ describe('createMcpServer', () => {
 
       const sigintHandler = signalHandlers.get('SIGINT');
 
-      try {
-        await sigintHandler!();
-      } catch { }
+      sigintHandler?.();
+      await flushPromises();
 
       expect(mockCleanup).not.toHaveBeenCalled();
     });
@@ -478,11 +532,9 @@ describe('createMcpServer', () => {
 
       const sigintHandler = signalHandlers.get('SIGINT');
 
-      try {
-        await sigintHandler!();
-      } catch { }
-
-      await sigintHandler!();
+      sigintHandler?.();
+      sigintHandler?.();
+      await flushPromises();
 
       expect(onCleanup).toHaveBeenCalledTimes(1);
     });
@@ -497,11 +549,12 @@ describe('createMcpServer', () => {
 
       const sigintHandler = signalHandlers.get('SIGINT');
 
-      try {
-        await sigintHandler!();
-      } catch { }
+      sigintHandler?.();
+      await flushPromises();
 
-      expect(customLogger).toHaveBeenCalledWith('Received SIGINT, cleaning up...');
+      expect(customLogger).toHaveBeenCalledWith(
+        'Received SIGINT, cleaning up...',
+      );
     });
 
     it('logs cleanup errors', async () => {
@@ -516,12 +569,11 @@ describe('createMcpServer', () => {
 
       const sigintHandler = signalHandlers.get('SIGINT');
 
-      try {
-        await sigintHandler!();
-      } catch { }
+      sigintHandler?.();
+      await flushPromises();
 
       expect(customLogger).toHaveBeenCalledWith(
-        expect.stringContaining('Cleanup error:')
+        expect.stringContaining('Cleanup error:'),
       );
     });
 
@@ -534,7 +586,8 @@ describe('createMcpServer', () => {
       const sigintHandler = signalHandlers.get('SIGINT');
 
       try {
-        await sigintHandler!();
+        sigintHandler?.();
+        await flushPromises();
       } catch (e) {
         expect((e as Error).message).toBe('process.exit(0)');
       }
@@ -556,12 +609,11 @@ describe('createMcpServer', () => {
 
       const sigintHandler = signalHandlers.get('SIGINT');
 
-      try {
-        await sigintHandler!();
-      } catch { }
+      sigintHandler?.();
+      await flushPromises();
 
       expect(customLogger).toHaveBeenCalledWith(
-        expect.stringContaining('Cleanup error:')
+        expect.stringContaining('Cleanup error:'),
       );
     });
   });
@@ -570,7 +622,9 @@ describe('createMcpServer', () => {
     it('sets tool registry with handlers', () => {
       createMcpServer({ name: 'test', version: '1.0.0' });
 
-      expect(batchModule.setToolRegistry).toHaveBeenCalledWith(mockToolHandlers);
+      expect(batchModule.setToolRegistry).toHaveBeenCalledWith(
+        mockToolHandlers,
+      );
     });
   });
 
@@ -580,7 +634,9 @@ describe('createMcpServer', () => {
       vi.mocked(sessionManagerModule.getSessionManager).mockReturnValue({
         getSessionId: vi.fn().mockReturnValue('my-session'),
         cleanup: vi.fn(),
-      } as unknown as ReturnType<typeof sessionManagerModule.getSessionManager>);
+      } as unknown as ReturnType<
+        typeof sessionManagerModule.getSessionManager
+      >);
 
       createMcpServer({ name: 'test', version: '1.0.0' });
       const callToolHandler = mockSetRequestHandler.mock.calls[1][1];
@@ -589,7 +645,9 @@ describe('createMcpServer', () => {
         params: { name: 'mm_invalid', arguments: {} },
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
       expect(responseText.meta.sessionId).toBe('my-session');
       expect(responseText.meta.timestamp).toBeDefined();
       expect(responseText.meta.durationMs).toBeGreaterThanOrEqual(0);
@@ -608,8 +666,12 @@ describe('createMcpServer', () => {
         params: { name: 'mm_click', arguments: { invalid: 'arg' } },
       });
 
-      const responseText = JSON.parse((result as { content: [{ text: string }] }).content[0].text);
-      expect(responseText.error.details).toEqual({ providedArgs: { invalid: 'arg' } });
+      const responseText = JSON.parse(
+        (result as { content: [{ text: string }] }).content[0].text,
+      );
+      expect(responseText.error.details).toStrictEqual({
+        providedArgs: { invalid: 'arg' },
+      });
     });
   });
 });

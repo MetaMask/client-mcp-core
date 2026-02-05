@@ -1,4 +1,4 @@
-/* eslint-disable id-length */
+/* eslint-disable vitest/require-to-throw-message */
 import { describe, it, expect, beforeAll } from 'vitest';
 
 import {
@@ -262,178 +262,178 @@ describe('tool-definitions', () => {
             enum?: string[];
           }
         >;
-       expect(props.contractName?.enum).toContain('hst');
-         expect(props.contractName?.enum).toContain('nfts');
-       });
-
-       it('mm_launch has stateMode enum', () => {
-         const tool = findTool('mm_launch');
-         expect(tool).toBeDefined();
-
-         const props = getAllProperties(
-           tool?.inputSchema as SchemaObj,
-         ) as Record<
-           string,
-           {
-             /**
-              *
-              */
-             enum?: string[];
-           }
-         >;
-         expect(props.stateMode?.enum).toStrictEqual([
-           'default',
-           'onboarding',
-           'custom',
-         ]);
-       });
-
-       it('mm_switch_to_tab has role enum', () => {
-         const tool = findTool('mm_switch_to_tab');
-         expect(tool).toBeDefined();
-
-         const props = getAllProperties(
-           tool?.inputSchema as SchemaObj,
-         ) as Record<
-           string,
-           {
-             /**
-              *
-              */
-             enum?: string[];
-           }
-         >;
-         expect(props.role?.enum).toStrictEqual([
-           'extension',
-           'notification',
-           'dapp',
-           'other',
-         ]);
-       });
-
-       it('mm_knowledge_search has required query property', () => {
-         const tool = findTool('mm_knowledge_search');
-         expect(tool).toBeDefined();
-
-         const required = getAllRequired(tool?.inputSchema as SchemaObj);
-         expect(required).toContain('query');
-       });
-     });
-
-     it('uses mm_ prefix in descriptions', () => {
-       const definitions = getToolDefinitions();
-
-       const a11yTool = definitions.find(
-         (d) => d.name === 'mm_accessibility_snapshot',
-       );
-       expect(a11yTool?.description).toContain('mm_click');
-       expect(a11yTool?.description).toContain('mm_type');
-     });
-
-     it('all schemas have additionalProperties set to false', () => {
-       const definitions = getToolDefinitions();
-
-       for (const def of definitions) {
-         const schema = def.inputSchema as Record<string, unknown>;
-         if (schema.type === 'object') {
-           expect(schema.additionalProperties).toBe(false);
-         }
-       }
-     });
-
-     it('all schemas have properties defined', () => {
-       const definitions = getToolDefinitions();
-
-       for (const def of definitions) {
-         const schema = def.inputSchema as Record<string, unknown>;
-         expect(
-           schema.properties || schema.allOf || schema.anyOf || schema.oneOf,
-         ).toBeDefined();
-       }
-     });
-
-      it('all required properties are defined in properties', () => {
-        const definitions = getToolDefinitions();
-
-        for (const def of definitions) {
-          const schema = def.inputSchema as Record<string, unknown>;
-          if (Array.isArray(schema.required) && schema.properties) {
-            const props = schema.properties as Record<string, unknown>;
-            for (const req of schema.required) {
-              expect(props[req as string]).toBeDefined();
-            }
-          }
-        }
+        expect(props.contractName?.enum).toContain('hst');
+        expect(props.contractName?.enum).toContain('nfts');
       });
 
-      it('processes anyOf arrays in nested properties', () => {
-        const definitions = getToolDefinitions();
+      it('mm_launch has stateMode enum', () => {
+        const tool = findTool('mm_launch');
+        expect(tool).toBeDefined();
 
-        // Find tools with anyOf in properties (e.g., knowledge tools with scope)
-        // This exercises the anyOf handling in removeDefaultsFromRequired (lines 397-400)
-        let foundAnyOf = false;
-        for (const def of definitions) {
-          const schema = def.inputSchema as Record<string, unknown>;
-          if (schema.properties && typeof schema.properties === 'object') {
-            const props = schema.properties as Record<string, unknown>;
-            for (const [, prop] of Object.entries(props)) {
-              if (prop && typeof prop === 'object') {
-                const propObj = prop as Record<string, unknown>;
-                if ('anyOf' in propObj) {
-                  foundAnyOf = true;
-                  expect(Array.isArray(propObj.anyOf)).toBe(true);
-                  // Verify anyOf items are properly processed
-                  const anyOfArray = propObj.anyOf as unknown[];
-                  for (const item of anyOfArray) {
-                    expect(item).toBeDefined();
-                  }
-                }
-              }
-            }
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<
+          string,
+          {
+            /**
+             *
+             */
+            enum?: string[];
           }
-        }
-        // Verify we found at least one tool with anyOf (knowledge tools)
-        expect(foundAnyOf).toBe(true);
+        >;
+        expect(props.stateMode?.enum).toStrictEqual([
+          'default',
+          'onboarding',
+          'custom',
+        ]);
       });
 
-      it('processes nested object properties recursively', () => {
-        const definitions = getToolDefinitions();
+      it('mm_switch_to_tab has role enum', () => {
+        const tool = findTool('mm_switch_to_tab');
+        expect(tool).toBeDefined();
 
-        // Verify that nested object properties are processed correctly
-        // This exercises the recursive property handling in removeDefaultsFromRequired (lines 418-421)
-        for (const def of definitions) {
-          const schema = def.inputSchema as Record<string, unknown>;
-          if (schema.properties && typeof schema.properties === 'object') {
-            const props = schema.properties as Record<string, unknown>;
-            for (const [, value] of Object.entries(props)) {
-              if (value && typeof value === 'object') {
-                const propObj = value as Record<string, unknown>;
-                // Nested objects should have proper structure
-                expect(propObj).toBeDefined();
-                // If it has properties, they should be objects
-                if ('properties' in propObj && propObj.properties) {
-                  expect(typeof propObj.properties).toBe('object');
-                }
-              }
-            }
+        const props = getAllProperties(
+          tool?.inputSchema as SchemaObj,
+        ) as Record<
+          string,
+          {
+            /**
+             *
+             */
+            enum?: string[];
           }
-        }
+        >;
+        expect(props.role?.enum).toStrictEqual([
+          'extension',
+          'notification',
+          'dapp',
+          'other',
+        ]);
       });
 
-      it('sets additionalProperties false on top-level object schemas', () => {
-        const definitions = getToolDefinitions();
+      it('mm_knowledge_search has required query property', () => {
+        const tool = findTool('mm_knowledge_search');
+        expect(tool).toBeDefined();
 
-        // Verify that additionalProperties is set to false on top-level schemas
-        // This exercises the additionalProperties assignment in zodSchemaToJsonSchema (line 503)
-        for (const def of definitions) {
-          const schema = def.inputSchema as Record<string, unknown>;
-          // All tool schemas should be objects with additionalProperties: false
-          if (schema.type === 'object') {
-            expect(schema.additionalProperties).toBe(false);
-          }
-        }
+        const required = getAllRequired(tool?.inputSchema as SchemaObj);
+        expect(required).toContain('query');
       });
     });
+
+    it('uses mm_ prefix in descriptions', () => {
+      const definitions = getToolDefinitions();
+
+      const a11yTool = definitions.find(
+        (d) => d.name === 'mm_accessibility_snapshot',
+      );
+      expect(a11yTool?.description).toContain('mm_click');
+      expect(a11yTool?.description).toContain('mm_type');
+    });
+
+    it('all schemas have additionalProperties set to false', () => {
+      const definitions = getToolDefinitions();
+
+      for (const def of definitions) {
+        const schema = def.inputSchema;
+        if (schema.type === 'object') {
+          expect(schema.additionalProperties).toBe(false);
+        }
+      }
+    });
+
+    it('all schemas have properties defined', () => {
+      const definitions = getToolDefinitions();
+
+      for (const def of definitions) {
+        const schema = def.inputSchema;
+        expect(
+          schema.properties ?? schema.allOf ?? schema.anyOf ?? schema.oneOf,
+        ).toBeDefined();
+      }
+    });
+
+    it('all required properties are defined in properties', () => {
+      const definitions = getToolDefinitions();
+
+      for (const def of definitions) {
+        const schema = def.inputSchema;
+        if (Array.isArray(schema.required) && schema.properties) {
+          const props = schema.properties as Record<string, unknown>;
+          for (const req of schema.required) {
+            expect(props[req as string]).toBeDefined();
+          }
+        }
+      }
+    });
+
+    it('processes anyOf arrays in nested properties', () => {
+      const definitions = getToolDefinitions();
+
+      // Find tools with anyOf in properties (e.g., knowledge tools with scope)
+      // This exercises the anyOf handling in removeDefaultsFromRequired (lines 397-400)
+      let foundAnyOf = false;
+      for (const def of definitions) {
+        const schema = def.inputSchema;
+        if (schema.properties && typeof schema.properties === 'object') {
+          const props = schema.properties as Record<string, unknown>;
+          for (const [, prop] of Object.entries(props)) {
+            if (prop && typeof prop === 'object') {
+              const propObj = prop as Record<string, unknown>;
+              if ('anyOf' in propObj) {
+                foundAnyOf = true;
+                expect(Array.isArray(propObj.anyOf)).toBe(true);
+                // Verify anyOf items are properly processed
+                const anyOfArray = propObj.anyOf as unknown[];
+                for (const item of anyOfArray) {
+                  expect(item).toBeDefined();
+                }
+              }
+            }
+          }
+        }
+      }
+      // Verify we found at least one tool with anyOf (knowledge tools)
+      expect(foundAnyOf).toBe(true);
+    });
+
+    it('processes nested object properties recursively', () => {
+      const definitions = getToolDefinitions();
+
+      // Verify that nested object properties are processed correctly
+      // This exercises the recursive property handling in removeDefaultsFromRequired (lines 418-421)
+      for (const def of definitions) {
+        const schema = def.inputSchema;
+        if (schema.properties && typeof schema.properties === 'object') {
+          const props = schema.properties as Record<string, unknown>;
+          for (const [, value] of Object.entries(props)) {
+            if (value && typeof value === 'object') {
+              const propObj = value as Record<string, unknown>;
+              // Nested objects should have proper structure
+              expect(propObj).toBeDefined();
+              // If it has properties, they should be objects
+              if ('properties' in propObj && propObj.properties) {
+                expect(typeof propObj.properties).toBe('object');
+              }
+            }
+          }
+        }
+      }
+    });
+
+    it('sets additionalProperties false on top-level object schemas', () => {
+      const definitions = getToolDefinitions();
+
+      // Verify that additionalProperties is set to false on top-level schemas
+      // This exercises the additionalProperties assignment in zodSchemaToJsonSchema (line 503)
+      for (const def of definitions) {
+        const schema = def.inputSchema;
+        // All tool schemas should be objects with additionalProperties: false
+        if (schema.type === 'object') {
+          expect(schema.additionalProperties).toBe(false);
+        }
+      }
+    });
+  });
 
   describe('extractBaseName', () => {
     it('removes mm_ prefix from tool name', () => {
@@ -488,13 +488,13 @@ describe('tool-definitions', () => {
     it('throws error for unknown tool', () => {
       expect(() => {
         validateToolInput('mm_unknown_tool', {});
-      }).toThrow('Unknown tool: mm_unknown_tool');
+      }).toThrowError('Unknown tool: mm_unknown_tool');
     });
 
     it('throws error for invalid input schema', () => {
       expect(() => {
         validateToolInput('mm_type', { text: 123 });
-      }).toThrow();
+      }).toThrowError();
     });
 
     it('accepts input without prefix', () => {
@@ -571,7 +571,7 @@ describe('tool-definitions', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toMatch(/text/);
+        expect(result.error).toMatch(/text/u);
       }
     });
   });
@@ -597,14 +597,14 @@ describe('tool-definitions', () => {
       const names = getToolNames();
 
       for (const name of names) {
-        expect(name).not.toMatch(/^mm_/);
+        expect(name).not.toMatch(/^mm_/u);
       }
     });
 
     it('returns 27 tool names', () => {
       const names = getToolNames();
 
-      expect(names.length).toBe(27);
+      expect(names).toHaveLength(27);
     });
 
     it('all names are strings', () => {
@@ -629,7 +629,7 @@ describe('tool-definitions', () => {
       const names = getPrefixedToolNames();
 
       for (const name of names) {
-        expect(name).toMatch(/^mm_/);
+        expect(name).toMatch(/^mm_/u);
       }
     });
 
@@ -646,7 +646,7 @@ describe('tool-definitions', () => {
       const baseNames = getToolNames();
       const prefixedNames = getPrefixedToolNames();
 
-      expect(prefixedNames.length).toBe(baseNames.length);
+      expect(prefixedNames).toHaveLength(baseNames.length);
     });
   });
 
@@ -679,7 +679,7 @@ describe('tool-definitions', () => {
       const handlers = buildToolHandlersRecord();
       const prefixedNames = getPrefixedToolNames();
 
-      expect(Object.keys(handlers).length).toBe(prefixedNames.length);
+      expect(Object.keys(handlers)).toHaveLength(prefixedNames.length);
     });
 
     it('does not include base names without prefix', () => {

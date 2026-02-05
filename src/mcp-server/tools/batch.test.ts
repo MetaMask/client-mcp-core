@@ -10,50 +10,7 @@ import {
 } from './batch.js';
 import type { ToolRegistry, ToolHandler, ToolValidator } from './batch.js';
 import { setSessionManager } from '../session-manager.js';
-import type { ISessionManager } from '../session-manager.js';
-
-/**
- * Creates a mock session manager for testing.
- *
- * @param hasActive Whether the mock session should be active
- * @returns Mock session manager instance
- */
-const createMockSessionManager = (
-  hasActive: boolean = true,
-): ISessionManager => ({
-  hasActiveSession: vi.fn().mockReturnValue(hasActive),
-  getSessionId: vi.fn().mockReturnValue(hasActive ? 'test-session' : undefined),
-  getSessionState: vi.fn().mockReturnValue(undefined),
-  getSessionMetadata: vi.fn().mockReturnValue(undefined),
-  launch: vi.fn().mockResolvedValue({
-    sessionId: 'test-session',
-    extensionId: 'ext-123',
-    state: {},
-  }),
-  cleanup: vi.fn().mockResolvedValue(true),
-  getPage: vi.fn(),
-  setActivePage: vi.fn(),
-  getTrackedPages: vi.fn().mockReturnValue([]),
-  classifyPageRole: vi.fn().mockReturnValue('extension'),
-  getContext: vi.fn(),
-  getExtensionState: vi.fn().mockResolvedValue({ screen: 'home' }),
-  setRefMap: vi.fn(),
-  getRefMap: vi.fn().mockReturnValue(new Map()),
-  clearRefMap: vi.fn(),
-  resolveA11yRef: vi.fn(),
-  navigateToHome: vi.fn().mockResolvedValue(undefined),
-  navigateToSettings: vi.fn().mockResolvedValue(undefined),
-  navigateToUrl: vi.fn(),
-  navigateToNotification: vi.fn(),
-  waitForNotificationPage: vi.fn(),
-  screenshot: vi.fn().mockResolvedValue({ path: '/path/to/screenshot.png' }),
-  getBuildCapability: vi.fn().mockReturnValue(undefined),
-  getFixtureCapability: vi.fn().mockReturnValue(undefined),
-  getChainCapability: vi.fn().mockReturnValue(undefined),
-  getContractSeedingCapability: vi.fn().mockReturnValue(undefined),
-  getStateSnapshotCapability: vi.fn().mockReturnValue(undefined),
-  getEnvironmentMode: vi.fn().mockReturnValue('e2e'),
-});
+import { createMockSessionManager } from '../test-utils/mock-factories.js';
 
 /**
  * Clears the tool validator by resetting it to undefined.
@@ -124,11 +81,11 @@ describe('batch', () => {
 
   describe('handleRunSteps', () => {
     beforeEach(() => {
-      setSessionManager(createMockSessionManager(true));
+      setSessionManager(createMockSessionManager({ hasActive: true }));
     });
 
     it('returns error when no active session', async () => {
-      setSessionManager(createMockSessionManager(false));
+      setSessionManager(createMockSessionManager({ hasActive: false }));
 
       const result = await handleRunSteps({
         steps: [{ tool: 'mm_click', args: { testId: 'button' } }],
@@ -337,131 +294,131 @@ describe('batch', () => {
       }
     });
 
-     it('defaults args to empty object when not provided', async () => {
-       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
-       setToolRegistry({ mm_click: clickHandler });
+    it('defaults args to empty object when not provided', async () => {
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
+      setToolRegistry({ mm_click: clickHandler });
 
-       await handleRunSteps({
-         steps: [{ tool: 'mm_click' }],
-       });
+      await handleRunSteps({
+        steps: [{ tool: 'mm_click' }],
+      });
 
-       expect(clickHandler).toHaveBeenCalledWith({}, expect.any(Object));
-     });
+      expect(clickHandler).toHaveBeenCalledWith({}, expect.any(Object));
+    });
 
-     it('maps includeObservations "none" to observation policy', async () => {
-       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
-       setToolRegistry({ mm_click: clickHandler });
+    it('maps includeObservations "none" to observation policy', async () => {
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
+      setToolRegistry({ mm_click: clickHandler });
 
-       const result = await handleRunSteps({
-         steps: [{ tool: 'mm_click', args: {} }],
-         includeObservations: 'none',
-       });
+      const result = await handleRunSteps({
+        steps: [{ tool: 'mm_click', args: {} }],
+        includeObservations: 'none',
+      });
 
-       expect(result.ok).toBe(true);
-       if (result.ok) {
-         expect(result.result?.steps[0].ok).toBe(true);
-       }
-       expect(clickHandler).toHaveBeenCalledWith(
-         {},
-         expect.objectContaining({ observationPolicy: 'none' }),
-       );
-     });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result?.steps[0].ok).toBe(true);
+      }
+      expect(clickHandler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ observationPolicy: 'none' }),
+      );
+    });
 
-     it('maps includeObservations "failures" to observation policy', async () => {
-       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
-       setToolRegistry({ mm_click: clickHandler });
+    it('maps includeObservations "failures" to observation policy', async () => {
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
+      setToolRegistry({ mm_click: clickHandler });
 
-       const result = await handleRunSteps({
-         steps: [{ tool: 'mm_click', args: {} }],
-         includeObservations: 'failures',
-       });
+      const result = await handleRunSteps({
+        steps: [{ tool: 'mm_click', args: {} }],
+        includeObservations: 'failures',
+      });
 
-       expect(result.ok).toBe(true);
-       if (result.ok) {
-         expect(result.result?.steps[0].ok).toBe(true);
-       }
-       expect(clickHandler).toHaveBeenCalledWith(
-         {},
-         expect.objectContaining({ observationPolicy: 'failures' }),
-       );
-     });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result?.steps[0].ok).toBe(true);
+      }
+      expect(clickHandler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ observationPolicy: 'failures' }),
+      );
+    });
 
-     it('stops execution when stopOnError=true and handler not found', async () => {
-       const typeHandler = vi.fn().mockResolvedValue({ ok: true });
-       setToolRegistry({ mm_type: typeHandler });
+    it('stops execution when stopOnError=true and handler not found', async () => {
+      const typeHandler = vi.fn().mockResolvedValue({ ok: true });
+      setToolRegistry({ mm_type: typeHandler });
 
-       const result = await handleRunSteps({
-         steps: [
-           { tool: 'unknown_tool', args: {} },
-           { tool: 'mm_type', args: { text: 'hello' } },
-         ],
-         stopOnError: true,
-       });
+      const result = await handleRunSteps({
+        steps: [
+          { tool: 'unknown_tool', args: {} },
+          { tool: 'mm_type', args: { text: 'hello' } },
+        ],
+        stopOnError: true,
+      });
 
-       expect(typeHandler).not.toHaveBeenCalled();
-       if (result.ok) {
-         expect(result.result?.steps.length).toBe(1);
-         expect(result.result?.steps[0].ok).toBe(false);
-         expect(result.result?.steps[0].error?.code).toBe('MM_UNKNOWN_TOOL');
-       }
-     });
+      expect(typeHandler).not.toHaveBeenCalled();
+      if (result.ok) {
+        expect(result.result?.steps.length).toBe(1);
+        expect(result.result?.steps[0].ok).toBe(false);
+        expect(result.result?.steps[0].error?.code).toBe('MM_UNKNOWN_TOOL');
+      }
+    });
 
-     it('stops execution when stopOnError=true and validation fails', async () => {
-       const clickHandler = vi.fn().mockResolvedValue({ ok: true });
-       const typeHandler = vi.fn().mockResolvedValue({ ok: true });
-       setToolRegistry({
-         mm_click: clickHandler,
-         mm_type: typeHandler,
-       });
+    it('stops execution when stopOnError=true and validation fails', async () => {
+      const clickHandler = vi.fn().mockResolvedValue({ ok: true });
+      const typeHandler = vi.fn().mockResolvedValue({ ok: true });
+      setToolRegistry({
+        mm_click: clickHandler,
+        mm_type: typeHandler,
+      });
 
-       const validator: ToolValidator = vi.fn().mockImplementation((tool) => {
-         if (tool === 'mm_click') {
-           return { success: false, error: { message: 'Invalid testId' } };
-         }
-         return { success: true };
-       });
-       setToolValidator(validator);
+      const validator: ToolValidator = vi.fn().mockImplementation((tool) => {
+        if (tool === 'mm_click') {
+          return { success: false, error: { message: 'Invalid testId' } };
+        }
+        return { success: true };
+      });
+      setToolValidator(validator);
 
-       const result = await handleRunSteps({
-         steps: [
-           { tool: 'mm_click', args: { testId: '' } },
-           { tool: 'mm_type', args: { text: 'hello' } },
-         ],
-         stopOnError: true,
-       });
+      const result = await handleRunSteps({
+        steps: [
+          { tool: 'mm_click', args: { testId: '' } },
+          { tool: 'mm_type', args: { text: 'hello' } },
+        ],
+        stopOnError: true,
+      });
 
-       expect(clickHandler).not.toHaveBeenCalled();
-       expect(typeHandler).not.toHaveBeenCalled();
-       if (result.ok) {
-         expect(result.result?.steps.length).toBe(1);
-         expect(result.result?.steps[0].ok).toBe(false);
-         expect(result.result?.steps[0].error?.code).toBe('MM_INVALID_INPUT');
-       }
-     });
+      expect(clickHandler).not.toHaveBeenCalled();
+      expect(typeHandler).not.toHaveBeenCalled();
+      if (result.ok) {
+        expect(result.result?.steps.length).toBe(1);
+        expect(result.result?.steps[0].ok).toBe(false);
+        expect(result.result?.steps[0].error?.code).toBe('MM_INVALID_INPUT');
+      }
+    });
 
-     it('stops execution when stopOnError=true and handler throws error', async () => {
-       const clickHandler = vi.fn().mockRejectedValue(new Error('Timeout'));
-       const typeHandler = vi.fn().mockResolvedValue({ ok: true });
-       setToolRegistry({
-         mm_click: clickHandler,
-         mm_type: typeHandler,
-       });
+    it('stops execution when stopOnError=true and handler throws error', async () => {
+      const clickHandler = vi.fn().mockRejectedValue(new Error('Timeout'));
+      const typeHandler = vi.fn().mockResolvedValue({ ok: true });
+      setToolRegistry({
+        mm_click: clickHandler,
+        mm_type: typeHandler,
+      });
 
-       const result = await handleRunSteps({
-         steps: [
-           { tool: 'mm_click', args: {} },
-           { tool: 'mm_type', args: { text: 'hello' } },
-         ],
-         stopOnError: true,
-       });
+      const result = await handleRunSteps({
+        steps: [
+          { tool: 'mm_click', args: {} },
+          { tool: 'mm_type', args: { text: 'hello' } },
+        ],
+        stopOnError: true,
+      });
 
-       expect(clickHandler).toHaveBeenCalledTimes(1);
-       expect(typeHandler).not.toHaveBeenCalled();
-       if (result.ok) {
-         expect(result.result?.steps.length).toBe(1);
-         expect(result.result?.steps[0].ok).toBe(false);
-         expect(result.result?.steps[0].error?.code).toBe('MM_INTERNAL_ERROR');
-       }
-     });
-   });
+      expect(clickHandler).toHaveBeenCalledTimes(1);
+      expect(typeHandler).not.toHaveBeenCalled();
+      if (result.ok) {
+        expect(result.result?.steps.length).toBe(1);
+        expect(result.result?.steps[0].ok).toBe(false);
+        expect(result.result?.steps[0].error?.code).toBe('MM_INTERNAL_ERROR');
+      }
+    });
+  });
 });

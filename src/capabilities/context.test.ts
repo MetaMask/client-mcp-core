@@ -1,15 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type {
-  EnvironmentConfig,
-  E2EEnvironmentConfig,
-  ProdEnvironmentConfig,
-  WorkflowContext,
-} from './context.js';
-import {
-  isE2EConfig,
-  isProdConfig,
-  hasCapability,
-} from './context.js';
+
+import type { EnvironmentConfig, WorkflowContext } from './context.js';
+import { isE2EConfig, isProdConfig, hasCapability } from './context.js';
 
 describe('isE2EConfig', () => {
   it('returns true for E2E environment config', () => {
@@ -367,7 +359,7 @@ describe('hasCapability', () => {
 
     if (hasCapability(context, 'fixture')) {
       const state = context.fixture.getDefaultState();
-      expect(state.data).toEqual({ test: true });
+      expect(state.data).toStrictEqual({ test: true });
     }
   });
 

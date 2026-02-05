@@ -1,7 +1,3 @@
-import { execSync } from 'child_process';
-import { existsSync } from 'fs';
-import * as path from 'path';
-
 import type { BuildCapability } from '../../capabilities/types.js';
 import type {
   BuildInput,
@@ -45,20 +41,13 @@ export async function handleBuild(
     return handleBuildWithCapability(input, options.buildCapability, startTime);
   }
 
-  // Check if we're in a context where legacy build is available
-  // (i.e., running directly in metamask-extension repo)
-  const nodeModulesPath = path.join(process.cwd(), 'node_modules');
-  if (!existsSync(nodeModulesPath)) {
-    return createErrorResponse(
-      ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE,
-      'BuildCapability not available. The mm_build tool requires either: (1) running in e2e mode with the MetaMask extension wrapper, or (2) running directly in the metamask-extension repository with dependencies installed.',
-      { capability: 'BuildCapability' },
-      undefined,
-      startTime,
-    );
-  }
-
-  return handleBuildLegacy(input, startTime);
+  return createErrorResponse(
+    ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE,
+    'BuildCapability not available. The mm_build tool requires either: (1) running in e2e mode with the MetaMask extension wrapper, or (2) running directly in the metamask-extension repository with dependencies installed.',
+    { capability: 'BuildCapability' },
+    undefined,
+    startTime,
+  );
 }
 
 /**
@@ -104,64 +93,6 @@ async function handleBuildWithCapability(
       ErrorCodes.MM_BUILD_FAILED,
       `Build failed: ${message}`,
       { buildType: input.buildType ?? 'build:test' },
-      undefined,
-      startTime,
-    );
-  }
-}
-
-/**
- * Handles build using legacy approach (direct yarn command execution).
- *
- * @param input Build configuration with optional buildType and force flag
- * @param startTime Timestamp when the operation started
- * @returns Promise resolving to MCP response with build result
- */
-async function handleBuildLegacy(
-  input: BuildInput,
-  startTime: number,
-): Promise<McpResponse<BuildToolResult>> {
-  const buildType = input.buildType ?? 'build:test';
-  const extensionPath = path.join(process.cwd(), 'dist', 'chrome');
-
-  try {
-    const nodeModulesPath = path.join(process.cwd(), 'node_modules');
-    if (!existsSync(nodeModulesPath)) {
-      return createErrorResponse(
-        ErrorCodes.MM_DEPENDENCIES_MISSING,
-        'Dependencies not installed. Run: yarn install',
-        { nodeModulesPath },
-        undefined,
-        startTime,
-      );
-    }
-
-    const manifestPath = path.join(extensionPath, 'manifest.json');
-    const needsBuild = input.force ?? !existsSync(manifestPath);
-
-    if (needsBuild) {
-      console.log(`Running: yarn ${buildType}`);
-      execSync(`yarn ${buildType}`, {
-        stdio: 'inherit',
-        cwd: process.cwd(),
-        timeout: 600000,
-      });
-    }
-
-    return createSuccessResponse<BuildToolResult>(
-      {
-        buildType: 'build:test',
-        extensionPathResolved: extensionPath,
-      },
-      undefined,
-      startTime,
-    );
-  } catch (error) {
-    const message = extractErrorMessage(error);
-    return createErrorResponse(
-      ErrorCodes.MM_BUILD_FAILED,
-      `Build failed: ${message}`,
-      { buildType },
       undefined,
       startTime,
     );

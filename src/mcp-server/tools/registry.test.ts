@@ -73,10 +73,10 @@ describe('tool registry', () => {
     it('returns record with prefixed tool names', () => {
       const handlers = buildToolHandlersRecord();
 
-      expect(handlers['mm_launch']).toBeDefined();
-      expect(handlers['mm_cleanup']).toBeDefined();
-      expect(handlers['mm_click']).toBeDefined();
-      expect(handlers['mm_type']).toBeDefined();
+      expect(handlers.mm_launch).toBeDefined();
+      expect(handlers.mm_cleanup).toBeDefined();
+      expect(handlers.mm_click).toBeDefined();
+      expect(handlers.mm_type).toBeDefined();
     });
 
     it('returns fresh record on each call', () => {
@@ -84,7 +84,7 @@ describe('tool registry', () => {
       const handlers2 = buildToolHandlersRecord();
 
       expect(handlers1).not.toBe(handlers2);
-      expect(handlers1).toEqual(handlers2);
+      expect(handlers1).toStrictEqual(handlers2);
     });
 
     it('includes all 27 tools', () => {
@@ -148,7 +148,9 @@ describe('tool registry', () => {
     it('matches buildToolHandlersRecord output', () => {
       const freshHandlers = buildToolHandlersRecord();
 
-      expect(Object.keys(toolHandlers)).toEqual(Object.keys(freshHandlers));
+      expect(Object.keys(toolHandlers)).toStrictEqual(
+        Object.keys(freshHandlers),
+      );
     });
   });
 });

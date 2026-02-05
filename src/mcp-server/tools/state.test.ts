@@ -6,12 +6,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { handleGetState } from './state.js';
-import { ErrorCodes } from '../types/errors.js';
-import { createMockSessionManager, createMockPage } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
-import * as knowledgeStoreModule from '../knowledge-store.js';
 import type { StateSnapshotCapability } from '../../capabilities/types.js';
+import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager, createMockPage } from '../test-utils';
+import { ErrorCodes } from '../types/errors.js';
 
 describe('state', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -37,11 +38,15 @@ describe('state', () => {
       recordStep: vi.fn().mockResolvedValue(undefined),
       getLastSteps: vi.fn().mockResolvedValue([]),
       searchSteps: vi.fn().mockResolvedValue([]),
-      summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+      summarizeSession: vi
+        .fn()
+        .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     } as any);
   });
 
@@ -54,9 +59,11 @@ describe('state', () => {
       it('returns extension state from session manager', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockPage.url = vi.fn().mockReturnValue('chrome-extension://ext-123/home.html');
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getExtensionState = vi.fn().mockResolvedValue({
+        vi.spyOn(mockPage, 'url').mockReturnValue(
+          'chrome-extension://ext-123/home.html',
+        );
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue({
           isLoaded: true,
           currentUrl: 'chrome-extension://ext-123/home.html',
           extensionId: 'ext-123',
@@ -67,8 +74,12 @@ describe('state', () => {
           chainId: 1,
           balance: '1.5 ETH',
         });
-        mockSessionManager.getTrackedPages = vi.fn().mockReturnValue([
-          { page: mockPage, role: 'extension', url: 'chrome-extension://ext-123/home.html' },
+        vi.spyOn(mockSessionManager, 'getTrackedPages').mockReturnValue([
+          {
+            page: mockPage,
+            role: 'extension',
+            url: 'chrome-extension://ext-123/home.html',
+          },
         ]);
 
         // Act
@@ -77,7 +88,7 @@ describe('state', () => {
         // Assert
         expect(result.ok).toBe(true);
         if (result.ok) {
-          expect(result.result.state).toEqual({
+          expect(result.result.state).toStrictEqual({
             isLoaded: true,
             currentUrl: 'chrome-extension://ext-123/home.html',
             extensionId: 'ext-123',
@@ -88,7 +99,7 @@ describe('state', () => {
             chainId: 1,
             balance: '1.5 ETH',
           });
-          expect(result.result.tabs).toEqual({
+          expect(result.result.tabs).toStrictEqual({
             active: {
               role: 'extension',
               url: 'chrome-extension://ext-123/home.html',
@@ -107,12 +118,18 @@ describe('state', () => {
       it('includes multiple tracked pages in tabs', async () => {
         // Arrange
         const mockExtensionPage = createMockPage();
-        mockExtensionPage.url = vi.fn().mockReturnValue('chrome-extension://ext-123/home.html');
+        vi.spyOn(mockExtensionPage, 'url').mockReturnValue(
+          'chrome-extension://ext-123/home.html',
+        );
         const mockDappPage = createMockPage();
-        mockDappPage.url = vi.fn().mockReturnValue('https://app.uniswap.org');
-        
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockExtensionPage);
-        mockSessionManager.getExtensionState = vi.fn().mockResolvedValue({
+        vi.spyOn(mockDappPage, 'url').mockReturnValue(
+          'https://app.uniswap.org',
+        );
+
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(
+          mockExtensionPage,
+        );
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue({
           isLoaded: true,
           currentUrl: 'chrome-extension://ext-123/home.html',
           extensionId: 'ext-123',
@@ -123,9 +140,17 @@ describe('state', () => {
           chainId: 1,
           balance: '1.5 ETH',
         });
-        mockSessionManager.getTrackedPages = vi.fn().mockReturnValue([
-          { page: mockExtensionPage, role: 'extension', url: 'chrome-extension://ext-123/home.html' },
-          { page: mockDappPage, role: 'dapp', url: 'https://app.uniswap.org' },
+        vi.spyOn(mockSessionManager, 'getTrackedPages').mockReturnValue([
+          {
+            page: mockExtensionPage,
+            role: 'extension',
+            url: 'chrome-extension://ext-123/home.html',
+          },
+          {
+            page: mockDappPage,
+            role: 'dapp',
+            url: 'https://app.uniswap.org',
+          },
         ]);
 
         // Act
@@ -136,7 +161,7 @@ describe('state', () => {
         if (result.ok) {
           expect(result.result.tabs).toBeDefined();
           expect(result.result.tabs?.tracked).toHaveLength(2);
-          expect(result.result.tabs?.tracked).toEqual([
+          expect(result.result.tabs?.tracked).toStrictEqual([
             { role: 'extension', url: 'chrome-extension://ext-123/home.html' },
             { role: 'dapp', url: 'https://app.uniswap.org' },
           ]);
@@ -146,9 +171,11 @@ describe('state', () => {
       it('handles active page without tracked page info', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockPage.url = vi.fn().mockReturnValue('chrome-extension://ext-123/home.html');
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getExtensionState = vi.fn().mockResolvedValue({
+        vi.spyOn(mockPage, 'url').mockReturnValue(
+          'chrome-extension://ext-123/home.html',
+        );
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue({
           isLoaded: true,
           currentUrl: 'chrome-extension://ext-123/home.html',
           extensionId: 'ext-123',
@@ -159,7 +186,7 @@ describe('state', () => {
           chainId: null,
           balance: null,
         });
-        mockSessionManager.getTrackedPages = vi.fn().mockReturnValue([]);
+        vi.spyOn(mockSessionManager, 'getTrackedPages').mockReturnValue([]);
 
         // Act
         const result = await handleGetState();
@@ -169,7 +196,9 @@ describe('state', () => {
         if (result.ok) {
           expect(result.result.tabs).toBeDefined();
           expect(result.result.tabs?.active.role).toBe('other');
-          expect(result.result.tabs?.active.url).toBe('chrome-extension://ext-123/home.html');
+          expect(result.result.tabs?.active.url).toBe(
+            'chrome-extension://ext-123/home.html',
+          );
         }
       });
     });
@@ -178,14 +207,20 @@ describe('state', () => {
       it('uses state snapshot capability when provided', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockPage.url = vi.fn().mockReturnValue('chrome-extension://ext-123/home.html');
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getSessionState = vi.fn().mockReturnValue({
+        vi.spyOn(mockPage, 'url').mockReturnValue(
+          'chrome-extension://ext-123/home.html',
+        );
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getSessionState').mockReturnValue({
           extensionId: 'ext-123',
           ports: { anvil: 8545 },
         });
-        mockSessionManager.getTrackedPages = vi.fn().mockReturnValue([
-          { page: mockPage, role: 'extension', url: 'chrome-extension://ext-123/home.html' },
+        vi.spyOn(mockSessionManager, 'getTrackedPages').mockReturnValue([
+          {
+            page: mockPage,
+            role: 'extension',
+            url: 'chrome-extension://ext-123/home.html',
+          },
         ]);
 
         const mockStateSnapshot: StateSnapshotCapability = {
@@ -204,7 +239,9 @@ describe('state', () => {
         };
 
         // Act
-        const result = await handleGetState({ stateSnapshotCapability: mockStateSnapshot });
+        const result = await handleGetState({
+          stateSnapshotCapability: mockStateSnapshot,
+        });
 
         // Assert
         expect(result.ok).toBe(true);
@@ -223,14 +260,20 @@ describe('state', () => {
       it('uses chainId 1 when anvil port not present', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockPage.url = vi.fn().mockReturnValue('chrome-extension://ext-123/home.html');
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getSessionState = vi.fn().mockReturnValue({
+        vi.spyOn(mockPage, 'url').mockReturnValue(
+          'chrome-extension://ext-123/home.html',
+        );
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getSessionState').mockReturnValue({
           extensionId: 'ext-123',
           ports: {},
         });
-        mockSessionManager.getTrackedPages = vi.fn().mockReturnValue([
-          { page: mockPage, role: 'extension', url: 'chrome-extension://ext-123/home.html' },
+        vi.spyOn(mockSessionManager, 'getTrackedPages').mockReturnValue([
+          {
+            page: mockPage,
+            role: 'extension',
+            url: 'chrome-extension://ext-123/home.html',
+          },
         ]);
 
         const mockStateSnapshot: StateSnapshotCapability = {
@@ -249,7 +292,9 @@ describe('state', () => {
         };
 
         // Act
-        const result = await handleGetState({ stateSnapshotCapability: mockStateSnapshot });
+        const result = await handleGetState({
+          stateSnapshotCapability: mockStateSnapshot,
+        });
 
         // Assert
         expect(result.ok).toBe(true);
@@ -263,7 +308,7 @@ describe('state', () => {
     describe('error handling', () => {
       it('returns error when no active session', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
 
         // Act
         const result = await handleGetState();
@@ -278,8 +323,8 @@ describe('state', () => {
       it('returns error when getExtensionState fails', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getExtensionState = vi.fn().mockRejectedValue(
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockRejectedValue(
           new Error('Failed to get state'),
         );
 
@@ -297,8 +342,8 @@ describe('state', () => {
       it('returns error when page is closed', async () => {
         // Arrange
         const mockPage = createMockPage();
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getExtensionState = vi.fn().mockRejectedValue(
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockRejectedValue(
           new Error('Target page, context or browser has been closed'),
         );
 

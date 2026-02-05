@@ -6,17 +6,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import {
   handleSeedContract,
   handleSeedContracts,
   handleGetContractAddress,
   handleListDeployedContracts,
 } from './seeding.js';
-import { ErrorCodes } from '../types/errors.js';
-import { createMockSessionManager } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
-import * as knowledgeStoreModule from '../knowledge-store.js';
 import type { ContractSeedingCapability } from '../../capabilities/types.js';
+import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils';
+import { ErrorCodes } from '../types/errors.js';
 
 describe('seeding', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -43,11 +44,15 @@ describe('seeding', () => {
       recordStep: vi.fn().mockResolvedValue(undefined),
       getLastSteps: vi.fn().mockResolvedValue([]),
       searchSteps: vi.fn().mockResolvedValue([]),
-      summarizeSession: vi.fn().mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
+      summarizeSession: vi
+        .fn()
+        .mockResolvedValue({ sessionId: 'test', stepCount: 0, recipe: [] }),
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     } as any);
 
     // Create fresh mock seeding capability
@@ -70,11 +75,13 @@ describe('seeding', () => {
     it('deploys a single contract successfully', async () => {
       // Arrange
       const deployedAt = new Date().toISOString();
-      mockSeedingCapability.deployContract = vi.fn().mockResolvedValue({
-        name: 'hst',
-        address: '0x1234567890123456789012345678901234567890',
-        deployedAt,
-      });
+      const mockedDeployContract = vi
+        .spyOn(mockSeedingCapability, 'deployContract')
+        .mockResolvedValue({
+          name: 'hst',
+          address: '0x1234567890123456789012345678901234567890',
+          deployedAt,
+        });
 
       // Act
       const result = await handleSeedContract(
@@ -86,10 +93,12 @@ describe('seeding', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.result.contractName).toBe('hst');
-        expect(result.result.contractAddress).toBe('0x1234567890123456789012345678901234567890');
+        expect(result.result.contractAddress).toBe(
+          '0x1234567890123456789012345678901234567890',
+        );
         expect(result.result.deployedAt).toBe(deployedAt);
       }
-      expect(mockSeedingCapability.deployContract).toHaveBeenCalledWith('hst', {
+      expect(mockedDeployContract).toHaveBeenCalledWith('hst', {
         hardfork: undefined,
         deployerOptions: undefined,
       });
@@ -98,11 +107,13 @@ describe('seeding', () => {
     it('deploys contract with custom hardfork', async () => {
       // Arrange
       const deployedAt = new Date().toISOString();
-      mockSeedingCapability.deployContract = vi.fn().mockResolvedValue({
-        name: 'nfts',
-        address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-        deployedAt,
-      });
+      const mockedDeployContract = vi
+        .spyOn(mockSeedingCapability, 'deployContract')
+        .mockResolvedValue({
+          name: 'nfts',
+          address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+          deployedAt,
+        });
 
       // Act
       const result = await handleSeedContract(
@@ -112,7 +123,7 @@ describe('seeding', () => {
 
       // Assert
       expect(result.ok).toBe(true);
-      expect(mockSeedingCapability.deployContract).toHaveBeenCalledWith('nfts', {
+      expect(mockedDeployContract).toHaveBeenCalledWith('nfts', {
         hardfork: 'shanghai',
         deployerOptions: undefined,
       });
@@ -121,11 +132,13 @@ describe('seeding', () => {
     it('deploys contract with deployer options', async () => {
       // Arrange
       const deployedAt = new Date().toISOString();
-      mockSeedingCapability.deployContract = vi.fn().mockResolvedValue({
-        name: 'piggybank',
-        address: '0x9876543210987654321098765432109876543210',
-        deployedAt,
-      });
+      const mockedDeployContract = vi
+        .spyOn(mockSeedingCapability, 'deployContract')
+        .mockResolvedValue({
+          name: 'piggybank',
+          address: '0x9876543210987654321098765432109876543210',
+          deployedAt,
+        });
 
       // Act
       const result = await handleSeedContract(
@@ -140,7 +153,7 @@ describe('seeding', () => {
 
       // Assert
       expect(result.ok).toBe(true);
-      expect(mockSeedingCapability.deployContract).toHaveBeenCalledWith('piggybank', {
+      expect(mockedDeployContract).toHaveBeenCalledWith('piggybank', {
         hardfork: undefined,
         deployerOptions: {
           fromAddress: '0x1111111111111111111111111111111111111111',
@@ -159,13 +172,15 @@ describe('seeding', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
-        expect(result.error.message).toContain('ContractSeedingCapability not available');
+        expect(result.error.message).toContain(
+          'ContractSeedingCapability not available',
+        );
       }
     });
 
     it('returns error when deployment fails', async () => {
       // Arrange
-      mockSeedingCapability.deployContract = vi.fn().mockRejectedValue(
+      vi.spyOn(mockSeedingCapability, 'deployContract').mockRejectedValue(
         new Error('Contract not found: unknown'),
       );
 
@@ -185,7 +200,7 @@ describe('seeding', () => {
 
     it('returns error when deployment fails with generic error', async () => {
       // Arrange
-      mockSeedingCapability.deployContract = vi.fn().mockRejectedValue(
+      vi.spyOn(mockSeedingCapability, 'deployContract').mockRejectedValue(
         new Error('Deployment failed'),
       );
 
@@ -209,21 +224,23 @@ describe('seeding', () => {
       // Arrange
       const deployedAt1 = new Date().toISOString();
       const deployedAt2 = new Date(Date.now() + 1000).toISOString();
-      mockSeedingCapability.deployContracts = vi.fn().mockResolvedValue({
-        deployed: [
-          {
-            name: 'hst',
-            address: '0x1234567890123456789012345678901234567890',
-            deployedAt: deployedAt1,
-          },
-          {
-            name: 'nfts',
-            address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-            deployedAt: deployedAt2,
-          },
-        ],
-        failed: [],
-      });
+      const mockedDeployContracts = vi
+        .spyOn(mockSeedingCapability, 'deployContracts')
+        .mockResolvedValue({
+          deployed: [
+            {
+              name: 'hst',
+              address: '0x1234567890123456789012345678901234567890',
+              deployedAt: deployedAt1,
+            },
+            {
+              name: 'nfts',
+              address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+              deployedAt: deployedAt2,
+            },
+          ],
+          failed: [],
+        });
 
       // Act
       const result = await handleSeedContracts(
@@ -239,7 +256,7 @@ describe('seeding', () => {
         expect(result.result.deployed[1].contractName).toBe('nfts');
         expect(result.result.failed).toHaveLength(0);
       }
-      expect(mockSeedingCapability.deployContracts).toHaveBeenCalledWith(['hst', 'nfts'], {
+      expect(mockedDeployContracts).toHaveBeenCalledWith(['hst', 'nfts'], {
         hardfork: undefined,
       });
     });
@@ -247,16 +264,18 @@ describe('seeding', () => {
     it('deploys contracts with custom hardfork', async () => {
       // Arrange
       const deployedAt = new Date().toISOString();
-      mockSeedingCapability.deployContracts = vi.fn().mockResolvedValue({
-        deployed: [
-          {
-            name: 'hst',
-            address: '0x1234567890123456789012345678901234567890',
-            deployedAt,
-          },
-        ],
-        failed: [],
-      });
+      const mockedDeployContracts = vi
+        .spyOn(mockSeedingCapability, 'deployContracts')
+        .mockResolvedValue({
+          deployed: [
+            {
+              name: 'hst',
+              address: '0x1234567890123456789012345678901234567890',
+              deployedAt,
+            },
+          ],
+          failed: [],
+        });
 
       // Act
       const result = await handleSeedContracts(
@@ -266,7 +285,7 @@ describe('seeding', () => {
 
       // Assert
       expect(result.ok).toBe(true);
-      expect(mockSeedingCapability.deployContracts).toHaveBeenCalledWith(['hst'], {
+      expect(mockedDeployContracts).toHaveBeenCalledWith(['hst'], {
         hardfork: 'shanghai',
       });
     });
@@ -274,7 +293,7 @@ describe('seeding', () => {
     it('handles partial deployment failures', async () => {
       // Arrange
       const deployedAt = new Date().toISOString();
-      mockSeedingCapability.deployContracts = vi.fn().mockResolvedValue({
+      vi.spyOn(mockSeedingCapability, 'deployContracts').mockResolvedValue({
         deployed: [
           {
             name: 'hst',
@@ -302,7 +321,9 @@ describe('seeding', () => {
         expect(result.result.deployed).toHaveLength(1);
         expect(result.result.failed).toHaveLength(1);
         expect(result.result.failed[0].contractName).toBe('nfts');
-        expect(result.result.failed[0].error).toBe('Contract deployment failed');
+        expect(result.result.failed[0].error).toBe(
+          'Contract deployment failed',
+        );
       }
     });
 
@@ -317,13 +338,15 @@ describe('seeding', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
-        expect(result.error.message).toContain('ContractSeedingCapability not available');
+        expect(result.error.message).toContain(
+          'ContractSeedingCapability not available',
+        );
       }
     });
 
     it('returns error when deployment fails completely', async () => {
       // Arrange
-      mockSeedingCapability.deployContracts = vi.fn().mockRejectedValue(
+      vi.spyOn(mockSeedingCapability, 'deployContracts').mockRejectedValue(
         new Error('Anvil not running'),
       );
 
@@ -345,9 +368,9 @@ describe('seeding', () => {
   describe('handleGetContractAddress', () => {
     it('returns contract address when found', async () => {
       // Arrange
-      mockSeedingCapability.getContractAddress = vi.fn().mockReturnValue(
-        '0x1234567890123456789012345678901234567890',
-      );
+      const mockedGetContractAddress = vi
+        .spyOn(mockSeedingCapability, 'getContractAddress')
+        .mockReturnValue('0x1234567890123456789012345678901234567890');
 
       // Act
       const result = await handleGetContractAddress(
@@ -359,14 +382,18 @@ describe('seeding', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.result.contractName).toBe('hst');
-        expect(result.result.contractAddress).toBe('0x1234567890123456789012345678901234567890');
+        expect(result.result.contractAddress).toBe(
+          '0x1234567890123456789012345678901234567890',
+        );
       }
-      expect(mockSeedingCapability.getContractAddress).toHaveBeenCalledWith('hst');
+      expect(mockedGetContractAddress).toHaveBeenCalledWith('hst');
     });
 
     it('returns null when contract not found', async () => {
       // Arrange
-      mockSeedingCapability.getContractAddress = vi.fn().mockReturnValue(null);
+      vi.spyOn(mockSeedingCapability, 'getContractAddress').mockReturnValue(
+        null,
+      );
 
       // Act
       const result = await handleGetContractAddress(
@@ -393,15 +420,19 @@ describe('seeding', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
-        expect(result.error.message).toContain('ContractSeedingCapability not available');
+        expect(result.error.message).toContain(
+          'ContractSeedingCapability not available',
+        );
       }
     });
 
     it('returns error when lookup fails', async () => {
       // Arrange
-      mockSeedingCapability.getContractAddress = vi.fn().mockImplementation(() => {
-        throw new Error('Registry error');
-      });
+      vi.spyOn(mockSeedingCapability, 'getContractAddress').mockImplementation(
+        () => {
+          throw new Error('Registry error');
+        },
+      );
 
       // Act
       const result = await handleGetContractAddress(
@@ -423,18 +454,20 @@ describe('seeding', () => {
       // Arrange
       const deployedAt1 = new Date().toISOString();
       const deployedAt2 = new Date(Date.now() + 1000).toISOString();
-      mockSeedingCapability.listDeployedContracts = vi.fn().mockReturnValue([
-        {
-          name: 'hst',
-          address: '0x1234567890123456789012345678901234567890',
-          deployedAt: deployedAt1,
-        },
-        {
-          name: 'nfts',
-          address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-          deployedAt: deployedAt2,
-        },
-      ]);
+      const mockedListDeployedContracts = vi
+        .spyOn(mockSeedingCapability, 'listDeployedContracts')
+        .mockReturnValue([
+          {
+            name: 'hst',
+            address: '0x1234567890123456789012345678901234567890',
+            deployedAt: deployedAt1,
+          },
+          {
+            name: 'nfts',
+            address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+            deployedAt: deployedAt2,
+          },
+        ]);
 
       // Act
       const result = await handleListDeployedContracts(
@@ -447,18 +480,24 @@ describe('seeding', () => {
       if (result.ok) {
         expect(result.result.contracts).toHaveLength(2);
         expect(result.result.contracts[0].contractName).toBe('hst');
-        expect(result.result.contracts[0].contractAddress).toBe('0x1234567890123456789012345678901234567890');
+        expect(result.result.contracts[0].contractAddress).toBe(
+          '0x1234567890123456789012345678901234567890',
+        );
         expect(result.result.contracts[0].deployedAt).toBe(deployedAt1);
         expect(result.result.contracts[1].contractName).toBe('nfts');
-        expect(result.result.contracts[1].contractAddress).toBe('0xabcdefabcdefabcdefabcdefabcdefabcdefabcd');
+        expect(result.result.contracts[1].contractAddress).toBe(
+          '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+        );
         expect(result.result.contracts[1].deployedAt).toBe(deployedAt2);
       }
-      expect(mockSeedingCapability.listDeployedContracts).toHaveBeenCalled();
+      expect(mockedListDeployedContracts).toHaveBeenCalled();
     });
 
     it('returns empty list when no contracts deployed', async () => {
       // Arrange
-      mockSeedingCapability.listDeployedContracts = vi.fn().mockReturnValue([]);
+      vi.spyOn(mockSeedingCapability, 'listDeployedContracts').mockReturnValue(
+        [],
+      );
 
       // Act
       const result = await handleListDeployedContracts(
@@ -484,13 +523,18 @@ describe('seeding', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
-        expect(result.error.message).toContain('ContractSeedingCapability not available');
+        expect(result.error.message).toContain(
+          'ContractSeedingCapability not available',
+        );
       }
     });
 
     it('returns error when listing fails', async () => {
       // Arrange
-      mockSeedingCapability.listDeployedContracts = vi.fn().mockImplementation(() => {
+      vi.spyOn(
+        mockSeedingCapability,
+        'listDeployedContracts',
+      ).mockImplementation(() => {
         throw new Error('Registry error');
       });
 

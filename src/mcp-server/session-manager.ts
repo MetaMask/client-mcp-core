@@ -310,12 +310,12 @@ export type ISessionManager = {
    *
    * @throws Error with code MM_CONTEXT_SWITCH_BLOCKED if session is active
    */
-  setContext?(context: 'e2e' | 'prod'): void;
+  setContext(context: 'e2e' | 'prod'): void;
 
   /**
    * Get current context information.
    */
-  getContextInfo?(): {
+  getContextInfo(): {
     /**
      *
      */

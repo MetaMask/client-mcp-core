@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   setSessionManager,
@@ -6,46 +6,7 @@ import {
   hasSessionManager,
 } from './session-manager.js';
 import type { ISessionManager } from './session-manager.js';
-
-/**
- * Create a mock session manager for testing.
- *
- * @returns Mock ISessionManager instance with all methods stubbed
- */
-const createMockSessionManager = (): ISessionManager => ({
-  hasActiveSession: vi.fn().mockReturnValue(false),
-  getSessionId: vi.fn().mockReturnValue(undefined),
-  getSessionState: vi.fn().mockReturnValue(undefined),
-  getSessionMetadata: vi.fn().mockReturnValue(undefined),
-  launch: vi.fn().mockResolvedValue({
-    sessionId: 'test-session-123',
-    extensionId: 'ext-123',
-    state: { screen: 'home', url: 'chrome-extension://ext-123/home.html' },
-  }),
-  cleanup: vi.fn().mockResolvedValue(true),
-  getPage: vi.fn(),
-  setActivePage: vi.fn(),
-  getTrackedPages: vi.fn().mockReturnValue([]),
-  classifyPageRole: vi.fn().mockReturnValue('extension'),
-  getContext: vi.fn(),
-  getExtensionState: vi.fn().mockResolvedValue({ screen: 'home' }),
-  setRefMap: vi.fn(),
-  getRefMap: vi.fn().mockReturnValue(new Map()),
-  clearRefMap: vi.fn(),
-  resolveA11yRef: vi.fn(),
-  navigateToHome: vi.fn().mockResolvedValue(undefined),
-  navigateToSettings: vi.fn().mockResolvedValue(undefined),
-  navigateToUrl: vi.fn(),
-  navigateToNotification: vi.fn(),
-  waitForNotificationPage: vi.fn(),
-  screenshot: vi.fn().mockResolvedValue({ path: '/path/to/screenshot.png' }),
-  getBuildCapability: vi.fn().mockReturnValue(undefined),
-  getFixtureCapability: vi.fn().mockReturnValue(undefined),
-  getChainCapability: vi.fn().mockReturnValue(undefined),
-  getContractSeedingCapability: vi.fn().mockReturnValue(undefined),
-  getStateSnapshotCapability: vi.fn().mockReturnValue(undefined),
-  getEnvironmentMode: vi.fn().mockReturnValue('e2e'),
-});
+import { createMockSessionManager } from './test-utils/mock-factories.js';
 
 describe('session-manager', () => {
   beforeEach(() => {

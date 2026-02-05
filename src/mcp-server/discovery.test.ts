@@ -8,8 +8,9 @@
  * - waitForTarget: Wait for target to become visible
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Page, Locator } from '@playwright/test';
+import { describe, it, expect, vi } from 'vitest';
+
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
@@ -18,13 +19,12 @@ import {
 } from './discovery.js';
 import type { RawA11yNode } from './types';
 
-/**
- * Create a mock Playwright Page with test ID locators
- */
-function createMockPage(options: {
-  testIds?: Array<{ testId: string; visible: boolean; text?: string }>;
-  a11ySnapshot?: RawA11yNode | null;
-} = {}): Page {
+function createMockPage(
+  options: {
+    testIds?: { testId: string; visible: boolean; text?: string }[];
+    a11ySnapshot?: RawA11yNode | null;
+  } = {},
+): Page {
   const { testIds = [], a11ySnapshot = null } = options;
 
   const mockLocators = testIds.map((item) => ({
@@ -51,7 +51,7 @@ function createMockPage(options: {
         };
       }
       if (selector.startsWith('[data-testid="')) {
-        const testId = selector.match(/data-testid="([^"]+)"/)?.[1];
+        const testId = selector.match(/data-testid="([^"]+)"/u)?.[1];
         return { testId };
       }
       if (selector.startsWith('role=')) {
@@ -64,17 +64,16 @@ function createMockPage(options: {
   } as unknown as Page;
 }
 
-/**
- * Create a mock Playwright Locator
- */
-function createMockLocator(options: {
-  visible?: boolean;
-  timeout?: boolean;
-} = {}): Locator {
+function createMockLocator(
+  options: {
+    visible?: boolean;
+    timeout?: boolean;
+  } = {},
+): Locator {
   const { visible = true, timeout = false } = options;
 
   return {
-    waitFor: vi.fn().mockImplementation(() => {
+    waitFor: vi.fn().mockImplementation(async () => {
       if (timeout) {
         return Promise.reject(new Error('Timeout waiting for element'));
       }
@@ -96,13 +95,13 @@ describe('collectTestIds', () => {
     const result = await collectTestIds(page);
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({
+    expect(result[0]).toStrictEqual({
       testId: 'button-1',
       tag: 'element',
       text: 'Click me',
       visible: true,
     });
-    expect(result[1]).toEqual({
+    expect(result[1]).toStrictEqual({
       testId: 'input-1',
       tag: 'element',
       text: '',
@@ -202,7 +201,9 @@ describe('collectTestIds', () => {
     const page = createMockPage({
       testIds: [{ testId: 'test-1', visible: true }],
     });
-    page.waitForLoadState = vi.fn().mockRejectedValue(new Error('Load failed'));
+    vi.spyOn(page, 'waitForLoadState').mockRejectedValue(
+      new Error('Load failed'),
+    );
 
     const result = await collectTestIds(page);
 
@@ -225,13 +226,13 @@ describe('collectTrimmedA11ySnapshot', () => {
     const result = await collectTrimmedA11ySnapshot(page);
 
     expect(result.nodes).toHaveLength(2);
-    expect(result.nodes[0]).toEqual({
+    expect(result.nodes[0]).toStrictEqual({
       ref: 'e1',
       role: 'button',
       name: 'Submit',
       path: [],
     });
-    expect(result.nodes[1]).toEqual({
+    expect(result.nodes[1]).toStrictEqual({
       ref: 'e2',
       role: 'button',
       name: 'Cancel',
@@ -315,9 +316,15 @@ describe('collectTrimmedA11ySnapshot', () => {
     const result = await collectTrimmedA11ySnapshot(page);
 
     expect(result.nodes).toHaveLength(3);
-    expect(result.nodes[0].path).toEqual(['dialog:Confirm']);
-    expect(result.nodes[1].path).toEqual(['dialog:Confirm', 'heading:Title']);
-    expect(result.nodes[2].path).toEqual(['dialog:Confirm', 'heading:Title']);
+    expect(result.nodes[0].path).toStrictEqual(['dialog:Confirm']);
+    expect(result.nodes[1].path).toStrictEqual([
+      'dialog:Confirm',
+      'heading:Title',
+    ]);
+    expect(result.nodes[2].path).toStrictEqual([
+      'dialog:Confirm',
+      'heading:Title',
+    ]);
   });
 
   it('escapes quotes in accessibility names', async () => {
@@ -398,7 +405,7 @@ describe('resolveTarget', () => {
     const refMap = new Map([['e1', 'role=button[name="Submit"]']]);
     const page = createMockPage();
 
-    const locator = await resolveTarget(page, 'a11yRef', 'e1', refMap);
+    await resolveTarget(page, 'a11yRef', 'e1', refMap);
 
     expect(page.locator).toHaveBeenCalledWith('role=button[name="Submit"]');
   });
@@ -409,7 +416,7 @@ describe('resolveTarget', () => {
 
     await expect(
       resolveTarget(page, 'a11yRef', 'e99', refMap),
-    ).rejects.toThrow('Unknown a11yRef: e99');
+    ).rejects.toThrowError('Unknown a11yRef: e99');
   });
 
   it('includes available refs in error message', async () => {
@@ -421,13 +428,13 @@ describe('resolveTarget', () => {
 
     await expect(
       resolveTarget(page, 'a11yRef', 'e99', refMap),
-    ).rejects.toThrow('Available refs: e1, e2');
+    ).rejects.toThrowError('Available refs: e1, e2');
   });
 
   it('resolves testId to data-testid selector', async () => {
     const page = createMockPage();
 
-    const locator = await resolveTarget(page, 'testId', 'submit-btn', new Map());
+    await resolveTarget(page, 'testId', 'submit-btn', new Map());
 
     expect(page.locator).toHaveBeenCalledWith('[data-testid="submit-btn"]');
   });
@@ -435,7 +442,7 @@ describe('resolveTarget', () => {
   it('resolves selector directly', async () => {
     const page = createMockPage();
 
-    const locator = await resolveTarget(page, 'selector', '.submit-button', new Map());
+    await resolveTarget(page, 'selector', '.submit-button', new Map());
 
     expect(page.locator).toHaveBeenCalledWith('.submit-button');
   });
@@ -450,7 +457,7 @@ describe('waitForTarget', () => {
       locator: vi.fn().mockReturnValue(mockLocator),
     } as unknown as Page;
 
-    const locator = await waitForTarget(page, 'a11yRef', 'e1', refMap, 5000);
+    await waitForTarget(page, 'a11yRef', 'e1', refMap, 5000);
 
     expect(mockLocator.waitFor).toHaveBeenCalledWith({
       state: 'visible',
@@ -468,7 +475,7 @@ describe('waitForTarget', () => {
 
     await expect(
       waitForTarget(page, 'a11yRef', 'e1', refMap, 1000),
-    ).rejects.toThrow('Timeout waiting for element');
+    ).rejects.toThrowError('Timeout waiting for element');
   });
 
   it('resolves testId target', async () => {

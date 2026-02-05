@@ -9,26 +9,68 @@
  * Each factory call returns NEW instances with fresh vi.fn() mocks.
  */
 
-import { vi } from 'vitest';
 import type { Page, Locator, BrowserContext } from '@playwright/test';
+import { vi } from 'vitest';
 
+/**
+ *
+ */
 export type MockPageOptions = {
+  /**
+   *
+   */
   url?: string;
+  /**
+   *
+   */
   locatorMock?: Locator;
 };
 
+/**
+ *
+ */
 export type MockLocatorOptions = {
+  /**
+   *
+   */
   clickMock?: () => Promise<void>;
+  /**
+   *
+   */
   fillMock?: (text: string) => Promise<void>;
+  /**
+   *
+   */
   isVisibleMock?: () => Promise<boolean>;
+  /**
+   *
+   */
   getAttributeMock?: (name: string) => Promise<string | null>;
+  /**
+   *
+   */
   textContentMock?: () => Promise<string | null>;
+  /**
+   *
+   */
   allMock?: () => Promise<Locator[]>;
+  /**
+   *
+   */
   firstMock?: () => Locator;
+  /**
+   *
+   */
   nthMock?: (index: number) => Locator;
 };
 
+/**
+ *
+ */
 export type MockBrowserContextOptions = {
+  /**
+   *
+   */
   pages?: Page[];
 };
 
@@ -50,9 +92,7 @@ export type MockBrowserContextOptions = {
  * @param options - Customize mock behavior
  * @returns Fresh Locator mock
  */
-export function createMockLocator(
-  options: MockLocatorOptions = {},
-): Partial<Locator> {
+export function createMockLocator(options: MockLocatorOptions = {}): Locator {
   const mockLocator: any = {
     click: vi.fn().mockResolvedValue(options.clickMock?.() ?? undefined),
     fill: vi.fn().mockResolvedValue(options.fillMock?.('') ?? undefined),
@@ -60,9 +100,7 @@ export function createMockLocator(
     getAttribute: vi
       .fn()
       .mockResolvedValue(options.getAttributeMock?.('') ?? null),
-    textContent: vi
-      .fn()
-      .mockResolvedValue(options.textContentMock?.() ?? null),
+    textContent: vi.fn().mockResolvedValue(options.textContentMock?.() ?? null),
     all: vi.fn().mockResolvedValue(options.allMock?.() ?? []),
     clear: vi.fn().mockResolvedValue(undefined),
     check: vi.fn().mockResolvedValue(undefined),
@@ -94,24 +132,11 @@ export function createMockLocator(
     innerHTML: vi.fn().mockResolvedValue(''),
     inputValue: vi.fn().mockResolvedValue(''),
     page: vi.fn(),
+    first: vi.fn().mockReturnValue(options.firstMock?.() ?? {}),
+    nth: vi.fn().mockReturnValue(options.nthMock?.(0) ?? {}),
   };
 
-  mockLocator.first = vi.fn().mockReturnValue(options.firstMock?.() ?? {});
-  mockLocator.nth = vi.fn().mockReturnValue(options.nthMock?.(0) ?? {});
-  mockLocator.locator = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByTestId = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByRole = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByLabel = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByPlaceholder = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByText = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByAltText = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.getByTitle = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.frameLocator = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.filter = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.and = vi.fn().mockReturnValue(mockLocator);
-  mockLocator.or = vi.fn().mockReturnValue(mockLocator);
-
-  return mockLocator as Partial<Locator>;
+  return mockLocator as Locator;
 }
 
 /**
@@ -127,7 +152,7 @@ export function createMockLocator(
  * @param options - Customize mock behavior
  * @returns Fresh Page mock
  */
-export function createMockPage(options: MockPageOptions = {}): Partial<Page> {
+export function createMockPage(options: MockPageOptions = {}): Page {
   const mockLocator = options.locatorMock ?? createMockLocator();
 
   const page: any = {
@@ -197,14 +222,14 @@ export function createMockPage(options: MockPageOptions = {}): Partial<Page> {
     page: vi.fn(),
   };
 
-   page.context.mockReturnValue({
-     pages: vi.fn().mockReturnValue([]),
-     newPage: vi.fn().mockResolvedValue({}),
-     close: vi.fn().mockResolvedValue(undefined),
-   });
-   page.page.mockReturnValue(page);
+  page.context.mockReturnValue({
+    pages: vi.fn().mockReturnValue([]),
+    newPage: vi.fn().mockResolvedValue({}),
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+  page.page.mockReturnValue(page);
 
-  return page as Partial<Page>;
+  return page as Page;
 }
 
 /**
@@ -239,11 +264,11 @@ export function createMockBrowserContext(
     },
   };
 
-   context.newPage.mockResolvedValue({
-     locator: vi.fn().mockReturnValue({}),
-     url: vi.fn().mockReturnValue('about:blank'),
-     close: vi.fn().mockResolvedValue(undefined),
-   });
+  context.newPage.mockResolvedValue({
+    locator: vi.fn().mockReturnValue({}),
+    url: vi.fn().mockReturnValue('about:blank'),
+    close: vi.fn().mockResolvedValue(undefined),
+  });
 
   return context as Partial<BrowserContext>;
 }

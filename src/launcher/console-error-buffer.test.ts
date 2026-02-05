@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { ConsoleErrorBuffer, type ConsoleErrorEntry } from './console-error-buffer';
+
+import { ConsoleErrorBuffer } from './console-error-buffer';
+import type { ConsoleErrorEntry } from './console-error-buffer';
 
 describe('ConsoleErrorBuffer', () => {
   describe('constructor', () => {
@@ -51,8 +53,8 @@ describe('ConsoleErrorBuffer', () => {
 
       const all = buffer.getAll();
       expect(all).toHaveLength(2);
-      expect(all[0]).toEqual(entry1);
-      expect(all[1]).toEqual(entry2);
+      expect(all[0]).toStrictEqual(entry1);
+      expect(all[1]).toStrictEqual(entry2);
     });
 
     it('removes oldest entry when exceeding max capacity', () => {
@@ -79,7 +81,7 @@ describe('ConsoleErrorBuffer', () => {
 
       expect(buffer.size).toBe(2);
       const all = buffer.getAll();
-      expect(all).toEqual([entry2, entry3]);
+      expect(all).toStrictEqual([entry2, entry3]);
     });
 
     it('maintains FIFO order when overflowing', () => {
@@ -121,7 +123,7 @@ describe('ConsoleErrorBuffer', () => {
 
       buffer.add(entry2);
       expect(buffer.size).toBe(1);
-      expect(buffer.getAll()[0]).toEqual(entry2);
+      expect(buffer.getAll()[0]).toStrictEqual(entry2);
     });
 
     it('stores entries with different sources', () => {
@@ -148,7 +150,7 @@ describe('ConsoleErrorBuffer', () => {
 
       const all = buffer.getAll();
       expect(all).toHaveLength(3);
-      expect(all.map((e) => e.source)).toEqual([
+      expect(all.map((e) => e.source)).toStrictEqual([
         'console.error',
         'console.warn',
         'console.log',
@@ -162,7 +164,7 @@ describe('ConsoleErrorBuffer', () => {
 
       const all = buffer.getAll();
 
-      expect(all).toEqual([]);
+      expect(all).toStrictEqual([]);
     });
 
     it('returns copy of entries not reference', () => {
@@ -177,7 +179,7 @@ describe('ConsoleErrorBuffer', () => {
       const all1 = buffer.getAll();
       const all2 = buffer.getAll();
 
-      expect(all1).toEqual(all2);
+      expect(all1).toStrictEqual(all2);
       expect(all1).not.toBe(all2);
     });
 
@@ -196,7 +198,7 @@ describe('ConsoleErrorBuffer', () => {
       }
 
       const all = buffer.getAll();
-      expect(all).toEqual(entries);
+      expect(all).toStrictEqual(entries);
     });
 
     it('does not modify buffer when calling getAll', () => {
@@ -229,7 +231,7 @@ describe('ConsoleErrorBuffer', () => {
       buffer.add(entry);
       const recent = buffer.getRecent(0);
 
-      expect(recent).toEqual([]);
+      expect(recent).toStrictEqual([]);
     });
 
     it('returns empty array when count is negative', () => {
@@ -243,7 +245,7 @@ describe('ConsoleErrorBuffer', () => {
       buffer.add(entry);
       const recent = buffer.getRecent(-5);
 
-      expect(recent).toEqual([]);
+      expect(recent).toStrictEqual([]);
     });
 
     it('returns all entries when count exceeds buffer size', () => {
@@ -262,7 +264,7 @@ describe('ConsoleErrorBuffer', () => {
 
       const recent = buffer.getRecent(10);
 
-      expect(recent).toEqual(entries);
+      expect(recent).toStrictEqual(entries);
     });
 
     it('returns only the most recent N entries', () => {
@@ -282,8 +284,8 @@ describe('ConsoleErrorBuffer', () => {
       const recent = buffer.getRecent(2);
 
       expect(recent).toHaveLength(2);
-      expect(recent[0]).toEqual(entries[3]);
-      expect(recent[1]).toEqual(entries[4]);
+      expect(recent[0]).toStrictEqual(entries[3]);
+      expect(recent[1]).toStrictEqual(entries[4]);
     });
 
     it('returns one entry when count is one', () => {
@@ -304,7 +306,7 @@ describe('ConsoleErrorBuffer', () => {
       const recent = buffer.getRecent(1);
 
       expect(recent).toHaveLength(1);
-      expect(recent[0]).toEqual(entry2);
+      expect(recent[0]).toStrictEqual(entry2);
     });
 
     it('returns recent entries from overflowed buffer', () => {
@@ -340,7 +342,7 @@ describe('ConsoleErrorBuffer', () => {
       const recent1 = buffer.getRecent(1);
       const recent2 = buffer.getRecent(1);
 
-      expect(recent1).toEqual(recent2);
+      expect(recent1).toStrictEqual(recent2);
       expect(recent1).not.toBe(recent2);
     });
 
@@ -349,7 +351,7 @@ describe('ConsoleErrorBuffer', () => {
 
       const recent = buffer.getRecent(5);
 
-      expect(recent).toEqual([]);
+      expect(recent).toStrictEqual([]);
     });
   });
 
@@ -450,15 +452,15 @@ describe('ConsoleErrorBuffer', () => {
 
       buffer.add(entry1);
       expect(buffer.size).toBe(1);
-      expect(buffer.getRecent(1)).toEqual([entry1]);
+      expect(buffer.getRecent(1)).toStrictEqual([entry1]);
 
       buffer.add(entry2);
       expect(buffer.size).toBe(2);
-      expect(buffer.getRecent(2)).toEqual([entry1, entry2]);
+      expect(buffer.getRecent(2)).toStrictEqual([entry1, entry2]);
 
       buffer.add(entry3);
       expect(buffer.size).toBe(3);
-      expect(buffer.getAll()).toEqual([entry1, entry2, entry3]);
+      expect(buffer.getAll()).toStrictEqual([entry1, entry2, entry3]);
     });
 
     it('handles large buffer capacity', () => {
@@ -476,7 +478,7 @@ describe('ConsoleErrorBuffer', () => {
       }
 
       expect(buffer.size).toBe(500);
-      expect(buffer.getAll()).toEqual(entries);
+      expect(buffer.getAll()).toStrictEqual(entries);
       expect(buffer.getRecent(10)).toHaveLength(10);
     });
 
@@ -508,7 +510,7 @@ describe('ConsoleErrorBuffer', () => {
       entries.forEach((entry) => buffer.add(entry));
 
       expect(buffer.size).toBe(4);
-      expect(buffer.getAll()).toEqual(entries);
+      expect(buffer.getAll()).toStrictEqual(entries);
     });
   });
 });

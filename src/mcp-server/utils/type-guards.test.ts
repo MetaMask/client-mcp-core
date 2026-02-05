@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
+
 import {
   isValidTargetSelection,
   isInvalidTargetSelection,
-  type TargetType,
 } from './type-guards.js';
+import type { TargetType } from './type-guards.js';
 
 describe('isValidTargetSelection', () => {
   describe('with valid target selection', () => {

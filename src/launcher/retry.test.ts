@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { delay, retryUntil } from './retry';
 
 describe('retry', () => {
@@ -17,7 +18,7 @@ describe('retry', () => {
 
       await vi.advanceTimersByTimeAsync(1000);
 
-      await expect(promise).resolves.toBeUndefined();
+      expect(await promise).toBeUndefined();
     });
 
     it('resolves immediately with zero delay', async () => {
@@ -25,7 +26,7 @@ describe('retry', () => {
 
       await vi.advanceTimersByTimeAsync(0);
 
-      await expect(promise).resolves.toBeUndefined();
+      expect(await promise).toBeUndefined();
     });
 
     it('resolves after multiple advances', async () => {
@@ -34,7 +35,7 @@ describe('retry', () => {
       await vi.advanceTimersByTimeAsync(2000);
       await vi.advanceTimersByTimeAsync(3000);
 
-      await expect(promise).resolves.toBeUndefined();
+      expect(await promise).toBeUndefined();
     });
   });
 
@@ -220,7 +221,7 @@ describe('retry', () => {
         delayMs: 100,
       });
 
-      await expect(promise).rejects.toThrow('operation failed');
+      await expect(promise).rejects.toThrowError('operation failed');
     });
 
     it('stops retrying after success even with remaining attempts', async () => {

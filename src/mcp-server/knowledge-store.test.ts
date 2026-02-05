@@ -1,10 +1,27 @@
+/* eslint-disable n/no-sync */
 /**
  * Unit tests for KnowledgeStore core operations (Part 1).
  * Part 1 focuses on lines 1-500: initialization, recordStep, session lifecycle.
  */
 
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { execSync } from 'child_process';
+import { promises as fs } from 'fs';
 import * as path from 'path';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+import {
+  KnowledgeStore,
+  setKnowledgeStore,
+  hasKnowledgeStore,
+  knowledgeStore,
+} from './knowledge-store.js';
+import type { KnowledgeStoreConfig } from './knowledge-store.js';
+import type {
+  SessionMetadata,
+  StepRecordOutcome,
+  StepRecordObservation,
+} from './types';
+import type { ExtensionState } from '../capabilities/types.js';
 
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
@@ -26,20 +43,9 @@ vi.mock('child_process', () => ({
   execSync: vi.fn().mockReturnValue('main\n'),
 }));
 
-import {
-  KnowledgeStore,
-  type KnowledgeStoreConfig,
-  setKnowledgeStore,
-  getKnowledgeStore,
-  hasKnowledgeStore,
-  knowledgeStore,
-} from './knowledge-store.js';
-import type { SessionMetadata, StepRecordOutcome, StepRecordObservation } from './types/index.js';
-import type { ExtensionState } from '../capabilities/types.js';
-import { promises as fs } from 'fs';
-import { execSync } from 'child_process';
-
-function createObservation(overrides: Partial<ExtensionState> = {}): StepRecordObservation {
+function createObservation(
+  overrides: Partial<ExtensionState> = {},
+): StepRecordObservation {
   return {
     state: {
       isLoaded: true,
@@ -138,13 +144,15 @@ describe('core', () => {
 
       expect(fs.mkdir).toHaveBeenCalledWith(
         path.join('/test/knowledge', 'session-001'),
-        { recursive: true }
+        { recursive: true },
       );
       expect(fs.writeFile).toHaveBeenCalledWith(
         path.join('/test/knowledge', 'session-001', 'session.json'),
-        JSON.stringify(metadata, null, 2)
+        JSON.stringify(metadata, null, 2),
       );
-      expect(result).toBe(path.join('/test/knowledge', 'session-001', 'session.json'));
+      expect(result).toBe(
+        path.join('/test/knowledge', 'session-001', 'session.json'),
+      );
     });
 
     it('caches metadata after writing', async () => {
@@ -161,7 +169,7 @@ describe('core', () => {
       await store.writeSessionMetadata(metadata);
       const cached = await store.readSessionMetadata('session-002');
 
-      expect(cached).toEqual(metadata);
+      expect(cached).toStrictEqual(metadata);
       expect(fs.readFile).not.toHaveBeenCalled();
     });
 
@@ -181,7 +189,7 @@ describe('core', () => {
 
       expect(fs.writeFile).toHaveBeenCalledWith(
         expect.any(String),
-        expect.stringContaining('"goal": "Test send flow"')
+        expect.stringContaining('"goal": "Test send flow"'),
       );
     });
 
@@ -201,7 +209,7 @@ describe('core', () => {
 
       expect(fs.writeFile).toHaveBeenCalledWith(
         expect.any(String),
-        expect.stringContaining('"branch": "feature/test"')
+        expect.stringContaining('"branch": "feature/test"'),
       );
     });
   });
@@ -223,9 +231,9 @@ describe('core', () => {
 
       expect(fs.readFile).toHaveBeenCalledWith(
         path.join('/test/knowledge', 'session-read-001', 'session.json'),
-        'utf-8'
+        'utf-8',
       );
-      expect(result).toEqual(metadata);
+      expect(result).toStrictEqual(metadata);
     });
 
     it('returns cached metadata on subsequent reads', async () => {
@@ -244,12 +252,14 @@ describe('core', () => {
       const result = await store.readSessionMetadata('session-read-002');
 
       expect(fs.readFile).toHaveBeenCalledTimes(1);
-      expect(result).toEqual(metadata);
+      expect(result).toStrictEqual(metadata);
     });
 
     it('returns null and caches null when file not found', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      vi.mocked(fs.readFile).mockRejectedValueOnce(new Error('ENOENT: file not found'));
+      vi.mocked(fs.readFile).mockRejectedValueOnce(
+        new Error('ENOENT: file not found'),
+      );
 
       const result1 = await store.readSessionMetadata('nonexistent-session');
       const result2 = await store.readSessionMetadata('nonexistent-session');
@@ -286,7 +296,7 @@ describe('core', () => {
 
       expect(fs.mkdir).toHaveBeenCalledWith(
         path.join('/test/knowledge', 'session-step-001', 'steps'),
-        { recursive: true }
+        { recursive: true },
       );
       expect(fs.writeFile).toHaveBeenCalled();
       expect(result).toContain('session-step-001');
@@ -311,7 +321,7 @@ describe('core', () => {
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenData = JSON.parse(writeCall[1] as string);
 
-      expect(writtenData.artifacts).toEqual({
+      expect(writtenData.artifacts).toStrictEqual({
         screenshot: {
           path: '/test/screenshots/screenshot-001.png',
           width: 1280,
@@ -323,7 +333,10 @@ describe('core', () => {
     it('sanitizes sensitive input fields', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
       const outcome: StepRecordOutcome = { ok: true };
-      const observation = createObservation({ currentScreen: 'unlock', isUnlocked: false });
+      const observation = createObservation({
+        currentScreen: 'unlock',
+        isUnlocked: false,
+      });
 
       await store.recordStep({
         sessionId: 'session-step-003',
@@ -350,7 +363,10 @@ describe('core', () => {
         sessionId: 'session-step-004',
         toolName: 'mm_click',
         input: { testId: 'confirm-btn' },
-        target: { testId: 'confirm-btn', selector: '[data-testid="confirm-btn"]' },
+        target: {
+          testId: 'confirm-btn',
+          selector: '[data-testid="confirm-btn"]',
+        },
         outcome,
         observation,
       });
@@ -358,7 +374,7 @@ describe('core', () => {
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenData = JSON.parse(writeCall[1] as string);
 
-      expect(writtenData.tool.target).toEqual({
+      expect(writtenData.tool.target).toStrictEqual({
         testId: 'confirm-btn',
         selector: '[data-testid="confirm-btn"]',
       });
@@ -422,7 +438,9 @@ describe('core', () => {
     it('computes confirmation label for confirmation-related targets', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
       const outcome: StepRecordOutcome = { ok: true };
-      const observation = createObservation({ currentScreen: 'confirm-transaction' });
+      const observation = createObservation({
+        currentScreen: 'confirm-transaction',
+      });
 
       await store.recordStep({
         sessionId: 'session-step-008',
@@ -523,7 +541,10 @@ describe('core', () => {
     });
 
     it('uses custom tool prefix for label computation', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge', toolPrefix: 'custom' });
+      const store = new KnowledgeStore({
+        rootDir: '/test/knowledge',
+        toolPrefix: 'custom',
+      });
       const outcome: StepRecordOutcome = { ok: true };
       const observation = createObservation();
 
@@ -552,7 +573,7 @@ describe('core', () => {
 
       const result = await store.listSessions(10);
 
-      expect(result).toEqual([]);
+      expect(result).toStrictEqual([]);
     });
 
     it('returns sessions sorted by createdAt descending', async () => {
@@ -607,9 +628,15 @@ describe('core', () => {
       });
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(metadata('mm-session-1', '2024-01-01T10:00:00.000Z')))
-        .mockResolvedValueOnce(JSON.stringify(metadata('mm-session-2', '2024-01-02T10:00:00.000Z')))
-        .mockResolvedValueOnce(JSON.stringify(metadata('mm-session-3', '2024-01-03T10:00:00.000Z')));
+        .mockResolvedValueOnce(
+          JSON.stringify(metadata('mm-session-1', '2024-01-01T10:00:00.000Z')),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(metadata('mm-session-2', '2024-01-02T10:00:00.000Z')),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(metadata('mm-session-3', '2024-01-03T10:00:00.000Z')),
+        );
 
       const result = await store.listSessions(2);
 
@@ -763,9 +790,12 @@ describe('core', () => {
     it('returns current session ID for scope "current"', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
 
-      const result = await store.resolveSessionIds('current', 'current-session-001');
+      const result = await store.resolveSessionIds(
+        'current',
+        'current-session-001',
+      );
 
-      expect(result).toEqual(['current-session-001']);
+      expect(result).toStrictEqual(['current-session-001']);
     });
 
     it('returns empty array for scope "current" without current session', async () => {
@@ -773,7 +803,7 @@ describe('core', () => {
 
       const result = await store.resolveSessionIds('current', undefined);
 
-      expect(result).toEqual([]);
+      expect(result).toStrictEqual([]);
     });
 
     it('returns specific session ID for scope object', async () => {
@@ -781,10 +811,10 @@ describe('core', () => {
 
       const result = await store.resolveSessionIds(
         { sessionId: 'specific-session-001' },
-        'current-session'
+        'current-session',
       );
 
-      expect(result).toEqual(['specific-session-001']);
+      expect(result).toStrictEqual(['specific-session-001']);
     });
 
     it('returns all session IDs for scope "all"', async () => {
@@ -797,7 +827,11 @@ describe('core', () => {
 
       const result = await store.resolveSessionIds('all', 'current-session');
 
-      expect(result).toEqual(['mm-session-1', 'mm-session-2', 'mm-session-3']);
+      expect(result).toStrictEqual([
+        'mm-session-1',
+        'mm-session-2',
+        'mm-session-3',
+      ]);
     });
 
     it('filters session IDs by filters for scope "all"', async () => {
@@ -827,9 +861,11 @@ describe('core', () => {
         .mockResolvedValueOnce(JSON.stringify(sendMetadata))
         .mockResolvedValueOnce(JSON.stringify(swapMetadata));
 
-      const result = await store.resolveSessionIds('all', 'current', { flowTag: 'send' });
+      const result = await store.resolveSessionIds('all', 'current', {
+        flowTag: 'send',
+      });
 
-      expect(result).toEqual(['mm-session-send']);
+      expect(result).toStrictEqual(['mm-session-send']);
     });
 
     it('includes sessions without metadata when filtering', async () => {
@@ -840,17 +876,21 @@ describe('core', () => {
         createDirent('mm-session-no-metadata'),
       ] as any);
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify({
-          schemaVersion: 1,
-          sessionId: 'mm-session-with-metadata',
-          createdAt: '2024-01-15T10:00:00.000Z',
-          flowTags: ['send'],
-          tags: [],
-          launch: { stateMode: 'default' },
-        }))
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            schemaVersion: 1,
+            sessionId: 'mm-session-with-metadata',
+            createdAt: '2024-01-15T10:00:00.000Z',
+            flowTags: ['send'],
+            tags: [],
+            launch: { stateMode: 'default' },
+          }),
+        )
         .mockRejectedValueOnce(new Error('ENOENT'));
 
-      const result = await store.resolveSessionIds('all', 'current', { flowTag: 'send' });
+      const result = await store.resolveSessionIds('all', 'current', {
+        flowTag: 'send',
+      });
 
       expect(result).toContain('mm-session-with-metadata');
       expect(result).toContain('mm-session-no-metadata');
@@ -892,23 +932,24 @@ describe('similarity', () => {
     vi.restoreAllMocks();
   });
 
-  function createStepFile(step: Record<string, unknown>) {
-    return {
-      step,
-      filepath: '/test/knowledge/session/steps/step.json',
-    };
-  }
-
-  function createStepRecord(overrides: {
-    sessionId?: string;
-    tool?: { name: string; input?: Record<string, unknown>; target?: Record<string, unknown> };
-    observation?: {
-      state?: Record<string, unknown>;
-      testIds?: { testId: string; tag: string; visible: boolean }[];
-      a11y?: { nodes: { ref: string; role: string; name: string; path: string[] }[] };
-    };
-    labels?: string[];
-  } = {}) {
+  function createStepRecord(
+    overrides: {
+      sessionId?: string;
+      tool?: {
+        name: string;
+        input?: Record<string, unknown>;
+        target?: Record<string, unknown>;
+      };
+      observation?: {
+        state?: Record<string, unknown>;
+        testIds?: { testId: string; tag: string; visible: boolean }[];
+        a11y?: {
+          nodes: { ref: string; role: string; name: string; path: string[] }[];
+        };
+      };
+      labels?: string[];
+    } = {},
+  ) {
     const baseTool = {
       name: 'mm_click',
       input: { testId: 'test-btn' },
@@ -927,7 +968,9 @@ describe('similarity', () => {
         balance: '25 ETH',
       },
       testIds: [{ testId: 'test-btn', tag: 'button', visible: true }],
-      a11y: { nodes: [{ ref: 'e1', role: 'button', name: 'Test Button', path: [] }] },
+      a11y: {
+        nodes: [{ ref: 'e1', role: 'button', name: 'Test Button', path: [] }],
+      },
     };
 
     return {
@@ -965,14 +1008,16 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
@@ -995,14 +1040,16 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
@@ -1025,14 +1072,16 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
@@ -1050,18 +1099,25 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const results = await store.searchSteps('confirmation', 10, 'all', undefined);
+      const results = await store.searchSteps(
+        'confirmation',
+        10,
+        'all',
+        undefined,
+      );
 
       expect(results.length).toBeGreaterThan(0);
     });
@@ -1082,14 +1138,16 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
@@ -1116,14 +1174,16 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
@@ -1139,9 +1199,7 @@ describe('similarity', () => {
           state: { currentScreen: 'home' },
           testIds: [],
           a11y: {
-            nodes: [
-              { ref: 'e1', role: 'textbox', name: 'Search', path: [] },
-            ],
+            nodes: [{ ref: 'e1', role: 'textbox', name: 'Search', path: [] }],
           },
         },
       });
@@ -1149,14 +1207,16 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
@@ -1170,7 +1230,7 @@ describe('similarity', () => {
 
       const results = await store.searchSteps('', 10, 'all', undefined);
 
-      expect(results).toEqual([]);
+      expect(results).toStrictEqual([]);
     });
 
     it('calculates token coverage ratio bonus', async () => {
@@ -1187,18 +1247,25 @@ describe('similarity', () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         createDirent('mm-session-1'),
       ] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({
-        schemaVersion: 1,
-        sessionId: 'mm-session-1',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      }));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: 'mm-session-1',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          flowTags: [],
+          tags: [],
+          launch: { stateMode: 'default' },
+        }),
+      );
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const results = await store.searchSteps('click send', 10, 'all', undefined);
+      const results = await store.searchSteps(
+        'click send',
+        10,
+        'all',
+        undefined,
+      );
 
       expect(results.length).toBeGreaterThan(0);
     });
@@ -1264,7 +1331,9 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createStepRecord()));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(createStepRecord()),
+      );
 
       const results = await store.searchSteps('swap', 10, 'all', undefined);
 
@@ -1287,9 +1356,16 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createStepRecord()));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(createStepRecord()),
+      );
 
-      const results = await store.searchSteps('regression', 10, 'all', undefined);
+      const results = await store.searchSteps(
+        'regression',
+        10,
+        'all',
+        undefined,
+      );
 
       expect(results.length).toBeGreaterThan(0);
     });
@@ -1311,7 +1387,9 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createStepRecord()));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(createStepRecord()),
+      );
 
       const results = await store.searchSteps('feature', 10, 'all', undefined);
 
@@ -1320,7 +1398,9 @@ describe('similarity', () => {
 
     it('gives recency bonus to recent sessions (< 24 hours)', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const recentDate = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      const recentDate = new Date(
+        Date.now() - 12 * 60 * 60 * 1000,
+      ).toISOString();
       const metadata = {
         schemaVersion: 1,
         sessionId: 'mm-session-recent',
@@ -1335,9 +1415,13 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createStepRecord({
-        tool: { name: 'mm_click', input: {} },
-      })));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(
+          createStepRecord({
+            tool: { name: 'mm_click', input: {} },
+          }),
+        ),
+      );
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
 
@@ -1346,7 +1430,9 @@ describe('similarity', () => {
 
     it('gives smaller recency bonus to moderately recent sessions (24-72 hours)', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const moderateDate = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const moderateDate = new Date(
+        Date.now() - 48 * 60 * 60 * 1000,
+      ).toISOString();
       const metadata = {
         schemaVersion: 1,
         sessionId: 'mm-session-moderate',
@@ -1361,9 +1447,13 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createStepRecord({
-        tool: { name: 'mm_click', input: {} },
-      })));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(
+          createStepRecord({
+            tool: { name: 'mm_click', input: {} },
+          }),
+        ),
+      );
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
 
@@ -1400,18 +1490,26 @@ describe('similarity', () => {
         .mockResolvedValueOnce(['step1.json'] as any)
         .mockResolvedValueOnce(['step1.json'] as any);
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createStepRecord({
-          sessionId: 'mm-session-1',
-          tool: { name: 'mm_click', input: {} },
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createStepRecord({
-          sessionId: 'mm-session-2',
-          tool: { name: 'mm_click', input: {} },
-        })));
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createStepRecord({
+              sessionId: 'mm-session-1',
+              tool: { name: 'mm_click', input: {} },
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createStepRecord({
+              sessionId: 'mm-session-2',
+              tool: { name: 'mm_click', input: {} },
+            }),
+          ),
+        );
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
 
-      expect(results.length).toBe(2);
+      expect(results).toHaveLength(2);
     });
   });
 
@@ -1441,13 +1539,16 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'send',
-        currentUrl: 'chrome-extension://test#/send',
-        visibleTestIds: [],
-        a11yNodes: [],
-        currentSessionFlowTags: ['send'],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'send',
+          currentUrl: 'chrome-extension://test#/send',
+          visibleTestIds: [],
+          a11yNodes: [],
+          currentSessionFlowTags: ['send'],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
       expect(result?.similarSteps.length).toBeGreaterThanOrEqual(0);
@@ -1481,12 +1582,15 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        currentUrl: 'chrome-extension://test#/confirm/transaction',
-        visibleTestIds: [],
-        a11yNodes: [],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          currentUrl: 'chrome-extension://test#/confirm/transaction',
+          visibleTestIds: [],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
     });
@@ -1520,14 +1624,17 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [
-          { testId: 'send-btn', tag: 'button', visible: true },
-          { testId: 'swap-btn', tag: 'button', visible: true },
-        ],
-        a11yNodes: [],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'send-btn', tag: 'button', visible: true },
+            { testId: 'swap-btn', tag: 'button', visible: true },
+          ],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
     });
@@ -1562,14 +1669,17 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [],
-        a11yNodes: [
-          { ref: 'e1', role: 'button', name: 'Send', path: [] },
-          { ref: 'e2', role: 'button', name: 'Swap', path: [] },
-        ],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [],
+          a11yNodes: [
+            { ref: 'e1', role: 'button', name: 'Send', path: [] },
+            { ref: 'e2', role: 'button', name: 'Swap', path: [] },
+          ],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
     });
@@ -1600,11 +1710,16 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(clickStep));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [{ testId: 'send-btn', tag: 'button', visible: true }],
-        a11yNodes: [],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'send-btn', tag: 'button', visible: true },
+          ],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
       if (result?.similarSteps.length) {
@@ -1638,15 +1753,20 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(discoveryStep));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [{ testId: 'send-btn', tag: 'button', visible: true }],
-        a11yNodes: [],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'send-btn', tag: 'button', visible: true },
+          ],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
 
       if (result?.similarSteps.length) {
         const hasDiscoveryTool = result.similarSteps.some(
-          (s) => s.tool === 'mm_describe_screen'
+          (s) => s.tool === 'mm_describe_screen',
         );
         expect(hasDiscoveryTool).toBe(false);
       }
@@ -1657,11 +1777,14 @@ describe('similarity', () => {
 
       vi.mocked(fs.readdir).mockResolvedValueOnce([] as any);
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [],
-        a11yNodes: [],
-      }, 'current-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [],
+          a11yNodes: [],
+        },
+        'current-session',
+      );
 
       expect(result).toBeUndefined();
     });
@@ -1682,11 +1805,14 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [],
-        a11yNodes: [],
-      }, 'mm-session-current');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [],
+          a11yNodes: [],
+        },
+        'mm-session-current',
+      );
 
       expect(result).toBeUndefined();
     });
@@ -1722,17 +1848,20 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [
-          { testId: 'btn-1', tag: 'button', visible: true },
-          { testId: 'btn-2', tag: 'button', visible: true },
-          { testId: 'btn-3', tag: 'button', visible: true },
-          { testId: 'btn-4', tag: 'button', visible: true },
-          { testId: 'btn-5', tag: 'button', visible: true },
-        ],
-        a11yNodes: [],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'btn-1', tag: 'button', visible: true },
+            { testId: 'btn-2', tag: 'button', visible: true },
+            { testId: 'btn-3', tag: 'button', visible: true },
+            { testId: 'btn-4', tag: 'button', visible: true },
+            { testId: 'btn-5', tag: 'button', visible: true },
+          ],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
     });
@@ -1769,16 +1898,19 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [],
-        a11yNodes: [
-          { ref: 'e1', role: 'button', name: 'Action 1', path: [] },
-          { ref: 'e2', role: 'button', name: 'Action 2', path: [] },
-          { ref: 'e3', role: 'button', name: 'Action 3', path: [] },
-          { ref: 'e4', role: 'button', name: 'Action 4', path: [] },
-        ],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [],
+          a11yNodes: [
+            { ref: 'e1', role: 'button', name: 'Action 1', path: [] },
+            { ref: 'e2', role: 'button', name: 'Action 2', path: [] },
+            { ref: 'e3', role: 'button', name: 'Action 3', path: [] },
+            { ref: 'e4', role: 'button', name: 'Action 4', path: [] },
+          ],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
     });
@@ -1798,7 +1930,9 @@ describe('similarity', () => {
         observation: {
           state: { currentScreen: 'send' },
           testIds: [{ testId: 'send-btn', tag: 'button', visible: true }],
-          a11y: { nodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }] },
+          a11y: {
+            nodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
+          },
         },
       });
 
@@ -1809,16 +1943,21 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'send',
-        currentUrl: 'chrome-extension://test#/send',
-        visibleTestIds: [{ testId: 'send-btn', tag: 'button', visible: true }],
-        a11yNodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'send',
+          currentUrl: 'chrome-extension://test#/send',
+          visibleTestIds: [
+            { testId: 'send-btn', tag: 'button', visible: true },
+          ],
+          a11yNodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
       if (result?.similarSteps.length) {
-        const confidence = result.similarSteps[0].confidence;
+        const { confidence } = result.similarSteps[0];
         expect(confidence).toBeGreaterThan(0);
         expect(confidence).toBeLessThanOrEqual(1);
       }
@@ -1840,14 +1979,19 @@ describe('similarity', () => {
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
       vi.mocked(fs.readdir).mockResolvedValueOnce(['step1.json'] as any);
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createStepRecord()));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(createStepRecord()),
+      );
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'home',
-        visibleTestIds: [],
-        a11yNodes: [],
-        currentSessionFlowTags: ['send'],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [],
+          a11yNodes: [],
+          currentSessionFlowTags: ['send'],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
     });
@@ -1877,11 +2021,14 @@ describe('similarity', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce(JSON.stringify(stepRecord));
 
-      const result = await store.generatePriorKnowledge({
-        currentScreen: 'unknown',
-        visibleTestIds: [],
-        a11yNodes: [],
-      }, 'other-session');
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'unknown',
+          visibleTestIds: [],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
 
       expect(result).toBeDefined();
       if (result?.similarSteps.length) {
@@ -1909,7 +2056,9 @@ describe('session', () => {
     return { name, isDirectory: () => isDir };
   }
 
-  function createSessionMetadata(overrides: Partial<SessionMetadata> = {}): SessionMetadata {
+  function createSessionMetadata(
+    overrides: Partial<SessionMetadata> = {},
+  ): SessionMetadata {
     return {
       schemaVersion: 1,
       sessionId: overrides.sessionId ?? 'mm-session-test',
@@ -1963,7 +2112,7 @@ describe('session', () => {
 
       const result = await store.getAllSessionIds();
 
-      expect(result).toEqual(['mm-session-1', 'mm-session-2']);
+      expect(result).toStrictEqual(['mm-session-1', 'mm-session-2']);
     });
 
     it('returns session IDs with custom prefix', async () => {
@@ -1980,7 +2129,7 @@ describe('session', () => {
 
       const result = await store.getAllSessionIds();
 
-      expect(result).toEqual(['custom-session-1', 'mm-session-2']);
+      expect(result).toStrictEqual(['custom-session-1', 'mm-session-2']);
     });
 
     it('returns empty array when directory read fails', async () => {
@@ -1990,7 +2139,7 @@ describe('session', () => {
 
       const result = await store.getAllSessionIds();
 
-      expect(result).toEqual([]);
+      expect(result).toStrictEqual([]);
     });
 
     it('returns empty array for empty directory', async () => {
@@ -2000,7 +2149,7 @@ describe('session', () => {
 
       const result = await store.getAllSessionIds();
 
-      expect(result).toEqual([]);
+      expect(result).toStrictEqual([]);
     });
   });
 
@@ -2010,15 +2159,17 @@ describe('session', () => {
 
       // Create 25 sessions
       const sessions = Array.from({ length: 25 }, (_, i) =>
-        createDirent(`mm-session-${i}`)
+        createDirent(`mm-session-${i}`),
       );
 
       // Create metadata for each session
       const metadatas = Array.from({ length: 25 }, (_, i) =>
         createSessionMetadata({
           sessionId: `mm-session-${i}`,
-          createdAt: new Date(Date.now() - (25 - i) * 60 * 60 * 1000).toISOString(),
-        })
+          createdAt: new Date(
+            Date.now() - (25 - i) * 60 * 60 * 1000,
+          ).toISOString(),
+        }),
       );
 
       // Mock readdir for root
@@ -2051,13 +2202,18 @@ describe('session', () => {
         .mockResolvedValueOnce(stepFiles as any);
 
       vi.mocked(fs.readFile).mockResolvedValueOnce(
-        JSON.stringify(createSessionMetadata({ sessionId: 'mm-session-1' }))
+        JSON.stringify(createSessionMetadata({ sessionId: 'mm-session-1' })),
       );
 
       // Only first 500 steps should be loaded
       for (let i = 0; i < 500; i++) {
         vi.mocked(fs.readFile).mockResolvedValueOnce(
-          JSON.stringify(createStepRecord('mm-session-1', `2024-01-15T10:${String(i).padStart(2, '0')}:00.000Z`))
+          JSON.stringify(
+            createStepRecord(
+              'mm-session-1',
+              `2024-01-15T10:${String(i).padStart(2, '0')}:00.000Z`,
+            ),
+          ),
         );
       }
 
@@ -2073,7 +2229,7 @@ describe('session', () => {
 
       // Create 5 sessions with 500 steps each = 2500 total
       const sessions = Array.from({ length: 5 }, (_, i) =>
-        createDirent(`mm-session-${i}`)
+        createDirent(`mm-session-${i}`),
       );
 
       vi.mocked(fs.readdir).mockResolvedValueOnce(sessions as any);
@@ -2081,22 +2237,34 @@ describe('session', () => {
       // Mock metadata for each session
       for (let i = 0; i < 5; i++) {
         vi.mocked(fs.readFile).mockResolvedValueOnce(
-          JSON.stringify(createSessionMetadata({
-            sessionId: `mm-session-${i}`,
-            createdAt: new Date(Date.now() - (5 - i) * 60 * 60 * 1000).toISOString(),
-          }))
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: `mm-session-${i}`,
+              createdAt: new Date(
+                Date.now() - (5 - i) * 60 * 60 * 1000,
+              ).toISOString(),
+            }),
+          ),
         );
       }
 
       // Mock steps dir for each session (500 steps each)
       for (let i = 0; i < 5; i++) {
-        const stepFiles = Array.from({ length: 500 }, (_, j) => `step-${j}.json`);
+        const stepFiles = Array.from(
+          { length: 500 },
+          (_, j) => `step-${j}.json`,
+        );
         vi.mocked(fs.readdir).mockResolvedValueOnce(stepFiles as any);
 
         // Mock step files
         for (let j = 0; j < 500; j++) {
           vi.mocked(fs.readFile).mockResolvedValueOnce(
-            JSON.stringify(createStepRecord(`mm-session-${i}`, `2024-01-15T${String(i).padStart(2, '0')}:${String(j).padStart(2, '0')}:00.000Z`))
+            JSON.stringify(
+              createStepRecord(
+                `mm-session-${i}`,
+                `2024-01-15T${String(i).padStart(2, '0')}:${String(j).padStart(2, '0')}:00.000Z`,
+              ),
+            ),
           );
         }
       }
@@ -2118,14 +2286,22 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-send',
-          flowTags: ['send'],
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-swap',
-          flowTags: ['swap'],
-        })));
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-send',
+              flowTags: ['send'],
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-swap',
+              flowTags: ['swap'],
+            }),
+          ),
+        );
 
       const result = await store.listSessions(10, { flowTag: 'send' });
 
@@ -2142,14 +2318,22 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-e2e',
-          tags: ['e2e', 'regression'],
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-prod',
-          tags: ['production'],
-        })));
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-e2e',
+              tags: ['e2e', 'regression'],
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-prod',
+              tags: ['production'],
+            }),
+          ),
+        );
 
       const result = await store.listSessions(10, { tag: 'e2e' });
 
@@ -2169,14 +2353,22 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-recent',
-          createdAt: recentDate.toISOString(),
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-old',
-          createdAt: oldDate.toISOString(),
-        })));
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-recent',
+              createdAt: recentDate.toISOString(),
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-old',
+              createdAt: oldDate.toISOString(),
+            }),
+          ),
+        );
 
       const result = await store.listSessions(10, { sinceHours: 24 });
 
@@ -2193,14 +2385,22 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-main',
-          git: { branch: 'main', commit: 'abc123' },
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-feature',
-          git: { branch: 'feature/send', commit: 'def456' },
-        })));
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-main',
+              git: { branch: 'main', commit: 'abc123' },
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-feature',
+              git: { branch: 'feature/send', commit: 'def456' },
+            }),
+          ),
+        );
 
       const result = await store.listSessions(10, { gitBranch: 'main' });
 
@@ -2219,24 +2419,36 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-1',
-          createdAt: recentDate.toISOString(),
-          flowTags: ['send'],
-          git: { branch: 'main' },
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-2',
-          createdAt: recentDate.toISOString(),
-          flowTags: ['swap'],
-          git: { branch: 'main' },
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-3',
-          createdAt: recentDate.toISOString(),
-          flowTags: ['send'],
-          git: { branch: 'feature/test' },
-        })));
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-1',
+              createdAt: recentDate.toISOString(),
+              flowTags: ['send'],
+              git: { branch: 'main' },
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-2',
+              createdAt: recentDate.toISOString(),
+              flowTags: ['swap'],
+              git: { branch: 'main' },
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-3',
+              createdAt: recentDate.toISOString(),
+              flowTags: ['send'],
+              git: { branch: 'feature/test' },
+            }),
+          ),
+        );
 
       const result = await store.listSessions(10, {
         flowTag: 'send',
@@ -2259,9 +2471,13 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-valid',
-        })))
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-valid',
+            }),
+          ),
+        )
         .mockResolvedValueOnce('invalid json {{{');
 
       const result = await store.listSessions(10);
@@ -2275,13 +2491,24 @@ describe('session', () => {
 
       vi.mocked(fs.readdir)
         .mockResolvedValueOnce([createDirent('mm-session-1')] as any)
-        .mockResolvedValueOnce(['step-valid.json', 'step-corrupted.json'] as any);
+        .mockResolvedValueOnce([
+          'step-valid.json',
+          'step-corrupted.json',
+        ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-1',
-        })))
-        .mockResolvedValueOnce(JSON.stringify(createStepRecord('mm-session-1', '2024-01-15T10:00:00.000Z')))
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-1',
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createStepRecord('mm-session-1', '2024-01-15T10:00:00.000Z'),
+          ),
+        )
         .mockResolvedValueOnce('not valid json');
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
@@ -2299,9 +2526,13 @@ describe('session', () => {
         .mockResolvedValueOnce(['step.json'] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-1',
-        })))
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-1',
+            }),
+          ),
+        )
         .mockRejectedValueOnce(new Error('ENOENT: file not found'));
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
@@ -2317,9 +2548,13 @@ describe('session', () => {
         .mockResolvedValueOnce([createDirent('mm-session-1')] as any)
         .mockRejectedValueOnce(new Error('ENOENT: no steps directory'));
 
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-        sessionId: 'mm-session-1',
-      })));
+      vi.mocked(fs.readFile).mockResolvedValueOnce(
+        JSON.stringify(
+          createSessionMetadata({
+            sessionId: 'mm-session-1',
+          }),
+        ),
+      );
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
 
@@ -2336,7 +2571,7 @@ describe('session', () => {
 
       const sessions = await store.listSessions(10);
 
-      expect(sessions).toEqual([]);
+      expect(sessions).toStrictEqual([]);
     });
 
     it('returns empty search results for empty knowledge root', async () => {
@@ -2346,7 +2581,7 @@ describe('session', () => {
 
       const results = await store.searchSteps('click', 10, 'all', undefined);
 
-      expect(results).toEqual([]);
+      expect(results).toStrictEqual([]);
     });
 
     it('returns empty getLastSteps for session with no steps', async () => {
@@ -2356,9 +2591,13 @@ describe('session', () => {
         .mockResolvedValueOnce([createDirent('mm-session-1')] as any)
         .mockResolvedValueOnce([] as any);
 
-      const results = await store.getLastSteps(10, { sessionId: 'mm-session-1' }, undefined);
+      const results = await store.getLastSteps(
+        10,
+        { sessionId: 'mm-session-1' },
+        undefined,
+      );
 
-      expect(results).toEqual([]);
+      expect(results).toStrictEqual([]);
     });
 
     it('returns empty summarizeSession for session with no steps', async () => {
@@ -2369,7 +2608,7 @@ describe('session', () => {
       const result = await store.summarizeSession('mm-session-1');
 
       expect(result.stepCount).toBe(0);
-      expect(result.recipe).toEqual([]);
+      expect(result.recipe).toStrictEqual([]);
     });
   });
 
@@ -2383,13 +2622,19 @@ describe('session', () => {
       ] as any);
 
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify(createSessionMetadata({
-          sessionId: 'mm-session-with-metadata',
-          flowTags: ['send'],
-        })))
+        .mockResolvedValueOnce(
+          JSON.stringify(
+            createSessionMetadata({
+              sessionId: 'mm-session-with-metadata',
+              flowTags: ['send'],
+            }),
+          ),
+        )
         .mockRejectedValueOnce(new Error('ENOENT'));
 
-      const result = await store.resolveSessionIds('all', undefined, { flowTag: 'send' });
+      const result = await store.resolveSessionIds('all', undefined, {
+        flowTag: 'send',
+      });
 
       // Both should be included - session without metadata is not filtered out
       expect(result).toContain('mm-session-with-metadata');
@@ -2401,20 +2646,20 @@ describe('session', () => {
 
       const result = await store.resolveSessionIds('current', undefined);
 
-      expect(result).toEqual([]);
+      expect(result).toStrictEqual([]);
     });
 
-     it('returns specific sessionId for scope object', async () => {
-       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+    it('returns specific sessionId for scope object', async () => {
+      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
 
-       const result = await store.resolveSessionIds(
-         { sessionId: 'specific-session' },
-         'current-session'
-       );
+      const result = await store.resolveSessionIds(
+        { sessionId: 'specific-session' },
+        'current-session',
+      );
 
-       expect(result).toEqual(['specific-session']);
-     });
-   });
+      expect(result).toStrictEqual(['specific-session']);
+    });
+  });
 
   describe('hasKnowledgeStore', () => {
     afterEach(() => {
@@ -2477,8 +2722,8 @@ describe('session', () => {
         outcome: { ok: true } as StepRecordOutcome,
       };
 
-      await expect(knowledgeStore.recordStep(params)).rejects.toThrow(
-        'Knowledge store not initialized'
+      await expect(knowledgeStore.recordStep(params)).rejects.toThrowError(
+        'Knowledge store not initialized',
       );
     });
 
@@ -2494,18 +2739,30 @@ describe('session', () => {
 
       vi.spyOn(store, 'getLastSteps').mockResolvedValueOnce(mockSteps);
 
-      const result = await knowledgeStore.getLastSteps(10, { sessionId: 'test-session' }, undefined);
+      const result = await knowledgeStore.getLastSteps(
+        10,
+        { sessionId: 'test-session' },
+        undefined,
+      );
 
-      expect(store.getLastSteps).toHaveBeenCalledWith(10, { sessionId: 'test-session' }, undefined);
-      expect(result).toEqual(mockSteps);
+      expect(store.getLastSteps).toHaveBeenCalledWith(
+        10,
+        { sessionId: 'test-session' },
+        undefined,
+      );
+      expect(result).toStrictEqual(mockSteps);
     });
 
     it('getLastSteps throws error when knowledge store not initialized', async () => {
       setKnowledgeStore(undefined as any);
 
-      await expect(knowledgeStore.getLastSteps(10, { sessionId: 'test-session' }, undefined)).rejects.toThrow(
-        'Knowledge store not initialized'
-      );
+      await expect(
+        knowledgeStore.getLastSteps(
+          10,
+          { sessionId: 'test-session' },
+          undefined,
+        ),
+      ).rejects.toThrowError('Knowledge store not initialized');
     });
 
     it('searchSteps delegates to underlying KnowledgeStore instance', async () => {
@@ -2520,27 +2777,35 @@ describe('session', () => {
 
       vi.spyOn(store, 'searchSteps').mockResolvedValueOnce(mockResults);
 
-      const result = await knowledgeStore.searchSteps('click', 10, 'all', undefined);
+      const result = await knowledgeStore.searchSteps(
+        'click',
+        10,
+        'all',
+        undefined,
+      );
 
-      expect(store.searchSteps).toHaveBeenCalledWith('click', 10, 'all', undefined);
-      expect(result).toEqual(mockResults);
+      expect(store.searchSteps).toHaveBeenCalledWith(
+        'click',
+        10,
+        'all',
+        undefined,
+      );
+      expect(result).toStrictEqual(mockResults);
     });
 
     it('searchSteps throws error when knowledge store not initialized', async () => {
       setKnowledgeStore(undefined as any);
 
-      await expect(knowledgeStore.searchSteps('click', 10, 'all', undefined)).rejects.toThrow(
-        'Knowledge store not initialized'
-      );
+      await expect(
+        knowledgeStore.searchSteps('click', 10, 'all', undefined),
+      ).rejects.toThrowError('Knowledge store not initialized');
     });
 
     it('summarizeSession delegates to underlying KnowledgeStore instance', async () => {
       const mockSummary = {
         sessionId: 'test-session',
         stepCount: 5,
-        recipe: [
-          { stepNumber: 1, tool: 'mm_click', notes: 'Clicked send' },
-        ],
+        recipe: [{ stepNumber: 1, tool: 'mm_click', notes: 'Clicked send' }],
       };
 
       vi.spyOn(store, 'summarizeSession').mockResolvedValueOnce(mockSummary);
@@ -2548,15 +2813,15 @@ describe('session', () => {
       const result = await knowledgeStore.summarizeSession('test-session');
 
       expect(store.summarizeSession).toHaveBeenCalledWith('test-session');
-      expect(result).toEqual(mockSummary);
+      expect(result).toStrictEqual(mockSummary);
     });
 
     it('summarizeSession throws error when knowledge store not initialized', async () => {
       setKnowledgeStore(undefined as any);
 
-      await expect(knowledgeStore.summarizeSession('test-session')).rejects.toThrow(
-        'Knowledge store not initialized'
-      );
+      await expect(
+        knowledgeStore.summarizeSession('test-session'),
+      ).rejects.toThrowError('Knowledge store not initialized');
     });
 
     it('listSessions delegates to underlying KnowledgeStore instance', async () => {
@@ -2574,14 +2839,14 @@ describe('session', () => {
       const result = await knowledgeStore.listSessions(10);
 
       expect(store.listSessions).toHaveBeenCalledWith(10);
-      expect(result).toEqual(mockSessions);
+      expect(result).toStrictEqual(mockSessions);
     });
 
     it('listSessions throws error when knowledge store not initialized', async () => {
       setKnowledgeStore(undefined as any);
 
-      await expect(knowledgeStore.listSessions(10)).rejects.toThrow(
-        'Knowledge store not initialized'
+      await expect(knowledgeStore.listSessions(10)).rejects.toThrowError(
+        'Knowledge store not initialized',
       );
     });
 
@@ -2601,7 +2866,9 @@ describe('session', () => {
         suggestedNextActions: [],
       };
 
-      vi.spyOn(store, 'generatePriorKnowledge').mockResolvedValueOnce(mockPriorKnowledge);
+      vi.spyOn(store, 'generatePriorKnowledge').mockResolvedValueOnce(
+        mockPriorKnowledge,
+      );
 
       const context = {
         currentScreen: 'home',
@@ -2611,7 +2878,7 @@ describe('session', () => {
       const result = await knowledgeStore.generatePriorKnowledge(context);
 
       expect(store.generatePriorKnowledge).toHaveBeenCalledWith(context);
-      expect(result).toEqual(mockPriorKnowledge);
+      expect(result).toStrictEqual(mockPriorKnowledge);
     });
 
     it('generatePriorKnowledge throws error when knowledge store not initialized', async () => {
@@ -2622,9 +2889,9 @@ describe('session', () => {
         visibleTestIds: [],
         a11yNodes: [],
       };
-      await expect(knowledgeStore.generatePriorKnowledge(context)).rejects.toThrow(
-        'Knowledge store not initialized'
-      );
+      await expect(
+        knowledgeStore.generatePriorKnowledge(context),
+      ).rejects.toThrowError('Knowledge store not initialized');
     });
 
     it('writeSessionMetadata delegates to underlying KnowledgeStore instance', async () => {
@@ -2637,7 +2904,9 @@ describe('session', () => {
         launch: { stateMode: 'default' },
       };
 
-      vi.spyOn(store, 'writeSessionMetadata').mockResolvedValueOnce('/test/path');
+      vi.spyOn(store, 'writeSessionMetadata').mockResolvedValueOnce(
+        '/test/path',
+      );
 
       const result = await knowledgeStore.writeSessionMetadata(metadata);
 
@@ -2657,9 +2926,9 @@ describe('session', () => {
         launch: { stateMode: 'default' },
       };
 
-      await expect(knowledgeStore.writeSessionMetadata(metadata)).rejects.toThrow(
-        'Knowledge store not initialized'
-      );
+      await expect(
+        knowledgeStore.writeSessionMetadata(metadata),
+      ).rejects.toThrowError('Knowledge store not initialized');
     });
 
     it('getGitInfoSync delegates to underlying KnowledgeStore instance', () => {
@@ -2674,14 +2943,14 @@ describe('session', () => {
       const result = knowledgeStore.getGitInfoSync();
 
       expect(store.getGitInfoSync).toHaveBeenCalled();
-      expect(result).toEqual(mockGitInfo);
+      expect(result).toStrictEqual(mockGitInfo);
     });
 
     it('getGitInfoSync throws error when knowledge store not initialized', () => {
       setKnowledgeStore(undefined as any);
 
-      expect(() => knowledgeStore.getGitInfoSync()).toThrow(
-        'Knowledge store not initialized'
+      expect(() => knowledgeStore.getGitInfoSync()).toThrowError(
+        'Knowledge store not initialized',
       );
     });
   });

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { isSensitiveField, SENSITIVE_FIELD_PATTERNS } from './redaction.js';
 
 describe('isSensitiveField', () => {

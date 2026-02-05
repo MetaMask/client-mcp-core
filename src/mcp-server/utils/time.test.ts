@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+
 import { generateFilesafeTimestamp, generateSessionId } from './time.js';
 
 describe('generateFilesafeTimestamp', () => {
@@ -7,7 +8,7 @@ describe('generateFilesafeTimestamp', () => {
       new Date('2026-02-04T14:30:45.123Z'),
     );
 
-    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/);
+    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/u);
   });
 
   it('generates monotonically increasing timestamps', () => {
@@ -37,11 +38,11 @@ describe('generateFilesafeTimestamp', () => {
 
     const timestamp = generateFilesafeTimestamp(date);
 
-    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/);
+    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/u);
     const parts = timestamp.split('-');
-    expect(parts[0]).toMatch(/^\d{8}$/);
-    expect(parts[1]).toMatch(/^\d{6}$/);
-    expect(parts[2]).toMatch(/^\d{3}$/);
+    expect(parts[0]).toMatch(/^\d{8}$/u);
+    expect(parts[1]).toMatch(/^\d{6}$/u);
+    expect(parts[2]).toMatch(/^\d{3}$/u);
   });
 
   it('handles leap year dates', () => {
@@ -49,7 +50,7 @@ describe('generateFilesafeTimestamp', () => {
 
     const timestamp = generateFilesafeTimestamp(leapDate);
 
-    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/);
+    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/u);
   });
 
   it('handles end of month dates', () => {
@@ -57,7 +58,7 @@ describe('generateFilesafeTimestamp', () => {
 
     const timestamp = generateFilesafeTimestamp(endOfMonth);
 
-    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/);
+    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/u);
   });
 
   it('uses provided date parameter instead of current time', () => {
@@ -65,7 +66,7 @@ describe('generateFilesafeTimestamp', () => {
 
     const timestamp = generateFilesafeTimestamp(customDate);
 
-    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/);
+    expect(timestamp).toMatch(/^\d{8}-\d{6}-\d{3}$/u);
   });
 });
 
@@ -73,13 +74,13 @@ describe('generateSessionId', () => {
   it('returns session ID with default prefix', () => {
     const sessionId = generateSessionId();
 
-    expect(sessionId).toMatch(/^mm-[a-z0-9]+-[a-z0-9]{6}$/);
+    expect(sessionId).toMatch(/^mm-[a-z0-9]+-[a-z0-9]{6}$/u);
   });
 
   it('uses custom prefix when provided', () => {
     const sessionId = generateSessionId('custom');
 
-    expect(sessionId).toMatch(/^custom-[a-z0-9]+-[a-z0-9]{6}$/);
+    expect(sessionId).toMatch(/^custom-[a-z0-9]+-[a-z0-9]{6}$/u);
   });
 
   it('generates unique session IDs', () => {
@@ -96,28 +97,28 @@ describe('generateSessionId', () => {
     const sessionId = generateSessionId();
     const parts = sessionId.split('-');
 
-    expect(parts.length).toBe(3);
+    expect(parts).toHaveLength(3);
     expect(parts[0]).toBe('mm');
-    expect(parts[1]).toMatch(/^[a-z0-9]+$/);
-    expect(parts[2]).toMatch(/^[a-z0-9]{6}$/);
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/u);
+    expect(parts[2]).toMatch(/^[a-z0-9]{6}$/u);
   });
 
   it('generates random component with exactly 6 characters', () => {
     const sessionId = generateSessionId();
     const parts = sessionId.split('-');
 
-    expect(parts[2].length).toBe(6);
+    expect(parts[2]).toHaveLength(6);
   });
 
   it('works with empty string prefix', () => {
     const sessionId = generateSessionId('');
 
-    expect(sessionId).toMatch(/^-[a-z0-9]+-[a-z0-9]{6}$/);
+    expect(sessionId).toMatch(/^-[a-z0-9]+-[a-z0-9]{6}$/u);
   });
 
   it('works with special character prefixes', () => {
     const sessionId = generateSessionId('test_123');
 
-    expect(sessionId).toMatch(/^test_123-[a-z0-9]+-[a-z0-9]{6}$/);
+    expect(sessionId).toMatch(/^test_123-[a-z0-9]+-[a-z0-9]{6}$/u);
   });
 });

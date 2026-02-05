@@ -6,7 +6,7 @@ import { extractErrorMessage } from './errors.js';
  *
  * By default, logging is disabled to avoid polluting MCP protocol stdout.
  */
-// eslint-disable-next-line no-restricted-globals
+
 const DEBUG = process.env.MCP_DEBUG === 'true';
 
 /**

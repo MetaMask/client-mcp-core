@@ -13,3 +13,5 @@ export {
   type MockLocatorOptions,
   type MockBrowserContextOptions,
 } from './mock-playwright.js';
+
+export { flushPromises } from './flush-promises.js';

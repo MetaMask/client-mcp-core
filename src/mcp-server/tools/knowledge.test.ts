@@ -6,16 +6,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import {
   handleKnowledgeLast,
   handleKnowledgeSearch,
   handleKnowledgeSummarize,
   handleKnowledgeSessions,
 } from './knowledge.js';
-import { ErrorCodes } from '../types/errors.js';
-import { createMockSessionManager } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils';
+import { ErrorCodes } from '../types/errors.js';
 
 describe('knowledge', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -51,7 +52,9 @@ describe('knowledge', () => {
       listSessions: vi.fn().mockResolvedValue([]),
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
-      getGitInfoSync: vi.fn().mockReturnValue({ branch: 'main', commit: 'abc123' }),
+      getGitInfoSync: vi
+        .fn()
+        .mockReturnValue({ branch: 'main', commit: 'abc123' }),
     };
     vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue(
       mockKnowledgeStore,
@@ -77,7 +80,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.steps).toEqual(mockSteps);
+        expect(result.result.steps).toStrictEqual(mockSteps);
       }
       expect(mockKnowledgeStore.getLastSteps).toHaveBeenCalledWith(
         20, // default n
@@ -100,7 +103,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.steps).toEqual(mockSteps);
+        expect(result.result.steps).toStrictEqual(mockSteps);
       }
       expect(mockKnowledgeStore.getLastSteps).toHaveBeenCalledWith(
         5,
@@ -148,7 +151,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.steps).toEqual(mockSteps);
+        expect(result.result.steps).toStrictEqual(mockSteps);
       }
       expect(mockKnowledgeStore.getLastSteps).toHaveBeenCalledWith(
         10,
@@ -168,7 +171,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.steps).toEqual([]);
+        expect(result.result.steps).toStrictEqual([]);
       }
     });
 
@@ -205,7 +208,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.matches).toEqual(mockMatches);
+        expect(result.result.matches).toStrictEqual(mockMatches);
         expect(result.result.query).toBe('mm_click');
       }
       expect(mockKnowledgeStore.searchSteps).toHaveBeenCalledWith(
@@ -225,12 +228,15 @@ describe('knowledge', () => {
       mockKnowledgeStore.searchSteps.mockResolvedValue(mockMatches);
 
       // Act
-      const result = await handleKnowledgeSearch({ query: 'mm_type', limit: 50 });
+      const result = await handleKnowledgeSearch({
+        query: 'mm_type',
+        limit: 50,
+      });
 
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.matches).toEqual(mockMatches);
+        expect(result.result.matches).toStrictEqual(mockMatches);
       }
       expect(mockKnowledgeStore.searchSteps).toHaveBeenCalledWith(
         'mm_type',
@@ -287,7 +293,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.matches).toEqual(mockMatches);
+        expect(result.result.matches).toStrictEqual(mockMatches);
       }
       expect(mockKnowledgeStore.searchSteps).toHaveBeenCalledWith(
         'confirm',
@@ -308,7 +314,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.matches).toEqual([]);
+        expect(result.result.matches).toStrictEqual([]);
         expect(result.result.query).toBe('nonexistent');
       }
     });
@@ -351,7 +357,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual(mockSummary);
+        expect(result.result).toStrictEqual(mockSummary);
       }
       expect(mockKnowledgeStore.summarizeSession).toHaveBeenCalledWith(
         'test-session-123',
@@ -373,7 +379,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual(mockSummary);
+        expect(result.result).toStrictEqual(mockSummary);
       }
       expect(mockKnowledgeStore.summarizeSession).toHaveBeenCalledWith(
         'test-session-123',
@@ -399,7 +405,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual(mockSummary);
+        expect(result.result).toStrictEqual(mockSummary);
       }
       expect(mockKnowledgeStore.summarizeSession).toHaveBeenCalledWith(
         'other-session-456',
@@ -423,7 +429,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result).toEqual(mockSummary);
+        expect(result.result).toStrictEqual(mockSummary);
       }
       expect(mockKnowledgeStore.summarizeSession).toHaveBeenCalledWith(
         'scoped-session-789',
@@ -444,7 +450,7 @@ describe('knowledge', () => {
 
     it('returns error when no sessionId can be determined', async () => {
       // Arrange
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue(undefined);
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(undefined);
 
       // Act
       const result = await handleKnowledgeSummarize({});
@@ -504,7 +510,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.sessions).toEqual(mockSessions);
+        expect(result.result.sessions).toStrictEqual(mockSessions);
       }
       expect(mockKnowledgeStore.listSessions).toHaveBeenCalledWith(
         10, // default limit
@@ -530,7 +536,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.sessions).toEqual(mockSessions);
+        expect(result.result.sessions).toStrictEqual(mockSessions);
       }
       expect(mockKnowledgeStore.listSessions).toHaveBeenCalledWith(
         25,
@@ -561,7 +567,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.sessions).toEqual(mockSessions);
+        expect(result.result.sessions).toStrictEqual(mockSessions);
       }
       expect(mockKnowledgeStore.listSessions).toHaveBeenCalledWith(20, filters);
     });
@@ -576,7 +582,7 @@ describe('knowledge', () => {
       // Assert
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.sessions).toEqual([]);
+        expect(result.result.sessions).toStrictEqual([]);
       }
     });
 

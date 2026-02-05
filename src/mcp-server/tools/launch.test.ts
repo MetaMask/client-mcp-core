@@ -7,12 +7,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { handleLaunch } from './launch.js';
-import { createMockSessionManager } from '../test-utils/mock-factories.js';
+import type { ExtensionState } from '../../capabilities/types.js';
 import * as sessionManagerModule from '../session-manager.js';
 import type { SessionLaunchResult } from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils/mock-factories.js';
 import { ErrorCodes } from '../types';
 import type { LaunchInput } from '../types';
-import type { ExtensionState } from '../../capabilities/types.js';
 
 describe('handleLaunch', () => {
   beforeEach(() => {
@@ -43,7 +43,9 @@ describe('handleLaunch', () => {
         hasActive: false,
         launchResult: mockLaunchResult,
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -53,7 +55,7 @@ describe('handleLaunch', () => {
       if (result.ok) {
         expect(result.result.sessionId).toBe('test-session-123');
         expect(result.result.extensionId).toBe('ext-123');
-        expect(result.result.state).toEqual(mockState);
+        expect(result.result.state).toStrictEqual(mockState);
         expect(result.meta.sessionId).toBe('test-session-123');
       }
       expect(mockSessionManager.launch).toHaveBeenCalledWith(input);
@@ -83,7 +85,9 @@ describe('handleLaunch', () => {
         launchResult: mockLaunchResult,
         environmentMode: 'prod',
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -123,7 +127,9 @@ describe('handleLaunch', () => {
         launchResult: mockLaunchResult,
         environmentMode: 'e2e',
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -158,7 +164,9 @@ describe('handleLaunch', () => {
         hasActive: false,
         launchResult: mockLaunchResult,
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = {
         stateMode: 'custom',
@@ -188,7 +196,9 @@ describe('handleLaunch', () => {
         hasActive: true,
         sessionId: 'existing-session-999',
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -197,8 +207,12 @@ describe('handleLaunch', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_SESSION_ALREADY_RUNNING);
-        expect(result.error.message).toBe('A session is already running. Call mm_cleanup first.');
-        expect(result.error.details).toEqual({ currentSessionId: 'existing-session-999' });
+        expect(result.error.message).toBe(
+          'A session is already running. Call mm_cleanup first.',
+        );
+        expect(result.error.details).toStrictEqual({
+          currentSessionId: 'existing-session-999',
+        });
         expect(result.meta.sessionId).toBe('existing-session-999');
       }
       expect(mockSessionManager.launch).not.toHaveBeenCalled();
@@ -208,8 +222,12 @@ describe('handleLaunch', () => {
   describe('launch failures', () => {
     it('returns port conflict error for EADDRINUSE', async () => {
       const mockSessionManager = createMockSessionManager({ hasActive: false });
-      mockSessionManager.launch = vi.fn().mockRejectedValue(new Error('listen EADDRINUSE: address already in use :::8545'));
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(mockSessionManager, 'launch').mockRejectedValue(
+        new Error('listen EADDRINUSE: address already in use :::8545'),
+      );
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -220,14 +238,18 @@ describe('handleLaunch', () => {
         expect(result.error.code).toBe(ErrorCodes.MM_PORT_IN_USE);
         expect(result.error.message).toContain('Port conflict');
         expect(result.error.message).toContain('EADDRINUSE');
-        expect(result.error.details).toEqual({ input });
+        expect(result.error.details).toStrictEqual({ input });
       }
     });
 
     it('returns port conflict error for port keyword in message', async () => {
       const mockSessionManager = createMockSessionManager({ hasActive: false });
-      mockSessionManager.launch = vi.fn().mockRejectedValue(new Error('port 8545 is already in use'));
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(mockSessionManager, 'launch').mockRejectedValue(
+        new Error('port 8545 is already in use'),
+      );
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -242,8 +264,12 @@ describe('handleLaunch', () => {
 
     it('returns generic launch failed error for other errors', async () => {
       const mockSessionManager = createMockSessionManager({ hasActive: false });
-      mockSessionManager.launch = vi.fn().mockRejectedValue(new Error('Browser failed to start'));
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(mockSessionManager, 'launch').mockRejectedValue(
+        new Error('Browser failed to start'),
+      );
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -254,14 +280,16 @@ describe('handleLaunch', () => {
         expect(result.error.code).toBe(ErrorCodes.MM_LAUNCH_FAILED);
         expect(result.error.message).toContain('Launch failed');
         expect(result.error.message).toContain('Browser failed to start');
-        expect(result.error.details).toEqual({ input });
+        expect(result.error.details).toStrictEqual({ input });
       }
     });
 
     it('handles non-Error exceptions', async () => {
       const mockSessionManager = createMockSessionManager({ hasActive: false });
-      mockSessionManager.launch = vi.fn().mockRejectedValue('string error');
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(mockSessionManager, 'launch').mockRejectedValue('string error');
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -299,7 +327,9 @@ describe('handleLaunch', () => {
         hasActive: false,
         launchResult: mockLaunchResult,
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 
@@ -336,7 +366,9 @@ describe('handleLaunch', () => {
         hasActive: false,
         launchResult: mockLaunchResult,
       });
-      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(mockSessionManager);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
 
       const input: LaunchInput = { stateMode: 'default' };
 

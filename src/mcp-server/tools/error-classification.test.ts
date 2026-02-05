@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+
 import {
   isPageClosedError,
   classifyInteractionError,
@@ -126,7 +127,10 @@ describe('error-classification', () => {
         const error = new Error('Unknown a11yRef: e99');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
@@ -138,7 +142,10 @@ describe('error-classification', () => {
         const error = new Error('Element not found');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
@@ -149,7 +156,10 @@ describe('error-classification', () => {
         const error = new Error('No element found for selector');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
@@ -160,7 +170,10 @@ describe('error-classification', () => {
         const error = new Error('Timeout waiting for selector');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
@@ -173,7 +186,10 @@ describe('error-classification', () => {
         const error = new Error('Timeout 30000ms exceeded');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
@@ -184,7 +200,10 @@ describe('error-classification', () => {
         const error = new Error('Time limit exceeded');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
@@ -195,7 +214,10 @@ describe('error-classification', () => {
         const error = new Error('Operation timed out');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
@@ -208,7 +230,10 @@ describe('error-classification', () => {
         const error = new Error('Unknown error occurred');
 
         // Act
-        const result = classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_CLICK_FAILED);
@@ -328,7 +353,9 @@ describe('error-classification', () => {
     describe('when error indicates navigation failure', () => {
       it('returns NAVIGATION_FAILED for "Navigation failed"', () => {
         // Arrange
-        const error = new Error('Navigation failed: net::ERR_CONNECTION_REFUSED');
+        const error = new Error(
+          'Navigation failed: net::ERR_CONNECTION_REFUSED',
+        );
 
         // Act
         const result = classifyNavigationError(error);
@@ -365,7 +392,9 @@ describe('error-classification', () => {
     describe('when error indicates page closure', () => {
       it('returns NAVIGATION_FAILED with page closed message', () => {
         // Arrange
-        const error = new Error('Target page, context or browser has been closed');
+        const error = new Error(
+          'Target page, context or browser has been closed',
+        );
 
         // Act
         const result = classifyNavigationError(error);
@@ -506,7 +535,9 @@ describe('error-classification', () => {
     describe('when error indicates page closure', () => {
       it('returns PAGE_CLOSED code', () => {
         // Arrange
-        const error = new Error('Target page, context or browser has been closed');
+        const error = new Error(
+          'Target page, context or browser has been closed',
+        );
 
         // Act
         const result = classifyDiscoveryError(error);

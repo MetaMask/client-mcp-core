@@ -4,8 +4,9 @@
  * Tests session validation, observation collection, error handling, and step recording.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Page } from '@playwright/test';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import {
   requireActiveSession,
   collectObservation,
@@ -13,14 +14,13 @@ import {
   recordToolStep,
   collectObservationAndRecord,
   handleToolError,
-  type ObservationLevel,
-  type RecordStepParams,
 } from './helpers';
-import { ErrorCodes } from '../types';
-import { createMockSessionManager } from '../test-utils/index.js';
-import * as sessionManagerModule from '../session-manager.js';
+import type { ObservationLevel, RecordStepParams } from './helpers';
 import * as discoveryModule from '../discovery.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
+import { createMockSessionManager } from '../test-utils';
+import { ErrorCodes } from '../types';
 
 describe('helpers', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -40,7 +40,7 @@ describe('helpers', () => {
     describe('when no active session exists', () => {
       it('returns error response with NO_ACTIVE_SESSION code', () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
         const startTime = Date.now();
 
         // Act
@@ -59,7 +59,7 @@ describe('helpers', () => {
 
       it('includes timestamp in error response', () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
         const startTime = Date.now();
 
         // Act
@@ -75,7 +75,7 @@ describe('helpers', () => {
     describe('when active session exists', () => {
       it('returns undefined', () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(true);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(true);
         const startTime = Date.now();
 
         // Act
@@ -93,33 +93,35 @@ describe('helpers', () => {
         // Arrange
         const mockPage = {} as Page;
         const level: ObservationLevel = 'none';
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: {} as any,
-            testIds: [],
-            a11y: { nodes: [] },
-          },
-        );
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: {} as any,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
 
         // Act
         const result = await collectObservation(mockPage, level);
 
         // Assert
-        expect(result.testIds).toEqual([]);
-        expect(result.a11y.nodes).toEqual([]);
+        expect(result.testIds).toStrictEqual([]);
+        expect(result.a11y.nodes).toStrictEqual([]);
       });
 
       it('does not query extension state', async () => {
         // Arrange
         const mockPage = {} as Page;
         const level: ObservationLevel = 'none';
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: {} as any,
-            testIds: [],
-            a11y: { nodes: [] },
-          },
-        );
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: {} as any,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
 
         // Act
         await collectObservation(mockPage, level);
@@ -145,24 +147,25 @@ describe('helpers', () => {
           chainId: 1,
           balance: '1.5 ETH',
         };
-        mockSessionManager.getExtensionState = vi
-          .fn()
-          .mockResolvedValue(mockState);
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: mockState,
-            testIds: [],
-            a11y: { nodes: [] },
-          },
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
+          mockState,
         );
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: mockState,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
 
         // Act
         const result = await collectObservation(mockPage, level);
 
         // Assert
-        expect(result.state).toEqual(mockState);
-        expect(result.testIds).toEqual([]);
-        expect(result.a11y.nodes).toEqual([]);
+        expect(result.state).toStrictEqual(mockState);
+        expect(result.testIds).toStrictEqual([]);
+        expect(result.a11y.nodes).toStrictEqual([]);
       });
 
       it('uses preset state when provided', async () => {
@@ -180,20 +183,21 @@ describe('helpers', () => {
           chainId: null,
           balance: null,
         };
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: presetState,
-            testIds: [],
-            a11y: { nodes: [] },
-          },
-        );
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: presetState,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
 
         // Act
         const result = await collectObservation(mockPage, level, presetState);
 
         // Assert
         expect(mockSessionManager.getExtensionState).not.toHaveBeenCalled();
-        expect(result.state).toEqual(presetState);
+        expect(result.state).toStrictEqual(presetState);
       });
     });
 
@@ -221,33 +225,35 @@ describe('helpers', () => {
         ];
         const mockRefMap = new Map([['e1', '[data-testid="send-button"]']]);
 
-        mockSessionManager.getExtensionState = vi
-          .fn()
-          .mockResolvedValue(mockState);
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
+          mockState,
+        );
         vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue(
           mockTestIds,
         );
-        vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
-          {
-            nodes: mockA11yNodes,
-            refMap: mockRefMap,
-          },
-        );
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: mockState,
-            testIds: mockTestIds,
-            a11y: { nodes: mockA11yNodes },
-          },
-        );
+        vi.spyOn(
+          discoveryModule,
+          'collectTrimmedA11ySnapshot',
+        ).mockResolvedValue({
+          nodes: mockA11yNodes,
+          refMap: mockRefMap,
+        });
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: mockState,
+          testIds: mockTestIds,
+          a11y: { nodes: mockA11yNodes },
+        });
 
         // Act
         const result = await collectObservation(mockPage, level);
 
         // Assert
-        expect(result.state).toEqual(mockState);
-        expect(result.testIds).toEqual(mockTestIds);
-        expect(result.a11y.nodes).toEqual(mockA11yNodes);
+        expect(result.state).toStrictEqual(mockState);
+        expect(result.testIds).toStrictEqual(mockTestIds);
+        expect(result.a11y.nodes).toStrictEqual(mockA11yNodes);
         expect(mockSessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
       });
 
@@ -265,23 +271,24 @@ describe('helpers', () => {
           chainId: null,
           balance: null,
         };
-        mockSessionManager.getExtensionState = vi
-          .fn()
-          .mockResolvedValue(mockState);
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: mockState,
-            testIds: [],
-            a11y: { nodes: [] },
-          },
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
+          mockState,
         );
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: mockState,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
 
         // Act
         const result = await collectObservation(undefined, level);
 
         // Assert
-        expect(result.testIds).toEqual([]);
-        expect(result.a11y.nodes).toEqual([]);
+        expect(result.testIds).toStrictEqual([]);
+        expect(result.a11y.nodes).toStrictEqual([]);
       });
 
       it('returns default observation when discovery throws error', async () => {
@@ -299,26 +306,27 @@ describe('helpers', () => {
           chainId: null,
           balance: null,
         };
-        mockSessionManager.getExtensionState = vi
-          .fn()
-          .mockResolvedValue(mockState);
+        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
+          mockState,
+        );
         vi.spyOn(discoveryModule, 'collectTestIds').mockRejectedValue(
           new Error('Page closed'),
         );
-        vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-          {
-            state: mockState,
-            testIds: [],
-            a11y: { nodes: [] },
-          },
-        );
+        vi.spyOn(
+          knowledgeStoreModule,
+          'createDefaultObservation',
+        ).mockReturnValue({
+          state: mockState,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
 
         // Act
         const result = await collectObservation(mockPage, level);
 
         // Assert
-        expect(result.testIds).toEqual([]);
-        expect(result.a11y.nodes).toEqual([]);
+        expect(result.testIds).toStrictEqual([]);
+        expect(result.a11y.nodes).toStrictEqual([]);
       });
     });
   });
@@ -327,7 +335,7 @@ describe('helpers', () => {
     describe('when no active session exists', () => {
       it('returns error response without calling handler', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(false);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(false);
         const handler = vi.fn();
         const wrappedHandler = withActiveSession(handler);
 
@@ -346,8 +354,8 @@ describe('helpers', () => {
     describe('when session ID is missing', () => {
       it('returns error response', async () => {
         // Arrange
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(true);
-        mockSessionManager.getSessionId = vi.fn().mockReturnValue(undefined);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(true);
+        vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(undefined);
         const handler = vi.fn();
         const wrappedHandler = withActiveSession(handler);
 
@@ -369,12 +377,12 @@ describe('helpers', () => {
         // Arrange
         const mockPage = { url: () => 'test-url' } as unknown as Page;
         const mockRefMap = new Map([['e1', '[data-testid="test"]']]);
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(true);
-        mockSessionManager.getSessionId = vi
-          .fn()
-          .mockReturnValue('session-123');
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(mockRefMap);
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(true);
+        vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(
+          'session-123',
+        );
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(mockRefMap);
 
         const handler = vi.fn().mockResolvedValue({
           ok: true,
@@ -404,12 +412,12 @@ describe('helpers', () => {
       it('passes through handler result', async () => {
         // Arrange
         const mockPage = { url: () => 'test-url' } as unknown as Page;
-        mockSessionManager.hasActiveSession = vi.fn().mockReturnValue(true);
-        mockSessionManager.getSessionId = vi
-          .fn()
-          .mockReturnValue('session-123');
-        mockSessionManager.getPage = vi.fn().mockReturnValue(mockPage);
-        mockSessionManager.getRefMap = vi.fn().mockReturnValue(new Map());
+        vi.spyOn(mockSessionManager, 'hasActiveSession').mockReturnValue(true);
+        vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(
+          'session-123',
+        );
+        vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+        vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
 
         const expectedResult = {
           ok: true,
@@ -424,7 +432,7 @@ describe('helpers', () => {
         const result = await wrappedHandler({ test: 'input' });
 
         // Assert
-        expect(result).toEqual(expectedResult);
+        expect(result).toStrictEqual(expectedResult);
       });
     });
   });
@@ -432,7 +440,9 @@ describe('helpers', () => {
   describe('recordToolStep', () => {
     it('records step with all parameters', async () => {
       // Arrange
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue('session-123');
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(
+        'session-123',
+      );
       const mockRecordStep = vi.fn().mockResolvedValue(undefined);
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: mockRecordStep,
@@ -471,7 +481,7 @@ describe('helpers', () => {
 
     it('uses empty string when session ID is undefined', async () => {
       // Arrange
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue(undefined);
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(undefined);
       const mockRecordStep = vi.fn().mockResolvedValue(undefined);
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: mockRecordStep,
@@ -509,24 +519,31 @@ describe('helpers', () => {
         testIds: [
           { testId: 'send-button', tag: 'button', text: 'Send', visible: true },
         ],
-        a11y: { nodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }] },
+        a11y: {
+          nodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
+        },
       };
       const mockRecordStep = vi.fn().mockResolvedValue(undefined);
 
-      vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-        mockObservation,
-      );
+      vi.spyOn(
+        knowledgeStoreModule,
+        'createDefaultObservation',
+      ).mockReturnValue(mockObservation);
       vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue(
         mockObservation.testIds,
       );
-      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue({
-        nodes: mockObservation.a11y.nodes,
-        refMap: new Map(),
-      });
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        {
+          nodes: mockObservation.a11y.nodes,
+          refMap: new Map(),
+        },
+      );
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: mockRecordStep,
       } as any);
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue('session-123');
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(
+        'session-123',
+      );
 
       // Act
       const result = await collectObservationAndRecord(
@@ -542,7 +559,7 @@ describe('helpers', () => {
       );
 
       // Assert
-      expect(result).toEqual(mockObservation);
+      expect(result).toStrictEqual(mockObservation);
       expect(mockRecordStep).toHaveBeenCalledWith(
         expect.objectContaining({
           toolName: 'mm_click',
@@ -565,18 +582,23 @@ describe('helpers', () => {
       };
       const mockRecordStep = vi.fn().mockResolvedValue(undefined);
 
-      vi.spyOn(knowledgeStoreModule, 'createDefaultObservation').mockReturnValue(
-        mockObservation,
-      );
+      vi.spyOn(
+        knowledgeStoreModule,
+        'createDefaultObservation',
+      ).mockReturnValue(mockObservation);
       vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
-      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue({
-        nodes: [],
-        refMap: new Map(),
-      });
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        {
+          nodes: [],
+          refMap: new Map(),
+        },
+      );
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: mockRecordStep,
       } as any);
-      mockSessionManager.getSessionId = vi.fn().mockReturnValue('session-123');
+      vi.spyOn(mockSessionManager, 'getSessionId').mockReturnValue(
+        'session-123',
+      );
 
       // Act
       const result = await collectObservationAndRecord(
@@ -587,7 +609,7 @@ describe('helpers', () => {
       );
 
       // Assert
-      expect(result).toEqual(mockObservation);
+      expect(result).toStrictEqual(mockObservation);
       expect(mockRecordStep).toHaveBeenCalledWith(
         expect.objectContaining({
           toolName: 'mm_get_state',
@@ -694,7 +716,7 @@ describe('helpers', () => {
 
         // Assert
         if (!result.ok) {
-          expect(result.error.details).toEqual({ input });
+          expect(result.error.details).toStrictEqual({ input });
         }
       });
 

@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
+
 import {
   createMockSessionManager,
   createMockKnowledgeStore,
   createMockPage,
   createMockLocator,
   createMockBrowserContext,
-} from './index.js';
+} from '.';
 
 describe('mock-factories', () => {
   describe('createMockSessionManager', () => {
@@ -61,8 +62,8 @@ describe('mock-factories', () => {
 
       expect(mock.hasActiveSession()).toBe(false);
       expect(mock.getSessionId()).toBeUndefined();
-      expect(mock.getTrackedPages()).toEqual([]);
-      expect(mock.getRefMap()).toEqual(new Map());
+      expect(mock.getTrackedPages()).toStrictEqual([]);
+      expect(mock.getRefMap()).toStrictEqual(new Map());
       expect(mock.getEnvironmentMode()).toBe('e2e');
 
       const launchResult = await mock.launch({});
@@ -122,15 +123,18 @@ describe('mock-factories', () => {
       expect(typeof mock.listSessions).toBe('function');
       expect(typeof mock.generatePriorKnowledge).toBe('function');
       expect(typeof mock.writeSessionMetadata).toBe('function');
+      // eslint-disable-next-line n/no-sync
       expect(typeof mock.getGitInfoSync).toBe('function');
     });
 
     it('returns sensible defaults', async () => {
       const mock = createMockKnowledgeStore();
 
-      expect(await mock.getLastSteps?.(10, 'all', undefined)).toEqual([]);
-      expect(await mock.searchSteps?.('test', 10, 'all', undefined)).toEqual([]);
-      expect(await mock.listSessions?.(10)).toEqual([]);
+      expect(await mock.getLastSteps?.(10, 'all', undefined)).toStrictEqual([]);
+      expect(
+        await mock.searchSteps?.('test', 10, 'all', undefined),
+      ).toStrictEqual([]);
+      expect(await mock.listSessions?.(10)).toStrictEqual([]);
     });
 
     it('allows customization via options', async () => {
@@ -139,7 +143,9 @@ describe('mock-factories', () => {
         lastSteps: customSteps,
       });
 
-      expect(await mock.getLastSteps?.(10, 'all', undefined)).toEqual(customSteps);
+      expect(await mock.getLastSteps?.(10, 'all', undefined)).toStrictEqual(
+        customSteps,
+      );
     });
   });
 
@@ -199,9 +205,9 @@ describe('mock-factories', () => {
     it('methods are callable', async () => {
       const mock = createMockLocator();
 
-      await expect(mock.click?.()).resolves.toBeUndefined();
-      await expect(mock.fill?.('text')).resolves.toBeUndefined();
-      await expect(mock.isVisible?.()).resolves.toBe(true);
+      expect(await mock.click?.()).toBeUndefined();
+      expect(await mock.fill?.('text')).toBeUndefined();
+      expect(await mock.isVisible?.()).toBe(true);
     });
   });
 
@@ -224,7 +230,7 @@ describe('mock-factories', () => {
     it('pages returns array', () => {
       const mock = createMockBrowserContext();
 
-      expect(mock.pages?.()).toEqual([]);
+      expect(mock.pages?.()).toStrictEqual([]);
     });
   });
 });
