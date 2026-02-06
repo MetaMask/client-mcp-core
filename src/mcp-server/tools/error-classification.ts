@@ -49,13 +49,7 @@ export function classifyInteractionError(
   error: unknown,
   fallbackCode: string,
 ): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -82,13 +76,7 @@ export function classifyInteractionError(
  * @returns Object with error code and message
  */
 export function classifyClickError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
@@ -101,13 +89,7 @@ export function classifyClickError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyTypeError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_TYPE_FAILED);
@@ -120,13 +102,7 @@ export function classifyTypeError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyWaitError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -143,13 +119,7 @@ export function classifyWaitError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyNavigationError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -188,13 +158,7 @@ export function classifyNavigationError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyTabError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -231,13 +195,7 @@ export function classifyTabError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyNotificationError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -273,13 +231,7 @@ export function classifyNotificationError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyDiscoveryError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -315,13 +267,7 @@ export function classifyDiscoveryError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyScreenshotError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -348,13 +294,7 @@ export function classifyScreenshotError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyStateError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -381,13 +321,7 @@ export function classifyStateError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifySeedingError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);
@@ -409,13 +343,7 @@ export function classifySeedingError(error: unknown): {
  * @returns Object with error code and message
  */
 export function classifyContextError(error: unknown): {
-  /**
-   *
-   */
   code: string;
-  /**
-   *
-   */
   message: string;
 } {
   const message = extractErrorMessage(error);

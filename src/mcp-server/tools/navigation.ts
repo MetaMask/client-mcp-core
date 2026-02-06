@@ -83,6 +83,7 @@ export async function handleNavigate(
           await sessionManager.navigateToNotification();
           break;
         default:
+          throw new Error(`Unsupported screen: ${String(input.screen)}`);
       }
 
       return {
@@ -184,10 +185,10 @@ export async function handleSwitchToTab(
     /**
      * Executes the tab switch action.
      *
-     * @param context The tool execution context containing page and reference map
+     * @param _context The tool execution context containing page and reference map
      * @returns Promise resolving to switch result with active tab information
      */
-    execute: async (context) => {
+    execute: async (_context) => {
       const trackedPages = sessionManager.getTrackedPages();
       const targetPage = trackedPages.find((trackedPage) => {
         if (input.role) {
@@ -221,7 +222,7 @@ export async function handleSwitchToTab(
         switched: true,
         activeTab: {
           role: activeTabInfo?.role ?? 'other',
-          url: context.page.url(),
+          url: targetPage.page.url(),
         },
       };
     },

@@ -197,12 +197,12 @@ export class KnowledgeStore {
   }
 
   /**
-   * Read session metadata from disk
+   * Read session metadata from disk (private)
    *
    * @param sessionId - Session ID to read metadata for
    * @returns Session metadata or null if not found
    */
-  async readSessionMetadata(
+  async #readSessionMetadata(
     sessionId: string,
   ): Promise<SessionMetadata | null> {
     if (this.#sessionMetadataCache.has(sessionId)) {
@@ -241,7 +241,7 @@ export class KnowledgeStore {
     }[] = [];
 
     for (const sid of sessionIds) {
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       if (!metadata) {
         continue;
       }
@@ -330,7 +330,7 @@ export class KnowledgeStore {
 
     const filtered: string[] = [];
     for (const sid of allIds) {
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       if (metadata && this.#matchesFilters(metadata, filters)) {
         filtered.push(sid);
       } else if (!metadata) {
@@ -570,7 +570,7 @@ export class KnowledgeStore {
     const scoredSessions: ScoredSession[] = [];
 
     for (const sid of sessionIds) {
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       const sessionScore = metadata
         ? this.#computeSessionScore(metadata, expandedTokens)
         : 0;
@@ -713,35 +713,6 @@ export class KnowledgeStore {
       stepCount: steps.length,
       recipe,
     };
-  }
-
-  /**
-   * Save a screenshot to disk
-   *
-   * @param sessionId - Session ID for organizing screenshots
-   * @param name - Screenshot filename (without extension)
-   * @param buffer - Image buffer data
-   * @returns Path to the saved screenshot file
-   */
-  async saveScreenshot(
-    sessionId: string,
-    name: string,
-    buffer: Buffer,
-  ): Promise<string> {
-    const screenshotsDir = path.join(
-      this.#knowledgeRoot,
-      sessionId,
-      'screenshots',
-    );
-    await fs.mkdir(screenshotsDir, { recursive: true });
-
-    const timestamp = generateFilesafeTimestamp();
-    const filename = `${timestamp}-${name}.png`;
-    const filepath = path.join(screenshotsDir, filename);
-
-    await fs.writeFile(filepath, buffer);
-
-    return filepath;
   }
 
   /**
@@ -1261,7 +1232,7 @@ export class KnowledgeStore {
         break;
       }
 
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       if (!metadata) {
         continue;
       }

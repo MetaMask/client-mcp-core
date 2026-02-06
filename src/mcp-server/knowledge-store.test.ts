@@ -149,24 +149,6 @@ describe('core', () => {
       );
     });
 
-    it('caches metadata after writing', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const metadata: SessionMetadata = {
-        schemaVersion: 1,
-        sessionId: 'session-002',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'onboarding' },
-      };
-
-      await store.writeSessionMetadata(metadata);
-      const cached = await store.readSessionMetadata('session-002');
-
-      expect(cached).toStrictEqual(metadata);
-      expect(fs.readFile).not.toHaveBeenCalled();
-    });
-
     it('includes optional goal in metadata', async () => {
       const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
       const metadata: SessionMetadata = {
@@ -185,71 +167,6 @@ describe('core', () => {
         expect.any(String),
         expect.stringContaining('"goal": "Test send flow"'),
       );
-    });
-  });
-
-  describe('readSessionMetadata', () => {
-    it('reads metadata from file when not cached', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const metadata: SessionMetadata = {
-        schemaVersion: 1,
-        sessionId: 'session-read-001',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        flowTags: ['swap'],
-        tags: [],
-        launch: { stateMode: 'default' },
-      };
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
-
-      const result = await store.readSessionMetadata('session-read-001');
-
-      expect(fs.readFile).toHaveBeenCalledWith(
-        path.join('/test/knowledge', 'session-read-001', 'session.json'),
-        'utf-8',
-      );
-      expect(result).toStrictEqual(metadata);
-    });
-
-    it('returns cached metadata on subsequent reads', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      const metadata: SessionMetadata = {
-        schemaVersion: 1,
-        sessionId: 'session-read-002',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        flowTags: [],
-        tags: [],
-        launch: { stateMode: 'default' },
-      };
-      vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(metadata));
-
-      await store.readSessionMetadata('session-read-002');
-      const result = await store.readSessionMetadata('session-read-002');
-
-      expect(fs.readFile).toHaveBeenCalledTimes(1);
-      expect(result).toStrictEqual(metadata);
-    });
-
-    it('returns null and caches null when file not found', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      vi.mocked(fs.readFile).mockRejectedValueOnce(
-        new Error('ENOENT: file not found'),
-      );
-
-      const result1 = await store.readSessionMetadata('nonexistent-session');
-      const result2 = await store.readSessionMetadata('nonexistent-session');
-
-      expect(result1).toBeNull();
-      expect(result2).toBeNull();
-      expect(fs.readFile).toHaveBeenCalledTimes(1);
-    });
-
-    it('returns null on JSON parse error', async () => {
-      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
-      vi.mocked(fs.readFile).mockResolvedValueOnce('invalid json {{{');
-
-      const result = await store.readSessionMetadata('invalid-json-session');
-
-      expect(result).toBeNull();
     });
   });
 

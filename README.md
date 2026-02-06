@@ -9,6 +9,7 @@ This package provides the core MCP server infrastructure for enabling LLM agents
 ## Requirements
 
 - **Node.js ^20 || ^22 || >=24** (required)
+- **TypeScript >=5.0** (for consumer type definitions)
 - Playwright `^1.49.0` (peer dependency)
 
 ## Installation

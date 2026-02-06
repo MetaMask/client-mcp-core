@@ -13,6 +13,153 @@ import { debugWarn } from './utils';
 const INCLUDED_ROLES_SET = new Set<string>(INCLUDED_ROLES);
 
 /**
+ * Regular expression to parse a single ARIA snapshot line descriptor.
+ *
+ * Matches: `role` + optional `"name"` + optional `[attr]` / `[attr=value]` groups
+ *
+ * Examples:
+ *   - `button "Submit"`
+ *   - `heading "Title" [level=1]`
+ *   - `checkbox "Accept" [checked]`
+ *   - `listitem`
+ */
+const ARIA_LINE_RE =
+  /^(?<role>[a-zA-Z]+)(?:\s+"(?<name>(?:[^"\\]|\\.)*)")?(?<attrs>(?:\s+\[[^\]]*\])*)(?<hasChildren>:?)$/u;
+
+/**
+ * Regular expression to match individual `[key]` or `[key=value]` attribute groups.
+ */
+const ATTR_RE = /\[(?<key>[a-zA-Z]+)(?:=(?<value>[^\]]*))?\]/gu;
+
+/**
+ * Parse a Playwright ariaSnapshot() YAML string into RawA11yNode[].
+ *
+ * The YAML format emitted by Playwright's `locator.ariaSnapshot()` (v1.49+)
+ * is a line-based, indentation-structured tree where each node line is:
+ *   `- role "name" [attr=value]:` (children follow indented)
+ *   `- role "name" [attr=value]`  (leaf node)
+ *   `- text: some text content`   (text node, ignored for our purposes)
+ *
+ * @param yaml The YAML string returned by Playwright's ariaSnapshot()
+ * @returns Array of parsed RawA11yNode trees
+ */
+export function parseAriaSnapshotYaml(yaml: string): RawA11yNode[] {
+  if (!yaml?.trim()) {
+    return [];
+  }
+
+  const lines = yaml.split('\n');
+  const roots: RawA11yNode[] = [];
+  const stack: { node: RawA11yNode; indent: number }[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      continue;
+    }
+
+    const stripped = line.replace(/^ */u, '');
+    const indent = line.length - stripped.length;
+
+    if (!stripped.startsWith('- ')) {
+      continue;
+    }
+
+    const descriptor = stripped.slice(2);
+
+    if (descriptor.startsWith('text:') || descriptor === 'text') {
+      continue;
+    }
+
+    if (descriptor.startsWith('/')) {
+      continue;
+    }
+
+    const node = parseAriaNodeDescriptor(descriptor);
+    if (!node) {
+      continue;
+    }
+
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      const parent = stack[stack.length - 1].node;
+      parent.children ??= [];
+      parent.children.push(node);
+    }
+
+    stack.push({ node, indent });
+  }
+
+  return roots;
+}
+
+/**
+ * Parse a single ARIA node descriptor string into a RawA11yNode.
+ *
+ * @param descriptor The descriptor after removing the `- ` prefix, e.g. `button "Submit" [disabled]:`
+ * @returns A parsed node, or null if the descriptor cannot be parsed
+ */
+function parseAriaNodeDescriptor(descriptor: string): RawA11yNode | null {
+  let desc = descriptor;
+
+  // Strip trailing `:` (children indicator) or `: text` (inline text value)
+  const trailingColonMatch = desc.match(
+    /^(?<main>(?:[a-zA-Z]+)(?:\s+"(?:[^"\\]|\\.)*")?(?:\s+\[[^\]]*\])*)(?::(?<text>.*))?$/u,
+  );
+  if (trailingColonMatch?.groups?.main) {
+    desc = trailingColonMatch.groups.main;
+  }
+
+  const match = ARIA_LINE_RE.exec(desc);
+  if (!match?.groups) {
+    return null;
+  }
+
+  const { role } = match.groups;
+  const rawName = match.groups.name;
+
+  const node: RawA11yNode = { role };
+
+  if (rawName !== undefined) {
+    node.name = rawName.replace(/\\"/gu, '"').replace(/\\\\/gu, '\\');
+  }
+
+  const attrsStr = match.groups.attrs;
+  if (attrsStr) {
+    let attrMatch;
+    ATTR_RE.lastIndex = 0;
+    while ((attrMatch = ATTR_RE.exec(attrsStr)) !== null) {
+      const key = attrMatch.groups?.key;
+      const value = attrMatch.groups?.value;
+
+      switch (key) {
+        case 'disabled':
+          node.disabled = value !== 'false';
+          break;
+        case 'checked':
+          if (value === 'mixed') {
+            node.checked = 'mixed';
+          } else {
+            node.checked = value !== 'false';
+          }
+          break;
+        case 'expanded':
+          node.expanded = value !== 'false';
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return node;
+}
+
+/**
  * Collect all visible test IDs from the current page.
  *
  * @param page The Playwright page to scan for test IDs
@@ -74,28 +221,22 @@ export async function collectTrimmedA11ySnapshot(
   page: Page,
   rootSelector?: string,
 ): Promise<{
-  /**
-   *
-   */
   nodes: A11yNodeTrimmed[];
-  /**
-   *
-   */
   refMap: Map<string, string>;
 }> {
-  let snapshotRoot: RawA11yNode | null;
+  const locator = rootSelector
+    ? page.locator(rootSelector).first()
+    : page.locator('body').first();
 
-  if (rootSelector) {
-    const locator = page.locator(rootSelector).first();
-    snapshotRoot =
-      (await locator.ariaSnapshot()) as unknown as RawA11yNode | null;
-  } else {
-    const bodyLocator = page.locator('body').first();
-    snapshotRoot =
-      (await bodyLocator.ariaSnapshot()) as unknown as RawA11yNode | null;
+  const snapshotYaml: string = await locator.ariaSnapshot();
+
+  if (!snapshotYaml) {
+    return { nodes: [], refMap: new Map() };
   }
 
-  if (!snapshotRoot) {
+  const parsedRoots = parseAriaSnapshotYaml(snapshotYaml);
+
+  if (parsedRoots.length === 0) {
     return { nodes: [], refMap: new Map() };
   }
 
@@ -157,7 +298,9 @@ export async function collectTrimmedA11ySnapshot(
     }
   }
 
-  traverseNode(snapshotRoot, []);
+  for (const root of parsedRoots) {
+    traverseNode(root, []);
+  }
 
   return { nodes: trimmedNodes, refMap };
 }

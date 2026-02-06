@@ -14,15 +14,15 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
+  parseAriaSnapshotYaml,
   resolveTarget,
   waitForTarget,
 } from './discovery.js';
-import type { RawA11yNode } from './types';
 
 function createMockPage(
   options: {
     testIds?: { testId: string; visible: boolean; text?: string }[];
-    a11ySnapshot?: RawA11yNode | null;
+    a11ySnapshot?: string | null;
   } = {},
 ): Page {
   const { testIds = [], a11ySnapshot = null } = options;
@@ -213,13 +213,7 @@ describe('collectTestIds', () => {
 
 describe('collectTrimmedA11ySnapshot', () => {
   it('collects accessibility tree with deterministic refs', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [
-        { role: 'button', name: 'Submit' },
-        { role: 'button', name: 'Cancel' },
-      ],
-    };
+    const a11yTree = `- main:\n  - button "Submit"\n  - button "Cancel"`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -243,14 +237,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('filters roles to included set', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [
-        { role: 'button', name: 'Click' },
-        { role: 'div', name: 'Container' },
-        { role: 'link', name: 'Go' },
-      ],
-    };
+    const a11yTree = `- main:\n  - button "Click"\n  - div "Container"\n  - link "Go"`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -262,14 +249,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('includes disabled, checked, expanded properties', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [
-        { role: 'button', name: 'Disabled', disabled: true },
-        { role: 'checkbox', name: 'Checked', checked: true },
-        { role: 'button', name: 'Expanded', expanded: true },
-      ],
-    };
+    const a11yTree = `- main:\n  - button "Disabled" [disabled]\n  - checkbox "Checked" [checked]\n  - button "Expanded" [expanded]`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -281,10 +261,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('handles checked="mixed" as false', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [{ role: 'checkbox', name: 'Mixed', checked: 'mixed' }],
-    };
+    const a11yTree = `- main:\n  - checkbox "Mixed" [checked=mixed]`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -294,22 +271,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('builds ancestor path for dialog and heading', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [
-        {
-          role: 'dialog',
-          name: 'Confirm',
-          children: [
-            {
-              role: 'heading',
-              name: 'Title',
-              children: [{ role: 'button', name: 'OK' }],
-            },
-          ],
-        },
-      ],
-    };
+    const a11yTree = `- main:\n  - dialog "Confirm":\n    - heading "Title":\n      - button "OK"`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -328,10 +290,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('escapes quotes in accessibility names', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [{ role: 'button', name: 'Say "Hello"' }],
-    };
+    const a11yTree = '- main:\n  - button "Say \\"Hello\\""';
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -350,10 +309,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('uses root selector when provided', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'dialog',
-      children: [{ role: 'button', name: 'Close' }],
-    };
+    const a11yTree = `- dialog:\n  - button "Close"`;
 
     const mockLocator = {
       ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
@@ -372,22 +328,7 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('handles nested children recursively', async () => {
-    const a11yTree: RawA11yNode = {
-      role: 'main',
-      children: [
-        {
-          role: 'button',
-          name: 'Parent',
-          children: [
-            {
-              role: 'link',
-              name: 'Child',
-              children: [{ role: 'button', name: 'Grandchild' }],
-            },
-          ],
-        },
-      ],
-    };
+    const a11yTree = `- main:\n  - button "Parent":\n    - link "Child":\n      - button "Grandchild"`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
 
@@ -500,5 +441,117 @@ describe('waitForTarget', () => {
     await waitForTarget(page, 'selector', '.submit-button', new Map(), 5000);
 
     expect(page.locator).toHaveBeenCalledWith('.submit-button');
+  });
+});
+
+describe('parseAriaSnapshotYaml', () => {
+  it('parses basic leaf nodes', () => {
+    const yaml = `- button "Submit"`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([{ role: 'button', name: 'Submit' }]);
+  });
+
+  it('parses nested children', () => {
+    const yaml = `- main:\n  - button "Parent":\n    - link "Child":\n      - button "Grandchild"`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([
+      {
+        role: 'main',
+        children: [
+          {
+            role: 'button',
+            name: 'Parent',
+            children: [
+              {
+                role: 'link',
+                name: 'Child',
+                children: [{ role: 'button', name: 'Grandchild' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('parses attributes', () => {
+    const yaml = `- main:\n  - button "Disabled" [disabled]\n  - checkbox "Checked" [checked]\n  - checkbox "Mixed" [checked=mixed]\n  - button "Expanded" [expanded]`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([
+      {
+        role: 'main',
+        children: [
+          { role: 'button', name: 'Disabled', disabled: true },
+          { role: 'checkbox', name: 'Checked', checked: true },
+          { role: 'checkbox', name: 'Mixed', checked: 'mixed' },
+          { role: 'button', name: 'Expanded', expanded: true },
+        ],
+      },
+    ]);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(parseAriaSnapshotYaml('')).toStrictEqual([]);
+  });
+
+  it('returns empty array for whitespace-only input', () => {
+    expect(parseAriaSnapshotYaml('  \n  ')).toStrictEqual([]);
+  });
+
+  it('unescapes quoted names', () => {
+    const yaml = '- button "Say \\"Hello\\""';
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([{ role: 'button', name: 'Say "Hello"' }]);
+  });
+
+  it('skips text nodes', () => {
+    const yaml = `- text: some content\n- button "Submit"`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([{ role: 'button', name: 'Submit' }]);
+  });
+
+  it('skips property lines', () => {
+    const yaml = `- /url: https://example.com\n- link "Home"`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([{ role: 'link', name: 'Home' }]);
+  });
+
+  it('handles nodes without names', () => {
+    const yaml = `- listitem`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([{ role: 'listitem' }]);
+  });
+
+  it('handles inline text values', () => {
+    const yaml = `- listitem: Item text`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([{ role: 'listitem' }]);
+  });
+
+  it('parses multiple root nodes', () => {
+    const yaml = `- button "First"\n- button "Second"`;
+
+    const result = parseAriaSnapshotYaml(yaml);
+
+    expect(result).toStrictEqual([
+      { role: 'button', name: 'First' },
+      { role: 'button', name: 'Second' },
+    ]);
   });
 });
