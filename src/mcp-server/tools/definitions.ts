@@ -75,44 +75,17 @@ import type {
 
 export const TOOL_PREFIX = 'mm';
 
-/**
- *
- */
 export type ToolDefinition = {
-  /**
-   *
-   */
   name: string;
-  /**
-   *
-   */
   description: string;
-  /**
-   *
-   */
   inputSchema: Record<string, unknown>;
 };
 
-/**
- *
- */
 type ZodSchema = ZodType<unknown> & { toJSONSchema(): Record<string, unknown> };
 
-/**
- *
- */
 type ToolEntry = {
-  /**
-   *
-   */
   schema: ZodSchema;
-  /**
-   *
-   */
   description: string;
-  /**
-   *
-   */
   handler: ToolHandler;
 };
 

@@ -1,24 +1,9 @@
 import type { BrowserContext, Page } from '@playwright/test';
 
-/**
- *
- */
 export type ExtensionIdResolverDeps = {
-  /**
-   *
-   */
   context: BrowserContext;
-  /**
-   *
-   */
   log: {
-    /**
-     *
-     */
     info: (message: string) => void;
-    /**
-     *
-     */
     warn: (message: string, error?: unknown) => void;
   };
 };

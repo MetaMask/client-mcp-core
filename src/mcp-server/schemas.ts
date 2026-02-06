@@ -476,17 +476,8 @@ export const clipboardInputSchema = z
     },
   );
 
-/**
- *
- */
 export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
-/**
- *
- */
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
-/**
- *
- */
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 
 export const toolSchemas = {
@@ -519,104 +510,35 @@ export const toolSchemas = {
   clipboard: clipboardInputSchema,
 } as const;
 
-/**
- *
- */
 export type ToolName = keyof typeof toolSchemas;
 
-/**
- *
- */
 export type BuildInputZ = z.infer<typeof buildInputSchema>;
-/**
- *
- */
 export type LaunchInputZ = z.infer<typeof launchInputSchema>;
-/**
- *
- */
 export type CleanupInputZ = z.infer<typeof cleanupInputSchema>;
-/**
- *
- */
 export type GetStateInputZ = z.infer<typeof getStateInputSchema>;
-/**
- *
- */
 export type NavigateInputZ = z.infer<typeof navigateInputSchema>;
-/**
- *
- */
 export type WaitForNotificationInputZ = z.infer<
   typeof waitForNotificationInputSchema
 >;
-/**
- *
- */
 export type ListTestIdsInputZ = z.infer<typeof listTestIdsInputSchema>;
-/**
- *
- */
 export type AccessibilitySnapshotInputZ = z.infer<
   typeof accessibilitySnapshotInputSchema
 >;
-/**
- *
- */
 export type DescribeScreenInputZ = z.infer<typeof describeScreenInputSchema>;
-/**
- *
- */
 export type ScreenshotInputZ = z.infer<typeof screenshotInputSchema>;
-/**
- *
- */
 export type ClickInputZ = z.infer<typeof clickInputSchema>;
-/**
- *
- */
 export type TypeInputZ = z.infer<typeof typeInputSchema>;
-/**
- *
- */
 export type WaitForInputZ = z.infer<typeof waitForInputSchema>;
-/**
- *
- */
 export type KnowledgeLastInputZ = z.infer<typeof knowledgeLastInputSchema>;
-/**
- *
- */
 export type KnowledgeSearchInputZ = z.infer<typeof knowledgeSearchInputSchema>;
-/**
- *
- */
 export type KnowledgeSummarizeInputZ = z.infer<
   typeof knowledgeSummarizeInputSchema
 >;
-/**
- *
- */
 export type KnowledgeSessionsInputZ = z.infer<
   typeof knowledgeSessionsInputSchema
 >;
-/**
- *
- */
 export type KnowledgeScopeZ = z.infer<typeof knowledgeScopeSchema>;
-/**
- *
- */
 export type KnowledgeFiltersZ = z.infer<typeof knowledgeFiltersSchema>;
-/**
- *
- */
 export type RunStepsInputZ = z.infer<typeof runStepsInputSchema>;
-/**
- *
- */
 export type SwitchToTabInputZ = z.infer<typeof switchToTabInputSchema>;
-/**
- *
- */
 export type CloseTabInputZ = z.infer<typeof closeTabInputSchema>;

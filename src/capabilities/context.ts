@@ -104,37 +104,13 @@ export function isProdConfig(
   return config.environment === 'prod';
 }
 
-/**
- *
- */
 export type WorkflowContext = {
-  /**
-   *
-   */
   build?: BuildCapability;
-  /**
-   *
-   */
   fixture?: FixtureCapability;
-  /**
-   *
-   */
   chain?: ChainCapability;
-  /**
-   *
-   */
   contractSeeding?: ContractSeedingCapability;
-  /**
-   *
-   */
   stateSnapshot?: StateSnapshotCapability;
-  /**
-   *
-   */
   mockServer?: MockServerCapability;
-  /**
-   *
-   */
   config: EnvironmentConfig;
 };
 

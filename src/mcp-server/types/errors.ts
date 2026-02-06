@@ -40,7 +40,4 @@ export const ErrorCodes = {
   MM_INTERNAL_ERROR: 'MM_INTERNAL_ERROR',
 } as const;
 
-/**
- *
- */
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

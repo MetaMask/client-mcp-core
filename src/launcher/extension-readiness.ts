@@ -1,29 +1,11 @@
 import type { Page } from '@playwright/test';
 import path from 'path';
 
-/**
- *
- */
 export type ExtensionReadinessDeps = {
-  /**
-   *
-   */
   page: Page;
-  /**
-   *
-   */
   screenshotDir: string;
-  /**
-   *
-   */
   log: {
-    /**
-     *
-     */
     info: (message: string) => void;
-    /**
-     *
-     */
     error: (message: string) => void;
   };
 };

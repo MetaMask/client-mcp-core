@@ -12,65 +12,23 @@
 import type { Page, Locator, BrowserContext } from '@playwright/test';
 import { vi } from 'vitest';
 
-/**
- *
- */
 export type MockPageOptions = {
-  /**
-   *
-   */
   url?: string;
-  /**
-   *
-   */
   locatorMock?: Locator;
 };
 
-/**
- *
- */
 export type MockLocatorOptions = {
-  /**
-   *
-   */
   clickMock?: () => Promise<void>;
-  /**
-   *
-   */
   fillMock?: (text: string) => Promise<void>;
-  /**
-   *
-   */
   isVisibleMock?: () => Promise<boolean>;
-  /**
-   *
-   */
   getAttributeMock?: (name: string) => Promise<string | null>;
-  /**
-   *
-   */
   textContentMock?: () => Promise<string | null>;
-  /**
-   *
-   */
   allMock?: () => Promise<Locator[]>;
-  /**
-   *
-   */
   firstMock?: () => Locator;
-  /**
-   *
-   */
   nthMock?: (index: number) => Locator;
 };
 
-/**
- *
- */
 export type MockBrowserContextOptions = {
-  /**
-   *
-   */
   pages?: Page[];
 };
 

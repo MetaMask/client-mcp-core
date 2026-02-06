@@ -121,7 +121,7 @@ function extractPathTokens(url: string): string[] {
 }
 
 /**
- *
+ * Persistent cross-session knowledge store for recording and querying tool invocations.
  */
 export class KnowledgeStore {
   readonly #knowledgeRoot: string;
@@ -236,13 +236,7 @@ export class KnowledgeStore {
   ): Promise<SessionSummary[]> {
     const sessionIds = await this.getAllSessionIds();
     const sessions: {
-      /**
-       *
-       */
       metadata: SessionMetadata;
-      /**
-       *
-       */
       createdAt: Date;
     }[] = [];
 
@@ -366,41 +360,14 @@ export class KnowledgeStore {
    * @returns Path to the recorded step file
    */
   async recordStep(params: {
-    /**
-     *
-     */
     sessionId: string;
-    /**
-     *
-     */
     toolName: string;
-    /**
-     *
-     */
     input?: Record<string, unknown>;
-    /**
-     *
-     */
     target?: StepRecordTool['target'];
-    /**
-     *
-     */
     outcome: StepRecordOutcome;
-    /**
-     *
-     */
     observation: StepRecordObservation;
-    /**
-     *
-     */
     durationMs?: number;
-    /**
-     *
-     */
     screenshotPath?: string;
-    /**
-     *
-     */
     screenshotDimensions?: {
       /**
        * Screenshot width in pixels
@@ -411,9 +378,6 @@ export class KnowledgeStore {
        */
       height: number;
     };
-    /**
-     *
-     */
     context?: 'e2e' | 'prod';
   }): Promise<string> {
     const timestamp = new Date();
@@ -598,21 +562,9 @@ export class KnowledgeStore {
       filters,
     );
 
-    /**
-     *
-     */
     type ScoredSession = {
-      /**
-       *
-       */
       sessionId: string;
-      /**
-       *
-       */
       score: number;
-      /**
-       *
-       */
       metadata?: SessionMetadata;
     };
     const scoredSessions: ScoredSession[] = [];
@@ -646,29 +598,11 @@ export class KnowledgeStore {
     });
     const topSessions = scoredSessions.slice(0, SCAN_LIMITS.maxSessionsToScan);
 
-    /**
-     *
-     */
     type StepMatch = {
-      /**
-       *
-       */
       step: StepRecord;
-      /**
-       *
-       */
       score: number;
-      /**
-       *
-       */
       sessionScore: number;
-      /**
-       *
-       */
       sessionGoal?: string;
-      /**
-       *
-       */
       matchedFields: string[];
     };
     const matches: StepMatch[] = [];
@@ -1271,11 +1205,7 @@ export class KnowledgeStore {
       context,
     );
 
-    const avoidList = await this.#buildAvoidList(
-      context,
-      candidateSessionIds,
-      filters,
-    );
+    const avoidList = await this.#buildAvoidList(context, candidateSessionIds);
 
     if (
       relatedSessions.length === 0 &&
@@ -1577,17 +1507,8 @@ export class KnowledgeStore {
     const actionCounts = new Map<
       string,
       {
-        /**
-         *
-         */
         step: PriorKnowledgeSimilarStep;
-        /**
-         *
-         */
         count: number;
-        /**
-         *
-         */
         confidenceSum: number;
       }
     >();
@@ -1738,13 +1659,11 @@ export class KnowledgeStore {
    *
    * @param context - Current context for avoid list building
    * @param sessionIds - Session IDs to analyze for failures
-   * @param _filters - Filters to apply (currently unused)
    * @returns Array of actions to avoid
    */
   async #buildAvoidList(
     context: PriorKnowledgeContext,
     sessionIds: string[],
-    _filters: KnowledgeFilters,
   ): Promise<PriorKnowledgeAvoid[]> {
     const failureCounts = new Map<
       string,

@@ -1,23 +1,11 @@
-/**
- *
- */
 export type ConsoleErrorEntry = {
-  /**
-   *
-   */
   timestamp: number;
-  /**
-   *
-   */
   message: string;
-  /**
-   *
-   */
   source: string;
 };
 
 /**
- *
+ * Ring buffer that stores recent console error entries with a fixed capacity.
  */
 export class ConsoleErrorBuffer {
   readonly #maxEntries: number;

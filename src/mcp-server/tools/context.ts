@@ -3,30 +3,12 @@ import { getSessionManager } from '../session-manager.js';
 import { classifyContextError } from './error-classification.js';
 import type { McpResponse, HandlerOptions } from '../types';
 
-/**
- *
- */
 export type SetContextInput = {
-  /**
-   *
-   */
   context: 'e2e' | 'prod';
 };
-/**
- *
- */
 export type SetContextResult = {
-  /**
-   *
-   */
   previousContext: 'e2e' | 'prod';
-  /**
-   *
-   */
   newContext: 'e2e' | 'prod';
-  /**
-   *
-   */
   availableCapabilities: string[];
 };
 
@@ -70,34 +52,13 @@ export async function handleSetContext(
   });
 }
 
-/**
- *
- */
 export type GetContextResult = {
-  /**
-   *
-   */
   currentContext: 'e2e' | 'prod';
-  /**
-   *
-   */
   hasActiveSession: boolean;
-  /**
-   *
-   */
   sessionId: string | null;
-  /**
-   *
-   */
   capabilities: {
-    /**
-     *
-     */
     available: string[];
   };
-  /**
-   *
-   */
   canSwitchContext: boolean;
 };
 

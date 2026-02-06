@@ -31,112 +31,40 @@ function createEmptyObservation(): StepRecordObservation {
   };
 }
 
-/**
- *
- */
 export type ObservationPolicy = 'none' | 'default' | 'custom' | 'failures';
 
-/**
- *
- */
 export type ToolExecutionContext = {
-  /**
-   *
-   */
   sessionId: string | undefined;
-  /**
-   *
-   */
   page: Page;
-  /**
-   *
-   */
   refMap: Map<string, string>;
-  /**
-   *
-   */
   startTime: number;
 };
 
-/**
- *
- */
 export type ToolExecuteResult<TResult> = {
-  /**
-   *
-   */
   result: TResult;
-  /**
-   *
-   */
   observation?: StepRecordObservation;
 };
 
-/**
- *
- */
 export type ToolExecutionConfig<TInput, TResult> = {
-  /**
-   *
-   */
   toolName: string;
-  /**
-   *
-   */
   input: TInput;
-  /**
-   *
-   */
   options?: HandlerOptions;
-  /**
-   *
-   */
   requiresSession?: boolean;
-  /**
-   *
-   */
   observationPolicy?: ObservationPolicy;
-  /**
-   *
-   */
   execute: (
     context: ToolExecutionContext,
   ) => Promise<TResult | ToolExecuteResult<TResult>>;
-  /**
-   *
-   */
   classifyError?: (error: unknown) => {
-    /**
-     *
-     */
     code: string;
-    /**
-     *
-     */
     message: string;
   };
-  /**
-   *
-   */
   getTarget?: (input: TInput) =>
     | {
-        /**
-         *
-         */
         testId?: string;
-        /**
-         *
-         */
         selector?: string;
-        /**
-         *
-         */
         a11yRef?: string;
       }
     | undefined;
-  /**
-   *
-   */
   sanitizeInputForRecording?: (input: TInput) => Record<string, unknown>;
 };
 

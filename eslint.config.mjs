@@ -38,6 +38,24 @@ const config = createConfig([
   },
 
   {
+    files: ['src/**/*.ts'],
+    rules: {
+      'import-x/no-nodejs-modules': 'off',
+      'no-restricted-globals': 'off',
+      'jsdoc/require-jsdoc': [
+        'error',
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+          },
+        },
+      ],
+    },
+  },
+
+  {
     files: ['**/*.test.ts', '**/*.test.js', '**/test-utils/**'],
     extends: [vitest, nodejs],
     rules: {
@@ -48,14 +66,6 @@ const config = createConfig([
       'no-empty-function': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/unbound-method': 'off',
-      'no-restricted-globals': 'off',
-    },
-  },
-
-  {
-    files: ['src/**/*.ts'],
-    rules: {
-      'import-x/no-nodejs-modules': 'off',
       'no-restricted-globals': 'off',
     },
   },

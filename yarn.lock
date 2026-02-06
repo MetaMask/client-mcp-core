@@ -933,7 +933,7 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:^1.12.1"
     "@playwright/test": "npm:^1.49.0"
     "@ts-bridge/cli": "npm:^0.6.3"
-    "@types/node": "npm:^18.18"
+    "@types/node": "npm:^20.0.0"
     "@typescript-eslint/utils": "npm:^8.6.0"
     "@vitest/coverage-istanbul": "npm:^3.0.7"
     "@vitest/eslint-plugin": "npm:^1.1.4"
@@ -1678,12 +1678,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^18.18":
-  version: 18.19.130
-  resolution: "@types/node@npm:18.19.130"
+"@types/node@npm:^20.0.0":
+  version: 20.19.31
+  resolution: "@types/node@npm:20.19.31"
   dependencies:
-    undici-types: "npm:~5.26.4"
-  checksum: 10/ebb85c6edcec78df926de27d828ecbeb1b3d77c165ceef95bfc26e171edbc1924245db4eb2d7d6230206fe6b1a1f7665714fe1c70739e9f5980d8ce31af6ef82
+    undici-types: "npm:~6.21.0"
+  checksum: 10/6196b4cc4429b29407dcb657dfa2624cf83460315b05a29dcf7f1b0c582da6cd941e9380eb056b77209f7cc31c118a815ed86f70dc3f3736c7d8497f0137de8a
   languageName: node
   linkType: hard
 
@@ -6625,10 +6625,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici-types@npm:~5.26.4":
-  version: 5.26.5
-  resolution: "undici-types@npm:5.26.5"
-  checksum: 10/0097779d94bc0fd26f0418b3a05472410408877279141ded2bd449167be1aed7ea5b76f756562cb3586a07f251b90799bab22d9019ceba49c037c76445f7cddd
+"undici-types@npm:~6.21.0":
+  version: 6.21.0
+  resolution: "undici-types@npm:6.21.0"
+  checksum: 10/ec8f41aa4359d50f9b59fa61fe3efce3477cc681908c8f84354d8567bb3701fafdddf36ef6bff307024d3feb42c837cf6f670314ba37fc8145e219560e473d14
   languageName: node
   linkType: hard
 

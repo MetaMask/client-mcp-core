@@ -4,9 +4,6 @@
  * compared to unsafe `as` type assertions.
  */
 
-/**
- *
- */
 export type TargetType = 'a11yRef' | 'testId' | 'selector';
 
 /**
@@ -17,17 +14,8 @@ export type TargetType = 'a11yRef' | 'testId' | 'selector';
  * @returns True if the result is a valid target selection.
  */
 export function isValidTargetSelection(result: unknown): result is {
-  /**
-   *
-   */
   valid: true;
-  /**
-   *
-   */
   type: TargetType;
-  /**
-   *
-   */
   value: string;
 } {
   return (
@@ -36,9 +24,6 @@ export function isValidTargetSelection(result: unknown): result is {
     'valid' in result &&
     (
       result as {
-        /**
-         *
-         */
         valid: boolean;
       }
     ).valid &&
@@ -46,17 +31,11 @@ export function isValidTargetSelection(result: unknown): result is {
     'value' in result &&
     typeof (
       result as {
-        /**
-         *
-         */
         type: unknown;
       }
     ).type === 'string' &&
     typeof (
       result as {
-        /**
-         *
-         */
         value: unknown;
       }
     ).value === 'string'
@@ -71,13 +50,7 @@ export function isValidTargetSelection(result: unknown): result is {
  * @returns True if the result is an invalid target selection.
  */
 export function isInvalidTargetSelection(result: unknown): result is {
-  /**
-   *
-   */
   valid: false;
-  /**
-   *
-   */
   error: string;
 } {
   return (
@@ -86,18 +59,12 @@ export function isInvalidTargetSelection(result: unknown): result is {
     'valid' in result &&
     !(
       result as {
-        /**
-         *
-         */
         valid: boolean;
       }
     ).valid &&
     'error' in result &&
     typeof (
       result as {
-        /**
-         *
-         */
         error: unknown;
       }
     ).error === 'string'

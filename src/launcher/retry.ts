@@ -1,14 +1,5 @@
-/**
- *
- */
 export type RetryOptions = {
-  /**
-   *
-   */
   attempts: number;
-  /**
-   *
-   */
   delayMs: number;
 };
 

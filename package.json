@@ -71,7 +71,7 @@
     "@metamask/eslint-config-vitest": "^15.0.0",
     "@playwright/test": "^1.49.0",
     "@ts-bridge/cli": "^0.6.3",
-    "@types/node": "^18.18",
+    "@types/node": "^20.0.0",
     "@typescript-eslint/utils": "^8.6.0",
     "@vitest/coverage-istanbul": "^3.0.7",
     "@vitest/eslint-plugin": "^1.1.4",

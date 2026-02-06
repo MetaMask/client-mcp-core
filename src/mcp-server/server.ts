@@ -20,25 +20,10 @@ import type { ToolDefinition } from './tools/definitions.js';
 import { ErrorCodes } from './types';
 import { createErrorResponse } from './utils';
 
-/**
- *
- */
 export type McpServerConfig = {
-  /**
-   *
-   */
   name: string;
-  /**
-   *
-   */
   version: string;
-  /**
-   *
-   */
   onCleanup?: () => Promise<void>;
-  /**
-   *
-   */
   logger?: (message: string) => void;
 };
 
@@ -80,9 +65,6 @@ function createToolErrorResponse(
   };
 }
 
-/**
- *
- */
 export type McpServer = {
   start(): Promise<void>;
   stop(): Promise<void>;

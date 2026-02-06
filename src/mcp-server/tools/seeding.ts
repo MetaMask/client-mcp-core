@@ -17,13 +17,7 @@ import type {
 import { ErrorCodes } from '../types';
 import { createErrorResponse } from '../utils';
 
-/**
- *
- */
 export type SeedingToolOptions = HandlerOptions & {
-  /**
-   *
-   */
   seedingCapability?: ContractSeedingCapability;
 };
 

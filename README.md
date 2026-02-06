@@ -8,7 +8,7 @@ This package provides the core MCP server infrastructure for enabling LLM agents
 
 ## Requirements
 
-- **Node.js >= 24.0.0** (required)
+- **Node.js ^20 || ^22 || >=24** (required)
 - Playwright `^1.49.0` (peer dependency)
 
 ## Installation
@@ -540,6 +540,31 @@ class MetaMaskSessionManager implements ISessionManager {
   getSessionMetadata() {
     return undefined;
   }
+
+  // Context Management
+  setContext(context: 'e2e' | 'prod'): void {
+    if (this.hasActiveSession()) {
+      throw new Error('Cannot switch context while session is active');
+    }
+    // Switch environment context
+  }
+
+  getContextInfo() {
+    return {
+      currentContext: this.getEnvironmentMode(),
+      hasActiveSession: this.hasActiveSession(),
+      sessionId: this.sessionId ?? null,
+      capabilities: {
+        available: [
+          this.buildCapability && 'build',
+          this.fixtureCapability && 'fixture',
+          this.chainCapability && 'chain',
+          this.contractSeedingCapability && 'contractSeeding',
+        ].filter(Boolean) as string[],
+      },
+      canSwitchContext: !this.hasActiveSession(),
+    };
+  }
 }
 
 // Bootstrap the server
@@ -605,19 +630,29 @@ Custom tool handlers are not supported. The server uses a fixed set of handlers 
 All tools are prefixed with `mm_` and return a standardized response format:
 
 ```typescript
-type ToolResponse<T> = {
-  ok: boolean; // Whether the operation succeeded
-  ts: number; // Timestamp (ms since epoch)
-  sessionId?: string; // Current session ID
-  durationMs: number; // Operation duration
-  result?: T; // Success payload
-  error?: {
-    // Error details (when ok=false)
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-};
+type ToolResponse<Result> =
+  | {
+      ok: true;
+      meta: {
+        timestamp: string; // ISO timestamp
+        sessionId?: string; // Current session ID
+        durationMs: number; // Operation duration
+      };
+      result: Result; // Success payload
+    }
+  | {
+      ok: false;
+      meta: {
+        timestamp: string;
+        sessionId?: string;
+        durationMs: number;
+      };
+      error: {
+        code: string;
+        message: string;
+        details?: Record<string, unknown>;
+      };
+    };
 ```
 
 ---
@@ -1252,7 +1287,6 @@ Get the last N step records from the knowledge store.
 | `filters.tag` | `string` | - | Filter by tag |
 | `filters.screen` | `string` | - | Filter by screen |
 | `filters.sinceHours` | `number` | - | Only steps from last N hours |
-| `filters.gitBranch` | `string` | - | Filter by git branch |
 
 **Output:**
 
@@ -1340,7 +1374,6 @@ List recent sessions with metadata.
     goal?: string;
     flowTags: string[];
     tags: string[];
-    git?: { branch?: string; commit?: string };
   }];
 }
 ```

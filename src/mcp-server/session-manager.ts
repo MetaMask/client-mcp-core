@@ -26,17 +26,8 @@ import type {
  * Represents a tracked browser page with its role and URL.
  */
 export type TrackedPage = {
-  /**
-   *
-   */
   role: TabRole;
-  /**
-   *
-   */
   url: string;
-  /**
-   *
-   */
   page: Page;
 };
 
@@ -64,13 +55,7 @@ export type SessionLaunchInput = {
   slowMo?: number;
   /** Port configuration */
   ports?: {
-    /**
-     *
-     */
     anvil?: number;
-    /**
-     *
-     */
     fixtureServer?: number;
   };
   /** Smart contracts to deploy on launch */
@@ -81,17 +66,8 @@ export type SessionLaunchInput = {
  * Result of launching a new session.
  */
 export type SessionLaunchResult = {
-  /**
-   *
-   */
   sessionId: string;
-  /**
-   *
-   */
   extensionId: string;
-  /**
-   *
-   */
   state: ExtensionState;
 };
 
@@ -99,17 +75,8 @@ export type SessionLaunchResult = {
  * Screenshot options.
  */
 export type SessionScreenshotOptions = {
-  /**
-   *
-   */
   name: string;
-  /**
-   *
-   */
   fullPage?: boolean;
-  /**
-   *
-   */
   selector?: string;
 };
 
@@ -316,30 +283,12 @@ export type ISessionManager = {
    * Get current context information.
    */
   getContextInfo(): {
-    /**
-     *
-     */
     currentContext: 'e2e' | 'prod';
-    /**
-     *
-     */
     hasActiveSession: boolean;
-    /**
-     *
-     */
     sessionId: string | null;
-    /**
-     *
-     */
     capabilities: {
-      /**
-       *
-       */
       available: string[];
     };
-    /**
-     *
-     */
     canSwitchContext: boolean;
   };
 };
