@@ -1,35 +1,35 @@
 export const SMART_CONTRACT_NAMES = [
-  "hst",
-  "nfts",
-  "erc1155",
-  "piggybank",
-  "failing",
-  "multisig",
-  "entrypoint",
-  "simpleAccountFactory",
-  "verifyingPaymaster",
+  'hst',
+  'nfts',
+  'erc1155',
+  'piggybank',
+  'failing',
+  'multisig',
+  'entrypoint',
+  'simpleAccountFactory',
+  'verifyingPaymaster',
 ] as const;
 
 export type SmartContractName = (typeof SMART_CONTRACT_NAMES)[number];
 
 export const HARDFORKS = [
-  "frontier",
-  "homestead",
-  "dao",
-  "tangerine",
-  "spuriousDragon",
-  "byzantium",
-  "constantinople",
-  "petersburg",
-  "istanbul",
-  "muirGlacier",
-  "berlin",
-  "london",
-  "arrowGlacier",
-  "grayGlacier",
-  "paris",
-  "shanghai",
-  "prague",
+  'frontier',
+  'homestead',
+  'dao',
+  'tangerine',
+  'spuriousDragon',
+  'byzantium',
+  'constantinople',
+  'petersburg',
+  'istanbul',
+  'muirGlacier',
+  'berlin',
+  'london',
+  'arrowGlacier',
+  'grayGlacier',
+  'paris',
+  'shanghai',
+  'prague',
 ] as const;
 
 export type Hardfork = (typeof HARDFORKS)[number];
@@ -62,7 +62,10 @@ export type SeedContractResult = {
 
 export type SeedContractsResult = {
   deployed: SeedContractResult[];
-  failed: { contractName: string; error: string }[];
+  failed: {
+    contractName: string;
+    error: string;
+  }[];
 };
 
 export type GetContractAddressResult = {

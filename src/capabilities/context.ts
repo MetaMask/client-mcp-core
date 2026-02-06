@@ -5,14 +5,14 @@ import type {
   ContractSeedingCapability,
   StateSnapshotCapability,
   MockServerCapability,
-} from "./types.js";
+} from './types.js';
 
 /**
  * Environment mode discriminator.
  * - 'e2e': End-to-end testing environment with local chain, fixtures, and contract seeding
  * - 'prod': Production-like environment without test infrastructure
  */
-export type EnvironmentMode = "e2e" | "prod";
+export type EnvironmentMode = 'e2e' | 'prod';
 
 /**
  * Base configuration fields shared across all environment modes.
@@ -34,7 +34,7 @@ export type BaseEnvironmentConfig = {
  */
 export type E2EEnvironmentConfig = BaseEnvironmentConfig & {
   /** Discriminator for E2E environment */
-  environment: "e2e";
+  environment: 'e2e';
   /** Chain ID for local Anvil node (default: 1337) */
   defaultChainId?: number;
   /** Port configuration for test infrastructure */
@@ -59,7 +59,7 @@ export type E2EEnvironmentConfig = BaseEnvironmentConfig & {
  */
 export type ProdEnvironmentConfig = BaseEnvironmentConfig & {
   /** Discriminator for production environment */
-  environment: "prod";
+  environment: 'prod';
   /** Optional chain ID for network detection (no local chain) */
   defaultChainId?: number;
 };
@@ -82,20 +82,26 @@ export type EnvironmentConfig = E2EEnvironmentConfig | ProdEnvironmentConfig;
 
 /**
  * Type guard to check if config is for E2E environment.
+ *
+ * @param config - The environment configuration to check
+ * @returns True if the config is for E2E environment, false otherwise
  */
 export function isE2EConfig(
   config: EnvironmentConfig,
 ): config is E2EEnvironmentConfig {
-  return config.environment === "e2e";
+  return config.environment === 'e2e';
 }
 
 /**
  * Type guard to check if config is for production environment.
+ *
+ * @param config - The environment configuration to check
+ * @returns True if the config is for production environment, false otherwise
  */
 export function isProdConfig(
   config: EnvironmentConfig,
 ): config is ProdEnvironmentConfig {
-  return config.environment === "prod";
+  return config.environment === 'prod';
 }
 
 export type WorkflowContext = {
@@ -108,6 +114,13 @@ export type WorkflowContext = {
   config: EnvironmentConfig;
 };
 
+/**
+ * Type guard to check if a capability is available in the workflow context.
+ *
+ * @param context - The workflow context to check
+ * @param key - The capability key to verify
+ * @returns True if the capability is defined, narrowing the type accordingly
+ */
 export function hasCapability<Key extends keyof WorkflowContext>(
   context: WorkflowContext,
   key: Key,

@@ -1,59 +1,27 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+
 import {
   setSessionManager,
   getSessionManager,
   hasSessionManager,
-  type ISessionManager,
-} from "./session-manager.js";
+} from './session-manager.js';
+import type { ISessionManager } from './session-manager.js';
+import { createMockSessionManager } from './test-utils/mock-factories.js';
 
-const createMockSessionManager = (): ISessionManager => ({
-  hasActiveSession: jest.fn().mockReturnValue(false),
-  getSessionId: jest.fn().mockReturnValue(undefined),
-  getSessionState: jest.fn().mockReturnValue(undefined),
-  getSessionMetadata: jest.fn().mockReturnValue(undefined),
-  launch: jest.fn().mockResolvedValue({
-    sessionId: "test-session-123",
-    extensionId: "ext-123",
-    state: { screen: "home", url: "chrome-extension://ext-123/home.html" },
-  }),
-  cleanup: jest.fn().mockResolvedValue(true),
-  getPage: jest.fn(),
-  setActivePage: jest.fn(),
-  getTrackedPages: jest.fn().mockReturnValue([]),
-  classifyPageRole: jest.fn().mockReturnValue("extension"),
-  getContext: jest.fn(),
-  getExtensionState: jest.fn().mockResolvedValue({ screen: "home" }),
-  setRefMap: jest.fn(),
-  getRefMap: jest.fn().mockReturnValue(new Map()),
-  clearRefMap: jest.fn(),
-  resolveA11yRef: jest.fn(),
-  navigateToHome: jest.fn().mockResolvedValue(undefined),
-  navigateToSettings: jest.fn().mockResolvedValue(undefined),
-  navigateToUrl: jest.fn(),
-  navigateToNotification: jest.fn(),
-  waitForNotificationPage: jest.fn(),
-  screenshot: jest.fn().mockResolvedValue({ path: "/path/to/screenshot.png" }),
-  getBuildCapability: jest.fn().mockReturnValue(undefined),
-  getFixtureCapability: jest.fn().mockReturnValue(undefined),
-  getChainCapability: jest.fn().mockReturnValue(undefined),
-  getContractSeedingCapability: jest.fn().mockReturnValue(undefined),
-  getStateSnapshotCapability: jest.fn().mockReturnValue(undefined),
-  getEnvironmentMode: jest.fn().mockReturnValue("e2e"),
-});
-
-describe("session-manager", () => {
+describe('session-manager', () => {
   beforeEach(() => {
     setSessionManager(undefined as unknown as ISessionManager);
   });
 
-  describe("setSessionManager", () => {
-    it("sets the session manager instance", () => {
+  describe('setSessionManager', () => {
+    it('sets the session manager instance', () => {
       const mockManager = createMockSessionManager();
       setSessionManager(mockManager);
 
       expect(hasSessionManager()).toBe(true);
     });
 
-    it("replaces the existing session manager", () => {
+    it('replaces the existing session manager', () => {
       const mockManager1 = createMockSessionManager();
       const mockManager2 = createMockSessionManager();
 
@@ -64,27 +32,27 @@ describe("session-manager", () => {
     });
   });
 
-  describe("getSessionManager", () => {
-    it("returns the session manager when set", () => {
+  describe('getSessionManager', () => {
+    it('returns the session manager when set', () => {
       const mockManager = createMockSessionManager();
       setSessionManager(mockManager);
 
       expect(getSessionManager()).toBe(mockManager);
     });
 
-    it("throws error when session manager is not set", () => {
-      expect(() => getSessionManager()).toThrow(
-        "Session manager not initialized. Call setSessionManager() first.",
+    it('throws error when session manager is not set', () => {
+      expect(() => getSessionManager()).toThrowError(
+        'Session manager not initialized. Call setSessionManager() first.',
       );
     });
   });
 
-  describe("hasSessionManager", () => {
-    it("returns false when no session manager is set", () => {
+  describe('hasSessionManager', () => {
+    it('returns false when no session manager is set', () => {
       expect(hasSessionManager()).toBe(false);
     });
 
-    it("returns true when session manager is set", () => {
+    it('returns true when session manager is set', () => {
       const mockManager = createMockSessionManager();
       setSessionManager(mockManager);
 
@@ -92,7 +60,7 @@ describe("session-manager", () => {
     });
   });
 
-  describe("ISessionManager interface compliance", () => {
+  describe('ISessionManager interface compliance', () => {
     let manager: ISessionManager;
 
     beforeEach(() => {
@@ -100,32 +68,32 @@ describe("session-manager", () => {
       setSessionManager(manager);
     });
 
-    it("can call hasActiveSession", () => {
+    it('can call hasActiveSession', () => {
       const result = getSessionManager().hasActiveSession();
-      expect(typeof result).toBe("boolean");
+      expect(typeof result).toBe('boolean');
     });
 
-    it("can call getSessionId", () => {
+    it('can call getSessionId', () => {
       const result = getSessionManager().getSessionId();
       expect(result).toBeUndefined();
     });
 
-    it("can call launch", async () => {
+    it('can call launch', async () => {
       const result = await getSessionManager().launch({});
-      expect(result.sessionId).toBe("test-session-123");
+      expect(result.sessionId).toBe('test-session-123');
     });
 
-    it("can call cleanup", async () => {
+    it('can call cleanup', async () => {
       const result = await getSessionManager().cleanup();
       expect(result).toBe(true);
     });
 
-    it("can call screenshot", async () => {
-      const result = await getSessionManager().screenshot({ name: "test" });
+    it('can call screenshot', async () => {
+      const result = await getSessionManager().screenshot({ name: 'test' });
       expect(result.path).toBeDefined();
     });
 
-    it("can access capability methods", () => {
+    it('can access capability methods', () => {
       expect(getSessionManager().getBuildCapability()).toBeUndefined();
       expect(getSessionManager().getFixtureCapability()).toBeUndefined();
       expect(getSessionManager().getChainCapability()).toBeUndefined();

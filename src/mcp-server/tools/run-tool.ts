@@ -1,22 +1,28 @@
-import type { Page } from "@playwright/test";
+import type { Page } from '@playwright/test';
+
+import type { ExtensionState } from '../../capabilities/types.js';
+import { knowledgeStore } from '../knowledge-store.js';
+import { getSessionManager } from '../session-manager.js';
+import { collectObservation } from './helpers.js';
 import type {
   McpResponse,
   HandlerOptions,
   StepRecordObservation,
   ErrorCode,
-} from "../types/index.js";
-import { ErrorCodes } from "../types/index.js";
+} from '../types';
+import { ErrorCodes } from '../types';
 import {
   createSuccessResponse,
   createErrorResponse,
   extractErrorMessage,
   debugWarn,
-} from "../utils/index.js";
-import type { ExtensionState } from "../../capabilities/types.js";
-import { getSessionManager } from "../session-manager.js";
-import { knowledgeStore } from "../knowledge-store.js";
-import { collectObservation } from "./helpers.js";
+} from '../utils';
 
+/**
+ * Creates an empty observation object for step recording.
+ *
+ * @returns Empty observation with default state, testIds, and a11y nodes
+ */
 function createEmptyObservation(): StepRecordObservation {
   return {
     state: {} as ExtensionState,
@@ -25,7 +31,7 @@ function createEmptyObservation(): StepRecordObservation {
   };
 }
 
-export type ObservationPolicy = "none" | "default" | "custom" | "failures";
+export type ObservationPolicy = 'none' | 'default' | 'custom' | 'failures';
 
 export type ToolExecutionContext = {
   sessionId: string | undefined;
@@ -48,24 +54,43 @@ export type ToolExecutionConfig<TInput, TResult> = {
   execute: (
     context: ToolExecutionContext,
   ) => Promise<TResult | ToolExecuteResult<TResult>>;
-  classifyError?: (error: unknown) => { code: string; message: string };
-  getTarget?: (
-    input: TInput,
-  ) => { testId?: string; selector?: string; a11yRef?: string } | undefined;
+  classifyError?: (error: unknown) => {
+    code: string;
+    message: string;
+  };
+  getTarget?: (input: TInput) =>
+    | {
+        testId?: string;
+        selector?: string;
+        a11yRef?: string;
+      }
+    | undefined;
   sanitizeInputForRecording?: (input: TInput) => Record<string, unknown>;
 };
 
+/**
+ * Type guard to check if result is a ToolExecuteResult with observation.
+ *
+ * @param result The result to check
+ * @returns True if result is a ToolExecuteResult with observation property
+ */
 function isToolExecuteResult<TResult>(
   result: TResult | ToolExecuteResult<TResult>,
 ): result is ToolExecuteResult<TResult> {
   return (
-    typeof result === "object" &&
+    typeof result === 'object' &&
     result !== null &&
-    "result" in result &&
-    Object.prototype.hasOwnProperty.call(result, "result")
+    'result' in result &&
+    Object.prototype.hasOwnProperty.call(result, 'result')
   );
 }
 
+/**
+ * Executes a tool with error handling, observation collection, and knowledge store recording.
+ *
+ * @param config The tool execution configuration with input, execute function, and error handling
+ * @returns Promise resolving to MCP response with tool result or error information
+ */
 export async function runTool<TInput, TResult>(
   config: ToolExecutionConfig<TInput, TResult>,
 ): Promise<McpResponse<TResult>> {
@@ -75,13 +100,13 @@ export async function runTool<TInput, TResult>(
   const requiresSession = config.requiresSession ?? true;
 
   const effectivePolicy =
-    config.options?.observationPolicy ?? config.observationPolicy ?? "default";
+    config.options?.observationPolicy ?? config.observationPolicy ?? 'default';
 
   try {
     if (requiresSession && !sessionManager.hasActiveSession()) {
       return createErrorResponse(
         ErrorCodes.MM_NO_ACTIVE_SESSION,
-        "No active session. Call launch first.",
+        'No active session. Call launch first.',
         { input: config.input },
         undefined,
         startTime,
@@ -109,15 +134,15 @@ export async function runTool<TInput, TResult>(
 
     let observation: StepRecordObservation | undefined;
 
-    if (effectivePolicy === "custom" && customObservation) {
+    if (effectivePolicy === 'custom' && customObservation) {
       observation = customObservation;
-    } else if (effectivePolicy === "default" && requiresSession) {
-      observation = await collectObservation(context.page, "full");
+    } else if (effectivePolicy === 'default' && requiresSession) {
+      observation = await collectObservation(context.page, 'full');
     } else if (
-      (effectivePolicy === "none" || effectivePolicy === "failures") &&
+      (effectivePolicy === 'none' || effectivePolicy === 'failures') &&
       requiresSession
     ) {
-      observation = await collectObservation(context.page, "minimal");
+      observation = await collectObservation(context.page, 'minimal');
     }
 
     if (sessionId) {
@@ -140,26 +165,26 @@ export async function runTool<TInput, TResult>(
     return createSuccessResponse<TResult>(result, sessionId, startTime);
   } catch (error) {
     const errorInfo = config.classifyError?.(error) ?? {
-      code: `MM_${config.toolName.toUpperCase().replace(/^MM_/u, "")}_FAILED`,
+      code: `MM_${config.toolName.toUpperCase().replace(/^MM_/u, '')}_FAILED`,
       message: extractErrorMessage(error),
     };
 
     let failureObservation: StepRecordObservation = createEmptyObservation();
 
     if (requiresSession && sessionManager.hasActiveSession()) {
-      if (effectivePolicy === "failures" || effectivePolicy === "default") {
+      if (effectivePolicy === 'failures' || effectivePolicy === 'default') {
         try {
           const page = sessionManager.getPage();
-          failureObservation = await collectObservation(page, "full");
+          failureObservation = await collectObservation(page, 'full');
         } catch (collectError) {
-          debugWarn("run-tool.collectObservation", collectError);
-          failureObservation = await collectObservation(undefined, "minimal");
+          debugWarn('run-tool.collectObservation', collectError);
+          failureObservation = await collectObservation(undefined, 'minimal');
         }
-      } else if (effectivePolicy === "none") {
+      } else if (effectivePolicy === 'none') {
         try {
-          failureObservation = await collectObservation(undefined, "minimal");
+          failureObservation = await collectObservation(undefined, 'minimal');
         } catch (collectError) {
-          debugWarn("run-tool.collectObservation", collectError);
+          debugWarn('run-tool.collectObservation', collectError);
         }
       }
     }

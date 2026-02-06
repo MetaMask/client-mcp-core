@@ -8,7 +8,8 @@ This package provides the core MCP server infrastructure for enabling LLM agents
 
 ## Requirements
 
-- **Node.js >= 24.0.0** (required)
+- **Node.js ^20 || ^22 || >=24** (required)
+- **TypeScript >=5.0** (for consumer type definitions)
 - Playwright `^1.49.0` (peer dependency)
 
 ## Installation
@@ -321,7 +322,7 @@ import {
   setSessionManager,
   ISessionManager,
   type McpServerConfig,
-} from "@metamask/client-mcp-core";
+} from '@metamask/client-mcp-core';
 
 // 1. Implement the ISessionManager interface
 class MyExtensionSessionManager implements ISessionManager {
@@ -335,8 +336,8 @@ setSessionManager(sessionManager);
 
 // 3. Create and start the MCP server
 const config: McpServerConfig = {
-  name: "my-extension-mcp",
-  version: "1.0.0",
+  name: 'my-extension-mcp',
+  version: '1.0.0',
   onCleanup: async () => {
     // Optional cleanup logic
   },
@@ -362,8 +363,8 @@ import {
   type ChainCapability,
   type ContractSeedingCapability,
   type EnvironmentMode,
-} from "@metamask/client-mcp-core";
-import type { Page, BrowserContext } from "@playwright/test";
+} from '@metamask/client-mcp-core';
+import type { Page, BrowserContext } from '@playwright/test';
 
 class MetaMaskSessionManager implements ISessionManager {
   private context?: BrowserContext;
@@ -394,7 +395,7 @@ class MetaMaskSessionManager implements ISessionManager {
     }
 
     // 2. Start fixture server if needed
-    if (this.fixtureCapability && input.stateMode !== "onboarding") {
+    if (this.fixtureCapability && input.stateMode !== 'onboarding') {
       const fixture = input.fixture ?? this.fixtureCapability.getDefaultState();
       await this.fixtureCapability.start(fixture);
     }
@@ -425,7 +426,7 @@ class MetaMaskSessionManager implements ISessionManager {
 
   // Page Management
   getPage(): Page {
-    if (!this.activePage) throw new Error("No active session");
+    if (!this.activePage) throw new Error('No active session');
     return this.activePage;
   }
 
@@ -439,7 +440,7 @@ class MetaMaskSessionManager implements ISessionManager {
   }
 
   getContext(): BrowserContext {
-    if (!this.context) throw new Error("No active session");
+    if (!this.context) throw new Error('No active session');
     return this.context;
   }
 
@@ -448,10 +449,10 @@ class MetaMaskSessionManager implements ISessionManager {
     // Query extension for current state
     return {
       isLoaded: true,
-      currentUrl: this.activePage?.url() ?? "",
-      extensionId: this.extensionId ?? "",
+      currentUrl: this.activePage?.url() ?? '',
+      extensionId: this.extensionId ?? '',
       isUnlocked: false,
-      currentScreen: "unknown",
+      currentScreen: 'unknown',
       accountAddress: null,
       networkName: null,
       chainId: null,
@@ -503,7 +504,7 @@ class MetaMaskSessionManager implements ISessionManager {
   // Screenshots
   async screenshot(options: { name: string; fullPage?: boolean }) {
     // ... screenshot logic
-    return { path: "", base64: "", width: 0, height: 0 };
+    return { path: '', base64: '', width: 0, height: 0 };
   }
 
   // Capabilities
@@ -525,20 +526,45 @@ class MetaMaskSessionManager implements ISessionManager {
 
   // Environment
   getEnvironmentMode(): EnvironmentMode {
-    return "e2e";
+    return 'e2e';
   }
 
   // Required by interface but implementation-specific
   classifyPageRole(
     page: Page,
-  ): "extension" | "notification" | "dapp" | "other" {
-    return "extension";
+  ): 'extension' | 'notification' | 'dapp' | 'other' {
+    return 'extension';
   }
   getSessionState() {
     return undefined;
   }
   getSessionMetadata() {
     return undefined;
+  }
+
+  // Context Management
+  setContext(context: 'e2e' | 'prod'): void {
+    if (this.hasActiveSession()) {
+      throw new Error('Cannot switch context while session is active');
+    }
+    // Switch environment context
+  }
+
+  getContextInfo() {
+    return {
+      currentContext: this.getEnvironmentMode(),
+      hasActiveSession: this.hasActiveSession(),
+      sessionId: this.sessionId ?? null,
+      capabilities: {
+        available: [
+          this.buildCapability && 'build',
+          this.fixtureCapability && 'fixture',
+          this.chainCapability && 'chain',
+          this.contractSeedingCapability && 'contractSeeding',
+        ].filter(Boolean) as string[],
+      },
+      canSwitchContext: !this.hasActiveSession(),
+    };
   }
 }
 
@@ -548,8 +574,8 @@ async function main() {
   setSessionManager(sessionManager);
 
   const server = createMcpServer({
-    name: "metamask-mcp",
-    version: "1.0.0",
+    name: 'metamask-mcp',
+    version: '1.0.0',
   });
 
   await server.start();
@@ -565,11 +591,11 @@ The package supports two environment modes:
 ```typescript
 // E2E Testing Environment
 const e2eConfig: E2EEnvironmentConfig = {
-  environment: "e2e",
-  extensionName: "MetaMask",
-  defaultPassword: "password123",
-  toolPrefix: "mm",
-  artifactsDir: "./test-artifacts",
+  environment: 'e2e',
+  extensionName: 'MetaMask',
+  defaultPassword: 'password123',
+  toolPrefix: 'mm',
+  artifactsDir: './test-artifacts',
   defaultChainId: 1337,
   ports: {
     anvil: 8545,
@@ -579,9 +605,9 @@ const e2eConfig: E2EEnvironmentConfig = {
 
 // Production-like Environment
 const prodConfig: ProdEnvironmentConfig = {
-  environment: "prod",
-  extensionName: "MetaMask",
-  toolPrefix: "mm",
+  environment: 'prod',
+  extensionName: 'MetaMask',
+  toolPrefix: 'mm',
 };
 ```
 
@@ -590,10 +616,10 @@ const prodConfig: ProdEnvironmentConfig = {
 The package provides a fixed set of tools prefixed with `mm_`. Custom tool injection is currently not supported. You can inspect the available tool definitions using `getToolDefinitions()`:
 
 ```typescript
-import { getToolDefinitions } from "@metamask/client-mcp-core";
+import { getToolDefinitions } from '@metamask/client-mcp-core';
 
 const tools = getToolDefinitions();
-console.log(`Available tools: ${tools.map((t) => t.name).join(", ")}`);
+console.log(`Available tools: ${tools.map((t) => t.name).join(', ')}`);
 ```
 
 ### Registering Custom Tool Handlers
@@ -605,19 +631,29 @@ Custom tool handlers are not supported. The server uses a fixed set of handlers 
 All tools are prefixed with `mm_` and return a standardized response format:
 
 ```typescript
-type ToolResponse<T> = {
-  ok: boolean; // Whether the operation succeeded
-  ts: number; // Timestamp (ms since epoch)
-  sessionId?: string; // Current session ID
-  durationMs: number; // Operation duration
-  result?: T; // Success payload
-  error?: {
-    // Error details (when ok=false)
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-};
+type ToolResponse<Result> =
+  | {
+      ok: true;
+      meta: {
+        timestamp: string; // ISO timestamp
+        sessionId?: string; // Current session ID
+        durationMs: number; // Operation duration
+      };
+      result: Result; // Success payload
+    }
+  | {
+      ok: false;
+      meta: {
+        timestamp: string;
+        sessionId?: string;
+        durationMs: number;
+      };
+      error: {
+        code: string;
+        message: string;
+        details?: Record<string, unknown>;
+      };
+    };
 ```
 
 ---
@@ -638,7 +674,7 @@ Build the extension from source. Requires `BuildCapability`.
 
 ```typescript
 {
-  buildType: "build:test";
+  buildType: 'build:test';
   extensionPathResolved: string; // Absolute path to built extension
 }
 ```
@@ -1252,7 +1288,6 @@ Get the last N step records from the knowledge store.
 | `filters.tag` | `string` | - | Filter by tag |
 | `filters.screen` | `string` | - | Filter by screen |
 | `filters.sinceHours` | `number` | - | Only steps from last N hours |
-| `filters.gitBranch` | `string` | - | Filter by git branch |
 
 **Output:**
 
@@ -1340,7 +1375,6 @@ List recent sessions with metadata.
     goal?: string;
     flowTags: string[];
     tags: string[];
-    git?: { branch?: string; commit?: string };
   }];
 }
 ```

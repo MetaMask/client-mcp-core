@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Page } from '@playwright/test';
 
 export type ExtensionIdResolverDeps = {
   context: BrowserContext;
@@ -24,9 +24,16 @@ export type ExtensionIdResolverConfig = {
  * Default configuration that matches "MetaMask" extension.
  */
 export const DEFAULT_EXTENSION_ID_CONFIG: ExtensionIdResolverConfig = {
-  extensionNamePattern: "MetaMask",
+  extensionNamePattern: 'MetaMask',
 };
 
+/**
+ * Resolve the extension ID by checking service worker or chrome://extensions page.
+ *
+ * @param deps - Dependencies including browser context and logger
+ * @param config - Configuration for extension name pattern matching
+ * @returns The extension ID if found, undefined otherwise
+ */
 export async function resolveExtensionId(
   deps: ExtensionIdResolverDeps,
   config: ExtensionIdResolverConfig = DEFAULT_EXTENSION_ID_CONFIG,
@@ -39,19 +46,32 @@ export async function resolveExtensionId(
   }
 
   log.info(
-    "Service worker discovery failed, falling back to chrome://extensions",
+    'Service worker discovery failed, falling back to chrome://extensions',
   );
   return getExtensionIdFromExtensionsPage(context, log, config);
 }
 
+/**
+ * Extract the extension ID from a chrome-extension:// URL.
+ *
+ * @param url - The URL to extract the extension ID from
+ * @returns The 32-character extension ID if found, undefined otherwise
+ */
 function extractExtensionIdFromUrl(url: string): string | undefined {
   const match = url.match(/chrome-extension:\/\/([a-z]{32})\//u);
   return match ? match[1] : undefined;
 }
 
+/**
+ * Attempt to resolve extension ID from existing or new service worker.
+ *
+ * @param context - The browser context to search for service workers
+ * @param log - Logger for debug information
+ * @returns The extension ID if found, undefined otherwise
+ */
 async function getExtensionIdFromServiceWorker(
   context: BrowserContext,
-  log: ExtensionIdResolverDeps["log"],
+  log: ExtensionIdResolverDeps['log'],
 ): Promise<string | undefined> {
   try {
     const existingWorkers = context.serviceWorkers();
@@ -66,11 +86,11 @@ async function getExtensionIdFromServiceWorker(
     }
 
     const worker = await Promise.race([
-      context.waitForEvent("serviceworker", { timeout: 10000 }),
+      context.waitForEvent('serviceworker', { timeout: 10000 }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
     ]);
 
-    if (worker && typeof worker !== "number") {
+    if (worker && typeof worker !== 'number') {
       const extensionId = extractExtensionIdFromUrl(worker.url());
       if (extensionId) {
         log.info(`Found extension ID from new service worker: ${extensionId}`);
@@ -78,15 +98,24 @@ async function getExtensionIdFromServiceWorker(
       }
     }
   } catch (error) {
-    log.warn("Service worker extension ID discovery failed:", error);
+    log.warn('Service worker extension ID discovery failed:', error);
   }
 
   return undefined;
 }
 
+/**
+ * Resolve extension ID by navigating to chrome://extensions and matching name pattern.
+ *
+ * @param context - The browser context to use for navigation
+ * @param log - Logger for debug information
+ * @param config - Configuration with extension name pattern to match
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @returns The extension ID if found, undefined otherwise
+ */
 async function getExtensionIdFromExtensionsPage(
   context: BrowserContext,
-  log: ExtensionIdResolverDeps["log"],
+  log: ExtensionIdResolverDeps['log'],
   config: ExtensionIdResolverConfig,
   maxRetries = 3,
 ): Promise<string | undefined> {
@@ -101,37 +130,49 @@ async function getExtensionIdFromExtensionsPage(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await page.goto("chrome://extensions");
-      await page.waitForLoadState("domcontentloaded");
+      await page.goto('chrome://extensions');
+      await page.waitForLoadState('domcontentloaded');
       await waitForExtensionsPageReady(page);
 
       const extensionId = await page.evaluate(
-        ({ pattern, useRegex }: { pattern: string; useRegex: boolean }) => {
+        ({
+          pattern,
+          useRegex,
+        }: {
+          /**
+           * The extension name pattern to match
+           */
+          pattern: string;
+          /**
+           * Whether the pattern should be treated as a regular expression
+           */
+          useRegex: boolean;
+        }) => {
           const extensionsManager =
-            document.querySelector("extensions-manager");
+            document.querySelector('extensions-manager');
           if (!extensionsManager?.shadowRoot) {
             return undefined;
           }
 
           const itemList = extensionsManager.shadowRoot.querySelector(
-            "extensions-item-list",
+            'extensions-item-list',
           );
           if (!itemList?.shadowRoot) {
             return undefined;
           }
 
-          const items = itemList.shadowRoot.querySelectorAll("extensions-item");
+          const items = itemList.shadowRoot.querySelectorAll('extensions-item');
 
           for (const item of Array.from(items)) {
-            const nameEl = item.shadowRoot?.querySelector("#name");
-            const name = nameEl?.textContent || "";
+            const nameEl = item.shadowRoot?.querySelector('#name');
+            const name = nameEl?.textContent ?? '';
 
             const matches = useRegex
-              ? new RegExp(pattern).test(name)
+              ? new RegExp(pattern, 'u').test(name)
               : name.includes(pattern);
 
             if (matches) {
-              return item.getAttribute("id") || undefined;
+              return item.getAttribute('id') ?? undefined;
             }
           }
 
@@ -160,7 +201,7 @@ async function getExtensionIdFromExtensionsPage(
       } else {
         throw new Error(
           `Failed to get extension ID after ${maxRetries} attempts. ` +
-            "Ensure the extension is built at the configured extension path.",
+            'Ensure the extension is built at the configured extension path.',
         );
       }
     }
@@ -169,25 +210,31 @@ async function getExtensionIdFromExtensionsPage(
   return undefined;
 }
 
+/**
+ * Wait for the chrome://extensions page to fully load and render extensions.
+ *
+ * @param page - The page to wait for
+ * @param maxAttempts - Maximum number of polling attempts (default: 20)
+ */
 async function waitForExtensionsPageReady(
   page: Page,
   maxAttempts = 20,
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     const isReady = await page.evaluate(() => {
-      const extensionsManager = document.querySelector("extensions-manager");
+      const extensionsManager = document.querySelector('extensions-manager');
       if (!extensionsManager?.shadowRoot) {
         return false;
       }
 
       const itemList = extensionsManager.shadowRoot.querySelector(
-        "extensions-item-list",
+        'extensions-item-list',
       );
       if (!itemList?.shadowRoot) {
         return false;
       }
 
-      const items = itemList.shadowRoot.querySelectorAll("extensions-item");
+      const items = itemList.shadowRoot.querySelectorAll('extensions-item');
       return items.length > 0;
     });
 
@@ -199,11 +246,17 @@ async function waitForExtensionsPageReady(
 
   throw new Error(
     `chrome://extensions page did not load extensions within ${maxAttempts * 100}ms. ` +
-      "The shadow DOM structure was not fully populated. " +
-      "This may indicate a Chrome version incompatibility or slow system.",
+      'The shadow DOM structure was not fully populated. ' +
+      'This may indicate a Chrome version incompatibility or slow system.',
   );
 }
 
+/**
+ * Get an existing page or create a new one for the browser context.
+ *
+ * @param context - The browser context to get or create a page for
+ * @returns An existing page or a newly created page
+ */
 async function ensurePage(context: BrowserContext): Promise<Page> {
   const pages = context.pages();
   if (pages[0]) {

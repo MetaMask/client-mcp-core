@@ -1,23 +1,35 @@
+import { getSessionManager } from '../session-manager.js';
+import { classifyScreenshotError } from './error-classification.js';
+import { runTool } from './run-tool.js';
 import type {
   ScreenshotInput,
   ScreenshotToolResult,
   McpResponse,
   HandlerOptions,
-} from "../types/index.js";
-import { getSessionManager } from "../session-manager.js";
-import { runTool } from "./run-tool.js";
-import { classifyScreenshotError } from "./error-classification.js";
+} from '../types';
 
+/**
+ * Handles the screenshot tool request.
+ *
+ * @param input - The screenshot input parameters.
+ * @param options - Handler options including abort signal.
+ * @returns Response with screenshot path and dimensions.
+ */
 export async function handleScreenshot(
   input: ScreenshotInput,
   options?: HandlerOptions,
 ): Promise<McpResponse<ScreenshotToolResult>> {
   return runTool<ScreenshotInput, ScreenshotToolResult>({
-    toolName: "mm_screenshot",
+    toolName: 'mm_screenshot',
     input,
     options,
-    observationPolicy: "none",
+    observationPolicy: 'none',
 
+    /**
+     * Executes the screenshot capture.
+     *
+     * @returns The screenshot result.
+     */
     execute: async () => {
       const sessionManager = getSessionManager();
       const result = await sessionManager.screenshot({
@@ -41,6 +53,11 @@ export async function handleScreenshot(
 
     classifyError: classifyScreenshotError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object.
+     */
     sanitizeInputForRecording: () => ({
       name: input.name,
       fullPage: input.fullPage,

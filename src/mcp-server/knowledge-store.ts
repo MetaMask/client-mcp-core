@@ -1,6 +1,13 @@
-import * as path from "path";
-import { promises as fs } from "fs";
-import { execSync } from "child_process";
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+/* eslint-disable id-length */
+import { promises as fs } from 'fs';
+import * as path from 'path';
+
+import {
+  expandWithSynonyms,
+  tokenize,
+  tokenizeIdentifier,
+} from './tokenization.js';
 import type {
   StepRecord,
   StepRecordTool,
@@ -14,7 +21,6 @@ import type {
   KnowledgeScope,
   KnowledgeFilters,
   SessionSummary,
-  StepRecordGit,
   PriorKnowledgeV1,
   PriorKnowledgeContext,
   PriorKnowledgeSimilarStep,
@@ -22,21 +28,16 @@ import type {
   PriorKnowledgeAvoid,
   PriorKnowledgeRelatedSession,
   PriorKnowledgeTarget,
-} from "./types/index.js";
-import type { ExtensionState } from "../capabilities/types.js";
+} from './types';
 import {
   generateFilesafeTimestamp,
   isSensitiveField,
   SENSITIVE_FIELD_PATTERNS,
   debugWarn,
-} from "./utils/index.js";
-import {
-  expandWithSynonyms,
-  tokenize,
-  tokenizeIdentifier,
-} from "./tokenization.js";
+} from './utils';
+import type { ExtensionState } from '../capabilities/types.js';
 
-const KNOWLEDGE_ROOT = "test-artifacts/llm-knowledge";
+const KNOWLEDGE_ROOT = 'test-artifacts/llm-knowledge';
 const SCHEMA_VERSION = 1;
 
 const PRIOR_KNOWLEDGE_CONFIG = {
@@ -83,46 +84,77 @@ const MAX_SIMILARITY_SCORE =
   SIMILARITY_WEIGHTS.a11yOverlap * 2 +
   SIMILARITY_WEIGHTS.actionableTool;
 
+/**
+ * Configuration options for KnowledgeStore initialization
+ */
 export type KnowledgeStoreConfig = {
+  /**
+   * Root directory for storing knowledge artifacts
+   */
   rootDir?: string;
+  /**
+   * Prefix for session IDs (default: 'mm-')
+   */
   sessionIdPrefix?: string;
+  /**
+   * Prefix for tool names (default: 'mm')
+   */
   toolPrefix?: string;
 };
 
+/**
+ * Extract path tokens from URL hash fragment
+ *
+ * @param url - The URL to extract tokens from
+ * @returns Array of path tokens from the hash fragment
+ */
 function extractPathTokens(url: string): string[] {
   try {
-    const hashPart = url.split("#")[1] ?? "";
+    const hashPart = url.split('#')[1] ?? '';
     return hashPart
-      .split("/")
-      .filter((t) => t.length > 0 && !t.startsWith("0x"));
+      .split('/')
+      .filter((t) => t.length > 0 && !t.startsWith('0x'));
   } catch (error) {
-    debugWarn("knowledge-store.extractPathTokens", error);
+    debugWarn('knowledge-store.extractPathTokens', error);
     return [];
   }
 }
 
+/**
+ * Persistent cross-session knowledge store for recording and querying tool invocations.
+ */
 export class KnowledgeStore {
-  private knowledgeRoot: string;
-  private sessionIdPrefix: string;
-  private toolPrefix: string;
+  readonly #knowledgeRoot: string;
 
-  private sessionMetadataCache: Map<string, SessionMetadata | null> = new Map();
+  readonly #sessionIdPrefix: string;
 
-  private actionableTools: string[];
-  private toolActionMap: Record<
+  readonly #toolPrefix: string;
+
+  readonly #sessionMetadataCache: Map<string, SessionMetadata | null> =
+    new Map();
+
+  readonly #actionableTools: string[];
+
+  readonly #toolActionMap: Record<
     string,
-    PriorKnowledgeSuggestedAction["action"]
+    PriorKnowledgeSuggestedAction['action']
   >;
-  private discoveryTools: string[];
 
+  readonly #discoveryTools: string[];
+
+  /**
+   * Initialize KnowledgeStore with optional configuration
+   *
+   * @param config - Configuration options for the store
+   */
   constructor(config: KnowledgeStoreConfig = {}) {
-    this.knowledgeRoot =
+    this.#knowledgeRoot =
       config.rootDir ?? path.join(process.cwd(), KNOWLEDGE_ROOT);
-    this.sessionIdPrefix = config.sessionIdPrefix ?? "mm-";
-    this.toolPrefix = config.toolPrefix ?? "mm";
+    this.#sessionIdPrefix = config.sessionIdPrefix ?? 'mm-';
+    this.#toolPrefix = config.toolPrefix ?? 'mm';
 
-    const prefix = this.toolPrefix;
-    this.actionableTools = [
+    const prefix = this.#toolPrefix;
+    this.#actionableTools = [
       `${prefix}_click`,
       `${prefix}_type`,
       `${prefix}_wait_for`,
@@ -130,15 +162,15 @@ export class KnowledgeStore {
       `${prefix}_wait_for_notification`,
     ];
 
-    this.toolActionMap = {
-      [`${prefix}_click`]: "click",
-      [`${prefix}_type`]: "type",
-      [`${prefix}_wait_for`]: "wait_for",
-      [`${prefix}_navigate`]: "navigate",
-      [`${prefix}_wait_for_notification`]: "wait_for_notification",
+    this.#toolActionMap = {
+      [`${prefix}_click`]: 'click',
+      [`${prefix}_type`]: 'type',
+      [`${prefix}_wait_for`]: 'wait_for',
+      [`${prefix}_navigate`]: 'navigate',
+      [`${prefix}_wait_for_notification`]: 'wait_for_notification',
     };
 
-    this.discoveryTools = [
+    this.#discoveryTools = [
       `${prefix}_describe_screen`,
       `${prefix}_list_testids`,
       `${prefix}_accessibility_snapshot`,
@@ -146,53 +178,75 @@ export class KnowledgeStore {
     ];
   }
 
+  /**
+   * Write session metadata to disk
+   *
+   * @param metadata - Session metadata to persist
+   * @returns Path to the written metadata file
+   */
   async writeSessionMetadata(metadata: SessionMetadata): Promise<string> {
-    const sessionDir = path.join(this.knowledgeRoot, metadata.sessionId);
+    const sessionDir = path.join(this.#knowledgeRoot, metadata.sessionId);
     await fs.mkdir(sessionDir, { recursive: true });
 
-    const filepath = path.join(sessionDir, "session.json");
+    const filepath = path.join(sessionDir, 'session.json');
     await fs.writeFile(filepath, JSON.stringify(metadata, null, 2));
 
-    this.sessionMetadataCache.set(metadata.sessionId, metadata);
+    this.#sessionMetadataCache.set(metadata.sessionId, metadata);
 
     return filepath;
   }
 
-  async readSessionMetadata(
+  /**
+   * Read session metadata from disk (private)
+   *
+   * @param sessionId - Session ID to read metadata for
+   * @returns Session metadata or null if not found
+   */
+  async #readSessionMetadata(
     sessionId: string,
   ): Promise<SessionMetadata | null> {
-    if (this.sessionMetadataCache.has(sessionId)) {
-      return this.sessionMetadataCache.get(sessionId) ?? null;
+    if (this.#sessionMetadataCache.has(sessionId)) {
+      return this.#sessionMetadataCache.get(sessionId) ?? null;
     }
 
-    const filepath = path.join(this.knowledgeRoot, sessionId, "session.json");
+    const filepath = path.join(this.#knowledgeRoot, sessionId, 'session.json');
 
     try {
-      const content = await fs.readFile(filepath, "utf-8");
+      const content = await fs.readFile(filepath, 'utf-8');
       const metadata = JSON.parse(content) as SessionMetadata;
-      this.sessionMetadataCache.set(sessionId, metadata);
+      this.#sessionMetadataCache.set(sessionId, metadata);
       return metadata;
     } catch (error) {
-      debugWarn("knowledge-store.readSessionMetadata", error);
-      this.sessionMetadataCache.set(sessionId, null);
+      debugWarn('knowledge-store.readSessionMetadata', error);
+      this.#sessionMetadataCache.set(sessionId, null);
       return null;
     }
   }
 
+  /**
+   * List sessions with optional filtering and limit
+   *
+   * @param limit - Maximum number of sessions to return
+   * @param filters - Optional filters for sessions
+   * @returns Array of session summaries
+   */
   async listSessions(
     limit: number,
     filters?: KnowledgeFilters,
   ): Promise<SessionSummary[]> {
     const sessionIds = await this.getAllSessionIds();
-    const sessions: { metadata: SessionMetadata; createdAt: Date }[] = [];
+    const sessions: {
+      metadata: SessionMetadata;
+      createdAt: Date;
+    }[] = [];
 
     for (const sid of sessionIds) {
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       if (!metadata) {
         continue;
       }
 
-      if (!this.matchesFilters(metadata, filters)) {
+      if (!this.#matchesFilters(metadata, filters)) {
         continue;
       }
 
@@ -210,13 +264,17 @@ export class KnowledgeStore {
       goal: s.metadata.goal,
       flowTags: s.metadata.flowTags,
       tags: s.metadata.tags,
-      git: s.metadata.git
-        ? { branch: s.metadata.git.branch, commit: s.metadata.git.commit }
-        : undefined,
     }));
   }
 
-  private matchesFilters(
+  /**
+   * Check if session metadata matches the given filters
+   *
+   * @param metadata - Session metadata to check
+   * @param filters - Filters to apply
+   * @returns True if metadata matches all filters
+   */
+  #matchesFilters(
     metadata: SessionMetadata,
     filters?: KnowledgeFilters,
   ): boolean {
@@ -232,10 +290,6 @@ export class KnowledgeStore {
       return false;
     }
 
-    if (filters.gitBranch && metadata.git?.branch !== filters.gitBranch) {
-      return false;
-    }
-
     if (filters.sinceHours) {
       const cutoff = Date.now() - filters.sinceHours * 60 * 60 * 1000;
       const createdAt = new Date(metadata.createdAt).getTime();
@@ -247,16 +301,24 @@ export class KnowledgeStore {
     return true;
   }
 
+  /**
+   * Resolve session IDs based on scope and filters
+   *
+   * @param scope - Scope for session resolution (current, all, or specific sessionId)
+   * @param currentSessionId - Current session ID for scope resolution
+   * @param filters - Optional filters to apply to sessions
+   * @returns Array of resolved session IDs
+   */
   async resolveSessionIds(
     scope: KnowledgeScope,
     currentSessionId: string | undefined,
     filters?: KnowledgeFilters,
   ): Promise<string[]> {
-    if (scope === "current") {
+    if (scope === 'current') {
       return currentSessionId ? [currentSessionId] : [];
     }
 
-    if (typeof scope === "object" && "sessionId" in scope) {
+    if (typeof scope === 'object' && 'sessionId' in scope) {
       return [scope.sessionId];
     }
 
@@ -268,8 +330,8 @@ export class KnowledgeStore {
 
     const filtered: string[] = [];
     for (const sid of allIds) {
-      const metadata = await this.readSessionMetadata(sid);
-      if (metadata && this.matchesFilters(metadata, filters)) {
+      const metadata = await this.#readSessionMetadata(sid);
+      if (metadata && this.#matchesFilters(metadata, filters)) {
         filtered.push(sid);
       } else if (!metadata) {
         filtered.push(sid);
@@ -279,27 +341,54 @@ export class KnowledgeStore {
     return filtered;
   }
 
+  /**
+   * Record a tool execution step with context and artifacts
+   *
+   * @param params - Step recording parameters
+   * @param params.sessionId - Session ID for this step
+   * @param params.toolName - Name of the tool executed
+   * @param params.input - Tool input parameters
+   * @param params.target - Target element information
+   * @param params.outcome - Execution outcome (success/failure)
+   * @param params.observation - Observed state after execution
+   * @param params.durationMs - Execution duration in milliseconds
+   * @param params.screenshotPath - Path to screenshot artifact
+   * @param params.screenshotDimensions - Screenshot dimensions
+   * @param params.screenshotDimensions.width - Screenshot width in pixels
+   * @param params.screenshotDimensions.height - Screenshot height in pixels
+   * @param params.context - Execution context (e2e or prod)
+   * @returns Path to the recorded step file
+   */
   async recordStep(params: {
     sessionId: string;
     toolName: string;
     input?: Record<string, unknown>;
-    target?: StepRecordTool["target"];
+    target?: StepRecordTool['target'];
     outcome: StepRecordOutcome;
     observation: StepRecordObservation;
     durationMs?: number;
     screenshotPath?: string;
-    screenshotDimensions?: { width: number; height: number };
-    context?: "e2e" | "prod";
+    screenshotDimensions?: {
+      /**
+       * Screenshot width in pixels
+       */
+      width: number;
+      /**
+       * Screenshot height in pixels
+       */
+      height: number;
+    };
+    context?: 'e2e' | 'prod';
   }): Promise<string> {
     const timestamp = new Date();
     const filesafeTimestamp = generateFilesafeTimestamp(timestamp);
 
-    const sessionDir = path.join(this.knowledgeRoot, params.sessionId);
-    const stepsDir = path.join(sessionDir, "steps");
+    const sessionDir = path.join(this.#knowledgeRoot, params.sessionId);
+    const stepsDir = path.join(sessionDir, 'steps');
     await fs.mkdir(stepsDir, { recursive: true });
 
-    const sanitizedInput = this.sanitizeInput(params.toolName, params.input);
-    const labels = this.computeLabels(
+    const sanitizedInput = this.#sanitizeInput(params.toolName, params.input);
+    const labels = this.#computeLabels(
       params.toolName,
       params.target,
       params.outcome,
@@ -310,8 +399,7 @@ export class KnowledgeStore {
       timestamp: timestamp.toISOString(),
       sessionId: params.sessionId,
       context: params.context,
-      environment: this.getEnvironmentInfo(),
-      git: this.getGitInfo(),
+      environment: this.#getEnvironmentInfo(),
       tool: {
         name: params.toolName,
         input: sanitizedInput.input,
@@ -345,47 +433,64 @@ export class KnowledgeStore {
     return filepath;
   }
 
-  private computeLabels(
+  /**
+   * Compute labels for a step based on tool and outcome
+   *
+   * @param toolName - Name of the tool executed
+   * @param target - Target element information
+   * @param outcome - Execution outcome
+   * @returns Array of labels describing the step
+   */
+  #computeLabels(
     toolName: string,
-    target?: StepRecordTool["target"],
+    target?: StepRecordTool['target'],
     outcome?: StepRecordOutcome,
   ): string[] {
     const labels: string[] = [];
 
     const navigationTools = [
-      `${this.toolPrefix}_navigate`,
-      `${this.toolPrefix}_wait_for_notification`,
+      `${this.#toolPrefix}_navigate`,
+      `${this.#toolPrefix}_wait_for_notification`,
     ];
     const interactionTools = [
-      `${this.toolPrefix}_click`,
-      `${this.toolPrefix}_type`,
-      `${this.toolPrefix}_wait_for`,
+      `${this.#toolPrefix}_click`,
+      `${this.#toolPrefix}_type`,
+      `${this.#toolPrefix}_wait_for`,
     ];
 
-    if (this.discoveryTools.includes(toolName)) {
-      labels.push("discovery");
+    if (this.#discoveryTools.includes(toolName)) {
+      labels.push('discovery');
     } else if (navigationTools.includes(toolName)) {
-      labels.push("navigation");
+      labels.push('navigation');
     } else if (interactionTools.includes(toolName)) {
-      labels.push("interaction");
+      labels.push('interaction');
 
       const targetStr = JSON.stringify(target ?? {}).toLowerCase();
       if (
-        targetStr.includes("confirm") ||
-        targetStr.includes("approve") ||
-        targetStr.includes("submit")
+        targetStr.includes('confirm') ||
+        targetStr.includes('approve') ||
+        targetStr.includes('submit')
       ) {
-        labels.push("confirmation");
+        labels.push('confirmation');
       }
     }
 
     if (outcome && !outcome.ok) {
-      labels.push("error-recovery");
+      labels.push('error-recovery');
     }
 
     return labels;
   }
 
+  /**
+   * Get the last N steps from the knowledge store
+   *
+   * @param n - Number of steps to retrieve
+   * @param scope - Scope for step retrieval (current, all, or specific sessionId)
+   * @param currentSessionId - Current session ID for scope resolution
+   * @param filters - Optional filters to apply to steps
+   * @returns Array of step summaries
+   */
   async getLastSteps(
     n: number,
     scope: KnowledgeScope,
@@ -398,12 +503,21 @@ export class KnowledgeStore {
       filters,
     );
 
-    const allSteps: { step: StepRecord; filepath: string }[] = [];
+    const allSteps: {
+      /**
+       * The step record
+       */
+      step: StepRecord;
+      /**
+       * Path to the step file
+       */
+      filepath: string;
+    }[] = [];
 
     for (const sid of sessionIds) {
-      const steps = await this.loadSessionSteps(sid);
+      const steps = await this.#loadSessionSteps(sid);
       for (const s of steps) {
-        if (this.stepMatchesFilters(s.step, filters)) {
+        if (this.#stepMatchesFilters(s.step, filters)) {
           allSteps.push(s);
         }
       }
@@ -415,9 +529,19 @@ export class KnowledgeStore {
         new Date(a.step.timestamp).getTime(),
     );
 
-    return allSteps.slice(0, n).map((item) => this.summarizeStep(item.step));
+    return allSteps.slice(0, n).map((item) => this.#summarizeStep(item.step));
   }
 
+  /**
+   * Search steps by query across sessions
+   *
+   * @param query - Search query string
+   * @param limit - Maximum number of results to return
+   * @param scope - Scope for search (current, all, or specific sessionId)
+   * @param currentSessionId - Current session ID for scope resolution
+   * @param filters - Optional filters to apply to steps
+   * @returns Array of matching step summaries
+   */
   async searchSteps(
     query: string,
     limit: number,
@@ -446,9 +570,9 @@ export class KnowledgeStore {
     const scoredSessions: ScoredSession[] = [];
 
     for (const sid of sessionIds) {
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       const sessionScore = metadata
-        ? this.computeSessionScore(metadata, expandedTokens)
+        ? this.#computeSessionScore(metadata, expandedTokens)
         : 0;
       scoredSessions.push({
         sessionId: sid,
@@ -493,16 +617,16 @@ export class KnowledgeStore {
         break;
       }
 
-      const steps = await this.loadSessionSteps(sid);
+      const steps = await this.#loadSessionSteps(sid);
       const limitedSteps = steps.slice(0, SCAN_LIMITS.maxStepsPerSession);
       totalStepsScanned += limitedSteps.length;
 
       for (const { step } of limitedSteps) {
-        if (!this.stepMatchesFilters(step, filters)) {
+        if (!this.#stepMatchesFilters(step, filters)) {
           continue;
         }
 
-        const { score: stepScore, matchedFields } = this.computeSearchScore(
+        const { score: stepScore, matchedFields } = this.#computeSearchScore(
           step,
           expandedTokens,
         );
@@ -525,13 +649,17 @@ export class KnowledgeStore {
 
     return matches
       .slice(0, limit)
-      .map((m) => this.summarizeStep(m.step, m.matchedFields, m.sessionGoal));
+      .map((m) => this.#summarizeStep(m.step, m.matchedFields, m.sessionGoal));
   }
 
-  private stepMatchesFilters(
-    step: StepRecord,
-    filters?: KnowledgeFilters,
-  ): boolean {
+  /**
+   * Check if a step matches the given filters
+   *
+   * @param step - Step record to check
+   * @param filters - Filters to apply
+   * @returns True if step matches all filters
+   */
+  #stepMatchesFilters(step: StepRecord, filters?: KnowledgeFilters): boolean {
     if (!filters) {
       return true;
     }
@@ -546,12 +674,27 @@ export class KnowledgeStore {
     return true;
   }
 
+  /**
+   * Generate a recipe summary of steps in a session
+   *
+   * @param sessionId - Session ID to summarize
+   * @returns Session summary with recipe steps
+   */
   async summarizeSession(sessionId: string): Promise<{
+    /**
+     * Session ID
+     */
     sessionId: string;
+    /**
+     * Total number of steps in session
+     */
     stepCount: number;
+    /**
+     * Recipe steps describing the session flow
+     */
     recipe: RecipeStep[];
   }> {
-    const steps = await this.loadSessionSteps(sessionId);
+    const steps = await this.#loadSessionSteps(sessionId);
 
     steps.sort(
       (a, b) =>
@@ -562,7 +705,7 @@ export class KnowledgeStore {
     const recipe: RecipeStep[] = steps.map(({ step }, index) => ({
       stepNumber: index + 1,
       tool: step.tool.name,
-      notes: this.generateStepNotes(step),
+      notes: this.#generateStepNotes(step),
     }));
 
     return {
@@ -572,86 +715,106 @@ export class KnowledgeStore {
     };
   }
 
-  async saveScreenshot(
-    sessionId: string,
-    name: string,
-    buffer: Buffer,
-  ): Promise<string> {
-    const screenshotsDir = path.join(
-      this.knowledgeRoot,
-      sessionId,
-      "screenshots",
-    );
-    await fs.mkdir(screenshotsDir, { recursive: true });
-
-    const timestamp = generateFilesafeTimestamp();
-    const filename = `${timestamp}-${name}.png`;
-    const filepath = path.join(screenshotsDir, filename);
-
-    await fs.writeFile(filepath, buffer);
-
-    return filepath;
-  }
-
+  /**
+   * Get all session IDs from the knowledge store
+   *
+   * @returns Array of all session IDs
+   */
   async getAllSessionIds(): Promise<string[]> {
     try {
-      const entries = await fs.readdir(this.knowledgeRoot, {
+      const entries = await fs.readdir(this.#knowledgeRoot, {
         withFileTypes: true,
       });
       return entries
         .filter(
           (e) =>
             e.isDirectory() &&
-            (e.name.startsWith("mm-") ||
-              e.name.startsWith(this.sessionIdPrefix)),
+            (e.name.startsWith('mm-') ||
+              e.name.startsWith(this.#sessionIdPrefix)),
         )
         .map((e) => e.name);
     } catch (error) {
-      debugWarn("knowledge-store.getAllSessionIds", error);
+      debugWarn('knowledge-store.getAllSessionIds', error);
       return [];
     }
   }
 
-  getGitInfoSync(): StepRecordGit {
-    return this.getGitInfo();
-  }
-
-  private async loadSessionSteps(
-    sessionId: string,
-  ): Promise<{ step: StepRecord; filepath: string }[]> {
-    const stepsDir = path.join(this.knowledgeRoot, sessionId, "steps");
+  /**
+   * Load all step records from a session
+   *
+   * @param sessionId - Session ID to load steps from
+   * @returns Array of step records with file paths
+   */
+  async #loadSessionSteps(sessionId: string): Promise<
+    {
+      /**
+       * The step record
+       */
+      step: StepRecord;
+      /**
+       * Path to the step file
+       */
+      filepath: string;
+    }[]
+  > {
+    const stepsDir = path.join(this.#knowledgeRoot, sessionId, 'steps');
 
     try {
       const files = await fs.readdir(stepsDir);
-      const jsonFiles = files.filter((f) => f.endsWith(".json"));
+      const jsonFiles = files.filter((f) => f.endsWith('.json'));
 
-      const steps: { step: StepRecord; filepath: string }[] = [];
+      const steps: {
+        /**
+         * The step record
+         */
+        step: StepRecord;
+        /**
+         * Path to the step file
+         */
+        filepath: string;
+      }[] = [];
 
       for (const file of jsonFiles) {
         const filepath = path.join(stepsDir, file);
         try {
-          const content = await fs.readFile(filepath, "utf-8");
+          const content = await fs.readFile(filepath, 'utf-8');
           const step = JSON.parse(content) as StepRecord;
           steps.push({ step, filepath });
         } catch (error) {
-          debugWarn("knowledge-store.loadSessionSteps", error);
+          debugWarn('knowledge-store.loadSessionSteps', error);
           continue;
         }
       }
 
       return steps;
     } catch (error) {
-      debugWarn("knowledge-store.loadSessionSteps", error);
+      debugWarn('knowledge-store.loadSessionSteps', error);
       return [];
     }
   }
 
-  private sanitizeInput(
+  /**
+   * Sanitize tool input by redacting sensitive fields
+   *
+   * @param toolName - Name of the tool
+   * @param input - Input parameters to sanitize
+   * @returns Sanitized input with redaction metadata
+   */
+  #sanitizeInput(
     toolName: string,
     input?: Record<string, unknown>,
   ): {
+    /**
+     * Sanitized input parameters
+     */
     input?: Record<string, unknown>;
+    /**
+     * Whether text was redacted
+     */
     textRedacted?: boolean;
+    /**
+     * Length of redacted text
+     */
     textLength?: number;
   } {
     if (!input) {
@@ -662,28 +825,28 @@ export class KnowledgeStore {
     let textRedacted = false;
     let textLength: number | undefined;
 
-    const typeToolName = `${this.toolPrefix}_type`;
+    const typeToolName = `${this.#toolPrefix}_type`;
 
     for (const [key, value] of Object.entries(input)) {
-      if (toolName === typeToolName && key === "text") {
+      if (toolName === typeToolName && key === 'text') {
         const textValue = String(value);
         const targetTestId = input.testId as string | undefined;
         const targetSelector = input.selector as string | undefined;
 
         const isSensitive =
-          isSensitiveField(targetTestId ?? "") ||
-          isSensitiveField(targetSelector ?? "") ||
+          isSensitiveField(targetTestId ?? '') ||
+          isSensitiveField(targetSelector ?? '') ||
           SENSITIVE_FIELD_PATTERNS.some((p: RegExp) => p.test(key));
 
         if (isSensitive) {
           textRedacted = true;
           textLength = textValue.length;
-          sanitized[key] = "[REDACTED]";
+          sanitized[key] = '[REDACTED]';
         } else {
           sanitized[key] = value;
         }
       } else if (isSensitiveField(key)) {
-        sanitized[key] = "[REDACTED]";
+        sanitized[key] = '[REDACTED]';
       } else {
         sanitized[key] = value;
       }
@@ -696,48 +859,42 @@ export class KnowledgeStore {
     };
   }
 
-  private getEnvironmentInfo(): { platform: string; nodeVersion: string } {
+  /**
+   * Get environment information
+   *
+   * @returns Environment details (platform and Node version)
+   */
+  #getEnvironmentInfo(): {
+    /**
+     * Operating system platform
+     */
+    platform: string;
+    /**
+     * Node.js version
+     */
+    nodeVersion: string;
+  } {
     return {
       platform: process.platform,
       nodeVersion: process.version,
     };
   }
 
-  private getGitInfo(): { branch?: string; commit?: string; dirty?: boolean } {
-    try {
-      const branch = execSync("git rev-parse --abbrev-ref HEAD", {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim();
-
-      const commit = execSync("git rev-parse --short HEAD", {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim();
-
-      const status = execSync("git status --porcelain", {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      return {
-        branch,
-        commit,
-        dirty: status.trim().length > 0,
-      };
-    } catch (error) {
-      debugWarn("knowledge-store.getGitInfo", error);
-      return {};
-    }
-  }
-
-  private summarizeStep(
+  /**
+   * Create a summary of a step record
+   *
+   * @param step - Step record to summarize
+   * @param matchedFields - Fields that matched the search query
+   * @param sessionGoal - Goal of the session containing this step
+   * @returns Step summary for display
+   */
+  #summarizeStep(
     step: StepRecord,
     matchedFields?: string[],
     sessionGoal?: string,
   ): KnowledgeStepSummary {
-    const screen = step.observation?.state?.currentScreen ?? "unknown";
-    const snippet = this.generateSnippet(step, matchedFields);
+    const screen = step.observation?.state?.currentScreen ?? 'unknown';
+    const snippet = this.#generateSnippet(step, matchedFields);
 
     return {
       timestamp: step.timestamp,
@@ -750,11 +907,18 @@ export class KnowledgeStore {
     };
   }
 
-  private generateSnippet(step: StepRecord, matchedFields?: string[]): string {
+  /**
+   * Generate a human-readable snippet from a step
+   *
+   * @param step - Step record to generate snippet from
+   * @param matchedFields - Fields that matched the search query
+   * @returns Human-readable snippet string
+   */
+  #generateSnippet(step: StepRecord, matchedFields?: string[]): string {
     const parts: string[] = [];
 
     if (matchedFields && matchedFields.length > 0) {
-      const topMatches = matchedFields.slice(0, 3).join(", ");
+      const topMatches = matchedFields.slice(0, 3).join(', ');
       parts.push(`match: ${topMatches}`);
     }
 
@@ -768,7 +932,7 @@ export class KnowledgeStore {
     }
 
     if (step.labels && step.labels.length > 0) {
-      parts.push(`labels: ${step.labels.join(", ")}`);
+      parts.push(`labels: ${step.labels.join(', ')}`);
     }
 
     if (step.observation?.state?.currentScreen) {
@@ -779,10 +943,16 @@ export class KnowledgeStore {
       parts.push(`error: ${step.outcome.error.code}`);
     }
 
-    return parts.join(", ") || step.tool.name;
+    return parts.join(', ') || step.tool.name;
   }
 
-  private generateStepNotes(step: StepRecord): string {
+  /**
+   * Generate notes describing a step
+   *
+   * @param step - Step record to generate notes from
+   * @returns Notes string describing the step
+   */
+  #generateStepNotes(step: StepRecord): string {
     const notes: string[] = [];
 
     if (step.tool.target?.testId) {
@@ -800,13 +970,20 @@ export class KnowledgeStore {
     }
 
     if (step.artifacts?.screenshot?.path) {
-      notes.push("screenshot captured");
+      notes.push('screenshot captured');
     }
 
-    return notes.join("; ") || "executed";
+    return notes.join('; ') || 'executed';
   }
 
-  private computeSessionScore(
+  /**
+   * Compute relevance score for a session based on query tokens
+   *
+   * @param metadata - Session metadata to score
+   * @param queryTokens - Tokens from the search query
+   * @returns Relevance score for the session
+   */
+  #computeSessionScore(
     metadata: SessionMetadata,
     queryTokens: string[],
   ): number {
@@ -821,7 +998,7 @@ export class KnowledgeStore {
       }
     }
 
-    const goalTokens = tokenize(metadata.goal ?? "");
+    const goalTokens = tokenize(metadata.goal ?? '');
     for (const token of queryTokens) {
       if (goalTokens.includes(token)) {
         score += 6;
@@ -832,16 +1009,6 @@ export class KnowledgeStore {
       for (const tag of metadata.tags) {
         if (tag.toLowerCase().includes(token)) {
           score += 4;
-          break;
-        }
-      }
-    }
-
-    if (metadata.git?.branch) {
-      const branchTokens = tokenize(metadata.git.branch);
-      for (const token of queryTokens) {
-        if (branchTokens.includes(token)) {
-          score += 2;
           break;
         }
       }
@@ -858,10 +1025,26 @@ export class KnowledgeStore {
     return score;
   }
 
-  private computeSearchScore(
+  /**
+   * Compute relevance score for a step based on query tokens
+   *
+   * @param step - Step record to score
+   * @param queryTokens - Tokens from the search query
+   * @returns Score and matched field names
+   */
+  #computeSearchScore(
     step: StepRecord,
     queryTokens: string[],
-  ): { score: number; matchedFields: string[] } {
+  ): {
+    /**
+     * Relevance score for the step
+     */
+    score: number;
+    /**
+     * Fields that matched the query
+     */
+    matchedFields: string[];
+  } {
     let score = 0;
     const matchedFieldsSet = new Set<string>();
     let matchedTokens = 0;
@@ -946,6 +1129,13 @@ export class KnowledgeStore {
     return { score, matchedFields: [...matchedFieldsSet] };
   }
 
+  /**
+   * Generate prior knowledge from historical sessions
+   *
+   * @param context - Current context for knowledge generation
+   * @param currentSessionId - Current session ID to exclude from results
+   * @returns Prior knowledge object or undefined if no relevant data found
+   */
   async generatePriorKnowledge(
     context: PriorKnowledgeContext,
     currentSessionId?: string,
@@ -960,7 +1150,7 @@ export class KnowledgeStore {
       filters.flowTag = context.currentSessionFlowTags[0];
     }
 
-    const sessionIds = await this.resolveSessionIds("all", undefined, filters);
+    const sessionIds = await this.resolveSessionIds('all', undefined, filters);
     const candidateSessionIds = sessionIds.filter(
       (sid) => sid !== currentSessionId,
     );
@@ -969,28 +1159,24 @@ export class KnowledgeStore {
       return undefined;
     }
 
-    const relatedSessions = await this.getRelatedSessions(
+    const relatedSessions = await this.#getRelatedSessions(
       candidateSessionIds,
       filters,
       PRIOR_KNOWLEDGE_CONFIG.maxRelatedSessions,
     );
 
-    const { similarSteps, candidateStepCount } = await this.getSimilarSteps(
+    const { similarSteps, candidateStepCount } = await this.#getSimilarSteps(
       context,
       candidateSessionIds,
       filters,
     );
 
-    const suggestedNextActions = this.buildSuggestedActions(
+    const suggestedNextActions = this.#buildSuggestedActions(
       similarSteps,
       context,
     );
 
-    const avoidList = await this.buildAvoidList(
-      context,
-      candidateSessionIds,
-      filters,
-    );
+    const avoidList = await this.#buildAvoidList(context, candidateSessionIds);
 
     if (
       relatedSessions.length === 0 &&
@@ -1026,7 +1212,15 @@ export class KnowledgeStore {
     };
   }
 
-  private async getRelatedSessions(
+  /**
+   * Get related sessions based on filters
+   *
+   * @param sessionIds - Session IDs to filter
+   * @param filters - Filters to apply
+   * @param limit - Maximum number of sessions to return
+   * @returns Array of related session summaries
+   */
+  async #getRelatedSessions(
     sessionIds: string[],
     filters: KnowledgeFilters,
     limit: number,
@@ -1038,12 +1232,12 @@ export class KnowledgeStore {
         break;
       }
 
-      const metadata = await this.readSessionMetadata(sid);
+      const metadata = await this.#readSessionMetadata(sid);
       if (!metadata) {
         continue;
       }
 
-      if (!this.matchesFilters(metadata, filters)) {
+      if (!this.#matchesFilters(metadata, filters)) {
         continue;
       }
 
@@ -1053,24 +1247,44 @@ export class KnowledgeStore {
         goal: metadata.goal,
         flowTags: metadata.flowTags,
         tags: metadata.tags,
-        git: metadata.git
-          ? { branch: metadata.git.branch, commit: metadata.git.commit }
-          : undefined,
       });
     }
 
     return sessions;
   }
 
-  private async getSimilarSteps(
+  /**
+   * Find similar steps from historical sessions
+   *
+   * @param context - Current context for similarity matching
+   * @param sessionIds - Session IDs to search
+   * @param filters - Filters to apply to steps
+   * @returns Similar steps and total candidate count
+   */
+  async #getSimilarSteps(
     context: PriorKnowledgeContext,
     sessionIds: string[],
     filters: KnowledgeFilters,
   ): Promise<{
+    /**
+     * Array of similar steps found
+     */
     similarSteps: PriorKnowledgeSimilarStep[];
+    /**
+     * Total number of candidate steps scanned
+     */
     candidateStepCount: number;
   }> {
-    const scoredSteps: { step: StepRecord; score: number }[] = [];
+    const scoredSteps: {
+      /**
+       * The step record
+       */
+      step: StepRecord;
+      /**
+       * Similarity score for the step
+       */
+      score: number;
+    }[] = [];
     let candidateStepCount = 0;
 
     const visibleTestIdSet = new Set(
@@ -1090,21 +1304,21 @@ export class KnowledgeStore {
         break;
       }
 
-      const steps = await this.loadSessionSteps(sid);
+      const steps = await this.#loadSessionSteps(sid);
       const limitedSteps = steps.slice(0, SCAN_LIMITS.maxStepsPerSession);
 
       for (const { step } of limitedSteps) {
         candidateStepCount += 1;
 
-        if (!this.stepMatchesFilters(step, filters)) {
+        if (!this.#stepMatchesFilters(step, filters)) {
           continue;
         }
 
-        if (this.discoveryTools.includes(step.tool.name)) {
+        if (this.#discoveryTools.includes(step.tool.name)) {
           continue;
         }
 
-        const score = this.computeSimilarityScore(
+        const score = this.#computeSimilarityScore(
           step,
           context,
           visibleTestIdSet,
@@ -1122,14 +1336,14 @@ export class KnowledgeStore {
     const similarSteps: PriorKnowledgeSimilarStep[] = scoredSteps
       .slice(0, PRIOR_KNOWLEDGE_CONFIG.maxSimilarSteps)
       .map(({ step, score }) => {
-        const a11yHint = this.lookupA11yHint(step);
+        const a11yHint = this.#lookupA11yHint(step);
 
         return {
           sessionId: step.sessionId,
           timestamp: step.timestamp,
           tool: step.tool.name,
-          screen: step.observation?.state?.currentScreen ?? "unknown",
-          snippet: this.generateSnippet(step),
+          screen: step.observation?.state?.currentScreen ?? 'unknown',
+          snippet: this.#generateSnippet(step),
           labels: step.labels,
           target: step.tool.target
             ? {
@@ -1145,9 +1359,24 @@ export class KnowledgeStore {
     return { similarSteps, candidateStepCount };
   }
 
-  private lookupA11yHint(
-    step: StepRecord,
-  ): { role: string; name: string } | undefined {
+  /**
+   * Look up accessibility hint for a step's target
+   *
+   * @param step - Step record to look up hint for
+   * @returns Accessibility hint with role and name, or undefined
+   */
+  #lookupA11yHint(step: StepRecord):
+    | {
+        /**
+         * ARIA role of the element
+         */
+        role: string;
+        /**
+         * Accessible name of the element
+         */
+        name: string;
+      }
+    | undefined {
     const a11yRef = step.tool.target?.a11yRef;
     if (!a11yRef) {
       return undefined;
@@ -1162,7 +1391,16 @@ export class KnowledgeStore {
     return { role: matchingNode.role, name: matchingNode.name };
   }
 
-  private computeSimilarityScore(
+  /**
+   * Compute similarity score between a step and current context
+   *
+   * @param step - Step record to score
+   * @param context - Current context for comparison
+   * @param visibleTestIdSet - Set of visible test IDs in current context
+   * @param visibleA11yNames - Set of visible accessibility names in current context
+   * @returns Similarity score
+   */
+  #computeSimilarityScore(
     step: StepRecord,
     context: PriorKnowledgeContext,
     visibleTestIdSet: Set<string>,
@@ -1173,13 +1411,13 @@ export class KnowledgeStore {
     const stepScreen = step.observation?.state?.currentScreen;
     const contextScreen = context.currentScreen;
 
-    if (stepScreen === contextScreen && stepScreen !== "unknown") {
+    if (stepScreen === contextScreen && stepScreen !== 'unknown') {
       score += SIMILARITY_WEIGHTS.sameScreen;
     }
 
     if (context.currentUrl && step.observation?.state) {
       const currentPathTokens = extractPathTokens(context.currentUrl);
-      const stepUrl = step.observation.state.currentUrl ?? "";
+      const stepUrl = step.observation.state.currentUrl ?? '';
       const stepPathTokens = extractPathTokens(stepUrl);
 
       for (const token of currentPathTokens) {
@@ -1212,14 +1450,21 @@ export class KnowledgeStore {
     }
     score += Math.min(a11yOverlapCount, 2) * SIMILARITY_WEIGHTS.a11yOverlap;
 
-    if (this.actionableTools.includes(step.tool.name)) {
+    if (this.#actionableTools.includes(step.tool.name)) {
       score += SIMILARITY_WEIGHTS.actionableTool;
     }
 
     return score;
   }
 
-  private buildSuggestedActions(
+  /**
+   * Build suggested actions from similar steps
+   *
+   * @param similarSteps - Similar steps to analyze
+   * @param context - Current context for action building
+   * @returns Array of suggested actions
+   */
+  #buildSuggestedActions(
     similarSteps: PriorKnowledgeSimilarStep[],
     context: PriorKnowledgeContext,
   ): PriorKnowledgeSuggestedAction[] {
@@ -1244,7 +1489,7 @@ export class KnowledgeStore {
         continue;
       }
 
-      const key = step.target.testId ?? step.target.selector ?? "";
+      const key = step.target.testId ?? step.target.selector ?? '';
 
       const existing = actionCounts.get(key);
       if (existing) {
@@ -1270,17 +1515,20 @@ export class KnowledgeStore {
         break;
       }
 
-      const preferredTarget = this.buildPreferredTarget(step, visibleTestIdSet);
+      const preferredTarget = this.#buildPreferredTarget(
+        step,
+        visibleTestIdSet,
+      );
       if (!preferredTarget) {
         continue;
       }
 
-      const fallbackTargets = this.buildFallbackTargets(
+      const fallbackTargets = this.#buildFallbackTargets(
         preferredTarget,
         visibleA11yMap,
       );
 
-      const action = this.toolToAction(step.tool);
+      const action = this.#toolToAction(step.tool);
       if (!action) {
         continue;
       }
@@ -1291,7 +1539,7 @@ export class KnowledgeStore {
         rationale:
           count > 1
             ? `Used ${count} times successfully on this screen`
-            : "Most common next successful step on this screen",
+            : 'Most common next successful step on this screen',
         confidence: Math.min(confidenceSum / count, 1),
         preferredTarget,
         fallbackTargets:
@@ -1302,7 +1550,14 @@ export class KnowledgeStore {
     return suggestions;
   }
 
-  private buildPreferredTarget(
+  /**
+   * Build preferred target from a prior step
+   *
+   * @param priorStep - Prior step to extract target from
+   * @param visibleTestIdSet - Set of visible test IDs in current context
+   * @returns Preferred target or null if none found
+   */
+  #buildPreferredTarget(
     priorStep: PriorKnowledgeSimilarStep,
     visibleTestIdSet: Set<string>,
   ): PriorKnowledgeTarget | null {
@@ -1310,37 +1565,44 @@ export class KnowledgeStore {
       priorStep.target?.testId &&
       visibleTestIdSet.has(priorStep.target.testId)
     ) {
-      return { type: "testId", value: priorStep.target.testId };
+      return { type: 'testId', value: priorStep.target.testId };
     }
 
     if (priorStep.target?.selector) {
-      return { type: "selector", value: priorStep.target.selector };
+      return { type: 'selector', value: priorStep.target.selector };
     }
 
     if (priorStep.a11yHint) {
-      return { type: "a11yHint", value: priorStep.a11yHint };
+      return { type: 'a11yHint', value: priorStep.a11yHint };
     }
 
     return null;
   }
 
-  private buildFallbackTargets(
+  /**
+   * Build fallback targets for a preferred target
+   *
+   * @param preferredTarget - Preferred target to find fallbacks for
+   * @param visibleA11yMap - Map of visible accessibility nodes
+   * @returns Array of fallback targets
+   */
+  #buildFallbackTargets(
     preferredTarget: PriorKnowledgeTarget,
     visibleA11yMap: Map<string, A11yNodeTrimmed>,
   ): PriorKnowledgeTarget[] {
     const fallbacks: PriorKnowledgeTarget[] = [];
 
-    if (preferredTarget.type === "testId") {
+    if (preferredTarget.type === 'testId') {
       const testId = preferredTarget.value;
 
       const entries = Array.from(visibleA11yMap.entries());
       for (const [name, node] of entries) {
         if (
-          name.includes(testId.replace(/-/gu, " ").toLowerCase()) ||
+          name.includes(testId.replace(/-/gu, ' ').toLowerCase()) ||
           testId.toLowerCase().includes(name)
         ) {
           fallbacks.push({
-            type: "a11yHint",
+            type: 'a11yHint',
             value: { role: node.role, name: node.name },
           });
           break;
@@ -1351,24 +1613,53 @@ export class KnowledgeStore {
     return fallbacks;
   }
 
-  private toolToAction(
+  /**
+   * Convert tool name to action type
+   *
+   * @param toolName - Tool name to convert
+   * @returns Action type or null if not found
+   */
+  #toolToAction(
     toolName: string,
-  ): PriorKnowledgeSuggestedAction["action"] | null {
-    return this.toolActionMap[toolName] ?? null;
+  ): PriorKnowledgeSuggestedAction['action'] | null {
+    return this.#toolActionMap[toolName] ?? null;
   }
 
-  private async buildAvoidList(
+  /**
+   * Build list of actions to avoid based on failure history
+   *
+   * @param context - Current context for avoid list building
+   * @param sessionIds - Session IDs to analyze for failures
+   * @returns Array of actions to avoid
+   */
+  async #buildAvoidList(
     context: PriorKnowledgeContext,
     sessionIds: string[],
-    _filters: KnowledgeFilters,
   ): Promise<PriorKnowledgeAvoid[]> {
     const failureCounts = new Map<
       string,
-      { errorCode?: string; selector?: string; testId?: string; count: number }
+      {
+        /**
+         * Error code from the failure
+         */
+        errorCode?: string;
+        /**
+         * CSS selector of the failed target
+         */
+        selector?: string;
+        /**
+         * Test ID of the failed target
+         */
+        testId?: string;
+        /**
+         * Number of times this target failed
+         */
+        count: number;
+      }
     >();
 
     for (const sid of sessionIds) {
-      const steps = await this.loadSessionSteps(sid);
+      const steps = await this.#loadSessionSteps(sid);
 
       for (const { step } of steps) {
         if (step.outcome.ok) {
@@ -1379,7 +1670,7 @@ export class KnowledgeStore {
         }
 
         const targetKey =
-          step.tool.target?.testId ?? step.tool.target?.selector ?? "unknown";
+          step.tool.target?.testId ?? step.tool.target?.selector ?? 'unknown';
 
         const existing = failureCounts.get(targetKey);
         if (existing) {
@@ -1404,7 +1695,7 @@ export class KnowledgeStore {
       }
 
       avoidList.push({
-        rationale: "Frequently fails due to UI churn",
+        rationale: 'Frequently fails due to UI churn',
         target: {
           testId: failure.testId,
           selector: failure.selector,
@@ -1420,6 +1711,15 @@ export class KnowledgeStore {
   }
 }
 
+/**
+ * Create a default observation object with state and optional artifacts
+ *
+ * @param state - Extension state snapshot
+ * @param testIds - Array of visible test IDs
+ * @param a11yNodes - Array of accessibility nodes
+ * @param priorKnowledge - Optional prior knowledge from history
+ * @returns Observation object for step recording
+ */
 export function createDefaultObservation(
   state: ExtensionState,
   testIds: TestIdItem[] = [],
@@ -1439,64 +1739,118 @@ export function createDefaultObservation(
   return observation;
 }
 
+/**
+ * Create a new KnowledgeStore instance
+ *
+ * @param config - Optional configuration for the store
+ * @returns New KnowledgeStore instance
+ */
 export function createKnowledgeStore(
   config?: KnowledgeStoreConfig,
 ): KnowledgeStore {
   return new KnowledgeStore(config);
 }
 
-export {
-  tokenize,
-  tokenizeIdentifier,
-  expandWithSynonyms,
-} from "./tokenization.js";
-
 let _knowledgeStore: KnowledgeStore | undefined;
 
+/**
+ * Set the global knowledge store instance
+ *
+ * @param store - KnowledgeStore instance to set as global
+ */
 export function setKnowledgeStore(store: KnowledgeStore): void {
   _knowledgeStore = store;
 }
 
+/**
+ * Get the global knowledge store instance
+ *
+ * @returns The global KnowledgeStore instance
+ */
 export function getKnowledgeStore(): KnowledgeStore {
   if (!_knowledgeStore) {
     throw new Error(
-      "Knowledge store not initialized. Call setKnowledgeStore() first.",
+      'Knowledge store not initialized. Call setKnowledgeStore() first.',
     );
   }
   return _knowledgeStore;
 }
 
+/**
+ * Check if a knowledge store has been initialized
+ *
+ * @returns True if knowledge store is initialized
+ */
 export function hasKnowledgeStore(): boolean {
   return _knowledgeStore !== undefined;
 }
 
 export const knowledgeStore = {
-  recordStep: async (params: Parameters<KnowledgeStore["recordStep"]>[0]) => {
+  /**
+   * Record a tool execution step
+   *
+   * @param params - Step recording parameters
+   * @returns Path to the recorded step file
+   */
+  recordStep: async (params: Parameters<KnowledgeStore['recordStep']>[0]) => {
     return getKnowledgeStore().recordStep(params);
   },
-  getLastSteps: async (...args: Parameters<KnowledgeStore["getLastSteps"]>) => {
+  /**
+   * Get the last N steps from the knowledge store
+   *
+   * @param args - Arguments for getLastSteps
+   * @returns Array of step summaries
+   */
+  getLastSteps: async (...args: Parameters<KnowledgeStore['getLastSteps']>) => {
     return getKnowledgeStore().getLastSteps(...args);
   },
-  searchSteps: async (...args: Parameters<KnowledgeStore["searchSteps"]>) => {
+  /**
+   * Search steps by query
+   *
+   * @param args - Arguments for searchSteps
+   * @returns Array of matching step summaries
+   */
+  searchSteps: async (...args: Parameters<KnowledgeStore['searchSteps']>) => {
     return getKnowledgeStore().searchSteps(...args);
   },
+  /**
+   * Generate a recipe summary of a session
+   *
+   * @param args - Arguments for summarizeSession
+   * @returns Session summary with recipe steps
+   */
   summarizeSession: async (
-    ...args: Parameters<KnowledgeStore["summarizeSession"]>
+    ...args: Parameters<KnowledgeStore['summarizeSession']>
   ) => {
     return getKnowledgeStore().summarizeSession(...args);
   },
-  listSessions: async (...args: Parameters<KnowledgeStore["listSessions"]>) => {
+  /**
+   * List sessions with optional filtering
+   *
+   * @param args - Arguments for listSessions
+   * @returns Array of session summaries
+   */
+  listSessions: async (...args: Parameters<KnowledgeStore['listSessions']>) => {
     return getKnowledgeStore().listSessions(...args);
   },
+  /**
+   * Generate prior knowledge from historical sessions
+   *
+   * @param args - Arguments for generatePriorKnowledge
+   * @returns Prior knowledge object or undefined
+   */
   generatePriorKnowledge: async (
-    ...args: Parameters<KnowledgeStore["generatePriorKnowledge"]>
+    ...args: Parameters<KnowledgeStore['generatePriorKnowledge']>
   ) => {
     return getKnowledgeStore().generatePriorKnowledge(...args);
   },
+  /**
+   * Write session metadata to disk
+   *
+   * @param metadata - Session metadata to persist
+   * @returns Path to the written metadata file
+   */
   writeSessionMetadata: async (metadata: SessionMetadata) => {
     return getKnowledgeStore().writeSessionMetadata(metadata);
-  },
-  getGitInfoSync: (): StepRecordGit => {
-    return getKnowledgeStore().getGitInfoSync();
   },
 };

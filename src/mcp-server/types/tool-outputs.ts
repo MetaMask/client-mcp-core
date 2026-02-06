@@ -1,10 +1,10 @@
-import type { ExtensionState } from "../../capabilities/types.js";
-import type { TestIdItem, A11yNodeTrimmed } from "./discovery.js";
-import type { PriorKnowledgeV1 } from "./knowledge.js";
-import type { TabRole } from "./tool-inputs.js";
+import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
+import type { PriorKnowledgeV1 } from './knowledge.js';
+import type { TabRole } from './tool-inputs.js';
+import type { ExtensionState } from '../../capabilities/types.js';
 
 export type BuildToolResult = {
-  buildType: "build:test";
+  buildType: 'build:test';
   extensionPathResolved: string;
 };
 
@@ -135,7 +135,7 @@ export type CloseTabResult = {
 };
 
 export type ClipboardResult = {
-  action: "write" | "read";
+  action: 'write' | 'read';
   success: boolean;
   text?: string;
 };

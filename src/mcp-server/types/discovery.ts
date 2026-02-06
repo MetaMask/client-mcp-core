@@ -1,19 +1,19 @@
 export const ACTIONABLE_ROLES = [
-  "button",
-  "link",
-  "checkbox",
-  "radio",
-  "switch",
-  "textbox",
-  "combobox",
-  "menuitem",
+  'button',
+  'link',
+  'checkbox',
+  'radio',
+  'switch',
+  'textbox',
+  'combobox',
+  'menuitem',
 ] as const;
 
 export const IMPORTANT_ROLES = [
-  "dialog",
-  "alert",
-  "status",
-  "heading",
+  'dialog',
+  'alert',
+  'status',
+  'heading',
 ] as const;
 
 export const INCLUDED_ROLES = [
@@ -46,7 +46,7 @@ export type RawA11yNode = {
   role: string;
   name?: string;
   disabled?: boolean;
-  checked?: boolean | "mixed";
+  checked?: boolean | 'mixed';
   expanded?: boolean;
   children?: RawA11yNode[];
 };

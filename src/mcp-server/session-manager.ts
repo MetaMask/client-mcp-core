@@ -8,7 +8,10 @@
  * this interface and be injected into the core tool handlers.
  */
 
-import type { Page, BrowserContext } from "@playwright/test";
+import type { Page, BrowserContext } from '@playwright/test';
+
+import type { TabRole, SessionState, SessionMetadata } from './types';
+import type { EnvironmentMode } from '../capabilities/context.js';
 import type {
   ExtensionState,
   BuildCapability,
@@ -17,9 +20,7 @@ import type {
   ContractSeedingCapability,
   StateSnapshotCapability,
   ScreenshotResult,
-} from "../capabilities/types.js";
-import type { EnvironmentMode } from "../capabilities/context.js";
-import type { TabRole, SessionState, SessionMetadata } from "./types/index.js";
+} from '../capabilities/types.js';
 
 /**
  * Represents a tracked browser page with its role and URL.
@@ -35,7 +36,7 @@ export type TrackedPage = {
  */
 export type SessionLaunchInput = {
   /** State initialization mode */
-  stateMode?: "default" | "onboarding" | "custom";
+  stateMode?: 'default' | 'onboarding' | 'custom';
   /** Name of a preset fixture to use when stateMode is 'custom' */
   fixturePreset?: string;
   /** Custom fixture data when stateMode is 'custom' */
@@ -86,7 +87,7 @@ export type SessionScreenshotOptions = {
  * must fulfill. Tool handlers depend on this interface, allowing them to work
  * with any compliant session manager implementation.
  */
-export interface ISessionManager {
+export type ISessionManager = {
   // -----------------------------------------------------------------------------
   // Session Lifecycle
   // -----------------------------------------------------------------------------
@@ -113,12 +114,14 @@ export interface ISessionManager {
 
   /**
    * Launch a new browser session.
+   *
    * @throws If a session is already active
    */
   launch(input: SessionLaunchInput): Promise<SessionLaunchResult>;
 
   /**
    * Clean up the current session (browser, services, etc.).
+   *
    * @returns true if cleanup was performed, false if no session was active
    */
   cleanup(): Promise<boolean>;
@@ -129,6 +132,7 @@ export interface ISessionManager {
 
   /**
    * Get the current active page.
+   *
    * @throws If no active session
    */
   getPage(): Page;
@@ -150,6 +154,7 @@ export interface ISessionManager {
 
   /**
    * Get the browser context.
+   *
    * @throws If no active session
    */
   getContext(): BrowserContext;
@@ -160,6 +165,7 @@ export interface ISessionManager {
 
   /**
    * Get the current extension state.
+   *
    * @throws If no active session
    */
   getExtensionState(): Promise<ExtensionState>;
@@ -261,27 +267,31 @@ export interface ISessionManager {
 
   /**
    * Get the current environment mode.
+   *
    * @returns 'e2e' for testing environment, 'prod' for production-like environment
    */
   getEnvironmentMode(): EnvironmentMode;
 
   /**
    * Set the current context (e2e or prod).
+   *
    * @throws Error with code MM_CONTEXT_SWITCH_BLOCKED if session is active
    */
-  setContext?(context: "e2e" | "prod"): void;
+  setContext(context: 'e2e' | 'prod'): void;
 
   /**
    * Get current context information.
    */
-  getContextInfo?(): {
-    currentContext: "e2e" | "prod";
+  getContextInfo(): {
+    currentContext: 'e2e' | 'prod';
     hasActiveSession: boolean;
     sessionId: string | null;
-    capabilities: { available: string[] };
+    capabilities: {
+      available: string[];
+    };
     canSwitchContext: boolean;
   };
-}
+};
 
 /**
  * Session manager instance holder.
@@ -296,6 +306,8 @@ let _sessionManager: ISessionManager | undefined;
  * Set the session manager instance.
  *
  * This should be called by extension-specific code during server initialization.
+ *
+ * @param manager The session manager implementation to inject
  */
 export function setSessionManager(manager: ISessionManager): void {
   _sessionManager = manager;
@@ -305,11 +317,12 @@ export function setSessionManager(manager: ISessionManager): void {
  * Get the session manager instance.
  *
  * @throws Error if no session manager has been set
+ * @returns The session manager instance
  */
 export function getSessionManager(): ISessionManager {
   if (!_sessionManager) {
     throw new Error(
-      "Session manager not initialized. Call setSessionManager() first.",
+      'Session manager not initialized. Call setSessionManager() first.',
     );
   }
   return _sessionManager;
@@ -317,10 +330,9 @@ export function getSessionManager(): ISessionManager {
 
 /**
  * Check if a session manager has been set.
+ *
+ * @returns True if a session manager is set, false otherwise
  */
 export function hasSessionManager(): boolean {
   return _sessionManager !== undefined;
 }
-
-// Re-export types
-export type { TabRole, SessionState, SessionMetadata };

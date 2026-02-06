@@ -1,4 +1,4 @@
-import { type ZodType } from "zod";
+import type { ZodType } from 'zod';
 
 import {
   buildInputSchema,
@@ -28,54 +28,52 @@ import {
   setContextInputSchema,
   getContextInputSchema,
   clipboardInputSchema,
-} from "../schemas.js";
-
-import type {
-  SeedContractInput,
-  SeedContractsInput,
-  GetContractAddressInput,
-  ListDeployedContractsInput,
-} from "../types/index.js";
-
-import { getSessionManager } from "../session-manager.js";
-import type { BuildToolOptions } from "./build.js";
-import type { SeedingToolOptions } from "./seeding.js";
-import type { StateToolOptions } from "./state.js";
-import { type ToolHandler, handleRunSteps } from "./batch.js";
-
-import { handleBuild } from "./build.js";
-import { handleLaunch } from "./launch.js";
-import { handleCleanup } from "./cleanup.js";
-import { handleGetState } from "./state.js";
-import {
-  handleNavigate,
-  handleWaitForNotification,
-  handleSwitchToTab,
-  handleCloseTab,
-} from "./navigation.js";
+} from '../schemas.js';
+import { getSessionManager } from '../session-manager.js';
+import { handleRunSteps } from './batch.js';
+import type { ToolHandler } from './batch.js';
+import type { BuildToolOptions } from './build.js';
+import { handleBuild } from './build.js';
+import { handleCleanup } from './cleanup.js';
+import { handleClipboard } from './clipboard.js';
+import { handleSetContext, handleGetContext } from './context.js';
 import {
   handleListTestIds,
   handleAccessibilitySnapshot,
   handleDescribeScreen,
-} from "./discovery-tools.js";
-import { handleClick, handleType, handleWaitFor } from "./interaction.js";
-import { handleClipboard } from "./clipboard.js";
-import { handleScreenshot } from "./screenshot.js";
+} from './discovery-tools.js';
+import { handleClick, handleType, handleWaitFor } from './interaction.js';
 import {
   handleKnowledgeLast,
   handleKnowledgeSearch,
   handleKnowledgeSummarize,
   handleKnowledgeSessions,
-} from "./knowledge.js";
+} from './knowledge.js';
+import { handleLaunch } from './launch.js';
+import {
+  handleNavigate,
+  handleWaitForNotification,
+  handleSwitchToTab,
+  handleCloseTab,
+} from './navigation.js';
+import { handleScreenshot } from './screenshot.js';
 import {
   handleSeedContract,
   handleSeedContracts,
   handleGetContractAddress,
   handleListDeployedContracts,
-} from "./seeding.js";
-import { handleSetContext, handleGetContext } from "./context.js";
+} from './seeding.js';
+import type { SeedingToolOptions } from './seeding.js';
+import { handleGetState } from './state.js';
+import type { StateToolOptions } from './state.js';
+import type {
+  SeedContractInput,
+  SeedContractsInput,
+  GetContractAddressInput,
+  ListDeployedContractsInput,
+} from '../types';
 
-export const TOOL_PREFIX = "mm";
+export const TOOL_PREFIX = 'mm';
 
 export type ToolDefinition = {
   name: string;
@@ -91,6 +89,11 @@ type ToolEntry = {
   handler: ToolHandler;
 };
 
+/**
+ * Create a handler for the build tool that injects build capability.
+ *
+ * @returns A tool handler function for building the extension
+ */
 function createBuildHandler(): ToolHandler {
   return async (input, options) => {
     const sessionManager = getSessionManager();
@@ -102,6 +105,11 @@ function createBuildHandler(): ToolHandler {
   };
 }
 
+/**
+ * Create a handler for the state tool that injects state snapshot capability.
+ *
+ * @returns A tool handler function for getting extension state
+ */
 function createStateHandler(): ToolHandler {
   return async (_, options) => {
     const sessionManager = getSessionManager();
@@ -113,6 +121,11 @@ function createStateHandler(): ToolHandler {
   };
 }
 
+/**
+ * Create a handler for the seed contract tool that injects seeding capability.
+ *
+ * @returns A tool handler function for deploying a single contract
+ */
 function createSeedContractHandler(): ToolHandler {
   return async (input, options) => {
     const sessionManager = getSessionManager();
@@ -124,6 +137,11 @@ function createSeedContractHandler(): ToolHandler {
   };
 }
 
+/**
+ * Create a handler for the seed contracts tool that injects seeding capability.
+ *
+ * @returns A tool handler function for deploying multiple contracts
+ */
 function createSeedContractsHandler(): ToolHandler {
   return async (input, options) => {
     const sessionManager = getSessionManager();
@@ -135,6 +153,11 @@ function createSeedContractsHandler(): ToolHandler {
   };
 }
 
+/**
+ * Create a handler for the get contract address tool that injects seeding capability.
+ *
+ * @returns A tool handler function for retrieving a deployed contract address
+ */
 function createGetContractAddressHandler(): ToolHandler {
   return async (input, options) => {
     const sessionManager = getSessionManager();
@@ -149,6 +172,11 @@ function createGetContractAddressHandler(): ToolHandler {
   };
 }
 
+/**
+ * Create a handler for the list contracts tool that injects seeding capability.
+ *
+ * @returns A tool handler function for listing deployed contracts
+ */
 function createListDeployedContractsHandler(): ToolHandler {
   return async (input, options) => {
     const sessionManager = getSessionManager();
@@ -172,30 +200,30 @@ const tools: Record<string, ToolEntry> = {
   launch: {
     schema: launchInputSchema,
     description:
-      "Launch extension in a headed Chrome browser with Playwright. Returns session info and initial state.",
+      'Launch extension in a headed Chrome browser with Playwright. Returns session info and initial state.',
     handler: handleLaunch as ToolHandler,
   },
   cleanup: {
     schema: cleanupInputSchema,
     description:
-      "Stop the browser, Anvil, and all services. Always call when done.",
+      'Stop the browser, Anvil, and all services. Always call when done.',
     handler: handleCleanup as ToolHandler,
   },
   get_state: {
     schema: getStateInputSchema,
     description:
-      "Get current extension state including screen, URL, balance, network, and account address.",
+      'Get current extension state including screen, URL, balance, network, and account address.',
     handler: createStateHandler(),
   },
   navigate: {
     schema: navigateInputSchema,
-    description: "Navigate to a specific screen in the extension.",
+    description: 'Navigate to a specific screen in the extension.',
     handler: handleNavigate as ToolHandler,
   },
   wait_for_notification: {
     schema: waitForNotificationInputSchema,
     description:
-      "Wait for notification popup to appear (e.g., after dapp interaction). Sets the notification page as the active page for subsequent interactions.",
+      'Wait for notification popup to appear (e.g., after dapp interaction). Sets the notification page as the active page for subsequent interactions.',
     handler: handleWaitForNotification as ToolHandler,
   },
   switch_to_tab: {
@@ -206,13 +234,13 @@ const tools: Record<string, ToolEntry> = {
   close_tab: {
     schema: closeTabInputSchema,
     description:
-      "Close a specific tab by role or URL. Cannot close the extension home page. If closing the active tab, automatically switches to extension home.",
+      'Close a specific tab by role or URL. Cannot close the extension home page. If closing the active tab, automatically switches to extension home.',
     handler: handleCloseTab as ToolHandler,
   },
   list_testids: {
     schema: listTestIdsInputSchema,
     description:
-      "List all visible data-testid attributes on the current page. Use to discover available interaction targets.",
+      'List all visible data-testid attributes on the current page. Use to discover available interaction targets.',
     handler: handleListTestIds as ToolHandler,
   },
   accessibility_snapshot: {
@@ -223,92 +251,92 @@ const tools: Record<string, ToolEntry> = {
   describe_screen: {
     schema: describeScreenInputSchema,
     description:
-      "Get comprehensive screen state: extension state + testIds + accessibility snapshot. Optional screenshot.",
+      'Get comprehensive screen state: extension state + testIds + accessibility snapshot. Optional screenshot.',
     handler: handleDescribeScreen as ToolHandler,
   },
   screenshot: {
     schema: screenshotInputSchema,
-    description: "Take a screenshot and save to test-artifacts/screenshots/",
+    description: 'Take a screenshot and save to test-artifacts/screenshots/',
     handler: handleScreenshot as ToolHandler,
   },
   click: {
     schema: clickInputSchema,
     description:
-      "Click an element. Specify exactly one of: a11yRef, testId, or selector.",
+      'Click an element. Specify exactly one of: a11yRef, testId, or selector.',
     handler: handleClick as ToolHandler,
   },
   type: {
     schema: typeInputSchema,
     description:
-      "Type text into an element. Specify exactly one of: a11yRef, testId, or selector.",
+      'Type text into an element. Specify exactly one of: a11yRef, testId, or selector.',
     handler: handleType as ToolHandler,
   },
   wait_for: {
     schema: waitForInputSchema,
     description:
-      "Wait for an element to become visible. Specify exactly one of: a11yRef, testId, or selector.",
+      'Wait for an element to become visible. Specify exactly one of: a11yRef, testId, or selector.',
     handler: handleWaitFor as ToolHandler,
   },
   knowledge_last: {
     schema: knowledgeLastInputSchema,
     description:
-      "Get the last N step records from the knowledge store for the current session.",
+      'Get the last N step records from the knowledge store for the current session.',
     handler: handleKnowledgeLast as ToolHandler,
   },
   knowledge_search: {
     schema: knowledgeSearchInputSchema,
     description:
-      "Search step records by tool name, screen, testId, or accessibility names. Default searches all sessions.",
+      'Search step records by tool name, screen, testId, or accessibility names. Default searches all sessions.',
     handler: handleKnowledgeSearch as ToolHandler,
   },
   knowledge_summarize: {
     schema: knowledgeSummarizeInputSchema,
-    description: "Generate a recipe-like summary of steps taken in a session.",
+    description: 'Generate a recipe-like summary of steps taken in a session.',
     handler: handleKnowledgeSummarize as ToolHandler,
   },
   knowledge_sessions: {
     schema: knowledgeSessionsInputSchema,
     description:
-      "List recent sessions with metadata for cross-session knowledge retrieval.",
+      'List recent sessions with metadata for cross-session knowledge retrieval.',
     handler: handleKnowledgeSessions as ToolHandler,
   },
   seed_contract: {
     schema: seedContractInputSchema,
     description:
-      "Deploy a smart contract to the local Anvil node. Available: hst (ERC20 TST token), nfts (ERC721), erc1155, piggybank, failing (reverts), multisig, entrypoint (ERC-4337), simpleAccountFactory, verifyingPaymaster.",
+      'Deploy a smart contract to the local Anvil node. Available: hst (ERC20 TST token), nfts (ERC721), erc1155, piggybank, failing (reverts), multisig, entrypoint (ERC-4337), simpleAccountFactory, verifyingPaymaster.',
     handler: createSeedContractHandler(),
   },
   seed_contracts: {
     schema: seedContractsInputSchema,
-    description: "Deploy multiple smart contracts in sequence.",
+    description: 'Deploy multiple smart contracts in sequence.',
     handler: createSeedContractsHandler(),
   },
   get_contract_address: {
     schema: getContractAddressInputSchema,
-    description: "Get the deployed address of a smart contract.",
+    description: 'Get the deployed address of a smart contract.',
     handler: createGetContractAddressHandler(),
   },
   list_contracts: {
     schema: listDeployedContractsInputSchema,
-    description: "List all smart contracts deployed in this session.",
+    description: 'List all smart contracts deployed in this session.',
     handler: createListDeployedContractsHandler(),
   },
   run_steps: {
     schema: runStepsInputSchema,
     description:
-      "Execute multiple tools in sequence. Reduces round trips for multi-step flows.",
+      'Execute multiple tools in sequence. Reduces round trips for multi-step flows.',
     handler: handleRunSteps as ToolHandler,
   },
   set_context: {
     schema: setContextInputSchema,
     description:
-      "Switch workflow context (e2e or prod). Cannot switch during active session.",
+      'Switch workflow context (e2e or prod). Cannot switch during active session.',
     handler: handleSetContext as ToolHandler,
   },
   get_context: {
     schema: getContextInputSchema,
     description:
-      "Get current context, available capabilities, and whether context can be switched.",
+      'Get current context, available capabilities, and whether context can be switched.',
     handler: handleGetContext as ToolHandler,
   },
   clipboard: {
@@ -324,6 +352,9 @@ const tools: Record<string, ToolEntry> = {
  * This is incorrect for MCP tool input schemas where LLM clients shouldn't
  * be required to provide values that have defaults. This function recursively
  * removes those properties from the required array.
+ *
+ * @param schema The JSON schema to process
+ * @returns The modified schema with defaults removed from required array
  */
 function removeDefaultsFromRequired(
   schema: Record<string, unknown>,
@@ -350,14 +381,14 @@ function removeDefaultsFromRequired(
 
   if (
     result.properties &&
-    typeof result.properties === "object" &&
+    typeof result.properties === 'object' &&
     result.properties !== null
   ) {
     const newProperties: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(
       result.properties as Record<string, unknown>,
     )) {
-      if (value && typeof value === "object") {
+      if (value && typeof value === 'object') {
         newProperties[key] = removeDefaultsFromRequired(
           value as Record<string, unknown>,
         );
@@ -371,7 +402,7 @@ function removeDefaultsFromRequired(
   if (
     Array.isArray(result.required) &&
     result.properties &&
-    typeof result.properties === "object"
+    typeof result.properties === 'object'
   ) {
     const properties = result.properties as Record<
       string,
@@ -379,7 +410,7 @@ function removeDefaultsFromRequired(
     >;
     result.required = result.required.filter((propName: string) => {
       const prop = properties[propName];
-      return prop && !("default" in prop);
+      return prop && !('default' in prop);
     });
 
     if ((result.required as string[]).length === 0) {
@@ -393,6 +424,9 @@ function removeDefaultsFromRequired(
 /**
  * MCP protocol doesn't support allOf/oneOf/anyOf at the top level of input schemas.
  * This flattens allOf into a single merged object schema.
+ *
+ * @param schema The JSON schema to flatten
+ * @returns The flattened schema with allOf merged into properties
  */
 function flattenTopLevelAllOf(
   schema: Record<string, unknown>,
@@ -405,7 +439,7 @@ function flattenTopLevelAllOf(
   const mergedRequired: string[] = [];
 
   for (const subSchema of schema.allOf as Record<string, unknown>[]) {
-    if (subSchema.properties && typeof subSchema.properties === "object") {
+    if (subSchema.properties && typeof subSchema.properties === 'object') {
       Object.assign(mergedProperties, subSchema.properties);
     }
     if (Array.isArray(subSchema.required)) {
@@ -414,7 +448,7 @@ function flattenTopLevelAllOf(
   }
 
   const result: Record<string, unknown> = {
-    type: "object",
+    type: 'object',
     properties: mergedProperties,
     additionalProperties: false,
   };
@@ -426,19 +460,30 @@ function flattenTopLevelAllOf(
   return result;
 }
 
+/**
+ * Convert a Zod schema to a JSON schema suitable for MCP tool definitions.
+ *
+ * @param schema The Zod schema to convert
+ * @returns The converted JSON schema with defaults removed and allOf flattened
+ */
 function zodSchemaToJsonSchema(schema: ZodSchema): Record<string, unknown> {
   const jsonSchema = schema.toJSONSchema();
   const { $schema: _, ...rest } = jsonSchema;
 
   const flattened = flattenTopLevelAllOf(rest);
 
-  if (flattened.type === "object" && !("additionalProperties" in flattened)) {
+  if (flattened.type === 'object' && !('additionalProperties' in flattened)) {
     flattened.additionalProperties = false;
   }
 
   return removeDefaultsFromRequired(flattened);
 }
 
+/**
+ * Get all tool definitions with their schemas and descriptions.
+ *
+ * @returns Array of tool definitions for all available MCP tools
+ */
 export function getToolDefinitions(): ToolDefinition[] {
   return Object.entries(tools).map(([baseName, tool]) => ({
     name: `${TOOL_PREFIX}_${baseName}`,
@@ -447,6 +492,12 @@ export function getToolDefinitions(): ToolDefinition[] {
   }));
 }
 
+/**
+ * Get the handler function for a specific tool by name.
+ *
+ * @param name The tool name (with or without mm_ prefix)
+ * @returns The tool handler function or undefined if tool not found
+ */
 export function getToolHandler(name: string): ToolHandler | undefined {
   const prefixedMatch = Object.entries(tools).find(
     ([baseName]) => `${TOOL_PREFIX}_${baseName}` === name,
@@ -459,10 +510,22 @@ export function getToolHandler(name: string): ToolHandler | undefined {
   return tool?.handler;
 }
 
+/**
+ * Check if a tool handler exists for the given tool name.
+ *
+ * @param name The tool name to check
+ * @returns True if a handler exists for the tool, false otherwise
+ */
 export function hasToolHandler(name: string): boolean {
   return getToolHandler(name) !== undefined;
 }
 
+/**
+ * Extract the base name from a tool name by removing the mm_ prefix.
+ *
+ * @param toolName The tool name (with or without mm_ prefix)
+ * @returns The base name without the prefix
+ */
 export function extractBaseName(toolName: string): string {
   const prefixWithUnderscore = `${TOOL_PREFIX}_`;
   if (toolName.startsWith(prefixWithUnderscore)) {
@@ -471,10 +534,17 @@ export function extractBaseName(toolName: string): string {
   return toolName;
 }
 
-export function validateToolInput<T = unknown>(
+/**
+ * Validate tool input against the tool's schema and return parsed data.
+ *
+ * @param toolName The tool name to validate input for
+ * @param input The input data to validate
+ * @returns The validated and parsed input data
+ */
+export function validateToolInput<Type = unknown>(
   toolName: string,
   input: unknown,
-): T {
+): Type {
   const baseName = extractBaseName(toolName);
   const tool = tools[baseName];
 
@@ -482,13 +552,40 @@ export function validateToolInput<T = unknown>(
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  return tool.schema.parse(input ?? {}) as T;
+  return tool.schema.parse(input ?? {}) as Type;
 }
 
+/**
+ * Safely validate tool input without throwing errors.
+ *
+ * @param toolName The tool name to validate input for
+ * @param input The input data to validate
+ * @returns Object with success flag and either parsed data or error message
+ */
 export function safeValidateToolInput(
   toolName: string,
   input: unknown,
-): { success: true; data: unknown } | { success: false; error: string } {
+):
+  | {
+      /**
+       * Indicates validation succeeded
+       */
+      success: true;
+      /**
+       * The validated and parsed input data
+       */
+      data: unknown;
+    }
+  | {
+      /**
+       * Indicates validation failed
+       */
+      success: false;
+      /**
+       * Error message describing validation failure
+       */
+      error: string;
+    } {
   const baseName = extractBaseName(toolName);
   const tool = tools[baseName];
 
@@ -499,22 +596,37 @@ export function safeValidateToolInput(
   const result = tool.schema.safeParse(input ?? {});
   if (!result.success) {
     const errorMessage = result.error.issues
-      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-      .join("; ");
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
     return { success: false, error: errorMessage };
   }
 
   return { success: true, data: result.data };
 }
 
+/**
+ * Get all available tool base names (without mm_ prefix).
+ *
+ * @returns Array of tool base names
+ */
 export function getToolNames(): string[] {
   return Object.keys(tools);
 }
 
+/**
+ * Get all available tool names with mm_ prefix.
+ *
+ * @returns Array of prefixed tool names
+ */
 export function getPrefixedToolNames(): string[] {
   return Object.keys(tools).map((name) => `${TOOL_PREFIX}_${name}`);
 }
 
+/**
+ * Build a record mapping prefixed tool names to their handler functions.
+ *
+ * @returns Record of tool name to handler function mappings
+ */
 export function buildToolHandlersRecord(): Record<string, ToolHandler> {
   const handlers: Record<string, ToolHandler> = {};
   for (const [baseName, tool] of Object.entries(tools)) {
@@ -523,4 +635,4 @@ export function buildToolHandlersRecord(): Record<string, ToolHandler> {
   return handlers;
 }
 
-export type { ToolEntry, ToolHandler };
+export type { ToolEntry };

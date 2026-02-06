@@ -1,14 +1,26 @@
-import type { ScreenName } from "../../capabilities/types.js";
-import type { TestIdItem, A11yNodeTrimmed } from "./discovery.js";
+import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
+import type { ScreenName } from '../../capabilities/types.js';
 
 export type PriorKnowledgeTarget =
-  | { type: "testId"; value: string }
-  | { type: "selector"; value: string }
-  | { type: "a11yHint"; value: { role: string; name: string } };
+  | {
+      type: 'testId';
+      value: string;
+    }
+  | {
+      type: 'selector';
+      value: string;
+    }
+  | {
+      type: 'a11yHint';
+      value: {
+        role: string;
+        name: string;
+      };
+    };
 
 export type PriorKnowledgeSuggestedAction = {
   rank: number;
-  action: "click" | "type" | "wait_for" | "navigate" | "wait_for_notification";
+  action: 'click' | 'type' | 'wait_for' | 'navigate' | 'wait_for_notification';
   rationale: string;
   confidence: number;
   preferredTarget: PriorKnowledgeTarget;
@@ -22,14 +34,23 @@ export type PriorKnowledgeSimilarStep = {
   screen: string;
   snippet: string;
   labels?: string[];
-  target?: { testId?: string; selector?: string };
-  a11yHint?: { role: string; name: string };
+  target?: {
+    testId?: string;
+    selector?: string;
+  };
+  a11yHint?: {
+    role: string;
+    name: string;
+  };
   confidence: number;
 };
 
 export type PriorKnowledgeAvoid = {
   rationale: string;
-  target: { selector?: string; testId?: string };
+  target: {
+    selector?: string;
+    testId?: string;
+  };
   errorCode?: string;
   frequency: number;
 };
@@ -40,7 +61,6 @@ export type PriorKnowledgeRelatedSession = {
   goal?: string;
   flowTags: string[];
   tags: string[];
-  git?: { branch?: string; commit?: string };
 };
 
 export type PriorKnowledgeQuery = {
@@ -106,10 +126,6 @@ export type SessionSummary = {
   goal?: string;
   flowTags: string[];
   tags: string[];
-  git?: {
-    branch?: string;
-    commit?: string;
-  };
 };
 
 export type KnowledgeSessionsResult = {

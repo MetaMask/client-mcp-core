@@ -1,12 +1,13 @@
-import { z } from "zod";
-import { SMART_CONTRACT_NAMES, HARDFORKS } from "./types/seeding.js";
+import { z } from 'zod';
+
+import { SMART_CONTRACT_NAMES, HARDFORKS } from './types/seeding.js';
 
 export const a11yRefPattern = z
   .string()
   .regex(/^e[0-9]+$/u)
   .describe(
-    "Accessibility ref from accessibility_snapshot (e.g., e1, e2). " +
-      "These refs are ephemeral and only valid within the current screen state.",
+    'Accessibility ref from accessibility_snapshot (e.g., e1, e2). ' +
+      'These refs are ephemeral and only valid within the current screen state.',
   );
 
 export const targetSelectionSchema = z
@@ -16,13 +17,13 @@ export const targetSelectionSchema = z
       .string()
       .min(1)
       .describe(
-        "data-testid attribute value (stable, preferred for interactions)",
+        'data-testid attribute value (stable, preferred for interactions)',
       )
       .optional(),
     selector: z
       .string()
       .min(1)
-      .describe("CSS selector (fallback, less stable than testId)")
+      .describe('CSS selector (fallback, less stable than testId)')
       .optional(),
   })
   .refine(
@@ -33,18 +34,18 @@ export const targetSelectionSchema = z
       return provided.length === 1;
     },
     {
-      message: "Exactly one of a11yRef, testId, or selector must be provided",
+      message: 'Exactly one of a11yRef, testId, or selector must be provided',
     },
   );
 
 export const knowledgeScopeSchema = z.union([
-  z.literal("current").describe("Only search the active session"),
-  z.literal("all").describe("Search all sessions in the knowledge store"),
+  z.literal('current').describe('Only search the active session'),
+  z.literal('all').describe('Search all sessions in the knowledge store'),
   z
     .object({
-      sessionId: z.string().min(4).describe("Specific session ID to query"),
+      sessionId: z.string().min(4).describe('Specific session ID to query'),
     })
-    .describe("Query a specific prior session by ID"),
+    .describe('Query a specific prior session by ID'),
 ]);
 
 const smartContractNames = SMART_CONTRACT_NAMES;
@@ -55,65 +56,60 @@ export const knowledgeFiltersSchema = z
     flowTag: z
       .string()
       .min(1)
-      .describe("Filter by flow tag (e.g., send, swap, connect, sign)")
+      .describe('Filter by flow tag (e.g., send, swap, connect, sign)')
       .optional(),
-    tag: z.string().min(1).describe("Filter by free-form tag").optional(),
+    tag: z.string().min(1).describe('Filter by free-form tag').optional(),
     screen: z
       .string()
       .min(1)
-      .describe("Filter by screen name (e.g., home, unlock, settings)")
+      .describe('Filter by screen name (e.g., home, unlock, settings)')
       .optional(),
     sinceHours: z
       .number()
       .int()
       .min(1)
       .max(720)
-      .describe("Only include sessions/steps from the last N hours")
-      .optional(),
-    gitBranch: z
-      .string()
-      .min(1)
-      .describe("Filter by git branch name")
+      .describe('Only include sessions/steps from the last N hours')
       .optional(),
   })
   .optional();
 
 export const buildInputSchema = z.object({
   buildType: z
-    .enum(["build:test"])
-    .default("build:test")
-    .describe("Build command to run. Currently only build:test is supported."),
+    .enum(['build:test'])
+    .default('build:test')
+    .describe('Build command to run. Currently only build:test is supported.'),
   force: z
     .boolean()
     .default(false)
-    .describe("Force rebuild even if a build already exists"),
+    .describe('Force rebuild even if a build already exists'),
 });
 
 export const launchInputSchema = z.object({
   autoBuild: z
     .boolean()
     .default(true)
-    .describe("Automatically run build if extension is not found"),
+    .describe('Automatically run build if extension is not found'),
   stateMode: z
-    .enum(["default", "onboarding", "custom"])
-    .default("default")
+    .enum(['default', 'onboarding', 'custom'])
+    .default('default')
     .describe(
-      "Wallet state mode: " +
-        "default = pre-onboarded wallet with 25 ETH, " +
-        "onboarding = fresh wallet requiring setup, " +
-        "custom = use provided fixture",
+      'Wallet state mode: ' +
+        'default = pre-onboarded wallet with 25 ETH, ' +
+        'onboarding = fresh wallet requiring setup, ' +
+        'custom = use provided fixture',
     ),
   fixturePreset: z
     .string()
     .min(1)
     .describe(
-      "Name of preset fixture (e.g., withMultipleAccounts, withERC20Tokens). " +
-        "Only used when stateMode=custom.",
+      'Name of preset fixture (e.g., withMultipleAccounts, withERC20Tokens). ' +
+        'Only used when stateMode=custom.',
     )
     .optional(),
   fixture: z
     .record(z.string(), z.unknown())
-    .describe("Direct fixture object for stateMode=custom")
+    .describe('Direct fixture object for stateMode=custom')
     .optional(),
   ports: z
     .object({
@@ -122,14 +118,14 @@ export const launchInputSchema = z.object({
         .int()
         .min(1)
         .max(65535)
-        .describe("Port for Anvil local chain (default: 8545)")
+        .describe('Port for Anvil local chain (default: 8545)')
         .optional(),
       fixtureServer: z
         .number()
         .int()
         .min(1)
         .max(65535)
-        .describe("Port for fixture server (default: 12345)")
+        .describe('Port for fixture server (default: 12345)')
         .optional(),
     })
     .optional(),
@@ -139,36 +135,36 @@ export const launchInputSchema = z.object({
     .min(0)
     .max(10000)
     .default(0)
-    .describe("Slow down Playwright actions by N milliseconds (for debugging)"),
+    .describe('Slow down Playwright actions by N milliseconds (for debugging)'),
   extensionPath: z
     .string()
-    .describe("Custom path to built extension directory")
+    .describe('Custom path to built extension directory')
     .optional(),
   goal: z
     .string()
-    .describe("Goal or task description for this session (for knowledge store)")
+    .describe('Goal or task description for this session (for knowledge store)')
     .optional(),
   flowTags: z
     .array(z.string())
     .describe(
       'Flow tags for categorization (e.g., ["send"], ["swap", "confirmation"]). ' +
-        "Used for cross-session knowledge retrieval.",
+        'Used for cross-session knowledge retrieval.',
     )
     .optional(),
   tags: z
     .array(z.string())
-    .describe("Free-form tags for ad-hoc filtering")
+    .describe('Free-form tags for ad-hoc filtering')
     .optional(),
   seedContracts: z
     .array(z.enum(smartContractNames))
-    .describe("Smart contracts to deploy on launch (before extension loads)")
+    .describe('Smart contracts to deploy on launch (before extension loads)')
     .optional(),
 });
 
 export const cleanupInputSchema = z.object({
   sessionId: z
     .string()
-    .describe("Session ID to clean up (optional, defaults to current)")
+    .describe('Session ID to clean up (optional, defaults to current)')
     .optional(),
 });
 
@@ -177,9 +173,9 @@ export const getStateInputSchema = z.object({});
 export const navigateInputSchema = z
   .object({
     screen: z
-      .enum(["home", "settings", "notification", "url"])
+      .enum(['home', 'settings', 'notification', 'url'])
       .describe(
-        "Target screen: home, settings, notification (popup), or url (custom)",
+        'Target screen: home, settings, notification (popup), or url (custom)',
       ),
     url: z
       .string()
@@ -189,14 +185,14 @@ export const navigateInputSchema = z
   })
   .refine(
     (data) => {
-      if (data.screen === "url" && !data.url) {
+      if (data.screen === 'url' && !data.url) {
         return false;
       }
       return true;
     },
     {
       message: 'url is required when screen is "url"',
-      path: ["url"],
+      path: ['url'],
     },
   );
 
@@ -207,7 +203,7 @@ export const waitForNotificationInputSchema = z.object({
     .min(1000)
     .max(60000)
     .default(15000)
-    .describe("Timeout in milliseconds to wait for notification popup"),
+    .describe('Timeout in milliseconds to wait for notification popup'),
 });
 
 export const listTestIdsInputSchema = z.object({
@@ -217,14 +213,14 @@ export const listTestIdsInputSchema = z.object({
     .min(1)
     .max(500)
     .default(150)
-    .describe("Maximum number of testIds to return"),
+    .describe('Maximum number of testIds to return'),
 });
 
 export const accessibilitySnapshotInputSchema = z.object({
   rootSelector: z
     .string()
     .min(1)
-    .describe("CSS selector to scope the snapshot (optional)")
+    .describe('CSS selector to scope the snapshot (optional)')
     .optional(),
 });
 
@@ -232,33 +228,33 @@ export const describeScreenInputSchema = z.object({
   includeScreenshot: z
     .boolean()
     .default(false)
-    .describe("Capture and include a screenshot (opt-in for privacy)"),
+    .describe('Capture and include a screenshot (opt-in for privacy)'),
   screenshotName: z
     .string()
     .min(1)
-    .describe("Name for the screenshot file (without extension)")
+    .describe('Name for the screenshot file (without extension)')
     .optional(),
   includeScreenshotBase64: z
     .boolean()
     .default(false)
-    .describe("Include base64-encoded screenshot in response"),
+    .describe('Include base64-encoded screenshot in response'),
 });
 
 export const screenshotInputSchema = z.object({
-  name: z.string().min(1).describe("Screenshot filename (without extension)"),
+  name: z.string().min(1).describe('Screenshot filename (without extension)'),
   fullPage: z
     .boolean()
     .default(true)
-    .describe("Capture full page or just viewport"),
+    .describe('Capture full page or just viewport'),
   selector: z
     .string()
     .min(1)
-    .describe("CSS selector to capture specific element")
+    .describe('CSS selector to capture specific element')
     .optional(),
   includeBase64: z
     .boolean()
     .default(false)
-    .describe("Include base64-encoded image in response"),
+    .describe('Include base64-encoded image in response'),
 });
 
 export const clickInputSchema = targetSelectionSchema.and(
@@ -269,20 +265,20 @@ export const clickInputSchema = targetSelectionSchema.and(
       .min(0)
       .max(60000)
       .default(15000)
-      .describe("Timeout to wait for element to become visible"),
+      .describe('Timeout to wait for element to become visible'),
   }),
 );
 
 export const typeInputSchema = targetSelectionSchema.and(
   z.object({
-    text: z.string().describe("Text to type into the element"),
+    text: z.string().describe('Text to type into the element'),
     timeoutMs: z
       .number()
       .int()
       .min(0)
       .max(60000)
       .default(15000)
-      .describe("Timeout to wait for element to become visible"),
+      .describe('Timeout to wait for element to become visible'),
   }),
 );
 
@@ -294,7 +290,7 @@ export const waitForInputSchema = targetSelectionSchema.and(
       .min(100)
       .max(120000)
       .default(15000)
-      .describe("Timeout to wait for element"),
+      .describe('Timeout to wait for element'),
   }),
 );
 
@@ -305,11 +301,11 @@ export const knowledgeLastInputSchema = z.object({
     .min(1)
     .max(200)
     .default(20)
-    .describe("Number of recent steps to retrieve"),
+    .describe('Number of recent steps to retrieve'),
   scope: knowledgeScopeSchema
-    .default("current")
+    .default('current')
     .describe(
-      "Scope for retrieval: current session, all sessions, or specific session",
+      'Scope for retrieval: current session, all sessions, or specific session',
     ),
   filters: knowledgeFiltersSchema,
 });
@@ -320,7 +316,7 @@ export const knowledgeSearchInputSchema = z.object({
     .min(1)
     .max(200)
     .describe(
-      "Search query - matches tool names, screen names, testIds, and a11y names",
+      'Search query - matches tool names, screen names, testIds, and a11y names',
     ),
   limit: z
     .number()
@@ -328,11 +324,11 @@ export const knowledgeSearchInputSchema = z.object({
     .min(1)
     .max(100)
     .default(20)
-    .describe("Maximum number of results"),
+    .describe('Maximum number of results'),
   scope: knowledgeScopeSchema
-    .default("all")
+    .default('all')
     .describe(
-      "Search scope (defaults to all sessions for cross-session learning)",
+      'Search scope (defaults to all sessions for cross-session learning)',
     ),
   filters: knowledgeFiltersSchema,
 });
@@ -340,16 +336,16 @@ export const knowledgeSearchInputSchema = z.object({
 export const knowledgeSummarizeInputSchema = z.object({
   sessionId: z
     .string()
-    .describe("Deprecated: use scope. Session ID to summarize.")
+    .describe('Deprecated: use scope. Session ID to summarize.')
     .optional(),
   scope: z
     .union([
-      z.literal("current"),
+      z.literal('current'),
       z.object({
         sessionId: z.string().min(4),
       }),
     ])
-    .default("current")
+    .default('current')
     .describe('Session to summarize (cannot use "all")'),
 });
 
@@ -360,7 +356,7 @@ export const knowledgeSessionsInputSchema = z.object({
     .min(1)
     .max(50)
     .default(10)
-    .describe("Maximum number of sessions to list"),
+    .describe('Maximum number of sessions to list'),
   filters: knowledgeFiltersSchema,
 });
 
@@ -386,23 +382,23 @@ export const getContractAddressInputSchema = z.object({
 
 export const listDeployedContractsInputSchema = z.object({});
 
-const tabRoles = ["extension", "notification", "dapp", "other"] as const;
-const closableTabRoles = ["notification", "dapp", "other"] as const;
+const tabRoles = ['extension', 'notification', 'dapp', 'other'] as const;
+const closableTabRoles = ['notification', 'dapp', 'other'] as const;
 
 export const switchToTabInputSchema = z
   .object({
     role: z
       .enum(tabRoles)
-      .describe("Tab role to switch to (extension, notification, dapp, other)")
+      .describe('Tab role to switch to (extension, notification, dapp, other)')
       .optional(),
     url: z
       .string()
       .min(1)
-      .describe("URL prefix to match for tab switching")
+      .describe('URL prefix to match for tab switching')
       .optional(),
   })
-  .refine((data) => data.role || data.url, {
-    message: "Either role or url must be provided",
+  .refine((data) => data.role ?? data.url, {
+    message: 'Either role or url must be provided',
   });
 
 export const closeTabInputSchema = z
@@ -410,17 +406,17 @@ export const closeTabInputSchema = z
     role: z
       .enum(closableTabRoles)
       .describe(
-        "Tab role to close (notification, dapp, other). Cannot close extension.",
+        'Tab role to close (notification, dapp, other). Cannot close extension.',
       )
       .optional(),
     url: z
       .string()
       .min(1)
-      .describe("URL prefix to match for tab closing")
+      .describe('URL prefix to match for tab closing')
       .optional(),
   })
-  .refine((data) => data.role || data.url, {
-    message: "Either role or url must be provided",
+  .refine((data) => data.role ?? data.url, {
+    message: 'Either role or url must be provided',
   });
 
 export const runStepsInputSchema = z.object({
@@ -433,34 +429,34 @@ export const runStepsInputSchema = z.object({
     )
     .min(1)
     .max(50)
-    .describe("Array of tool calls to execute in order"),
+    .describe('Array of tool calls to execute in order'),
   stopOnError: z
     .boolean()
     .default(false)
-    .describe("Stop execution on first error (default: false - continue)"),
+    .describe('Stop execution on first error (default: false - continue)'),
   includeObservations: z
-    .enum(["none", "failures", "all"])
-    .default("all")
+    .enum(['none', 'failures', 'all'])
+    .default('all')
     .describe(
-      "When to include observations in results: " +
-        "none = never (fastest), failures = only for failed steps, all = always",
+      'When to include observations in results: ' +
+        'none = never (fastest), failures = only for failed steps, all = always',
     ),
 });
 
 export const setContextInputSchema = z.object({
-  context: z.enum(["e2e", "prod"]).describe("Target context to switch to"),
+  context: z.enum(['e2e', 'prod']).describe('Target context to switch to'),
 });
 
 export const getContextInputSchema = z
   .object({})
-  .describe("No parameters required");
+  .describe('No parameters required');
 
 export const clipboardInputSchema = z
   .object({
     action: z
-      .enum(["write", "read"])
+      .enum(['write', 'read'])
       .describe(
-        "Action to perform: write text to clipboard or read from clipboard",
+        'Action to perform: write text to clipboard or read from clipboard',
       ),
     text: z
       .string()
@@ -469,14 +465,14 @@ export const clipboardInputSchema = z
   })
   .refine(
     (data) => {
-      if (data.action === "write" && !data.text) {
+      if (data.action === 'write' && !data.text) {
         return false;
       }
       return true;
     },
     {
       message: "text is required when action is 'write'",
-      path: ["text"],
+      path: ['text'],
     },
   );
 

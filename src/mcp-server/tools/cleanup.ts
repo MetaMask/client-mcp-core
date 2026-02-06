@@ -1,12 +1,19 @@
+import { getSessionManager } from '../session-manager.js';
 import type {
   CleanupInput,
   CleanupResult,
   McpResponse,
   HandlerOptions,
-} from "../types/index.js";
-import { createSuccessResponse } from "../utils/index.js";
-import { getSessionManager } from "../session-manager.js";
+} from '../types';
+import { createSuccessResponse } from '../utils';
 
+/**
+ * Handles the cleanup tool request to stop browser and services.
+ *
+ * @param input - The cleanup input parameters.
+ * @param _options - Handler options (unused).
+ * @returns Response indicating if cleanup was performed.
+ */
 export async function handleCleanup(
   input: CleanupInput,
   _options?: HandlerOptions,

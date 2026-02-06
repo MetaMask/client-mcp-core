@@ -1,23 +1,24 @@
 #!/usr/bin/env node
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+} from '@modelcontextprotocol/sdk/types.js';
 
+import { getSessionManager, hasSessionManager } from './session-manager.js';
+import { setToolRegistry } from './tools/batch.js';
 import {
   getToolDefinitions,
   getToolHandler,
   safeValidateToolInput,
   buildToolHandlersRecord,
   TOOL_PREFIX,
-  type ToolDefinition,
-} from "./tools/definitions.js";
-import { ErrorCodes } from "./types/index.js";
-import { createErrorResponse } from "./utils/index.js";
-import { getSessionManager, hasSessionManager } from "./session-manager.js";
-import { setToolRegistry } from "./tools/batch.js";
+} from './tools/definitions.js';
+import type { ToolDefinition } from './tools/definitions.js';
+import { ErrorCodes } from './types';
+import { createErrorResponse } from './utils';
 
 export type McpServerConfig = {
   name: string;
@@ -26,6 +27,15 @@ export type McpServerConfig = {
   logger?: (message: string) => void;
 };
 
+/**
+ * Create a standardized error response for tool execution failures.
+ *
+ * @param code The error code from ErrorCodes enum
+ * @param message Human-readable error message
+ * @param details Optional error details object
+ * @param startTime Timestamp when the operation started
+ * @returns MCP-formatted error response object
+ */
 function createToolErrorResponse(
   code: (typeof ErrorCodes)[keyof typeof ErrorCodes],
   message: string,
@@ -47,7 +57,7 @@ function createToolErrorResponse(
   return {
     content: [
       {
-        type: "text" as const,
+        type: 'text' as const,
         text: JSON.stringify(response),
       },
     ],
@@ -63,6 +73,12 @@ export type McpServer = {
   getToolPrefix(): string;
 };
 
+/**
+ * Create and configure an MCP server instance.
+ *
+ * @param config Server configuration including name, version, and optional cleanup handler
+ * @returns McpServer instance with start/stop methods and tool definitions
+ */
 export function createMcpServer(config: McpServerConfig): McpServer {
   const { name, version, onCleanup, logger = console.error } = config;
 
@@ -71,7 +87,7 @@ export function createMcpServer(config: McpServerConfig): McpServer {
 
   setToolRegistry(toolHandlers);
 
-  const validToolNames = new Set(toolDefinitions.map((t) => t.name));
+  const validToolNames = new Set(toolDefinitions.map((tool) => tool.name));
 
   const server = new Server({ name, version }, { capabilities: { tools: {} } });
 
@@ -123,7 +139,7 @@ export function createMcpServer(config: McpServerConfig): McpServer {
     return {
       content: [
         {
-          type: "text" as const,
+          type: 'text' as const,
           text: JSON.stringify(response),
         },
       ],
@@ -131,8 +147,15 @@ export function createMcpServer(config: McpServerConfig): McpServer {
     };
   });
 
+  /**
+   * Handle process signals (SIGINT, SIGTERM) and perform cleanup.
+   *
+   * @param signal The signal name received (e.g., 'SIGINT', 'SIGTERM')
+   */
   const handleSignal = async (signal: string) => {
-    if (isCleaningUp) return;
+    if (isCleaningUp) {
+      return;
+    }
     isCleaningUp = true;
 
     logger(`Received ${signal}, cleaning up...`);
@@ -146,42 +169,69 @@ export function createMcpServer(config: McpServerConfig): McpServer {
         await getSessionManager().cleanup();
       }
     } catch (error) {
-      logger(`Cleanup error: ${error}`);
+      logger(`Cleanup error: ${JSON.stringify(error)}`);
     }
 
     process.exit(0);
   };
 
-  process.on("SIGINT", () => handleSignal("SIGINT"));
-  process.on("SIGTERM", () => handleSignal("SIGTERM"));
+  process.on('SIGINT', () => {
+    handleSignal('SIGINT').catch((error) => logger(`SIGINT error: ${error}`));
+  });
+  process.on('SIGTERM', () => {
+    handleSignal('SIGTERM').catch((error) => logger(`SIGTERM error: ${error}`));
+  });
 
   let transport: StdioServerTransport | undefined;
 
   return {
+    /**
+     * Start the MCP server and connect to stdio transport.
+     *
+     * @returns Promise that resolves when server is running
+     */
     async start() {
       transport = new StdioServerTransport();
       await server.connect(transport);
       logger(`${name} MCP Server v${version} running on stdio`);
     },
 
+    /**
+     * Stop the MCP server and close the transport.
+     *
+     * @returns Promise that resolves when server is stopped
+     */
     async stop() {
       if (transport) {
         await server.close();
       }
     },
 
+    /**
+     * Get the underlying MCP Server instance.
+     *
+     * @returns The MCP Server instance
+     */
     getServer() {
       return server;
     },
 
+    /**
+     * Get all available tool definitions.
+     *
+     * @returns Array of tool definitions
+     */
     getToolDefinitions() {
       return toolDefinitions;
     },
 
+    /**
+     * Get the tool name prefix (e.g., 'mm_').
+     *
+     * @returns The tool prefix string
+     */
     getToolPrefix() {
       return TOOL_PREFIX;
     },
   };
 }
-
-export type { ToolRegistry, ToolHandler } from "./tools/batch.js";

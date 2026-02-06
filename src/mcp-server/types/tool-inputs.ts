@@ -1,8 +1,8 @@
-import type { SmartContractName } from "./seeding.js";
+import type { SmartContractName } from './seeding.js';
 
-export type TabRole = "extension" | "notification" | "dapp" | "other";
+export type TabRole = 'extension' | 'notification' | 'dapp' | 'other';
 
-export type ObservationPolicyOverride = "default" | "none" | "failures";
+export type ObservationPolicyOverride = 'default' | 'none' | 'failures';
 
 export type HandlerOptions = {
   signal?: AbortSignal;
@@ -10,13 +10,13 @@ export type HandlerOptions = {
 };
 
 export type BuildInput = {
-  buildType?: "build:test";
+  buildType?: 'build:test';
   force?: boolean;
 };
 
 export type LaunchInput = {
   autoBuild?: boolean;
-  stateMode?: "default" | "onboarding" | "custom";
+  stateMode?: 'default' | 'onboarding' | 'custom';
   fixturePreset?: string;
   fixture?: Record<string, unknown>;
   ports?: {
@@ -36,7 +36,7 @@ export type CleanupInput = {
 };
 
 export type NavigateInput = {
-  screen: "home" | "settings" | "notification" | "url";
+  screen: 'home' | 'settings' | 'notification' | 'url';
   url?: string;
 };
 
@@ -84,14 +84,18 @@ export type WaitForInput = TargetSelection & {
   timeoutMs?: number;
 };
 
-export type KnowledgeScope = "current" | "all" | { sessionId: string };
+export type KnowledgeScope =
+  | 'current'
+  | 'all'
+  | {
+      sessionId: string;
+    };
 
 export type KnowledgeFilters = {
   flowTag?: string;
   tag?: string;
   screen?: string;
   sinceHours?: number;
-  gitBranch?: string;
 };
 
 export type KnowledgeLastInput = {
@@ -123,7 +127,7 @@ export type RunStepsInput = {
     args?: Record<string, unknown>;
   }[];
   stopOnError?: boolean;
-  includeObservations?: "none" | "failures" | "all";
+  includeObservations?: 'none' | 'failures' | 'all';
 };
 
 export type SwitchToTabInput = {
@@ -132,11 +136,11 @@ export type SwitchToTabInput = {
 };
 
 export type CloseTabInput = {
-  role?: "notification" | "dapp" | "other";
+  role?: 'notification' | 'dapp' | 'other';
   url?: string;
 };
 
 export type ClipboardInput = {
-  action: "write" | "read";
+  action: 'write' | 'read';
   text?: string;
 };

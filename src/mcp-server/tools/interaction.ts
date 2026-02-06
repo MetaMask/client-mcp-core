@@ -1,3 +1,13 @@
+import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../constants.js';
+import { waitForTarget } from '../discovery.js';
+import { getSessionManager } from '../session-manager.js';
+import {
+  classifyClickError,
+  classifyTypeError,
+  classifyWaitError,
+  isPageClosedError,
+} from './error-classification.js';
+import { runTool } from './run-tool.js';
 import type {
   ClickInput,
   ClickResult,
@@ -7,25 +17,22 @@ import type {
   WaitForResult,
   McpResponse,
   HandlerOptions,
-} from "../types/index.js";
-import { ErrorCodes } from "../types/index.js";
+} from '../types';
+import { ErrorCodes } from '../types';
 import {
   createErrorResponse,
   validateTargetSelection,
   isValidTargetSelection,
   isInvalidTargetSelection,
-} from "../utils/index.js";
-import { getSessionManager } from "../session-manager.js";
-import { waitForTarget } from "../discovery.js";
-import { runTool } from "./run-tool.js";
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from "../constants.js";
-import {
-  classifyClickError,
-  classifyTypeError,
-  classifyWaitError,
-  isPageClosedError,
-} from "./error-classification.js";
+} from '../utils';
 
+/**
+ * Handles clicking on an element specified by testId, selector, or accessibility reference.
+ *
+ * @param input The click input containing target selection and timeout options
+ * @param options Optional handler configuration
+ * @returns Promise resolving to click result with target information
+ */
 export async function handleClick(
   input: ClickInput,
   options?: HandlerOptions,
@@ -49,7 +56,7 @@ export async function handleClick(
   if (!isValidTargetSelection(validation)) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
-      "Invalid target selection",
+      'Invalid target selection',
       { input },
       sessionId,
       startTime,
@@ -59,10 +66,16 @@ export async function handleClick(
   const { type: targetType, value: targetValue } = validation;
 
   return runTool<ClickInput, ClickResult>({
-    toolName: "mm_click",
+    toolName: 'mm_click',
     input,
     options,
 
+    /**
+     * Executes the click action on the target element.
+     *
+     * @param context The tool execution context containing page and reference map
+     * @returns Promise resolving to click result with success status and target info
+     */
     execute: async (context) => {
       const locator = await waitForTarget(
         context.page,
@@ -90,14 +103,31 @@ export async function handleClick(
       }
     },
 
+    /**
+     * Returns the target element information for recording.
+     *
+     * @returns Object containing the target type and value
+     */
     getTarget: () => ({ [targetType]: targetValue }),
 
     classifyError: classifyClickError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with timeout information
+     */
     sanitizeInputForRecording: () => ({ timeoutMs }),
   });
 }
 
+/**
+ * Handles typing text into an element specified by testId, selector, or accessibility reference.
+ *
+ * @param input The type input containing target selection, text, and timeout options
+ * @param options Optional handler configuration
+ * @returns Promise resolving to type result with target and text length information
+ */
 export async function handleType(
   input: TypeInput,
   options?: HandlerOptions,
@@ -121,7 +151,7 @@ export async function handleType(
   if (!isValidTargetSelection(validation)) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
-      "Invalid target selection",
+      'Invalid target selection',
       { input },
       sessionId,
       startTime,
@@ -131,10 +161,16 @@ export async function handleType(
   const { type: targetType, value: targetValue } = validation;
 
   return runTool<TypeInput, TypeResult>({
-    toolName: "mm_type",
+    toolName: 'mm_type',
     input,
     options,
 
+    /**
+     * Executes the type action on the target element.
+     *
+     * @param context The tool execution context containing page and reference map
+     * @returns Promise resolving to type result with success status and text length
+     */
     execute: async (context) => {
       const locator = await waitForTarget(
         context.page,
@@ -152,10 +188,20 @@ export async function handleType(
       };
     },
 
+    /**
+     * Returns the target element information for recording.
+     *
+     * @returns Object containing the target type and value
+     */
     getTarget: () => ({ [targetType]: targetValue }),
 
     classifyError: classifyTypeError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with timeout and text information
+     */
     sanitizeInputForRecording: () => ({
       timeoutMs,
       text: input.text,
@@ -166,6 +212,13 @@ export async function handleType(
   });
 }
 
+/**
+ * Handles waiting for an element to become visible.
+ *
+ * @param input The wait input containing target selection and timeout options
+ * @param options Optional handler configuration
+ * @returns Promise resolving to wait result with target information
+ */
 export async function handleWaitFor(
   input: WaitForInput,
   options?: HandlerOptions,
@@ -189,7 +242,7 @@ export async function handleWaitFor(
   if (!isValidTargetSelection(validation)) {
     return createErrorResponse(
       ErrorCodes.MM_INVALID_INPUT,
-      "Invalid target selection",
+      'Invalid target selection',
       { input },
       sessionId,
       startTime,
@@ -199,10 +252,16 @@ export async function handleWaitFor(
   const { type: targetType, value: targetValue } = validation;
 
   return runTool<WaitForInput, WaitForResult>({
-    toolName: "mm_wait_for",
+    toolName: 'mm_wait_for',
     input,
     options,
 
+    /**
+     * Executes the wait action for the target element.
+     *
+     * @param context The tool execution context containing page and reference map
+     * @returns Promise resolving to wait result with success status and target info
+     */
     execute: async (context) => {
       await waitForTarget(
         context.page,
@@ -218,10 +277,20 @@ export async function handleWaitFor(
       };
     },
 
+    /**
+     * Returns the target element information for recording.
+     *
+     * @returns Object containing the target type and value
+     */
     getTarget: () => ({ [targetType]: targetValue }),
 
     classifyError: classifyWaitError,
 
+    /**
+     * Sanitizes input for knowledge store recording.
+     *
+     * @returns Sanitized input object with timeout information
+     */
     sanitizeInputForRecording: () => ({ timeoutMs }),
   });
 }

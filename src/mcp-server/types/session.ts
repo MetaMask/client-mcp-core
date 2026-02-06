@@ -6,5 +6,5 @@ export type SessionState = {
     anvil: number;
     fixtureServer: number;
   };
-  stateMode: "default" | "onboarding" | "custom";
+  stateMode: 'default' | 'onboarding' | 'custom';
 };

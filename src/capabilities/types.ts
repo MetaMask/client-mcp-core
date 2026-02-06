@@ -1,8 +1,8 @@
-import type { Page, BrowserContext } from "@playwright/test";
+import type { Page, BrowserContext } from '@playwright/test';
 
-export type StateMode = "default" | "onboarding" | "custom";
+export type StateMode = 'default' | 'onboarding' | 'custom';
 
-export type NetworkMode = "localhost" | "fork" | "custom";
+export type NetworkMode = 'localhost' | 'fork' | 'custom';
 
 export type NetworkConfig = {
   mode?: NetworkMode;
@@ -18,7 +18,9 @@ export type NetworkConfig = {
 
 export type FixtureData = {
   data: Record<string, unknown>;
-  meta?: { version: number };
+  meta?: {
+    version: number;
+  };
 };
 
 export type PortsConfig = {
@@ -42,23 +44,23 @@ export type ScreenshotResult = {
 };
 
 export type ScreenName =
-  | "unlock"
-  | "home"
-  | "onboarding-welcome"
-  | "onboarding-import"
-  | "onboarding-create"
-  | "onboarding-srp"
-  | "onboarding-password"
-  | "onboarding-complete"
-  | "onboarding-metametrics"
-  | "settings"
-  | "send"
-  | "swap"
-  | "bridge"
-  | "confirm-transaction"
-  | "confirm-signature"
-  | "notification"
-  | "unknown";
+  | 'unlock'
+  | 'home'
+  | 'onboarding-welcome'
+  | 'onboarding-import'
+  | 'onboarding-create'
+  | 'onboarding-srp'
+  | 'onboarding-password'
+  | 'onboarding-complete'
+  | 'onboarding-metametrics'
+  | 'settings'
+  | 'send'
+  | 'swap'
+  | 'bridge'
+  | 'confirm-transaction'
+  | 'confirm-signature'
+  | 'notification'
+  | 'unknown';
 
 export type ExtensionState = {
   isLoaded: boolean;
@@ -173,7 +175,10 @@ export type ContractSeedingCapability = {
     options?: DeployOptions,
   ): Promise<{
     deployed: ContractDeployment[];
-    failed: { name: string; error: string }[];
+    failed: {
+      name: string;
+      error: string;
+    }[];
   }>;
   getContractAddress(name: string): string | null;
   listDeployedContracts(): ContractInfo[];
