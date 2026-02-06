@@ -57,7 +57,7 @@
     "@isaacs/brace-expansion": "5.0.1"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
