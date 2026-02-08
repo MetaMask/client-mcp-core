@@ -8,13 +8,19 @@
 import type { Page } from '@playwright/test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { runTool } from './run-tool';
+import {
+  runTool,
+  setPlatformDriver,
+  getPlatformDriver,
+  clearPlatformDriver,
+} from './run-tool';
 import type { ToolExecutionConfig } from './run-tool';
 import * as knowledgeStoreModule from '../knowledge-store.js';
 import * as sessionManagerModule from '../session-manager.js';
 import { createMockSessionManager } from '../test-utils';
 import { ErrorCodes } from '../types';
 import * as helpersModule from './helpers.js';
+import * as utilsModule from '../utils';
 
 describe('runTool', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -64,6 +70,7 @@ describe('runTool', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    clearPlatformDriver();
   });
 
   describe('basic execution', () => {
@@ -111,12 +118,15 @@ describe('runTool', () => {
       await runTool(config);
 
       // Assert
-      expect(executeFn).toHaveBeenCalledWith({
-        sessionId: 'test-session-123',
-        page: mockPage,
-        refMap: expect.any(Map),
-        startTime: expect.any(Number),
-      });
+      expect(executeFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'test-session-123',
+          page: mockPage,
+          driver: expect.any(Object),
+          refMap: expect.any(Map),
+          startTime: expect.any(Number),
+        }),
+      );
     });
 
     it('handles ToolExecuteResult with custom observation', async () => {
@@ -149,6 +159,44 @@ describe('runTool', () => {
           observation: customObservation,
         }),
       );
+    });
+  });
+
+  describe('platform driver registry', () => {
+    it('sets, gets, and clears platform driver', () => {
+      const mockDriver = { getPlatform: () => 'browser' } as any;
+
+      setPlatformDriver(mockDriver);
+
+      expect(getPlatformDriver()).toBe(mockDriver);
+
+      clearPlatformDriver();
+
+      expect(getPlatformDriver()).toBeUndefined();
+    });
+
+    it('uses provided platform driver for observation collection', async () => {
+      const mockDriver = { getPlatform: () => 'browser' } as any;
+      setPlatformDriver(mockDriver);
+
+      const collectObservationSpy = vi
+        .spyOn(helpersModule, 'collectObservation')
+        .mockResolvedValue({
+          state: {} as any,
+          testIds: [],
+          a11y: { nodes: [] },
+        });
+
+      const config: ToolExecutionConfig<object, object> = {
+        toolName: 'mm_test_tool',
+        input: {},
+        observationPolicy: 'default',
+        execute: vi.fn().mockResolvedValue({}),
+      };
+
+      await runTool(config);
+
+      expect(collectObservationSpy).toHaveBeenCalledWith(mockDriver, 'full');
     });
   });
 
@@ -238,7 +286,33 @@ describe('runTool', () => {
         await runTool(config);
 
         // Assert
-        expect(collectObservationSpy).toHaveBeenCalledWith(mockPage, 'minimal');
+        expect(collectObservationSpy).toHaveBeenCalledWith(
+          expect.any(Object),
+          'minimal',
+        );
+      });
+
+      it('logs when failure observation collection throws', async () => {
+        const collectObservationSpy = vi
+          .spyOn(helpersModule, 'collectObservation')
+          .mockRejectedValue(new Error('collect failed'));
+        const debugWarnSpy = vi
+          .spyOn(utilsModule, 'debugWarn')
+          .mockImplementation(() => undefined);
+        const config: ToolExecutionConfig<object, object> = {
+          toolName: 'mm_test_tool',
+          input: {},
+          observationPolicy: 'none',
+          execute: vi.fn().mockRejectedValue(new Error('Test failure')),
+        };
+
+        await runTool(config);
+
+        expect(collectObservationSpy).toHaveBeenCalledWith(
+          undefined,
+          'minimal',
+        );
+        expect(debugWarnSpy).toHaveBeenCalled();
       });
     });
 
@@ -263,7 +337,10 @@ describe('runTool', () => {
         await runTool(config);
 
         // Assert
-        expect(collectObservationSpy).toHaveBeenCalledWith(mockPage, 'full');
+        expect(collectObservationSpy).toHaveBeenCalledWith(
+          expect.any(Object),
+          'full',
+        );
       });
     });
 
@@ -288,7 +365,10 @@ describe('runTool', () => {
         await runTool(config);
 
         // Assert
-        expect(collectObservationSpy).toHaveBeenCalledWith(mockPage, 'minimal');
+        expect(collectObservationSpy).toHaveBeenCalledWith(
+          expect.any(Object),
+          'minimal',
+        );
       });
 
       it('collects full observation on failure', async () => {
@@ -311,7 +391,10 @@ describe('runTool', () => {
         await runTool(config);
 
         // Assert
-        expect(collectObservationSpy).toHaveBeenCalledWith(mockPage, 'full');
+        expect(collectObservationSpy).toHaveBeenCalledWith(
+          expect.any(Object),
+          'full',
+        );
       });
     });
 
@@ -373,7 +456,10 @@ describe('runTool', () => {
       await runTool(config);
 
       // Assert
-      expect(collectObservationSpy).toHaveBeenCalledWith(mockPage, 'minimal');
+      expect(collectObservationSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        'minimal',
+      );
     });
 
     it('skips observation collection when requiresSession is false', async () => {
@@ -430,6 +516,7 @@ describe('runTool', () => {
         observation: expect.any(Object),
         durationMs: expect.any(Number),
         context: 'e2e',
+        automationPlatform: expect.any(String),
       });
     });
 
@@ -467,6 +554,7 @@ describe('runTool', () => {
         observation: expect.any(Object),
         durationMs: expect.any(Number),
         context: 'e2e',
+        automationPlatform: expect.any(String),
       });
     });
 
@@ -650,7 +738,10 @@ describe('runTool', () => {
       await runTool(config);
 
       // Assert
-      expect(collectObservationSpy).toHaveBeenCalledWith(mockPage, 'full');
+      expect(collectObservationSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        'full',
+      );
     });
 
     it('collects minimal observation on failure with none policy', async () => {
