@@ -379,6 +379,7 @@ export class KnowledgeStore {
       height: number;
     };
     context?: 'e2e' | 'prod';
+    automationPlatform?: 'browser' | 'ios';
   }): Promise<string> {
     const timestamp = new Date();
     const filesafeTimestamp = generateFilesafeTimestamp(timestamp);
@@ -413,6 +414,7 @@ export class KnowledgeStore {
       outcome: params.outcome,
       observation: params.observation,
       labels,
+      automationPlatform: params.automationPlatform,
     };
 
     if (params.screenshotPath) {

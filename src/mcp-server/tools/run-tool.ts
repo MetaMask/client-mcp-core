@@ -1,5 +1,8 @@
 import type { Page } from '@playwright/test';
 
+import type { IPlatformDriver } from '../../platform/types.js';
+import { PlaywrightPlatformDriver } from '../../platform/playwright-driver.js';
+
 import type { ExtensionState } from '../../capabilities/types.js';
 import { knowledgeStore } from '../knowledge-store.js';
 import { getSessionManager } from '../session-manager.js';
@@ -35,10 +38,25 @@ export type ObservationPolicy = 'none' | 'default' | 'custom' | 'failures';
 
 export type ToolExecutionContext = {
   sessionId: string | undefined;
-  page: Page;
+  page: Page | undefined;
+  driver?: IPlatformDriver;
   refMap: Map<string, string>;
   startTime: number;
 };
+
+let _platformDriver: IPlatformDriver | undefined;
+
+export function setPlatformDriver(driver: IPlatformDriver): void {
+  _platformDriver = driver;
+}
+
+export function getPlatformDriver(): IPlatformDriver | undefined {
+  return _platformDriver;
+}
+
+export function clearPlatformDriver(): void {
+  _platformDriver = undefined;
+}
 
 export type ToolExecuteResult<TResult> = {
   result: TResult;
@@ -102,6 +120,8 @@ export async function runTool<TInput, TResult>(
   const effectivePolicy =
     config.options?.observationPolicy ?? config.observationPolicy ?? 'default';
 
+  let driver: IPlatformDriver | undefined;
+
   try {
     if (requiresSession && !sessionManager.hasActiveSession()) {
       return createErrorResponse(
@@ -113,12 +133,32 @@ export async function runTool<TInput, TResult>(
       );
     }
 
+    const page = requiresSession ? sessionManager.getPage() : undefined;
+    driver = requiresSession
+      ? (_platformDriver ??
+        new PlaywrightPlatformDriver(
+          () => sessionManager.getPage(),
+          sessionManager,
+        ))
+      : undefined;
+
     const context: ToolExecutionContext = {
       sessionId,
-      page: requiresSession ? sessionManager.getPage() : (undefined as never),
+      page,
+      driver,
       refMap: requiresSession ? sessionManager.getRefMap() : new Map(),
       startTime,
     };
+
+    if (context.driver && !context.driver.isToolSupported(config.toolName)) {
+      return createErrorResponse(
+        ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        `Tool ${config.toolName} is not supported on ${context.driver.getPlatform()} platform`,
+        { toolName: config.toolName, platform: context.driver.getPlatform() },
+        sessionId,
+        startTime,
+      );
+    }
 
     const executeResult = await config.execute(context);
 
@@ -137,12 +177,12 @@ export async function runTool<TInput, TResult>(
     if (effectivePolicy === 'custom' && customObservation) {
       observation = customObservation;
     } else if (effectivePolicy === 'default' && requiresSession) {
-      observation = await collectObservation(context.page, 'full');
+      observation = await collectObservation(context.driver, 'full');
     } else if (
       (effectivePolicy === 'none' || effectivePolicy === 'failures') &&
       requiresSession
     ) {
-      observation = await collectObservation(context.page, 'minimal');
+      observation = await collectObservation(context.driver, 'minimal');
     }
 
     if (sessionId) {
@@ -159,6 +199,7 @@ export async function runTool<TInput, TResult>(
         observation: observation ?? createEmptyObservation(),
         durationMs: Date.now() - startTime,
         context: sessionManager.getEnvironmentMode(),
+        automationPlatform: context.driver?.getPlatform(),
       });
     }
 
@@ -174,8 +215,7 @@ export async function runTool<TInput, TResult>(
     if (requiresSession && sessionManager.hasActiveSession()) {
       if (effectivePolicy === 'failures' || effectivePolicy === 'default') {
         try {
-          const page = sessionManager.getPage();
-          failureObservation = await collectObservation(page, 'full');
+          failureObservation = await collectObservation(driver, 'full');
         } catch (collectError) {
           debugWarn('run-tool.collectObservation', collectError);
           failureObservation = await collectObservation(undefined, 'minimal');
@@ -206,6 +246,7 @@ export async function runTool<TInput, TResult>(
         observation: failureObservation,
         durationMs: Date.now() - startTime,
         context: sessionManager.getEnvironmentMode(),
+        automationPlatform: driver?.getPlatform(),
       });
     }
 
