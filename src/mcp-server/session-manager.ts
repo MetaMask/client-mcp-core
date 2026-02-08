@@ -60,6 +60,12 @@ export type SessionLaunchInput = {
   };
   /** Smart contracts to deploy on launch */
   seedContracts?: string[];
+  /** Platform to launch on (defaults to 'browser') */
+  platform?: 'browser' | 'ios';
+  /** iOS simulator device UDID */
+  simulatorDeviceId?: string;
+  /** Path to MetaMask Mobile .app bundle */
+  appBundlePath?: string;
 };
 
 /**

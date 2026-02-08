@@ -159,6 +159,18 @@ export const launchInputSchema = z.object({
     .array(z.enum(smartContractNames))
     .describe('Smart contracts to deploy on launch (before extension loads)')
     .optional(),
+  platform: z
+    .enum(['browser', 'ios'])
+    .default('browser')
+    .describe('Platform to launch on'),
+  simulatorDeviceId: z
+    .string()
+    .optional()
+    .describe('iOS simulator device UDID'),
+  appBundlePath: z
+    .string()
+    .optional()
+    .describe('Path to MetaMask Mobile .app bundle'),
 });
 
 export const cleanupInputSchema = z.object({

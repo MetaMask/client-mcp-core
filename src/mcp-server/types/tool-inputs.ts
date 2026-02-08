@@ -29,6 +29,9 @@ export type LaunchInput = {
   flowTags?: string[];
   tags?: string[];
   seedContracts?: SmartContractName[];
+  platform?: 'browser' | 'ios';
+  simulatorDeviceId?: string;
+  appBundlePath?: string;
 };
 
 export type CleanupInput = {
