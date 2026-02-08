@@ -35,7 +35,7 @@ export async function handleClipboard(
      * @returns Promise resolving to clipboard operation result
      */
     execute: async (context) => {
-      const { page } = context;
+      const page = context.page!;
       const cdpSession = await page.context().newCDPSession(page);
 
       try {

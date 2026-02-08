@@ -88,7 +88,7 @@ export async function handleNavigate(
 
       return {
         navigated: true,
-        currentUrl: context.page.url(),
+        currentUrl: context.page!.url(),
       };
     },
 

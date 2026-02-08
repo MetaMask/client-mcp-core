@@ -1,8 +1,9 @@
 import type { Page } from '@playwright/test';
 
+import type { IPlatformDriver } from '../../platform/types.js';
+
 import type { ExtensionState } from '../../capabilities/types.js';
 import { OBSERVATION_TESTID_LIMIT } from '../constants.js';
-import { collectTestIds, collectTrimmedA11ySnapshot } from '../discovery.js';
 import {
   knowledgeStore,
   createDefaultObservation,
@@ -117,7 +118,7 @@ export function requireActiveSession<Result>(
  * @returns Observation data with state, testIds, and accessibility tree
  */
 export async function collectObservation(
-  page: Page | undefined,
+  driver: IPlatformDriver | undefined,
   level: ObservationLevel,
   presetState?: ExtensionState,
 ): Promise<StepRecordObservation> {
@@ -127,23 +128,26 @@ export async function collectObservation(
     return createDefaultObservation({} as ExtensionState, [], []);
   }
 
-  const state = presetState ?? (await sessionManager.getExtensionState());
+  const state =
+    presetState ??
+    (driver
+      ? await driver.getAppState()
+      : await sessionManager.getExtensionState());
 
   if (level === 'minimal') {
     return createDefaultObservation(state, [], []);
   }
 
-  if (!page) {
-    debugWarn('collectObservation', 'Page not provided for full observation');
+  if (!driver) {
+    debugWarn('collectObservation', 'Driver not provided for full observation');
     return createDefaultObservation(state, [], []);
   }
 
   try {
-    const testIds: TestIdItem[] = await collectTestIds(
-      page,
+    const testIds: TestIdItem[] = await driver.getTestIds(
       OBSERVATION_TESTID_LIMIT,
     );
-    const { nodes, refMap } = await collectTrimmedA11ySnapshot(page);
+    const { nodes, refMap } = await driver.getAccessibilityTree();
     sessionManager.setRefMap(refMap);
     return createDefaultObservation(state, testIds, nodes);
   } catch (error) {
@@ -229,7 +233,7 @@ export async function recordToolStep(params: RecordStepParams): Promise<void> {
  * @returns Observation data collected after tool execution
  */
 export async function collectObservationAndRecord(
-  page: Page,
+  driver: IPlatformDriver,
   toolName: string,
   input: Record<string, unknown>,
   startTime: number,
@@ -257,7 +261,7 @@ export async function collectObservationAndRecord(
     };
   } = {},
 ): Promise<StepRecordObservation> {
-  const observation = await collectObservation(page, 'full');
+  const observation = await collectObservation(driver, 'full');
 
   await recordToolStep({
     toolName,

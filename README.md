@@ -1454,6 +1454,50 @@ yarn build && yalc publish
 yalc add @metamask/client-mcp-core
 ```
 
+## iOS Simulator Support (Experimental)
+
+### Overview
+
+This package includes experimental support for automating MetaMask Mobile on iOS simulators using XCUITest. The same tool interface (`mm_click`, `mm_type`, etc.) works on both browser extensions and iOS apps through the `IPlatformDriver` abstraction.
+
+### Architecture
+
+- `IPlatformDriver` — Platform-agnostic interface for element interaction, discovery, and screenshots
+- `PlaywrightPlatformDriver` — Browser automation via Playwright (default)
+- `IOSPlatformDriver` — iOS simulator automation via XCUITest HTTP server
+- `XCUITestClient` — HTTP client for the XCUITest runner
+
+### Prerequisites
+
+See [docs/ios-setup.md](docs/ios-setup.md) for setup instructions.
+
+### Platform Support Matrix
+
+| Tool                      | Browser         | iOS             |
+| ------------------------- | --------------- | --------------- |
+| mm_click                  | ✅              | ✅              |
+| mm_type                   | ✅              | ✅              |
+| mm_wait_for               | ✅              | ✅              |
+| mm_screenshot             | ✅              | ✅              |
+| mm_accessibility_snapshot | ✅              | ✅              |
+| mm_list_testids           | ✅              | ✅              |
+| mm_describe_screen        | ✅              | ✅              |
+| mm_get_state              | ✅              | ✅              |
+| mm_build                  | ✅ (capability) | ✅ (capability) |
+| mm_seed_contract          | ✅ (capability) | ✅ (capability) |
+| mm_clipboard              | ✅              | ❌ (CDP)        |
+| mm_switch_to_tab          | ✅              | ❌ (tabs)       |
+| mm_close_tab              | ✅              | ❌ (tabs)       |
+| mm_wait_for_notification  | ✅              | ❌ (tabs)       |
+
+### Usage
+
+To launch an iOS session, set `platform: 'ios'` in the launch input:
+
+```typescript
+{ platform: 'ios', simulatorDeviceId: '<UDID>', appBundlePath: '/path/to/MetaMask.app' }
+```
+
 ## License
 
 MIT

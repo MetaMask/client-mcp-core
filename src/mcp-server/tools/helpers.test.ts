@@ -16,7 +16,6 @@ import {
   handleToolError,
 } from './helpers';
 import type { ObservationLevel, RecordStepParams } from './helpers';
-import * as discoveryModule from '../discovery.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
 import * as sessionManagerModule from '../session-manager.js';
 import { createMockSessionManager } from '../test-utils';
@@ -91,7 +90,7 @@ describe('helpers', () => {
     describe('when level is "none"', () => {
       it('returns default observation with empty arrays', async () => {
         // Arrange
-        const mockPage = {} as Page;
+        const mockDriver = { getAppState: vi.fn() };
         const level: ObservationLevel = 'none';
         vi.spyOn(
           knowledgeStoreModule,
@@ -103,7 +102,7 @@ describe('helpers', () => {
         });
 
         // Act
-        const result = await collectObservation(mockPage, level);
+        const result = await collectObservation(mockDriver as any, level);
 
         // Assert
         expect(result.testIds).toStrictEqual([]);
@@ -112,7 +111,7 @@ describe('helpers', () => {
 
       it('does not query extension state', async () => {
         // Arrange
-        const mockPage = {} as Page;
+        const mockDriver = { getAppState: vi.fn() };
         const level: ObservationLevel = 'none';
         vi.spyOn(
           knowledgeStoreModule,
@@ -124,7 +123,7 @@ describe('helpers', () => {
         });
 
         // Act
-        await collectObservation(mockPage, level);
+        await collectObservation(mockDriver as any, level);
 
         // Assert
         expect(mockSessionManager.getExtensionState).not.toHaveBeenCalled();
@@ -134,7 +133,7 @@ describe('helpers', () => {
     describe('when level is "minimal"', () => {
       it('returns observation with state only', async () => {
         // Arrange
-        const mockPage = {} as Page;
+        const mockDriver = { getAppState: vi.fn() };
         const level: ObservationLevel = 'minimal';
         const mockState = {
           isLoaded: true,
@@ -147,9 +146,7 @@ describe('helpers', () => {
           chainId: 1,
           balance: '1.5 ETH',
         };
-        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
-          mockState,
-        );
+        mockDriver.getAppState.mockResolvedValue(mockState);
         vi.spyOn(
           knowledgeStoreModule,
           'createDefaultObservation',
@@ -160,7 +157,7 @@ describe('helpers', () => {
         });
 
         // Act
-        const result = await collectObservation(mockPage, level);
+        const result = await collectObservation(mockDriver as any, level);
 
         // Assert
         expect(result.state).toStrictEqual(mockState);
@@ -170,7 +167,7 @@ describe('helpers', () => {
 
       it('uses preset state when provided', async () => {
         // Arrange
-        const mockPage = {} as Page;
+        const mockDriver = { getAppState: vi.fn() };
         const level: ObservationLevel = 'minimal';
         const presetState = {
           isLoaded: true,
@@ -193,7 +190,11 @@ describe('helpers', () => {
         });
 
         // Act
-        const result = await collectObservation(mockPage, level, presetState);
+        const result = await collectObservation(
+          mockDriver as any,
+          level,
+          presetState,
+        );
 
         // Assert
         expect(mockSessionManager.getExtensionState).not.toHaveBeenCalled();
@@ -204,7 +205,11 @@ describe('helpers', () => {
     describe('when level is "full"', () => {
       it('collects state, testIds, and a11y tree', async () => {
         // Arrange
-        const mockPage = { locator: vi.fn() } as unknown as Page;
+        const mockDriver = {
+          getAppState: vi.fn(),
+          getTestIds: vi.fn(),
+          getAccessibilityTree: vi.fn(),
+        };
         const level: ObservationLevel = 'full';
         const mockState = {
           isLoaded: true,
@@ -225,16 +230,9 @@ describe('helpers', () => {
         ];
         const mockRefMap = new Map([['e1', '[data-testid="send-button"]']]);
 
-        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
-          mockState,
-        );
-        vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue(
-          mockTestIds,
-        );
-        vi.spyOn(
-          discoveryModule,
-          'collectTrimmedA11ySnapshot',
-        ).mockResolvedValue({
+        mockDriver.getAppState.mockResolvedValue(mockState);
+        mockDriver.getTestIds.mockResolvedValue(mockTestIds);
+        mockDriver.getAccessibilityTree.mockResolvedValue({
           nodes: mockA11yNodes,
           refMap: mockRefMap,
         });
@@ -248,7 +246,7 @@ describe('helpers', () => {
         });
 
         // Act
-        const result = await collectObservation(mockPage, level);
+        const result = await collectObservation(mockDriver as any, level);
 
         // Assert
         expect(result.state).toStrictEqual(mockState);
@@ -293,7 +291,11 @@ describe('helpers', () => {
 
       it('returns default observation when discovery throws error', async () => {
         // Arrange
-        const mockPage = { locator: vi.fn() } as unknown as Page;
+        const mockDriver = {
+          getAppState: vi.fn(),
+          getTestIds: vi.fn(),
+          getAccessibilityTree: vi.fn(),
+        };
         const level: ObservationLevel = 'full';
         const mockState = {
           isLoaded: true,
@@ -306,12 +308,8 @@ describe('helpers', () => {
           chainId: null,
           balance: null,
         };
-        vi.spyOn(mockSessionManager, 'getExtensionState').mockResolvedValue(
-          mockState,
-        );
-        vi.spyOn(discoveryModule, 'collectTestIds').mockRejectedValue(
-          new Error('Page closed'),
-        );
+        mockDriver.getAppState.mockResolvedValue(mockState);
+        mockDriver.getTestIds.mockRejectedValue(new Error('Page closed'));
         vi.spyOn(
           knowledgeStoreModule,
           'createDefaultObservation',
@@ -322,7 +320,7 @@ describe('helpers', () => {
         });
 
         // Act
-        const result = await collectObservation(mockPage, level);
+        const result = await collectObservation(mockDriver as any, level);
 
         // Assert
         expect(result.testIds).toStrictEqual([]);
@@ -513,7 +511,11 @@ describe('helpers', () => {
   describe('collectObservationAndRecord', () => {
     it('collects observation and records step', async () => {
       // Arrange
-      const mockPage = { locator: vi.fn() } as unknown as Page;
+      const mockDriver = {
+        getAppState: vi.fn(),
+        getTestIds: vi.fn(),
+        getAccessibilityTree: vi.fn(),
+      };
       const mockObservation = {
         state: {} as any,
         testIds: [
@@ -529,15 +531,12 @@ describe('helpers', () => {
         knowledgeStoreModule,
         'createDefaultObservation',
       ).mockReturnValue(mockObservation);
-      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue(
-        mockObservation.testIds,
-      );
-      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
-        {
-          nodes: mockObservation.a11y.nodes,
-          refMap: new Map(),
-        },
-      );
+      mockDriver.getAppState.mockResolvedValue(mockObservation.state);
+      mockDriver.getTestIds.mockResolvedValue(mockObservation.testIds);
+      mockDriver.getAccessibilityTree.mockResolvedValue({
+        nodes: mockObservation.a11y.nodes,
+        refMap: new Map(),
+      });
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: mockRecordStep,
       } as any);
@@ -547,7 +546,7 @@ describe('helpers', () => {
 
       // Act
       const result = await collectObservationAndRecord(
-        mockPage,
+        mockDriver as any,
         'mm_click',
         { testId: 'send-button' },
         Date.now(),
@@ -574,7 +573,11 @@ describe('helpers', () => {
 
     it('works without optional parameters', async () => {
       // Arrange
-      const mockPage = { locator: vi.fn() } as unknown as Page;
+      const mockDriver = {
+        getAppState: vi.fn(),
+        getTestIds: vi.fn(),
+        getAccessibilityTree: vi.fn(),
+      };
       const mockObservation = {
         state: {} as any,
         testIds: [],
@@ -586,13 +589,12 @@ describe('helpers', () => {
         knowledgeStoreModule,
         'createDefaultObservation',
       ).mockReturnValue(mockObservation);
-      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
-      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
-        {
-          nodes: [],
-          refMap: new Map(),
-        },
-      );
+      mockDriver.getAppState.mockResolvedValue(mockObservation.state);
+      mockDriver.getTestIds.mockResolvedValue([]);
+      mockDriver.getAccessibilityTree.mockResolvedValue({
+        nodes: [],
+        refMap: new Map(),
+      });
       vi.spyOn(knowledgeStoreModule, 'knowledgeStore', 'get').mockReturnValue({
         recordStep: mockRecordStep,
       } as any);
@@ -602,7 +604,7 @@ describe('helpers', () => {
 
       // Act
       const result = await collectObservationAndRecord(
-        mockPage,
+        mockDriver as any,
         'mm_get_state',
         {},
         Date.now(),

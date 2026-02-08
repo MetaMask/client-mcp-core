@@ -1,11 +1,9 @@
 import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../constants.js';
-import { waitForTarget } from '../discovery.js';
 import { getSessionManager } from '../session-manager.js';
 import {
   classifyClickError,
   classifyTypeError,
   classifyWaitError,
-  isPageClosedError,
 } from './error-classification.js';
 import { runTool } from './run-tool.js';
 import type {
@@ -77,30 +75,12 @@ export async function handleClick(
      * @returns Promise resolving to click result with success status and target info
      */
     execute: async (context) => {
-      const locator = await waitForTarget(
-        context.page,
+      return context.driver!.click(
         targetType,
         targetValue,
         context.refMap,
         timeoutMs,
       );
-
-      try {
-        await locator.click();
-        return {
-          clicked: true,
-          target: `${targetType}:${targetValue}`,
-        };
-      } catch (clickError) {
-        if (isPageClosedError(clickError)) {
-          return {
-            clicked: true,
-            target: `${targetType}:${targetValue}`,
-            pageClosedAfterClick: true,
-          };
-        }
-        throw clickError;
-      }
     },
 
     /**
@@ -172,20 +152,13 @@ export async function handleType(
      * @returns Promise resolving to type result with success status and text length
      */
     execute: async (context) => {
-      const locator = await waitForTarget(
-        context.page,
+      return context.driver!.type(
         targetType,
         targetValue,
+        input.text,
         context.refMap,
         timeoutMs,
       );
-      await locator.fill(input.text);
-
-      return {
-        typed: true,
-        target: `${targetType}:${targetValue}`,
-        textLength: input.text.length,
-      };
     },
 
     /**
@@ -263,8 +236,7 @@ export async function handleWaitFor(
      * @returns Promise resolving to wait result with success status and target info
      */
     execute: async (context) => {
-      await waitForTarget(
-        context.page,
+      await context.driver!.waitForElement(
         targetType,
         targetValue,
         context.refMap,

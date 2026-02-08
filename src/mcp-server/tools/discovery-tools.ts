@@ -2,7 +2,6 @@ import {
   DEFAULT_TESTID_LIMIT,
   OBSERVATION_TESTID_LIMIT,
 } from '../constants.js';
-import { collectTestIds, collectTrimmedA11ySnapshot } from '../discovery.js';
 import {
   knowledgeStore,
   createDefaultObservation,
@@ -48,9 +47,9 @@ export async function handleListTestIds(
      * @returns The result with test ID items and observation data
      */
     execute: async (context) => {
-      const items = await collectTestIds(context.page, limit);
-      const state = await getSessionManager().getExtensionState();
-      const { nodes, refMap } = await collectTrimmedA11ySnapshot(context.page);
+      const items = await context.driver!.getTestIds(limit);
+      const state = await context.driver!.getAppState();
+      const { nodes, refMap } = await context.driver!.getAccessibilityTree();
 
       getSessionManager().setRefMap(refMap);
 
@@ -95,16 +94,14 @@ export async function handleAccessibilitySnapshot(
      * @returns The result with accessibility nodes and observation data
      */
     execute: async (context) => {
-      const { nodes, refMap } = await collectTrimmedA11ySnapshot(
-        context.page,
+      const { nodes, refMap } = await context.driver!.getAccessibilityTree(
         input.rootSelector,
       );
 
       getSessionManager().setRefMap(refMap);
 
-      const state = await getSessionManager().getExtensionState();
-      const testIds = await collectTestIds(
-        context.page,
+      const state = await context.driver!.getAppState();
+      const testIds = await context.driver!.getTestIds(
         OBSERVATION_TESTID_LIMIT,
       );
 
@@ -150,11 +147,10 @@ export async function handleDescribeScreen(
      */
     execute: async (context) => {
       const sessionManager = getSessionManager();
-      const { page } = context;
 
-      const state = await sessionManager.getExtensionState();
-      const testIds = await collectTestIds(page, DEFAULT_TESTID_LIMIT);
-      const { nodes, refMap } = await collectTrimmedA11ySnapshot(page);
+      const state = await context.driver!.getAppState();
+      const testIds = await context.driver!.getTestIds(DEFAULT_TESTID_LIMIT);
+      const { nodes, refMap } = await context.driver!.getAccessibilityTree();
 
       sessionManager.setRefMap(refMap);
 
@@ -162,7 +158,7 @@ export async function handleDescribeScreen(
 
       if (input.includeScreenshot) {
         const screenshotName = input.screenshotName ?? 'describe-screen';
-        const result = await sessionManager.screenshot({
+        const result = await context.driver!.screenshot({
           name: screenshotName,
           fullPage: true,
         });
