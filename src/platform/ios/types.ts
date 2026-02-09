@@ -37,12 +37,46 @@ export type XCUITestClientConfig = {
 };
 
 /**
+ * Command sent to the XCUITest runner.
+ *
+ * The command field specifies the action to perform.
+ * Optional fields provide parameters for specific commands.
+ */
+export type RunnerCommand = {
+  command: 'tap' | 'type' | 'swipe' | 'snapshot' | 'back' | 'home' | 'shutdown';
+  text?: string;
+  x?: number;
+  y?: number;
+  direction?: SwipeDirection;
+  interactiveOnly?: boolean;
+  compact?: boolean;
+  depth?: number;
+  scope?: string;
+  appBundleId?: string;
+};
+
+/**
+ * Snapshot data payload returned by the `snapshot` command.
+ */
+export type SnapshotDataPayload = {
+  nodes: SnapshotNode[];
+  truncated: boolean;
+};
+
+/**
+ * Error payload returned by the XCUITest runner.
+ */
+export type RunnerErrorPayload = {
+  message: string;
+};
+
+/**
  * Response from the XCUITest runner.
  */
 export type RunnerResponse<TData = unknown> = {
   ok: boolean;
   data?: TData;
-  error?: string;
+  error?: RunnerErrorPayload;
 };
 
 /**
