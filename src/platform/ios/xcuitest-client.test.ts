@@ -3,7 +3,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { XCUITestClient } from './xcuitest-client.js';
-import type { RunnerResponse, SnapshotNode } from './types.js';
+import type {
+  RunnerResponse,
+  SnapshotNode,
+  RunnerErrorPayload,
+} from './types.js';
 
 const TEST_PORT = 9876;
 const TEST_URL = `http://127.0.0.1:${TEST_PORT}/command`;
@@ -18,9 +22,10 @@ function mockFetchOk<T>(data: T): ReturnType<typeof vi.fn> {
 }
 
 function mockFetchError(errorMessage: string): ReturnType<typeof vi.fn> {
+  const errorPayload: RunnerErrorPayload = { message: errorMessage };
   return vi.fn().mockResolvedValue(
     new Response(
-      JSON.stringify({ ok: false, error: errorMessage } as RunnerResponse),
+      JSON.stringify({ ok: false, error: errorPayload } as RunnerResponse),
       {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -168,7 +173,7 @@ describe('XCUITestClient', () => {
           ],
         },
       ];
-      globalThis.fetch = mockFetchOk(snapshotData);
+      globalThis.fetch = mockFetchOk({ nodes: snapshotData, truncated: false });
 
       const result = await client.snapshot();
 
@@ -177,7 +182,7 @@ describe('XCUITestClient', () => {
     });
 
     it('passes snapshot options', async () => {
-      const fetchMock = mockFetchOk([]);
+      const fetchMock = mockFetchOk({ nodes: [], truncated: false });
       globalThis.fetch = fetchMock;
 
       await client.snapshot({ interactiveOnly: true, compact: true });
@@ -227,29 +232,58 @@ describe('XCUITestClient', () => {
     });
   });
 
-  describe('healthCheck', () => {
-    it('returns true on success', async () => {
-      globalThis.fetch = mockFetchOk({});
-
-      const result = await client.healthCheck();
-
+  describe('waitForRunner', () => {
+    it('returns true when snapshot succeeds immediately', async () => {
+      globalThis.fetch = mockFetchOk({ nodes: [], truncated: false });
+      const result = await client.waitForRunner(5000);
       expect(result).toBe(true);
     });
 
-    it('returns false on runner error response', async () => {
-      globalThis.fetch = mockFetchError('unhealthy');
-
-      const result = await client.healthCheck();
-
-      expect(result).toBe(false);
+    it('polls until snapshot succeeds', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              ok: true,
+              data: { nodes: [], truncated: false },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      globalThis.fetch = fetchMock;
+      const result = await client.waitForRunner(5000);
+      expect(result).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
-    it('returns false on network error', async () => {
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('fetch failed'));
-
-      const result = await client.healthCheck();
-
+    it('returns false on timeout', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+      const result = await client.waitForRunner(200);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('shutdown', () => {
+    it('sends shutdown command', async () => {
+      const fetchMock = mockFetchOk({ message: 'shutdown' });
+      globalThis.fetch = fetchMock;
+      await client.shutdown();
+      expect(fetchMock).toHaveBeenCalledWith(
+        TEST_URL,
+        expect.objectContaining({
+          body: JSON.stringify({ command: 'shutdown' }),
+        }),
+      );
+    });
+
+    it('ignores errors on shutdown', async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(new Error('connection closed'));
+      await expect(client.shutdown()).resolves.toBeUndefined();
     });
   });
 

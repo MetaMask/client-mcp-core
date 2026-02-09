@@ -40,11 +40,10 @@ describe('platform-gating', () => {
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
     } as any);
 
-    // Create mock iOS driver that doesn't support mm_clipboard
+    const unsupportedTools = new Set(['mm_clipboard', 'mm_navigate']);
     mockDriver = {
       isToolSupported: vi.fn((toolName: string) => {
-        // iOS doesn't support clipboard tool
-        return toolName !== 'mm_clipboard';
+        return !unsupportedTools.has(toolName);
       }),
       getPlatform: vi.fn().mockReturnValue('ios'),
       getAppState: vi.fn().mockResolvedValue({}),
@@ -89,6 +88,32 @@ describe('platform-gating', () => {
         expect(result.error.message).toContain('ios');
         expect(result.error.details?.toolName).toBe('mm_clipboard');
         expect(result.error.details?.platform).toBe('ios');
+      }
+    });
+
+    it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM error for mm_navigate on iOS', async () => {
+      const mockPage = createMockPage();
+      vi.spyOn(mockSessionManager, 'getPage').mockReturnValue(mockPage);
+      vi.spyOn(mockSessionManager, 'getRefMap').mockReturnValue(new Map());
+
+      setPlatformDriver(mockDriver);
+
+      const result = await runTool({
+        toolName: 'mm_navigate',
+        input: { screen: 'home' },
+        requiresSession: true,
+        execute: async () => {
+          return { navigated: true, currentUrl: '' };
+        },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(
+          ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        );
+        expect(result.error.message).toContain('mm_navigate');
+        expect(result.error.message).toContain('ios');
       }
     });
 

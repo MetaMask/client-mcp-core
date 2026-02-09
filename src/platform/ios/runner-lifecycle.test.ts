@@ -36,9 +36,9 @@ function getStdout(proc: ChildProcess): Readable {
 }
 
 describe('runner-lifecycle', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    stopRunner();
+    await stopRunner();
   });
 
   afterEach(() => {
@@ -202,13 +202,13 @@ describe('runner-lifecycle', () => {
       );
       await portPromise;
 
-      stopRunner();
+      await stopRunner();
 
       expect(proc.kill).toHaveBeenCalled();
     });
 
-    it('does nothing when no runner is active', () => {
-      expect(() => stopRunner()).not.toThrowError();
+    it('does nothing when no runner is active', async () => {
+      expect(await stopRunner()).toBeUndefined();
     });
   });
 

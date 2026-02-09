@@ -11,7 +11,8 @@ function createMockClient() {
     snapshot: vi.fn().mockResolvedValue([] as SnapshotNode[]),
     back: vi.fn().mockResolvedValue(undefined),
     home: vi.fn().mockResolvedValue(undefined),
-    healthCheck: vi.fn().mockResolvedValue(true),
+    waitForRunner: vi.fn().mockResolvedValue(true),
+    shutdown: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -138,12 +139,30 @@ describe('IOSPlatformDriver', () => {
       expect(mockClient.tap).toHaveBeenCalledWith(40, 35);
     });
 
-    it('throws when element not found', async () => {
+    it('throws when element not found after timeout', async () => {
       mockClient.snapshot.mockResolvedValue(SAMPLE_SNAPSHOT);
 
       await expect(
-        driver.click('testId', 'nonexistent', new Map(), 5000),
-      ).rejects.toThrowError('Element not found: testId:nonexistent');
+        driver.click('testId', 'nonexistent', new Map(), 50),
+      ).rejects.toThrowError(
+        'Element not found: testId:nonexistent (timeout 50ms)',
+      );
+    });
+
+    it('polls until element appears then clicks', async () => {
+      mockClient.snapshot
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(SAMPLE_SNAPSHOT);
+
+      const result = await driver.click(
+        'testId',
+        'send-button',
+        new Map(),
+        5000,
+      );
+
+      expect(result.clicked).toBe(true);
+      expect(mockClient.snapshot).toHaveBeenCalledTimes(2);
     });
 
     it('throws when element has no rect', async () => {
@@ -184,8 +203,8 @@ describe('IOSPlatformDriver', () => {
       mockClient.snapshot.mockResolvedValue(SAMPLE_SNAPSHOT);
 
       await expect(
-        driver.click('a11yRef', 'e999', new Map(), 5000),
-      ).rejects.toThrowError('Element not found: a11yRef:e999');
+        driver.click('a11yRef', 'e999', new Map(), 50),
+      ).rejects.toThrowError('Element not found: a11yRef:e999 (timeout 50ms)');
     });
   });
 
@@ -233,8 +252,10 @@ describe('IOSPlatformDriver', () => {
       mockClient.snapshot.mockResolvedValue(SAMPLE_SNAPSHOT);
 
       await expect(
-        driver.type('testId', 'missing', 'text', new Map(), 5000),
-      ).rejects.toThrowError('Element not found: testId:missing');
+        driver.type('testId', 'missing', 'text', new Map(), 50),
+      ).rejects.toThrowError(
+        'Element not found: testId:missing (timeout 50ms)',
+      );
     });
   });
 
@@ -309,6 +330,14 @@ describe('IOSPlatformDriver', () => {
 
       expect(refMap.get('e2')).toBe('identifier:send-button');
       expect(refMap.get('e3')).toBe('identifier:amount-input');
+    });
+
+    it('passes rootSelector as scope to snapshot', async () => {
+      mockClient.snapshot.mockResolvedValue([]);
+
+      await driver.getAccessibilityTree('main-view');
+
+      expect(mockClient.snapshot).toHaveBeenCalledWith({ scope: 'main-view' });
     });
 
     it('assigns sequential refs e1, e2, e3...', async () => {
@@ -511,6 +540,7 @@ describe('IOSPlatformDriver', () => {
       expect(driver.isToolSupported('mm_switch_to_tab')).toBe(false);
       expect(driver.isToolSupported('mm_close_tab')).toBe(false);
       expect(driver.isToolSupported('mm_wait_for_notification')).toBe(false);
+      expect(driver.isToolSupported('mm_navigate')).toBe(false);
     });
 
     it('returns true for supported tools', () => {
@@ -575,6 +605,32 @@ describe('IOSPlatformDriver', () => {
       await driver.click('testId', 'offset-test', new Map(), 5000);
 
       expect(mockClient.tap).toHaveBeenCalledWith(230, 320);
+    });
+  });
+
+  describe('findBySelector priority', () => {
+    it('matches identifier before label', async () => {
+      mockClient.snapshot.mockResolvedValue([
+        {
+          index: 0,
+          type: 'Button',
+          label: 'other-label',
+          identifier: 'my-id',
+          rect: { x: 0, y: 0, width: 40, height: 40 },
+        },
+        {
+          index: 1,
+          type: 'Button',
+          label: 'my-id',
+          rect: { x: 100, y: 100, width: 40, height: 40 },
+        },
+      ]);
+
+      const result = await driver.click('selector', 'my-id', new Map(), 5000);
+
+      expect(result.clicked).toBe(true);
+      // Should tap center of the first element (identifier match), not the second (label match)
+      expect(mockClient.tap).toHaveBeenCalledWith(20, 20);
     });
   });
 
