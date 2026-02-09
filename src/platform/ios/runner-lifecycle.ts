@@ -76,6 +76,7 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
     ]);
 
     let resolved = false;
+    let stdoutBuffer = '';
 
     const timer = setTimeout(() => {
       if (!resolved) {
@@ -90,8 +91,11 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (resolved) {
         return;
       }
-      const text = chunk.toString();
-      const match = PORT_PATTERN.exec(text);
+      stdoutBuffer += chunk.toString();
+      if (stdoutBuffer.length > 64_000) {
+        stdoutBuffer = stdoutBuffer.slice(-32_000);
+      }
+      const match = PORT_PATTERN.exec(stdoutBuffer);
       if (match?.[1]) {
         resolved = true;
         clearTimeout(timer);
@@ -99,6 +103,10 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
         runnerProcesses.set(destination, { process: proc, port });
         resolve(port);
       }
+    });
+
+    proc.stderr?.on('data', () => {
+      // Drain stderr to prevent pipe buffer deadlock
     });
 
     proc.on('error', (error) => {

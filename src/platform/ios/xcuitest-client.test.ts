@@ -349,25 +349,19 @@ describe('XCUITestClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('retries on timeout error', async () => {
+    it('does not retry on timeout error', async () => {
       const timeoutError = new DOMException(
         'The operation timed out',
         'TimeoutError',
       );
-      const fetchMock = vi
-        .fn()
-        .mockRejectedValueOnce(timeoutError)
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true, data: {} }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        );
+      const fetchMock = vi.fn().mockRejectedValueOnce(timeoutError);
       globalThis.fetch = fetchMock;
 
-      await client.tap(10, 20);
+      await expect(client.tap(10, 20)).rejects.toThrow(
+        'The operation timed out',
+      );
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('does not retry on non-retryable errors', async () => {

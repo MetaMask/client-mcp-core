@@ -82,7 +82,7 @@ export async function handleGetState(
 
       // Tab info is browser-only
       let tabs;
-      if (context.driver?.getPlatform() !== 'ios') {
+      if (context.page) {
         const trackedPages = sessionManager.getTrackedPages();
         const activePage = sessionManager.getPage();
         const activeTabInfo = trackedPages.find(

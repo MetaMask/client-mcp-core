@@ -62,6 +62,7 @@ export type PlatformScreenshotOptions = {
   name: string;
   fullPage?: boolean;
   selector?: string;
+  includeBase64?: boolean;
 };
 
 /**

@@ -193,7 +193,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    *
    * Delegates to sessionManager.screenshot().
    *
-   * @param options - Screenshot options (name, fullPage, selector)
+   * @param options - Screenshot options (name, fullPage, selector, includeBase64)
    * @returns Promise resolving to screenshot result with path and dimensions
    */
   async screenshot(
@@ -203,6 +203,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       name: options.name,
       fullPage: options.fullPage,
       selector: options.selector,
+      includeBase64: options.includeBase64,
     });
   }
 

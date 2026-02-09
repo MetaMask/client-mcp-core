@@ -12,6 +12,8 @@ import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
 
+const XCRUN_TIMEOUT_MS = 30_000;
+
 /**
  * Represents a single iOS Simulator device.
  */
@@ -46,12 +48,11 @@ type SimctlDeviceListJson = {
  * @returns Promise resolving to a flat array of simulator devices.
  */
 export async function listDevices(): Promise<SimulatorDevice[]> {
-  const { stdout } = await execFile('xcrun', [
-    'simctl',
-    'list',
-    'devices',
-    '-j',
-  ]);
+  const { stdout } = await execFile(
+    'xcrun',
+    ['simctl', 'list', 'devices', '-j'],
+    { timeout: XCRUN_TIMEOUT_MS },
+  );
   const data = JSON.parse(stdout) as SimctlDeviceListJson;
   const result: SimulatorDevice[] = [];
 
@@ -76,7 +77,9 @@ export async function listDevices(): Promise<SimulatorDevice[]> {
  * @returns Promise that resolves when the device has been booted.
  */
 export async function bootDevice(udid: string): Promise<void> {
-  await execFile('xcrun', ['simctl', 'boot', udid]);
+  await execFile('xcrun', ['simctl', 'boot', udid], {
+    timeout: XCRUN_TIMEOUT_MS,
+  });
 }
 
 /**
@@ -100,7 +103,9 @@ export async function isBooted(udid: string): Promise<boolean> {
  * @returns Promise that resolves when the app is launched.
  */
 export async function launchApp(udid: string, bundleId: string): Promise<void> {
-  await execFile('xcrun', ['simctl', 'launch', udid, bundleId]);
+  await execFile('xcrun', ['simctl', 'launch', udid, bundleId], {
+    timeout: XCRUN_TIMEOUT_MS,
+  });
 }
 
 /**
@@ -117,7 +122,9 @@ export async function terminateApp(
   bundleId: string,
 ): Promise<void> {
   try {
-    await execFile('xcrun', ['simctl', 'terminate', udid, bundleId]);
+    await execFile('xcrun', ['simctl', 'terminate', udid, bundleId], {
+      timeout: XCRUN_TIMEOUT_MS,
+    });
   } catch {
     // Ignore errors — app may not be running
   }
@@ -134,5 +141,7 @@ export async function takeScreenshot(
   udid: string,
   outputPath: string,
 ): Promise<void> {
-  await execFile('xcrun', ['simctl', 'io', udid, 'screenshot', outputPath]);
+  await execFile('xcrun', ['simctl', 'io', udid, 'screenshot', outputPath], {
+    timeout: XCRUN_TIMEOUT_MS,
+  });
 }

@@ -183,7 +183,11 @@ export const launchInputSchema = z
       message: 'simulatorDeviceId is required when platform is "ios"',
       path: ['simulatorDeviceId'],
     },
-  );
+  )
+  .refine((data) => data.platform !== 'ios' || Boolean(data.appBundlePath), {
+    message: 'appBundlePath is required when platform is "ios"',
+    path: ['appBundlePath'],
+  });
 
 export const cleanupInputSchema = z.object({
   sessionId: z

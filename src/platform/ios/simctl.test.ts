@@ -84,12 +84,11 @@ describe('simctl', () => {
 
       await listDevices();
 
-      expect(mockExecFile).toHaveBeenCalledWith('xcrun', [
-        'simctl',
-        'list',
-        'devices',
-        '-j',
-      ]);
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'list', 'devices', '-j'],
+        { timeout: 30_000 },
+      );
     });
 
     it('returns empty array when no devices exist', async () => {
@@ -116,11 +115,11 @@ describe('simctl', () => {
 
       await bootDevice('AAA-111');
 
-      expect(mockExecFile).toHaveBeenCalledWith('xcrun', [
-        'simctl',
-        'boot',
-        'AAA-111',
-      ]);
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'boot', 'AAA-111'],
+        { timeout: 30_000 },
+      );
     });
 
     it('propagates errors when boot fails', async () => {
@@ -173,12 +172,11 @@ describe('simctl', () => {
 
       await launchApp('AAA-111', 'io.metamask.MetaMask');
 
-      expect(mockExecFile).toHaveBeenCalledWith('xcrun', [
-        'simctl',
-        'launch',
-        'AAA-111',
-        'io.metamask.MetaMask',
-      ]);
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'launch', 'AAA-111', 'io.metamask.MetaMask'],
+        { timeout: 30_000 },
+      );
     });
   });
 
@@ -188,12 +186,11 @@ describe('simctl', () => {
 
       await terminateApp('AAA-111', 'io.metamask.MetaMask');
 
-      expect(mockExecFile).toHaveBeenCalledWith('xcrun', [
-        'simctl',
-        'terminate',
-        'AAA-111',
-        'io.metamask.MetaMask',
-      ]);
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'terminate', 'AAA-111', 'io.metamask.MetaMask'],
+        { timeout: 30_000 },
+      );
     });
 
     it('silently ignores errors', async () => {
@@ -211,13 +208,11 @@ describe('simctl', () => {
 
       await takeScreenshot('AAA-111', '/tmp/screenshot.png');
 
-      expect(mockExecFile).toHaveBeenCalledWith('xcrun', [
-        'simctl',
-        'io',
-        'AAA-111',
-        'screenshot',
-        '/tmp/screenshot.png',
-      ]);
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'io', 'AAA-111', 'screenshot', '/tmp/screenshot.png'],
+        { timeout: 30_000 },
+      );
     });
 
     it('propagates errors when screenshot fails', async () => {

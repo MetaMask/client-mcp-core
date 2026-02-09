@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 
 import type { ExtensionState } from '../../capabilities/types.js';
+import { classifyIOSError } from '../../platform/ios/ios-driver.js';
 import { PlaywrightPlatformDriver } from '../../platform/playwright-driver.js';
 import type { IPlatformDriver } from '../../platform/types.js';
 import { knowledgeStore } from '../knowledge-store.js';
@@ -145,7 +146,6 @@ export async function runTool<TInput, TResult>(
       );
     }
 
-    const page = requiresSession ? sessionManager.getPage() : undefined;
     driver = requiresSession
       ? (_platformDriver ??
         new PlaywrightPlatformDriver(
@@ -153,6 +153,12 @@ export async function runTool<TInput, TResult>(
           sessionManager,
         ))
       : undefined;
+
+    // Only retrieve the Playwright page when on browser platform.
+    // iOS sessions have no Playwright page — calling getPage() would crash.
+    const isIOSPlatform = driver?.getPlatform() === 'ios';
+    const page =
+      requiresSession && !isIOSPlatform ? sessionManager.getPage() : undefined;
 
     const context: ToolExecutionContext = {
       sessionId,
@@ -217,10 +223,20 @@ export async function runTool<TInput, TResult>(
 
     return createSuccessResponse<TResult>(result, sessionId, startTime);
   } catch (error) {
-    const errorInfo = config.classifyError?.(error) ?? {
-      code: `MM_${config.toolName.toUpperCase().replace(/^MM_/u, '')}_FAILED`,
-      message: extractErrorMessage(error),
-    };
+    const isIOS = driver?.getPlatform() === 'ios';
+    const classifiedError = config.classifyError?.(error);
+
+    let errorInfo: { code: string; message: string };
+    if (classifiedError) {
+      errorInfo = classifiedError;
+    } else if (isIOS) {
+      errorInfo = classifyIOSError(error);
+    } else {
+      errorInfo = {
+        code: `MM_${config.toolName.toUpperCase().replace(/^MM_/u, '')}_FAILED`,
+        message: extractErrorMessage(error),
+      };
+    }
 
     let failureObservation: StepRecordObservation = createEmptyObservation();
 

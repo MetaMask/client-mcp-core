@@ -168,6 +168,7 @@ export async function handleDescribeScreen(
         const result = await context.driver.screenshot({
           name: screenshotName,
           fullPage: true,
+          includeBase64: input.includeScreenshotBase64,
         });
 
         screenshot = {

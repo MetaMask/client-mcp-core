@@ -168,7 +168,7 @@ export class XCUITestClient {
     }
 
     if (error.name === 'TimeoutError' || message.includes('timed out')) {
-      return true;
+      return false;
     }
 
     return false;

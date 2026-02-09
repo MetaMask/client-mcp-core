@@ -38,6 +38,7 @@ export async function handleScreenshot(
         name: input.name,
         fullPage: input.fullPage ?? true,
         selector: input.selector,
+        includeBase64: input.includeBase64,
       });
 
       const response: ScreenshotToolResult = {

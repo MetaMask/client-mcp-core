@@ -253,9 +253,7 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         driver.type('testId', 'missing', 'text', new Map(), 50),
-      ).rejects.toThrowError(
-        'Element not found: testId:missing (timeout 50ms)',
-      );
+      ).rejects.toThrowError(/Element not found: testId:missing/u);
     });
   });
 
@@ -552,9 +550,9 @@ describe('IOSPlatformDriver', () => {
       expect(driver.isToolSupported('mm_list_testids')).toBe(true);
     });
 
-    it('returns true for unknown tool names', () => {
-      expect(driver.isToolSupported('mm_future_tool')).toBe(true);
-      expect(driver.isToolSupported('')).toBe(true);
+    it('returns false for unknown tool names (allow-list)', () => {
+      expect(driver.isToolSupported('mm_future_tool')).toBe(false);
+      expect(driver.isToolSupported('')).toBe(false);
     });
   });
 

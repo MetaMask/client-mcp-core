@@ -84,6 +84,7 @@ export type SessionScreenshotOptions = {
   name: string;
   fullPage?: boolean;
   selector?: string;
+  includeBase64?: boolean;
 };
 
 /**

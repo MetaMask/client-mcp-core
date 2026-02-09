@@ -40,10 +40,15 @@ describe('platform-gating', () => {
       writeSessionMetadata: vi.fn().mockResolvedValue('test-session'),
     } as any);
 
-    const unsupportedTools = new Set(['mm_clipboard', 'mm_navigate']);
+    const supportedTools = new Set([
+      'mm_click',
+      'mm_type',
+      'mm_wait_for',
+      'mm_screenshot',
+    ]);
     mockDriver = {
       isToolSupported: vi.fn((toolName: string) => {
-        return !unsupportedTools.has(toolName);
+        return supportedTools.has(toolName);
       }),
       getPlatform: vi.fn().mockReturnValue('ios'),
       getAppState: vi.fn().mockResolvedValue({}),
@@ -235,6 +240,37 @@ describe('platform-gating', () => {
       const callArgs = recordStepSpy.mock.calls[0][0];
       expect(callArgs.automationPlatform).toBe('ios');
       expect(callArgs.outcome.ok).toBe(false);
+    });
+  });
+
+  describe('iOS tool registry drift detection', () => {
+    it('validates DEFAULT_SUPPORTED_IOS_TOOLS against tool registry', async () => {
+      // Import the actual implementations
+      const { getPrefixedToolNames } = await import('./definitions.js');
+      const { DEFAULT_SUPPORTED_IOS_TOOLS } =
+        await import('../../platform/ios/ios-driver.js');
+
+      // Define browser-only tools that should not be in iOS support list
+      const BROWSER_ONLY_TOOLS = new Set([
+        'mm_clipboard',
+        'mm_navigate',
+        'mm_switch_to_tab',
+        'mm_close_tab',
+        'mm_wait_for_notification',
+      ]);
+
+      const registryTools = new Set(getPrefixedToolNames());
+
+      // Assert: Every tool in registry is either in DEFAULT_SUPPORTED_IOS_TOOLS or BROWSER_ONLY_TOOLS
+      for (const tool of registryTools) {
+        const isAccountedFor =
+          DEFAULT_SUPPORTED_IOS_TOOLS.has(tool) || BROWSER_ONLY_TOOLS.has(tool);
+        expect(isAccountedFor).toBe(true);
+      }
+
+      for (const tool of DEFAULT_SUPPORTED_IOS_TOOLS) {
+        expect(registryTools.has(tool)).toBe(true);
+      }
     });
   });
 });
