@@ -1,3 +1,5 @@
+/* eslint-disable -- fetch and Response are stable APIs since Node 20.18+ (LTS), see https://nodejs.org/docs/latest-v20.x/api/globals.html#fetch */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { XCUITestClient } from './xcuitest-client.js';
