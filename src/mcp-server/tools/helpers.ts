@@ -1,8 +1,7 @@
 import type { Page } from '@playwright/test';
 
-import type { IPlatformDriver } from '../../platform/types.js';
-
 import type { ExtensionState } from '../../capabilities/types.js';
+import type { IPlatformDriver } from '../../platform/types.js';
 import { OBSERVATION_TESTID_LIMIT } from '../constants.js';
 import {
   knowledgeStore,
@@ -112,7 +111,7 @@ export function requireActiveSession<Result>(
 /**
  * Collect observation data from the current page state.
  *
- * @param page - The page to collect observation from
+ * @param driver - The platform driver to collect observation from
  * @param level - Level of detail to collect (full, minimal, or none)
  * @param presetState - Optional pre-fetched extension state to use instead of querying
  * @returns Observation data with state, testIds, and accessibility tree
@@ -220,7 +219,7 @@ export async function recordToolStep(params: RecordStepParams): Promise<void> {
 /**
  * Collect observation data and record the tool step in the knowledge store.
  *
- * @param page - The page to collect observation from
+ * @param driver - The platform driver to collect observation from
  * @param toolName - Name of the tool that was executed
  * @param input - Input parameters passed to the tool
  * @param startTime - Timestamp when the tool execution started
