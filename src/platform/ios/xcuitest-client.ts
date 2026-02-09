@@ -3,6 +3,7 @@
 import type {
   XCUITestClientConfig,
   RunnerResponse,
+  SnapshotDataPayload,
   SnapshotNode,
   SwipeDirection,
 } from './types.js';
@@ -56,8 +57,14 @@ export class XCUITestClient {
   async snapshot(options?: {
     interactiveOnly?: boolean;
     compact?: boolean;
+    depth?: number;
+    scope?: string;
   }): Promise<SnapshotNode[]> {
-    return await this.sendCommand<SnapshotNode[]>('snapshot', options);
+    const result = await this.sendCommand<SnapshotDataPayload>(
+      'snapshot',
+      options,
+    );
+    return result.nodes ?? [];
   }
 
   async back(): Promise<void> {
@@ -68,12 +75,28 @@ export class XCUITestClient {
     await this.sendCommand('home');
   }
 
-  async healthCheck(): Promise<boolean> {
+  /**
+   * Poll the runner until it accepts a snapshot command, or timeout.
+   * Used to detect runner readiness (Swift runner has no healthcheck command).
+   */
+  async waitForRunner(timeoutMs: number = 15_000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        await this.sendCommand<SnapshotDataPayload>('snapshot');
+        return true;
+      } catch {
+        await this.sleep(100);
+      }
+    }
+    return false;
+  }
+
+  async shutdown(): Promise<void> {
     try {
-      await this.sendCommand('healthcheck');
-      return true;
+      await this.sendCommand('shutdown');
     } catch {
-      return false;
+      // ignored — runner may already be gone
     }
   }
 
@@ -98,8 +121,9 @@ export class XCUITestClient {
         const json = (await response.json()) as RunnerResponse<T>;
 
         if (!json.ok) {
+          const errorMessage = json.error?.message ?? 'unknown error';
           throw new Error(
-            `Runner command '${command}' failed: ${json.error ?? 'unknown error'}`,
+            `Runner command '${command}' failed: ${errorMessage}`,
           );
         }
 
