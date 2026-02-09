@@ -1,9 +1,8 @@
 import type { Page } from '@playwright/test';
 
-import type { IPlatformDriver } from '../../platform/types.js';
-import { PlaywrightPlatformDriver } from '../../platform/playwright-driver.js';
-
 import type { ExtensionState } from '../../capabilities/types.js';
+import { PlaywrightPlatformDriver } from '../../platform/playwright-driver.js';
+import type { IPlatformDriver } from '../../platform/types.js';
 import { knowledgeStore } from '../knowledge-store.js';
 import { getSessionManager } from '../session-manager.js';
 import { collectObservation } from './helpers.js';
@@ -46,14 +45,27 @@ export type ToolExecutionContext = {
 
 let _platformDriver: IPlatformDriver | undefined;
 
+/**
+ * Sets the active platform driver for tool execution.
+ *
+ * @param driver - The platform driver to use for subsequent tool calls.
+ */
 export function setPlatformDriver(driver: IPlatformDriver): void {
   _platformDriver = driver;
 }
 
+/**
+ * Gets the currently active platform driver.
+ *
+ * @returns The active platform driver, or undefined if not set.
+ */
 export function getPlatformDriver(): IPlatformDriver | undefined {
   return _platformDriver;
 }
 
+/**
+ * Clears the active platform driver.
+ */
 export function clearPlatformDriver(): void {
   _platformDriver = undefined;
 }

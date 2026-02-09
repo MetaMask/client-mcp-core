@@ -7,12 +7,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { runTool, setPlatformDriver, clearPlatformDriver } from './run-tool.js';
-import * as sessionManagerModule from '../session-manager.js';
+import type { IPlatformDriver } from '../../platform/types.js';
 import * as knowledgeStoreModule from '../knowledge-store.js';
+import * as sessionManagerModule from '../session-manager.js';
 import { createMockSessionManager, createMockPage } from '../test-utils';
 import { ErrorCodes } from '../types';
-import type { IPlatformDriver } from '../../platform/types.js';
+import { runTool, setPlatformDriver, clearPlatformDriver } from './run-tool.js';
 
 describe('platform-gating', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;

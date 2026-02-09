@@ -1,10 +1,13 @@
+import type {
+  ExtensionState,
+  StateSnapshotCapability,
+} from '../../capabilities/types.js';
+import type { IPlatformDriver } from '../../platform/types.js';
+import { getSessionManager } from '../session-manager.js';
+import type { GetStateResult, McpResponse, HandlerOptions } from '../types';
 import { classifyStateError } from './error-classification.js';
 import { collectObservation } from './helpers.js';
 import { runTool } from './run-tool.js';
-import type { StateSnapshotCapability } from '../../capabilities/types.js';
-import { getSessionManager } from '../session-manager.js';
-import type { GetStateResult, McpResponse, HandlerOptions } from '../types';
-import type { IPlatformDriver } from '../../platform/types.js';
 
 /**
  * Tool options for state-related operations.
@@ -30,7 +33,7 @@ async function getState(
   page: unknown,
   sessionManager: ReturnType<typeof getSessionManager>,
   stateSnapshotCapability?: StateSnapshotCapability,
-) {
+): Promise<ExtensionState> {
   if (stateSnapshotCapability && page) {
     const extensionId = sessionManager.getSessionState()?.extensionId;
     return stateSnapshotCapability.getState(page as never, {
@@ -64,9 +67,12 @@ export async function handleGetState(
      * @returns The extension state, tab information, and observation data
      */
     execute: async (context) => {
+      if (!context.driver) {
+        throw new Error('No platform driver available');
+      }
       const sessionManager = getSessionManager();
       const state = await getState(
-        context.driver!,
+        context.driver,
         context.page,
         sessionManager,
         options?.stateSnapshotCapability,
