@@ -9,15 +9,12 @@ export type {
   TypeActionResult,
   PlatformScreenshotOptions,
   IPlatformDriver,
-} from './platform/index.js';
+} from './platform';
 export * from './platform/playwright-driver.js';
 
 // iOS Platform Support
-export * from './platform/ios/index.js';
+export * from './platform/ios';
 export * from './platform/ios/ios-driver.js';
-export * from './platform/ios/xcuitest-client.js';
-export * from './platform/ios/simctl.js';
-export * from './platform/ios/runner-lifecycle.js';
 
 // MCP Server - Session Manager Interface
 export * from './mcp-server/session-manager.js';
