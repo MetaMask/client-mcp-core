@@ -9,7 +9,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -43,6 +43,7 @@ const UNSUPPORTED_TOOLS = new Set([
   'mm_switch_to_tab',
   'mm_close_tab',
   'mm_wait_for_notification',
+  'mm_navigate',
 ]);
 
 /**
@@ -96,34 +97,40 @@ export class IOSPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<ClickActionResult> {
-    const snapshot = await this.#client.snapshot();
-    const element = this.#findElement(
-      snapshot,
-      targetType,
-      targetValue,
-      refMap,
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      const snapshot = await this.#client.snapshot();
+      const element = this.#findElement(
+        snapshot,
+        targetType,
+        targetValue,
+        refMap,
+      );
+
+      if (element) {
+        if (!element.rect) {
+          throw new Error(
+            `Element has no rect for tap: ${targetType}:${targetValue}`,
+          );
+        }
+
+        const { x, y } = this.#calculateCenter(element.rect);
+        await this.#client.tap(x, y);
+        await this.#sleep(this.#animationDelayMs);
+
+        return {
+          clicked: true,
+          target: `${targetType}:${targetValue}`,
+        };
+      }
+
+      await this.#sleep(DEFAULT_POLL_INTERVAL_MS);
+    }
+
+    throw new Error(
+      `Element not found: ${targetType}:${targetValue} (timeout ${timeoutMs}ms)`,
     );
-
-    if (!element) {
-      throw new Error(
-        `Element not found: ${targetType}:${targetValue} (timeout ${timeoutMs}ms)`,
-      );
-    }
-
-    if (!element.rect) {
-      throw new Error(
-        `Element has no rect for tap: ${targetType}:${targetValue}`,
-      );
-    }
-
-    const { x, y } = this.#calculateCenter(element.rect);
-    await this.#client.tap(x, y);
-    await this.#sleep(this.#animationDelayMs);
-
-    return {
-      clicked: true,
-      target: `${targetType}:${targetValue}`,
-    };
   }
 
   /**
@@ -188,13 +195,15 @@ export class IOSPlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * @param _rootSelector - Optional CSS selector to scope the snapshot.
+   * @param rootSelector - Optional selector to scope the snapshot subtree.
    * @returns Promise resolving to accessibility tree and ref map.
    */
   async getAccessibilityTree(
-    _rootSelector?: string,
+    rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
-    const snapshot = await this.#client.snapshot();
+    const snapshot = await this.#client.snapshot(
+      rootSelector ? { scope: rootSelector } : undefined,
+    );
     const nodes: A11yNodeTrimmed[] = [];
     const refMap = new Map<string, string>();
     let refCounter = 0;
@@ -275,6 +284,8 @@ export class IOSPlatformDriver implements IPlatformDriver {
     const filename = `${options.name}.png`;
     const filepath = join(this.#screenshotDir, filename);
 
+    await mkdir(this.#screenshotDir, { recursive: true });
+
     await execFileAsync('xcrun', [
       'simctl',
       'io',
@@ -286,11 +297,15 @@ export class IOSPlatformDriver implements IPlatformDriver {
     const buffer = await readFile(filepath);
     const base64 = buffer.toString('base64');
 
+    // Parse PNG header (bytes 16-19: width, 20-23: height, big-endian uint32)
+    const width = buffer.length >= 24 ? buffer.readUInt32BE(16) : 0;
+    const height = buffer.length >= 24 ? buffer.readUInt32BE(20) : 0;
+
     return {
       path: filepath,
       base64,
-      width: 0,
-      height: 0,
+      width,
+      height,
     };
   }
 
@@ -413,8 +428,14 @@ export class IOSPlatformDriver implements IPlatformDriver {
   }
 
   /**
+   * Best-effort element lookup by selector string.
+   *
+   * iOS has no CSS selectors — the selector is matched against node properties
+   * in priority order: `identifier` (accessibilityIdentifier / testId) first,
+   * then `label` (accessibilityLabel), then `type` (element class name).
+   *
    * @param nodes - Snapshot nodes to search.
-   * @param selector - Selector to match against label or type.
+   * @param selector - Selector to match against identifier, label, or type.
    * @returns The matched snapshot node, if found.
    */
   #findBySelector(
@@ -424,6 +445,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
     const flat = this.#flattenNodes(nodes);
 
     return (
+      flat.find((node) => node.identifier === selector) ??
       flat.find((node) => node.label === selector) ??
       flat.find((node) => node.type === selector)
     );
@@ -476,4 +498,34 @@ export class IOSPlatformDriver implements IPlatformDriver {
   async #sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/**
+ * @param error - The thrown error to classify.
+ * @returns Structured error with iOS-specific code and message.
+ */
+export function classifyIOSError(error: unknown): {
+  code: string;
+  message: string;
+} {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  if (
+    errorMessage.includes('Element not found') ||
+    errorMessage.includes('Element has no rect')
+  ) {
+    return { code: 'MM_IOS_ELEMENT_NOT_FOUND', message: errorMessage };
+  }
+  if (errorMessage.includes('Timeout waiting for element')) {
+    return { code: 'MM_IOS_ELEMENT_NOT_FOUND', message: errorMessage };
+  }
+  if (
+    errorMessage.includes('Snapshot command failed') ||
+    errorMessage.includes('snapshot')
+  ) {
+    return { code: 'MM_IOS_SNAPSHOT_FAILED', message: errorMessage };
+  }
+  if (errorMessage.includes('Runner') && errorMessage.includes('not ready')) {
+    return { code: 'MM_IOS_RUNNER_NOT_READY', message: errorMessage };
+  }
+  return { code: 'MM_INTERNAL_ERROR', message: errorMessage };
 }

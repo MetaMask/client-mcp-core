@@ -6,6 +6,7 @@ import type {
   HandlerOptions,
 } from '../types';
 import { createSuccessResponse } from '../utils';
+import { clearPlatformDriver } from './run-tool.js';
 
 /**
  * Handles the cleanup tool request to stop browser and services.
@@ -23,6 +24,15 @@ export async function handleCleanup(
   const sessionId = input.sessionId ?? sessionManager.getSessionId();
 
   const cleanedUp = await sessionManager.cleanup();
+
+  clearPlatformDriver();
+  try {
+    const { stopAllRunners } =
+      await import('../../platform/ios/runner-lifecycle.js');
+    await stopAllRunners();
+  } catch {
+    /* iOS module not available — ignore */
+  }
 
   return createSuccessResponse<CleanupResult>(
     { cleanedUp },

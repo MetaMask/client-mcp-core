@@ -12,7 +12,8 @@ import type { ChildProcess } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-let runnerProcess: ChildProcess | undefined;
+type RunnerEntry = { process: ChildProcess; port: number };
+const runnerProcesses = new Map<string, RunnerEntry>();
 
 export type RunnerOptions = {
   derivedDataPath: string;
@@ -55,6 +56,13 @@ async function findXctestrunFile(derivedDataPath: string): Promise<string> {
  * @throws If no .xctestrun file is found in derivedDataPath
  */
 export async function startRunner(options: RunnerOptions): Promise<number> {
+  const { destination } = options;
+
+  // Stop any existing runner for this destination before starting a new one
+  if (runnerProcesses.has(destination)) {
+    await stopRunner(destination);
+  }
+
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const xctestrunPath = await findXctestrunFile(options.derivedDataPath);
 
@@ -64,10 +72,8 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       '-xctestrun',
       xctestrunPath,
       '-destination',
-      options.destination,
+      destination,
     ]);
-
-    runnerProcess = proc;
 
     let resolved = false;
 
@@ -75,6 +81,7 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (!resolved) {
         resolved = true;
         proc.kill();
+        runnerProcesses.delete(destination);
         reject(new Error(`Runner did not emit port within ${timeoutMs}ms`));
       }
     }, timeoutMs);
@@ -88,7 +95,9 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (match?.[1]) {
         resolved = true;
         clearTimeout(timer);
-        resolve(Number(match[1]));
+        const port = Number(match[1]);
+        runnerProcesses.set(destination, { process: proc, port });
+        resolve(port);
       }
     });
 
@@ -96,6 +105,7 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
+        runnerProcesses.delete(destination);
         reject(error);
       }
     });
@@ -104,6 +114,7 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
+        runnerProcesses.delete(destination);
         reject(
           new Error(
             `Runner exited with code ${code ?? 'unknown'} before emitting port`,
@@ -115,12 +126,54 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
 }
 
 /**
- * Stop the runner process if one is currently active.
+ * Stop a runner process by destination, or all runners if none specified.
+ *
+ * Sends a graceful shutdown command before killing the process.
+ *
+ * @param destination - Specific destination to stop, or undefined to stop all.
  */
-export function stopRunner(): void {
-  if (runnerProcess) {
-    runnerProcess.kill();
-    runnerProcess = undefined;
+export async function stopRunner(destination?: string): Promise<void> {
+  if (destination) {
+    const entry = runnerProcesses.get(destination);
+    if (entry) {
+      try {
+        await fetch(`http://127.0.0.1:${entry.port}/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'shutdown' }),
+          signal: AbortSignal.timeout(2000),
+        });
+      } catch {
+        /* ignore – best-effort graceful shutdown */
+      }
+      entry.process.kill();
+      runnerProcesses.delete(destination);
+    }
+  } else {
+    await stopAllRunners();
+  }
+}
+
+/**
+ * Stop all active runner processes.
+ *
+ * Sends a graceful shutdown command to each before killing.
+ */
+export async function stopAllRunners(): Promise<void> {
+  const entries = [...runnerProcesses.entries()];
+  for (const [key, entry] of entries) {
+    try {
+      await fetch(`http://127.0.0.1:${entry.port}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'shutdown' }),
+        signal: AbortSignal.timeout(2000),
+      });
+    } catch {
+      /* ignore – best-effort graceful shutdown */
+    }
+    entry.process.kill();
+    runnerProcesses.delete(key);
   }
 }
 

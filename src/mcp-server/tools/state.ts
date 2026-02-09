@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test';
+
 import type {
   ExtensionState,
   StateSnapshotCapability,
@@ -36,7 +38,7 @@ async function getState(
 ): Promise<ExtensionState> {
   if (stateSnapshotCapability && page) {
     const extensionId = sessionManager.getSessionState()?.extensionId;
-    return stateSnapshotCapability.getState(page as never, {
+    return stateSnapshotCapability.getState(page as Page, {
       extensionId,
       chainId: sessionManager.getSessionState()?.ports?.anvil ? 1337 : 1,
     });
@@ -78,22 +80,25 @@ export async function handleGetState(
         options?.stateSnapshotCapability,
       );
 
-      const trackedPages = sessionManager.getTrackedPages();
-      const activePage = sessionManager.getPage();
-      const activeTabInfo = trackedPages.find(
-        (trackedPage) => trackedPage.page === activePage,
-      );
-
-      const tabs = {
-        active: {
-          role: activeTabInfo?.role ?? 'other',
-          url: activePage.url(),
-        },
-        tracked: trackedPages.map((trackedPage) => ({
-          role: trackedPage.role,
-          url: trackedPage.url,
-        })),
-      };
+      // Tab info is browser-only
+      let tabs;
+      if (context.driver?.getPlatform() !== 'ios') {
+        const trackedPages = sessionManager.getTrackedPages();
+        const activePage = sessionManager.getPage();
+        const activeTabInfo = trackedPages.find(
+          (trackedPage) => trackedPage.page === activePage,
+        );
+        tabs = {
+          active: {
+            role: activeTabInfo?.role ?? 'other',
+            url: activePage.url(),
+          },
+          tracked: trackedPages.map((trackedPage) => ({
+            role: trackedPage.role,
+            url: trackedPage.url,
+          })),
+        };
+      }
 
       const observation = await collectObservation(
         context.driver,
