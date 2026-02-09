@@ -35,7 +35,10 @@ export async function handleClipboard(
      * @returns Promise resolving to clipboard operation result
      */
     execute: async (context) => {
-      const page = context.page!;
+      if (!context.page) {
+        throw new Error('No page available for clipboard operation');
+      }
+      const { page } = context;
       const cdpSession = await page.context().newCDPSession(page);
 
       try {

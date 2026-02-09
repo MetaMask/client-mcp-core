@@ -75,7 +75,10 @@ export async function handleClick(
      * @returns Promise resolving to click result with success status and target info
      */
     execute: async (context) => {
-      return context.driver!.click(
+      if (!context.driver) {
+        throw new Error('No platform driver available');
+      }
+      return context.driver.click(
         targetType,
         targetValue,
         context.refMap,
@@ -152,7 +155,10 @@ export async function handleType(
      * @returns Promise resolving to type result with success status and text length
      */
     execute: async (context) => {
-      return context.driver!.type(
+      if (!context.driver) {
+        throw new Error('No platform driver available');
+      }
+      return context.driver.type(
         targetType,
         targetValue,
         input.text,
@@ -236,7 +242,10 @@ export async function handleWaitFor(
      * @returns Promise resolving to wait result with success status and target info
      */
     execute: async (context) => {
-      await context.driver!.waitForElement(
+      if (!context.driver) {
+        throw new Error('No platform driver available');
+      }
+      await context.driver.waitForElement(
         targetType,
         targetValue,
         context.refMap,

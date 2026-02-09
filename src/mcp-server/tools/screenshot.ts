@@ -27,10 +27,14 @@ export async function handleScreenshot(
     /**
      * Executes the screenshot capture.
      *
+     * @param context - The tool execution context containing the driver.
      * @returns The screenshot result.
      */
     execute: async (context) => {
-      const result = await context.driver!.screenshot({
+      if (!context.driver) {
+        throw new Error('No platform driver available');
+      }
+      const result = await context.driver.screenshot({
         name: input.name,
         fullPage: input.fullPage ?? true,
         selector: input.selector,
