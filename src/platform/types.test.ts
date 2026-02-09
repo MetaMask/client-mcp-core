@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+
 import type {
-  IPlatformDriver,
   PlatformType,
   TargetType,
   ClickActionResult,
@@ -21,7 +21,10 @@ describe('Platform Types', () => {
   });
 
   it('should define action result types', () => {
-    const clickResult: ClickActionResult = { clicked: true, target: 'testId:foo' };
+    const clickResult: ClickActionResult = {
+      clicked: true,
+      target: 'testId:foo',
+    };
     expect(clickResult.clicked).toBe(true);
 
     const typeResult: TypeActionResult = {

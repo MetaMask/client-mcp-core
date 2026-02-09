@@ -28,12 +28,12 @@ export type SimulatorDevice = {
 type SimctlDeviceListJson = {
   devices: Record<
     string,
-    Array<{
+    {
       name: string;
       udid: string;
       state: string;
       isAvailable?: boolean;
-    }>
+    }[]
   >;
 };
 
@@ -42,6 +42,8 @@ type SimctlDeviceListJson = {
  *
  * Parses the JSON output of `xcrun simctl list devices -j` and
  * flattens the runtime-keyed structure into a flat array.
+ *
+ * @returns Promise resolving to a flat array of simulator devices.
  */
 export async function listDevices(): Promise<SimulatorDevice[]> {
   const { stdout } = await execFile('xcrun', [
@@ -69,6 +71,9 @@ export async function listDevices(): Promise<SimulatorDevice[]> {
 
 /**
  * Boot a simulator device by UDID.
+ *
+ * @param udid - Simulator device UDID.
+ * @returns Promise that resolves when the device has been booted.
  */
 export async function bootDevice(udid: string): Promise<void> {
   await execFile('xcrun', ['simctl', 'boot', udid]);
@@ -76,14 +81,23 @@ export async function bootDevice(udid: string): Promise<void> {
 
 /**
  * Check if a simulator device is currently booted.
+ *
+ * @param udid - Simulator device UDID.
+ * @returns Promise resolving to true if device is booted.
  */
 export async function isBooted(udid: string): Promise<boolean> {
   const devices = await listDevices();
-  return devices.some((d) => d.udid === udid && d.state === 'Booted');
+  return devices.some(
+    (device) => device.udid === udid && device.state === 'Booted',
+  );
 }
 
 /**
  * Launch an app on a simulator device by bundle ID.
+ *
+ * @param udid - Simulator device UDID.
+ * @param bundleId - App bundle identifier.
+ * @returns Promise that resolves when the app is launched.
  */
 export async function launchApp(udid: string, bundleId: string): Promise<void> {
   await execFile('xcrun', ['simctl', 'launch', udid, bundleId]);
@@ -93,6 +107,10 @@ export async function launchApp(udid: string, bundleId: string): Promise<void> {
  * Terminate an app on a simulator device by bundle ID.
  *
  * Silently ignores errors (e.g., app not running).
+ *
+ * @param udid - Simulator device UDID.
+ * @param bundleId - App bundle identifier.
+ * @returns Promise that resolves when termination is attempted.
  */
 export async function terminateApp(
   udid: string,
@@ -107,6 +125,10 @@ export async function terminateApp(
 
 /**
  * Take a screenshot of a simulator device and save to the given path.
+ *
+ * @param udid - Simulator device UDID.
+ * @param outputPath - File path for the screenshot output.
+ * @returns Promise that resolves when the screenshot is saved.
  */
 export async function takeScreenshot(
   udid: string,

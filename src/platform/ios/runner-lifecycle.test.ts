@@ -1,8 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EventEmitter } from 'node:events';
-import { Readable } from 'node:stream';
-
+import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { readdir } from 'node:fs/promises';
+import { Readable } from 'node:stream';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+import { startRunner, stopRunner, waitForReady } from './runner-lifecycle.js';
 
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
@@ -12,11 +15,6 @@ vi.mock('node:fs/promises', () => ({
   readdir: vi.fn(),
 }));
 
-import { spawn } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
-
-import { startRunner, stopRunner, waitForReady } from './runner-lifecycle.js';
-
 const mockSpawn = vi.mocked(spawn);
 const mockReaddir = vi.mocked(readdir) as unknown as ReturnType<typeof vi.fn>;
 
@@ -24,9 +22,17 @@ function createMockProcess(): ChildProcess {
   const proc = new EventEmitter() as ChildProcess;
   proc.stdout = new Readable({ read() {} });
   proc.stderr = new Readable({ read() {} });
-  proc.kill = vi.fn();
+  proc.kill = () => true;
+  vi.spyOn(proc, 'kill');
   Object.defineProperty(proc, 'pid', { value: 12345, writable: true });
   return proc;
+}
+
+function getStdout(proc: ChildProcess): Readable {
+  if (!proc.stdout) {
+    throw new Error('Expected stdout to be defined');
+  }
+  return proc.stdout;
 }
 
 describe('runner-lifecycle', () => {
@@ -57,7 +63,7 @@ describe('runner-lifecycle', () => {
         expect(mockSpawn).toHaveBeenCalled();
       });
 
-      proc.stdout!.emit(
+      getStdout(proc).emit(
         'data',
         Buffer.from('Starting...\nAGENT_DEVICE_RUNNER_PORT=9876\n'),
       );
@@ -82,7 +88,7 @@ describe('runner-lifecycle', () => {
           derivedDataPath: '/derived',
           destination: 'platform=iOS Simulator,id=AAA-111',
         }),
-      ).rejects.toThrow('No .xctestrun file found');
+      ).rejects.toThrowError('No .xctestrun file found');
     });
 
     it('rejects when process exits before emitting port', async () => {
@@ -102,7 +108,7 @@ describe('runner-lifecycle', () => {
 
       proc.emit('close', 1);
 
-      await expect(portPromise).rejects.toThrow(
+      await expect(portPromise).rejects.toThrowError(
         'Runner exited with code 1 before emitting port',
       );
     });
@@ -124,7 +130,7 @@ describe('runner-lifecycle', () => {
 
       proc.emit('error', new Error('spawn ENOENT'));
 
-      await expect(portPromise).rejects.toThrow('spawn ENOENT');
+      await expect(portPromise).rejects.toThrowError('spawn ENOENT');
     });
 
     it('rejects on timeout when port is never emitted', async () => {
@@ -138,7 +144,7 @@ describe('runner-lifecycle', () => {
         timeoutMs: 200,
       });
 
-      await expect(portPromise).rejects.toThrow(
+      await expect(portPromise).rejects.toThrowError(
         'Runner did not emit port within 200ms',
       );
       expect(proc.kill).toHaveBeenCalled();
@@ -159,8 +165,14 @@ describe('runner-lifecycle', () => {
         expect(mockSpawn).toHaveBeenCalled();
       });
 
-      proc.stdout!.emit('data', Buffer.from('AGENT_DEVICE_RUNNER_PORT=1111\n'));
-      proc.stdout!.emit('data', Buffer.from('AGENT_DEVICE_RUNNER_PORT=2222\n'));
+      getStdout(proc).emit(
+        'data',
+        Buffer.from('AGENT_DEVICE_RUNNER_PORT=1111\n'),
+      );
+      getStdout(proc).emit(
+        'data',
+        Buffer.from('AGENT_DEVICE_RUNNER_PORT=2222\n'),
+      );
 
       const port = await portPromise;
 
@@ -184,7 +196,10 @@ describe('runner-lifecycle', () => {
         expect(mockSpawn).toHaveBeenCalled();
       });
 
-      proc.stdout!.emit('data', Buffer.from('AGENT_DEVICE_RUNNER_PORT=9876\n'));
+      getStdout(proc).emit(
+        'data',
+        Buffer.from('AGENT_DEVICE_RUNNER_PORT=9876\n'),
+      );
       await portPromise;
 
       stopRunner();
@@ -193,7 +208,7 @@ describe('runner-lifecycle', () => {
     });
 
     it('does nothing when no runner is active', () => {
-      expect(() => stopRunner()).not.toThrow();
+      expect(() => stopRunner()).not.toThrowError();
     });
   });
 

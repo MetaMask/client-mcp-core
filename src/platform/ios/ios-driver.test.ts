@@ -143,7 +143,7 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         driver.click('testId', 'nonexistent', new Map(), 5000),
-      ).rejects.toThrow('Element not found: testId:nonexistent');
+      ).rejects.toThrowError('Element not found: testId:nonexistent');
     });
 
     it('throws when element has no rect', async () => {
@@ -153,7 +153,7 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         driver.click('testId', 'no-rect-btn', new Map(), 5000),
-      ).rejects.toThrow('Element has no rect for tap: testId:no-rect-btn');
+      ).rejects.toThrowError('Element has no rect for tap: testId:no-rect-btn');
     });
 
     it('waits for animation delay after tap', async () => {
@@ -162,17 +162,12 @@ describe('IOSPlatformDriver', () => {
       });
       mockClient.snapshot.mockResolvedValue(SAMPLE_SNAPSHOT);
 
-      const sleepSpy = vi.spyOn(
-        IOSPlatformDriver.prototype as unknown as {
-          sleep: (ms: number) => Promise<void>;
-        },
-        'sleep',
-      );
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
 
       await delayDriver.click('testId', 'send-button', new Map(), 5000);
 
-      expect(sleepSpy).toHaveBeenCalledWith(100);
-      sleepSpy.mockRestore();
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 100);
+      setTimeoutSpy.mockRestore();
     });
 
     it('resolves a11yRef with label-based resolution', async () => {
@@ -190,7 +185,7 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         driver.click('a11yRef', 'e999', new Map(), 5000),
-      ).rejects.toThrow('Element not found: a11yRef:e999');
+      ).rejects.toThrowError('Element not found: a11yRef:e999');
     });
   });
 
@@ -239,7 +234,7 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         driver.type('testId', 'missing', 'text', new Map(), 5000),
-      ).rejects.toThrow('Element not found: testId:missing');
+      ).rejects.toThrowError('Element not found: testId:missing');
     });
   });
 
@@ -268,7 +263,9 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         driver.waitForElement('testId', 'missing', new Map(), 50),
-      ).rejects.toThrow('Timeout waiting for element: testId:missing (50ms)');
+      ).rejects.toThrowError(
+        'Timeout waiting for element: testId:missing (50ms)',
+      );
     });
 
     it('works with a11yRef target type', async () => {
@@ -287,7 +284,7 @@ describe('IOSPlatformDriver', () => {
 
       const { nodes, refMap } = await driver.getAccessibilityTree();
 
-      expect(nodes.length).toBe(5);
+      expect(nodes).toHaveLength(5);
 
       expect(nodes[0]).toStrictEqual({
         ref: 'e1',
@@ -482,7 +479,7 @@ describe('IOSPlatformDriver', () => {
 
       await expect(
         screenshotDriver.screenshot({ name: 'test-shot' }),
-      ).rejects.toThrow();
+      ).rejects.toThrowError('xcrun');
     });
 
     it('is a callable method', () => {
@@ -639,18 +636,13 @@ describe('IOSPlatformDriver', () => {
     it('uses default animation delay of 300ms', async () => {
       const defaultDriver = new IOSPlatformDriver(mockClient as any, TEST_UDID);
 
-      const sleepSpy = vi.spyOn(
-        IOSPlatformDriver.prototype as unknown as {
-          sleep: (ms: number) => Promise<void>;
-        },
-        'sleep',
-      );
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
       mockClient.snapshot.mockResolvedValue(SAMPLE_SNAPSHOT);
 
       await defaultDriver.click('testId', 'send-button', new Map(), 5000);
 
-      expect(sleepSpy).toHaveBeenCalledWith(300);
-      sleepSpy.mockRestore();
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 300);
+      setTimeoutSpy.mockRestore();
     });
 
     it('accepts custom animation delay', async () => {
@@ -659,17 +651,12 @@ describe('IOSPlatformDriver', () => {
       });
       mockClient.snapshot.mockResolvedValue(SAMPLE_SNAPSHOT);
 
-      const sleepSpy = vi.spyOn(
-        IOSPlatformDriver.prototype as unknown as {
-          sleep: (ms: number) => Promise<void>;
-        },
-        'sleep',
-      );
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
 
       await customDriver.click('testId', 'send-button', new Map(), 5000);
 
-      expect(sleepSpy).toHaveBeenCalledWith(500);
-      sleepSpy.mockRestore();
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
+      setTimeoutSpy.mockRestore();
     });
   });
 });

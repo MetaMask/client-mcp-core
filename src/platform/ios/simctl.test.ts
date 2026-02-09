@@ -1,14 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('node:child_process', () => ({
-  execFile: vi.fn(),
-}));
-
-vi.mock('node:util', () => ({
-  promisify: (fn: unknown) => fn,
-}));
-
 import { execFile } from 'node:child_process';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import {
   listDevices,
@@ -18,6 +9,14 @@ import {
   terminateApp,
   takeScreenshot,
 } from './simctl.js';
+
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(),
+}));
+
+vi.mock('node:util', () => ({
+  promisify: (fn: unknown) => fn,
+}));
 
 const mockExecFile = vi.mocked(execFile) as unknown as ReturnType<typeof vi.fn>;
 
@@ -107,7 +106,7 @@ describe('simctl', () => {
     it('propagates execFile errors', async () => {
       mockExecFile.mockRejectedValue(new Error('xcrun not found'));
 
-      await expect(listDevices()).rejects.toThrow('xcrun not found');
+      await expect(listDevices()).rejects.toThrowError('xcrun not found');
     });
   });
 
@@ -127,7 +126,7 @@ describe('simctl', () => {
     it('propagates errors when boot fails', async () => {
       mockExecFile.mockRejectedValue(new Error('Unable to boot device'));
 
-      await expect(bootDevice('bad-udid')).rejects.toThrow(
+      await expect(bootDevice('bad-udid')).rejects.toThrowError(
         'Unable to boot device',
       );
     });
@@ -200,9 +199,9 @@ describe('simctl', () => {
     it('silently ignores errors', async () => {
       mockExecFile.mockRejectedValue(new Error('App not running'));
 
-      await expect(
-        terminateApp('AAA-111', 'io.metamask.MetaMask'),
-      ).resolves.toBeUndefined();
+      const result = await terminateApp('AAA-111', 'io.metamask.MetaMask');
+
+      expect(result).toBeUndefined();
     });
   });
 
@@ -226,7 +225,7 @@ describe('simctl', () => {
 
       await expect(
         takeScreenshot('AAA-111', '/tmp/screenshot.png'),
-      ).rejects.toThrow('Device not booted');
+      ).rejects.toThrowError('Device not booted');
     });
   });
 });

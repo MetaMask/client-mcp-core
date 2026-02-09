@@ -7,7 +7,8 @@
  * The runner outputs `AGENT_DEVICE_RUNNER_PORT=<port>` on stdout when ready.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -23,10 +24,16 @@ const PORT_PATTERN = /AGENT_DEVICE_RUNNER_PORT=(\d+)/u;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const HEALTH_POLL_INTERVAL_MS = 500;
 
+/**
+ * Locate the .xctestrun file inside the derived data directory.
+ *
+ * @param derivedDataPath - Path to Xcode derived data directory.
+ * @returns Full path to the .xctestrun file.
+ */
 async function findXctestrunFile(derivedDataPath: string): Promise<string> {
   const buildProductsDir = join(derivedDataPath, 'Build', 'Products');
   const files = await readdir(buildProductsDir);
-  const xctestrunFile = files.find((f) => f.endsWith('.xctestrun'));
+  const xctestrunFile = files.find((file) => file.endsWith('.xctestrun'));
 
   if (!xctestrunFile) {
     throw new Error(`No .xctestrun file found in ${buildProductsDir}`);
@@ -41,6 +48,8 @@ async function findXctestrunFile(derivedDataPath: string): Promise<string> {
  * Spawns `xcodebuild test-without-building` and waits for the runner
  * to print the port number to stdout. Returns the port on success.
  *
+ * @param options - Runner start options including destination and timeout.
+ * @returns Promise resolving to the runner port.
  * @throws If the runner does not emit a port within the timeout
  * @throws If the runner process exits before emitting a port
  * @throws If no .xctestrun file is found in derivedDataPath
@@ -83,11 +92,11 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       }
     });
 
-    proc.on('error', (err) => {
+    proc.on('error', (error) => {
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
-        reject(err);
+        reject(error);
       }
     });
 
@@ -105,6 +114,9 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
   });
 }
 
+/**
+ * Stop the runner process if one is currently active.
+ */
 export function stopRunner(): void {
   if (runnerProcess) {
     runnerProcess.kill();

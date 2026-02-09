@@ -17,21 +17,21 @@ import type {
   PlatformScreenshotOptions,
   PlatformType,
 } from './types.js';
-import type { ISessionManager } from '../mcp-server/session-manager.js';
+import type {
+  ScreenshotResult,
+  ExtensionState,
+} from '../capabilities/types.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
   waitForTarget,
 } from '../mcp-server/discovery.js';
+import type { ISessionManager } from '../mcp-server/session-manager.js';
 import { isPageClosedError } from '../mcp-server/tools/error-classification.js';
 import type {
   TestIdItem,
   A11yNodeTrimmed,
 } from '../mcp-server/types/discovery.js';
-import type {
-  ScreenshotResult,
-  ExtensionState,
-} from '../capabilities/types.js';
 
 /**
  * PlaywrightPlatformDriver wraps existing Playwright-based discovery and interaction
@@ -41,15 +41,19 @@ import type {
  * ensuring zero behavior change.
  */
 export class PlaywrightPlatformDriver implements IPlatformDriver {
+  readonly #getPage: () => Page;
+
+  readonly #sessionManager: ISessionManager;
+
   /**
    * @param getPage - Getter function for the current active Playwright Page.
    *   Uses a getter so it always retrieves the current active page.
    * @param sessionManager - The session manager for screenshot and state delegation.
    */
-  constructor(
-    private readonly getPage: () => Page,
-    private readonly sessionManager: ISessionManager,
-  ) {}
+  constructor(getPage: () => Page, sessionManager: ISessionManager) {
+    this.#getPage = getPage;
+    this.#sessionManager = sessionManager;
+  }
 
   /**
    * Click an element on the page.
@@ -57,6 +61,12 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Delegates to waitForTarget() to resolve and wait for the element,
    * then calls locator.click(). Handles page-closed errors gracefully,
    * matching the behavior in interaction.ts:88-103.
+   *
+   * @param targetType - Type of target selector (a11yRef, testId, or CSS selector)
+   * @param targetValue - The value of the target (ref ID, test ID, or selector string)
+   * @param refMap - Map of accessibility refs to resolved selectors
+   * @param timeoutMs - Maximum time to wait for element (0-60000ms)
+   * @returns Promise resolving to click result with success status and target info
    */
   async click(
     targetType: TargetType,
@@ -64,7 +74,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<ClickActionResult> {
-    const page = this.getPage();
+    const page = this.#getPage();
     const locator = await waitForTarget(
       page,
       targetType,
@@ -96,6 +106,13 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    *
    * Delegates to waitForTarget() to resolve and wait for the element,
    * then calls locator.fill(text), matching interaction.ts:174-188.
+   *
+   * @param targetType - Type of target selector (a11yRef, testId, or CSS selector)
+   * @param targetValue - The value of the target (ref ID, test ID, or selector string)
+   * @param text - The text to type
+   * @param refMap - Map of accessibility refs to resolved selectors
+   * @param timeoutMs - Maximum time to wait for element (0-60000ms)
+   * @returns Promise resolving to type result with success status and text length
    */
   async type(
     targetType: TargetType,
@@ -104,7 +121,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<TypeActionResult> {
-    const page = this.getPage();
+    const page = this.#getPage();
     const locator = await waitForTarget(
       page,
       targetType,
@@ -126,6 +143,12 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    *
    * Delegates to waitForTarget() which resolves the element and waits
    * for visibility. The returned locator is discarded.
+   *
+   * @param targetType - Type of target selector (a11yRef, testId, or CSS selector)
+   * @param targetValue - The value of the target (ref ID, test ID, or selector string)
+   * @param refMap - Map of accessibility refs to resolved selectors
+   * @param timeoutMs - Maximum time to wait for element (100-120000ms)
+   * @returns Promise that resolves when element is found, or rejects on timeout
    */
   async waitForElement(
     targetType: TargetType,
@@ -133,7 +156,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<void> {
-    const page = this.getPage();
+    const page = this.#getPage();
     await waitForTarget(page, targetType, targetValue, refMap, timeoutMs);
   }
 
@@ -141,11 +164,14 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Get the accessibility tree for the current page.
    *
    * Delegates to collectTrimmedA11ySnapshot() from discovery.ts.
+   *
+   * @param rootSelector - Optional CSS selector to scope the snapshot
+   * @returns Promise resolving to accessibility tree and ref map
    */
   async getAccessibilityTree(
     rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
-    const page = this.getPage();
+    const page = this.#getPage();
     return collectTrimmedA11ySnapshot(page, rootSelector);
   }
 
@@ -153,9 +179,12 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Get all visible test IDs on the current page.
    *
    * Delegates to collectTestIds() from discovery.ts.
+   *
+   * @param limit - Maximum number of test IDs to return (default: 150)
+   * @returns Promise resolving to array of test ID items
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
-    const page = this.getPage();
+    const page = this.#getPage();
     return collectTestIds(page, limit);
   }
 
@@ -163,11 +192,14 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Capture a screenshot of the current page.
    *
    * Delegates to sessionManager.screenshot().
+   *
+   * @param options - Screenshot options (name, fullPage, selector)
+   * @returns Promise resolving to screenshot result with path and dimensions
    */
   async screenshot(
     options: PlatformScreenshotOptions,
   ): Promise<ScreenshotResult> {
-    return this.sessionManager.screenshot({
+    return this.#sessionManager.screenshot({
       name: options.name,
       fullPage: options.fullPage,
       selector: options.selector,
@@ -178,15 +210,20 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Get the current extension state.
    *
    * Delegates to sessionManager.getExtensionState().
+   *
+   * @returns Promise resolving to extension state
    */
   async getAppState(): Promise<ExtensionState> {
-    return this.sessionManager.getExtensionState();
+    return this.#sessionManager.getExtensionState();
   }
 
   /**
    * Check if a specific tool is supported by this driver.
    *
    * Browser supports all tools, so always returns true.
+   *
+   * @param _toolName - Name of the tool to check
+   * @returns true if the tool is supported
    */
   isToolSupported(_toolName: string): boolean {
     return true;
@@ -194,13 +231,17 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
 
   /**
    * Get the current URL of the active page.
+   *
+   * @returns The current URL as a string
    */
   getCurrentUrl(): string {
-    return this.getPage().url();
+    return this.#getPage().url();
   }
 
   /**
    * Get the platform type this driver is running on.
+   *
+   * @returns The platform type (browser)
    */
   getPlatform(): PlatformType {
     return 'browser';

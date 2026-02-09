@@ -9,10 +9,13 @@
  */
 
 import type {
+  ScreenshotResult,
+  ExtensionState,
+} from '../capabilities/types.js';
+import type {
   TestIdItem,
   A11yNodeTrimmed,
 } from '../mcp-server/types/discovery.js';
-import type { ScreenshotResult, ExtensionState } from '../capabilities/types.js';
 
 /**
  * Supported platform types.
@@ -28,9 +31,8 @@ export type TargetType = 'a11yRef' | 'testId' | 'selector';
 /**
  * Result of a click action.
  *
- * @property clicked - Whether the click was successful
- * @property target - The resolved selector/target that was clicked
- * @property pageClosedAfterClick - Optional flag indicating if the page closed after the click
+ * Contains click success status, the resolved target string,
+ * and an optional flag indicating if the page closed after the click.
  */
 export type ClickActionResult = {
   clicked: boolean;
@@ -41,9 +43,8 @@ export type ClickActionResult = {
 /**
  * Result of a type action.
  *
- * @property typed - Whether the text was successfully typed
- * @property target - The resolved selector/target where text was typed
- * @property textLength - The length of the text that was typed
+ * Contains typing success status, the resolved target string,
+ * and the length of the text that was typed.
  */
 export type TypeActionResult = {
   typed: boolean;
@@ -55,9 +56,7 @@ export type TypeActionResult = {
  * Screenshot options for platform drivers.
  * Platform-agnostic, not Playwright-specific.
  *
- * @property name - Screenshot filename (without extension)
- * @property fullPage - Optional flag to capture full page (default: true)
- * @property selector - Optional CSS selector to capture specific element
+ * Includes the screenshot filename and optional full-page or selector targeting.
  */
 export type PlatformScreenshotOptions = {
   name: string;

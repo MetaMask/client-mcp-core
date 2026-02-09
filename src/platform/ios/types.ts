@@ -39,9 +39,9 @@ export type XCUITestClientConfig = {
 /**
  * Response from the XCUITest runner.
  */
-export type RunnerResponse<T = unknown> = {
+export type RunnerResponse<TData = unknown> = {
   ok: boolean;
-  data?: T;
+  data?: TData;
   error?: string;
 };
 

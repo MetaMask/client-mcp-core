@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { PlaywrightPlatformDriver } from './playwright-driver.js';
 import * as discoveryModule from '../mcp-server/discovery.js';
-import * as errorClassificationModule from '../mcp-server/tools/error-classification.js';
 import {
   createMockSessionManager,
   createMockPage,
   createMockLocator,
 } from '../mcp-server/test-utils';
+import * as errorClassificationModule from '../mcp-server/tools/error-classification.js';
 
 describe('PlaywrightPlatformDriver', () => {
   let mockPage: ReturnType<typeof createMockPage>;
@@ -92,7 +92,7 @@ describe('PlaywrightPlatformDriver', () => {
 
       await expect(
         driver.click('selector', '.btn', new Map(), 5000),
-      ).rejects.toThrow('Element is not clickable');
+      ).rejects.toThrowError('Element is not clickable');
     });
 
     it('propagates waitForTarget errors', async () => {
@@ -102,7 +102,7 @@ describe('PlaywrightPlatformDriver', () => {
 
       await expect(
         driver.click('testId', 'nonexistent', new Map(), 5000),
-      ).rejects.toThrow('Timeout waiting for element');
+      ).rejects.toThrowError('Timeout waiting for element');
     });
   });
 
@@ -162,7 +162,7 @@ describe('PlaywrightPlatformDriver', () => {
 
       await expect(
         driver.type('testId', 'input', 'text', new Map(), 5000),
-      ).rejects.toThrow('Element is not editable');
+      ).rejects.toThrowError('Element is not editable');
     });
   });
 
@@ -207,7 +207,7 @@ describe('PlaywrightPlatformDriver', () => {
 
       await expect(
         driver.waitForElement('testId', 'missing', new Map(), 30000),
-      ).rejects.toThrow('Timeout 30000ms exceeded');
+      ).rejects.toThrowError('Timeout 30000ms exceeded');
     });
   });
 

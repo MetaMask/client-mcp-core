@@ -13,6 +13,16 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
+import type { SnapshotNode } from './types.js';
+import type { XCUITestClient } from './xcuitest-client.js';
+import type {
+  ScreenshotResult,
+  ExtensionState,
+} from '../../capabilities/types.js';
+import type {
+  TestIdItem,
+  A11yNodeTrimmed,
+} from '../../mcp-server/types/discovery.js';
 import type {
   IPlatformDriver,
   TargetType,
@@ -21,16 +31,6 @@ import type {
   PlatformScreenshotOptions,
   PlatformType,
 } from '../types.js';
-import type {
-  TestIdItem,
-  A11yNodeTrimmed,
-} from '../../mcp-server/types/discovery.js';
-import type {
-  ScreenshotResult,
-  ExtensionState,
-} from '../../capabilities/types.js';
-import type { XCUITestClient } from './xcuitest-client.js';
-import type { SnapshotNode } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,31 +53,56 @@ const UNSUPPORTED_TOOLS = new Set([
  * a11y refs (mapped from snapshot normalization), and best-effort label/type matching.
  */
 export class IOSPlatformDriver implements IPlatformDriver {
-  private readonly animationDelayMs: number;
+  readonly #animationDelayMs: number;
 
-  private readonly screenshotDir: string;
+  readonly #screenshotDir: string;
 
+  readonly #client: XCUITestClient;
+
+  readonly #deviceUdid: string;
+
+  /**
+   * @param client - XCUITest client instance used for simulator commands.
+   * @param deviceUdid - UDID of the target simulator device.
+   * @param options - Optional animation delay and screenshot directory overrides.
+   * @param options.animationDelayMs - Delay after taps to allow animations.
+   * @param options.screenshotDir - Directory to save screenshots.
+   */
   constructor(
-    private readonly client: XCUITestClient,
-    private readonly deviceUdid: string,
+    client: XCUITestClient,
+    deviceUdid: string,
     options?: {
       animationDelayMs?: number;
       screenshotDir?: string;
     },
   ) {
-    this.animationDelayMs =
+    this.#client = client;
+    this.#deviceUdid = deviceUdid;
+    this.#animationDelayMs =
       options?.animationDelayMs ?? DEFAULT_ANIMATION_DELAY_MS;
-    this.screenshotDir = options?.screenshotDir ?? DEFAULT_SCREENSHOT_DIR;
+    this.#screenshotDir = options?.screenshotDir ?? DEFAULT_SCREENSHOT_DIR;
   }
 
+  /**
+   * @param targetType - Type of target selector (a11yRef, testId, or selector).
+   * @param targetValue - The value of the target (ref ID, test ID, or selector).
+   * @param refMap - Map of accessibility refs to resolved selectors.
+   * @param timeoutMs - Maximum time to wait for element (0-60000ms).
+   * @returns Promise resolving to click result with success status and target info.
+   */
   async click(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<ClickActionResult> {
-    const snapshot = await this.client.snapshot();
-    const element = this.findElement(snapshot, targetType, targetValue, refMap);
+    const snapshot = await this.#client.snapshot();
+    const element = this.#findElement(
+      snapshot,
+      targetType,
+      targetValue,
+      refMap,
+    );
 
     if (!element) {
       throw new Error(
@@ -91,9 +116,9 @@ export class IOSPlatformDriver implements IPlatformDriver {
       );
     }
 
-    const { x, y } = this.calculateCenter(element.rect);
-    await this.client.tap(x, y);
-    await this.sleep(this.animationDelayMs);
+    const { x, y } = this.#calculateCenter(element.rect);
+    await this.#client.tap(x, y);
+    await this.#sleep(this.#animationDelayMs);
 
     return {
       clicked: true,
@@ -101,6 +126,14 @@ export class IOSPlatformDriver implements IPlatformDriver {
     };
   }
 
+  /**
+   * @param targetType - Type of target selector (a11yRef, testId, or selector).
+   * @param targetValue - The value of the target (ref ID, test ID, or selector).
+   * @param text - The text to type.
+   * @param refMap - Map of accessibility refs to resolved selectors.
+   * @param timeoutMs - Maximum time to wait for element (0-60000ms).
+   * @returns Promise resolving to type result with success status and text length.
+   */
   async type(
     targetType: TargetType,
     targetValue: string,
@@ -109,7 +142,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
     timeoutMs: number,
   ): Promise<TypeActionResult> {
     await this.click(targetType, targetValue, refMap, timeoutMs);
-    await this.client.type(text);
+    await this.#client.type(text);
 
     return {
       typed: true,
@@ -118,6 +151,13 @@ export class IOSPlatformDriver implements IPlatformDriver {
     };
   }
 
+  /**
+   * @param targetType - Type of target selector (a11yRef, testId, or selector).
+   * @param targetValue - The value of the target (ref ID, test ID, or selector).
+   * @param refMap - Map of accessibility refs to resolved selectors.
+   * @param timeoutMs - Maximum time to wait for element (100-120000ms).
+   * @returns Promise that resolves when element is found, or rejects on timeout.
+   */
   async waitForElement(
     targetType: TargetType,
     targetValue: string,
@@ -127,8 +167,8 @@ export class IOSPlatformDriver implements IPlatformDriver {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
-      const snapshot = await this.client.snapshot();
-      const element = this.findElement(
+      const snapshot = await this.#client.snapshot();
+      const element = this.#findElement(
         snapshot,
         targetType,
         targetValue,
@@ -139,7 +179,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
         return;
       }
 
-      await this.sleep(DEFAULT_POLL_INTERVAL_MS);
+      await this.#sleep(DEFAULT_POLL_INTERVAL_MS);
     }
 
     throw new Error(
@@ -147,17 +187,21 @@ export class IOSPlatformDriver implements IPlatformDriver {
     );
   }
 
+  /**
+   * @param _rootSelector - Optional CSS selector to scope the snapshot.
+   * @returns Promise resolving to accessibility tree and ref map.
+   */
   async getAccessibilityTree(
     _rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
-    const snapshot = await this.client.snapshot();
+    const snapshot = await this.#client.snapshot();
     const nodes: A11yNodeTrimmed[] = [];
     const refMap = new Map<string, string>();
     let refCounter = 0;
 
     const walk = (snapshotNodes: SnapshotNode[], path: string[]): void => {
       for (const node of snapshotNodes) {
-        refCounter++;
+        refCounter += 1;
         const ref = `e${refCounter}`;
 
         const role = node.type ?? 'element';
@@ -186,8 +230,12 @@ export class IOSPlatformDriver implements IPlatformDriver {
     return { nodes, refMap };
   }
 
+  /**
+   * @param limit - Maximum number of test IDs to return (default: 150).
+   * @returns Promise resolving to array of test ID items.
+   */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
-    const snapshot = await this.client.snapshot();
+    const snapshot = await this.#client.snapshot();
     const items: TestIdItem[] = [];
     const maxItems = limit ?? 150;
 
@@ -217,16 +265,20 @@ export class IOSPlatformDriver implements IPlatformDriver {
     return items;
   }
 
+  /**
+   * @param options - Screenshot options (name, fullPage, selector).
+   * @returns Promise resolving to screenshot result with path and dimensions.
+   */
   async screenshot(
     options: PlatformScreenshotOptions,
   ): Promise<ScreenshotResult> {
     const filename = `${options.name}.png`;
-    const filepath = join(this.screenshotDir, filename);
+    const filepath = join(this.#screenshotDir, filename);
 
     await execFileAsync('xcrun', [
       'simctl',
       'io',
-      this.deviceUdid,
+      this.#deviceUdid,
       'screenshot',
       filepath,
     ]);
@@ -242,6 +294,9 @@ export class IOSPlatformDriver implements IPlatformDriver {
     };
   }
 
+  /**
+   * @returns Promise resolving to a minimal mobile extension state.
+   */
   async getAppState(): Promise<ExtensionState> {
     return {
       isLoaded: true,
@@ -256,19 +311,36 @@ export class IOSPlatformDriver implements IPlatformDriver {
     };
   }
 
+  /**
+   * @param toolName - Name of the tool to check.
+   * @returns true if the tool is supported by iOS, false otherwise.
+   */
   isToolSupported(toolName: string): boolean {
     return !UNSUPPORTED_TOOLS.has(toolName);
   }
 
+  /**
+   * @returns The current URL as a string (empty for iOS).
+   */
   getCurrentUrl(): string {
     return '';
   }
 
+  /**
+   * @returns The platform type (ios).
+   */
   getPlatform(): PlatformType {
     return 'ios';
   }
 
-  private findElement(
+  /**
+   * @param nodes - Snapshot nodes to search.
+   * @param targetType - Target selector type.
+   * @param targetValue - Target selector value.
+   * @param refMap - Map of accessibility refs to selectors.
+   * @returns The matched snapshot node, if found.
+   */
+  #findElement(
     nodes: SnapshotNode[],
     targetType: TargetType,
     targetValue: string,
@@ -276,17 +348,22 @@ export class IOSPlatformDriver implements IPlatformDriver {
   ): SnapshotNode | undefined {
     switch (targetType) {
       case 'testId':
-        return this.findByTestId(nodes, targetValue);
+        return this.#findByTestId(nodes, targetValue);
       case 'a11yRef':
-        return this.findByA11yRef(nodes, targetValue, refMap);
+        return this.#findByA11yRef(nodes, targetValue, refMap);
       case 'selector':
-        return this.findBySelector(nodes, targetValue);
+        return this.#findBySelector(nodes, targetValue);
       default:
         return undefined;
     }
   }
 
-  private findByTestId(
+  /**
+   * @param nodes - Snapshot nodes to search.
+   * @param testId - Accessibility identifier to match.
+   * @returns The matched snapshot node, if found.
+   */
+  #findByTestId(
     nodes: SnapshotNode[],
     testId: string,
   ): SnapshotNode | undefined {
@@ -295,7 +372,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
         return node;
       }
       if (node.children) {
-        const found = this.findByTestId(node.children, testId);
+        const found = this.#findByTestId(node.children, testId);
         if (found) {
           return found;
         }
@@ -304,7 +381,13 @@ export class IOSPlatformDriver implements IPlatformDriver {
     return undefined;
   }
 
-  private findByA11yRef(
+  /**
+   * @param nodes - Snapshot nodes to search.
+   * @param ref - Accessibility reference from refMap.
+   * @param refMap - Map of accessibility refs to selectors.
+   * @returns The matched snapshot node, if found.
+   */
+  #findByA11yRef(
     nodes: SnapshotNode[],
     ref: string,
     refMap: Map<string, string>,
@@ -317,31 +400,40 @@ export class IOSPlatformDriver implements IPlatformDriver {
     const [type, ...valueParts] = resolution.split(':');
     const value = valueParts.join(':');
 
-    const flat = this.flattenNodes(nodes);
+    const flat = this.#flattenNodes(nodes);
 
     if (type === 'identifier') {
-      return flat.find((n) => n.identifier === value);
+      return flat.find((node) => node.identifier === value);
     }
     if (type === 'label') {
-      return flat.find((n) => n.label === value);
+      return flat.find((node) => node.label === value);
     }
 
     return undefined;
   }
 
-  private findBySelector(
+  /**
+   * @param nodes - Snapshot nodes to search.
+   * @param selector - Selector to match against label or type.
+   * @returns The matched snapshot node, if found.
+   */
+  #findBySelector(
     nodes: SnapshotNode[],
     selector: string,
   ): SnapshotNode | undefined {
-    const flat = this.flattenNodes(nodes);
+    const flat = this.#flattenNodes(nodes);
 
     return (
-      flat.find((n) => n.label === selector) ??
-      flat.find((n) => n.type === selector)
+      flat.find((node) => node.label === selector) ??
+      flat.find((node) => node.type === selector)
     );
   }
 
-  private flattenNodes(nodes: SnapshotNode[]): SnapshotNode[] {
+  /**
+   * @param nodes - Snapshot nodes to flatten.
+   * @returns A flat list of all nodes in depth-first order.
+   */
+  #flattenNodes(nodes: SnapshotNode[]): SnapshotNode[] {
     const result: SnapshotNode[] = [];
 
     const walk = (nodeList: SnapshotNode[]): void => {
@@ -357,7 +449,15 @@ export class IOSPlatformDriver implements IPlatformDriver {
     return result;
   }
 
-  private calculateCenter(rect: {
+  /**
+   * @param rect - Element rectangle used for tap coordinate calculation.
+   * @param rect.x - Rectangle x-coordinate.
+   * @param rect.y - Rectangle y-coordinate.
+   * @param rect.width - Rectangle width.
+   * @param rect.height - Rectangle height.
+   * @returns Center point coordinates for tapping.
+   */
+  #calculateCenter(rect: {
     x: number;
     y: number;
     width: number;
@@ -369,7 +469,11 @@ export class IOSPlatformDriver implements IPlatformDriver {
     };
   }
 
-  private async sleep(ms: number): Promise<void> {
+  /**
+   * @param ms - Milliseconds to sleep.
+   * @returns Promise that resolves after delay.
+   */
+  async #sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
