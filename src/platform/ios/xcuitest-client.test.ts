@@ -92,7 +92,7 @@ describe('XCUITestClient', () => {
         TEST_URL,
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ command: 'tap', x: 150, y: 300 }),
+          body: JSON.stringify({ x: 150, y: 300, command: 'tap' }),
         }),
       );
     });
@@ -108,7 +108,7 @@ describe('XCUITestClient', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         TEST_URL,
         expect.objectContaining({
-          body: JSON.stringify({ command: 'type', text: 'hello world' }),
+          body: JSON.stringify({ text: 'hello world', command: 'type' }),
         }),
       );
     });
@@ -125,10 +125,10 @@ describe('XCUITestClient', () => {
         TEST_URL,
         expect.objectContaining({
           body: JSON.stringify({
-            command: 'swipe',
             direction: 'up',
             x: undefined,
             y: undefined,
+            command: 'swipe',
           }),
         }),
       );
@@ -144,10 +144,10 @@ describe('XCUITestClient', () => {
         TEST_URL,
         expect.objectContaining({
           body: JSON.stringify({
-            command: 'swipe',
             direction: 'left',
             x: 200,
             y: 400,
+            command: 'swipe',
           }),
         }),
       );
@@ -191,9 +191,9 @@ describe('XCUITestClient', () => {
         TEST_URL,
         expect.objectContaining({
           body: JSON.stringify({
-            command: 'snapshot',
             interactiveOnly: true,
             compact: true,
+            command: 'snapshot',
           }),
         }),
       );

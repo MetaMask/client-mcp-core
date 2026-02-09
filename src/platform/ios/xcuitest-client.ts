@@ -64,7 +64,7 @@ export class XCUITestClient {
       'snapshot',
       options,
     );
-    return result.nodes ?? [];
+    return result?.nodes ?? [];
   }
 
   async back(): Promise<void> {
@@ -105,7 +105,7 @@ export class XCUITestClient {
     params?: Record<string, unknown>,
   ): Promise<T> {
     const url = `http://${this.host}:${this.port}/command`;
-    const body = JSON.stringify({ command, ...params });
+    const body = JSON.stringify({ ...params, command });
 
     let lastError: Error | undefined;
 

@@ -36,6 +36,18 @@ const DEFAULT_POLL_INTERVAL_MS = 200;
 const DEFAULT_SCREENSHOT_DIR = '/tmp/ios-screenshots';
 
 /**
+ * Internal error thrown when an element is not found within the polling timeout.
+ * Used to distinguish poll timeouts from other errors in waitForElement/click.
+ */
+class ElementNotFoundError extends Error {
+  /** @param message - Descriptive error message including target and timeout. */
+  constructor(message: string) {
+    super(message);
+    this.name = 'ElementNotFoundError';
+  }
+}
+
+/**
  * Explicit allow-list of tools supported on iOS.
  * New tools must be added here to be usable on iOS.
  */
@@ -211,12 +223,10 @@ export class IOSPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<void> {
-    const timeoutMessage = `Element not found: ${targetType}:${targetValue} (timeout ${timeoutMs}ms)`;
-
     try {
       await this.#pollForElement(targetType, targetValue, refMap, timeoutMs);
     } catch (error) {
-      if (error instanceof Error && error.message === timeoutMessage) {
+      if (error instanceof ElementNotFoundError) {
         throw new Error(
           `Timeout waiting for element: ${targetType}:${targetValue} (${timeoutMs}ms)`,
         );
@@ -251,6 +261,8 @@ export class IOSPlatformDriver implements IPlatformDriver {
         refMap.set(ref, `identifier:${node.identifier}`);
       } else if (node.label) {
         refMap.set(ref, `label:${node.label}`);
+      } else if (node.value) {
+        refMap.set(ref, `value:${node.value}`);
       }
     });
 
@@ -467,6 +479,9 @@ export class IOSPlatformDriver implements IPlatformDriver {
     if (type === 'label') {
       return flat.find((node) => node.label === value);
     }
+    if (type === 'value') {
+      return flat.find((node) => node.value === value);
+    }
 
     return undefined;
   }
@@ -515,7 +530,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
       await this.#sleep(DEFAULT_POLL_INTERVAL_MS);
     }
 
-    throw new Error(
+    throw new ElementNotFoundError(
       `Element not found: ${targetType}:${targetValue} (timeout ${timeoutMs}ms)`,
     );
   }
