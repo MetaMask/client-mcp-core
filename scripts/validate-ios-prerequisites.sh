@@ -9,6 +9,15 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# POSIX-compatible timeout replacement (macOS doesn't have GNU timeout)
+if ! command -v timeout &> /dev/null; then
+  timeout() {
+    local duration=$1
+    shift
+    perl -e 'alarm shift; exec @ARGV' "$duration" "$@"
+  }
+fi
+
 # Counters
 PASSED=0
 FAILED=0
