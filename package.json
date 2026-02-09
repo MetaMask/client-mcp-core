@@ -1,6 +1,6 @@
 {
   "name": "@metamask/client-mcp-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "MCP server for MetaMask Extension visual testing with LLM agents",
   "keywords": [
     "mcp",
