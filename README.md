@@ -1454,22 +1454,61 @@ yarn build && yalc publish
 yalc add @metamask/client-mcp-core
 ```
 
-## iOS Simulator Support (Experimental)
+## iOS Simulator Support
 
 ### Overview
 
-This package includes experimental support for automating MetaMask Mobile on iOS simulators using XCUITest. The same tool interface (`mm_click`, `mm_type`, etc.) works on both browser extensions and iOS apps through the `IPlatformDriver` abstraction.
+This package supports MetaMask Mobile automation on iOS simulators through the
+same MCP tool surface used by browser workflows (`mm_click`, `mm_type`,
+`mm_wait_for`, `mm_describe_screen`, etc.).
 
-### Architecture
+Under the hood, iOS uses a dual-backend discovery architecture:
 
-- `IPlatformDriver` — Platform-agnostic interface for element interaction, discovery, and screenshots
-- `PlaywrightPlatformDriver` — Browser automation via Playwright (default)
-- `IOSPlatformDriver` — iOS simulator automation via XCUITest HTTP server
-- `XCUITestClient` — HTTP client for the XCUITest runner
+- XCUITest runner for command execution and primary discovery.
+- AXSnapshot fallback for resilient post-transition discovery when XCTest
+  accessibility snapshots degrade.
+
+### iOS Architecture
+
+```
+MCP tool call
+  -> IOSPlatformDriver
+    -> XCUITestClient
+      -> AgentDeviceRunner (XCUITest host)
+        -> snapshot / interaction command
+          -> (if snapshot degraded) AXSnapshot fallback
+            -> normalized discovery tree
+```
+
+Core components:
+
+- `IPlatformDriver`: platform abstraction shared by browser + iOS.
+- `PlaywrightPlatformDriver`: browser implementation.
+- `IOSPlatformDriver`: iOS implementation with discovery backend strategy.
+- `XCUITestClient`: transport for runner command API.
+- `runner-lifecycle`: boot, health, restart, and rebind behavior.
+- `ax-snapshot`: binary invocation and output normalization.
+
+Default snapshot backend is `xctest-with-ax-fallback`.
+
+### Reliability Behaviors
+
+- Health checks use `ping` to avoid snapshot-triggered UI side effects.
+- Runner bind step is separate from snapshot requests (`bind` command).
+- Discovery avoids clearing ref maps when a snapshot is empty.
+- Interaction polling retries through transient recovery windows.
+- Recovery and discovery issues are surfaced with explicit error codes:
+  - `MM_IOS_EMPTY_SNAPSHOT`
+  - `MM_IOS_RUNNER_RECOVERING`
+  - `MM_IOS_AX_PERMISSION_REQUIRED`
+  - `MM_IOS_AX_BINARY_MISSING`
+  - `MM_IOS_AX_SNAPSHOT_FAILED`
 
 ### Prerequisites
 
-See [docs/ios-setup.md](docs/ios-setup.md) for setup instructions.
+- iOS setup guide: [docs/ios-setup.md](docs/ios-setup.md)
+- Runner architecture and command details:
+  [ios-runner/README.md](ios-runner/README.md)
 
 ### Platform Support Matrix
 
@@ -1497,6 +1536,13 @@ To launch an iOS session, set `platform: 'ios'` in the launch input:
 ```typescript
 { platform: 'ios', simulatorDeviceId: '<UDID>', appBundlePath: '/path/to/MetaMask.app' }
 ```
+
+### Runner Diagnostics
+
+- XCUITest runner startup and runtime logs are written to
+  `test-artifacts/ios-runner-logs`.
+- Startup failures include log paths and recent stdout/stderr tails to speed up
+  triage.
 
 ## License
 
