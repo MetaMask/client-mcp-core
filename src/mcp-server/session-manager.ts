@@ -66,6 +66,10 @@ export type SessionLaunchInput = {
   simulatorDeviceId?: string;
   /** Path to MetaMask Mobile .app bundle */
   appBundlePath?: string;
+  /** Start a long-running dev server instead of one-shot native build */
+  useWatchMode?: boolean;
+  /** Port for the dev server when useWatchMode is true */
+  watchModePort?: number;
 };
 
 /**

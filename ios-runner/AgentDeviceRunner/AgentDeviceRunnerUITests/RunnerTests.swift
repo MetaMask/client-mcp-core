@@ -18,6 +18,7 @@ final class RunnerTests: XCTestCase {
   private let maxRequestBytes = 2 * 1024 * 1024
   private let maxSnapshotElements = 600
   private let fastSnapshotLimit = 300
+  private let defaultAppBundleId = ProcessInfo.processInfo.environment["AGENT_DEVICE_TARGET_BUNDLE_ID"] ?? "io.metamask.MetaMask"
   private let interactiveTypes: Set<XCUIElement.ElementType> = [
     .button,
     .cell,
@@ -37,14 +38,37 @@ final class RunnerTests: XCTestCase {
   ]
 
   override func setUp() {
-    continueAfterFailure = false
+    continueAfterFailure = true
+    if responds(to: NSSelectorFromString("setShouldSetShouldHaltWhenReceivesControl:")) {
+      setValue(false, forKey: "shouldSetShouldHaltWhenReceivesControl")
+    }
+    if responds(to: NSSelectorFromString("setShouldHaltWhenReceivesControl:")) {
+      setValue(false, forKey: "shouldHaltWhenReceivesControl")
+    }
+  }
+
+  override func record(_ issue: XCTIssue) {
+    NSLog("AGENT_DEVICE_RUNNER_XCTISSUE %@", String(describing: issue))
+  }
+
+  override func recordFailure(
+    withDescription description: String,
+    inFile filePath: String,
+    atLine lineNumber: Int,
+    expected: Bool
+  ) {
+    NSLog(
+      "AGENT_DEVICE_RUNNER_RECORD_FAILURE expected=%@ file=%@ line=%d description=%@",
+      expected ? "1" : "0",
+      filePath,
+      lineNumber,
+      description
+    )
   }
 
   @MainActor
   func testCommand() throws {
     doneExpectation = expectation(description: "agent-device command handled")
-    app.launch()
-    currentApp = app
     let queue = DispatchQueue(label: "agent-device.runner")
     let desiredPort = resolveRunnerPort()
     NSLog("AGENT_DEVICE_RUNNER_DESIRED_PORT=%d", desiredPort)
@@ -203,35 +227,89 @@ final class RunnerTests: XCTestCase {
     }
   }
 
-  private func executeOnMain(command: Command) throws -> Response {
-    let bundleId = command.appBundleId ?? currentBundleId ?? "com.apple.Preferences"
-    if currentBundleId != bundleId {
-      let target = XCUIApplication(bundleIdentifier: bundleId)
-      NSLog("AGENT_DEVICE_RUNNER_ACTIVATE bundle=%@ state=%d", bundleId, target.state.rawValue)
-      // activate avoids terminating and relaunching the target app
-      target.activate()
+  private func safeExecute(_ block: () throws -> Void) throws {
+    var innerError: Error?
+
+    do {
+      try ObjCExceptionCatcher.`try` {
+        do {
+          try block()
+        } catch {
+          innerError = error
+        }
+      }
+    } catch {
+      throw error
+    }
+
+    if let innerError = innerError {
+      throw innerError
+    }
+  }
+
+  private func switchToApp(bundleId: String) {
+    let target = XCUIApplication(bundleIdentifier: bundleId)
+    let state = target.state
+    if currentBundleId == bundleId, state == .runningForeground {
       currentApp = target
       currentBundleId = bundleId
+      return
     }
+    NSLog("AGENT_DEVICE_RUNNER_ACTIVATE bundle=%@ state=%d", bundleId, state.rawValue)
+    // Only activate if app is NOT already in foreground — calling activate() on an
+    // already-foreground React Native app can crash/restart it.
+    if state != .runningForeground {
+      target.activate()
+    }
+    currentApp = target
+    currentBundleId = bundleId
+  }
+
+  private func executeOnMain(command: Command) throws -> Response {
+    if command.command == .ping {
+      return Response(ok: true, data: DataPayload(message: "pong"))
+    }
+
+    // `bind` command: just switch currentApp without taking a snapshot.
+    // This avoids the snapshot enumeration that inadvertently interacts with UI (Settings tab).
+    if command.command == .bind {
+      let bundleId = command.appBundleId ?? currentBundleId ?? defaultAppBundleId
+      switchToApp(bundleId: bundleId)
+      let activeApp = currentApp ?? app
+      return Response(ok: true, data: DataPayload(message: "bound to \(bundleId)"))
+    }
+
+    let bundleId = command.appBundleId ?? currentBundleId ?? defaultAppBundleId
+    switchToApp(bundleId: bundleId)
     let activeApp = currentApp ?? app
-    _ = activeApp.waitForExistence(timeout: 5)
 
     switch command.command {
+    case .ping:
+      return Response(ok: true, data: DataPayload(message: "pong"))
     case .shutdown:
       return Response(ok: true, data: DataPayload(message: "shutdown"))
     case .tap:
       if let text = command.text {
         if let element = findElement(app: activeApp, text: text) {
-          element.tap()
+          try safeExecute { element.tap() }
           return Response(ok: true, data: DataPayload(message: "tapped"))
         }
         return Response(ok: false, error: ErrorPayload(message: "element not found"))
       }
       if let x = command.x, let y = command.y {
-        tapAt(app: activeApp, x: x, y: y)
+        try safeExecute { self.tapAt(app: activeApp, x: x, y: y) }
         return Response(ok: true, data: DataPayload(message: "tapped"))
       }
       return Response(ok: false, error: ErrorPayload(message: "tap requires text or x/y"))
+    case .tapElement:
+      guard let text = command.text else {
+        return Response(ok: false, error: ErrorPayload(message: "tapElement requires text"))
+      }
+      if let element = findElement(app: activeApp, text: text) {
+        try safeExecute { element.tap() }
+        return Response(ok: true, data: DataPayload(message: "tapped"))
+      }
+      return Response(ok: false, error: ErrorPayload(message: "element not found: \(text)"))
     case .type:
       guard let text = command.text else {
         return Response(ok: false, error: ErrorPayload(message: "type requires text"))
@@ -240,21 +318,38 @@ final class RunnerTests: XCTestCase {
         guard let focused = focusedTextInput(app: activeApp) else {
           return Response(ok: false, error: ErrorPayload(message: "no focused text input to clear"))
         }
-        clearTextInput(focused)
-        focused.typeText(text)
+        try safeExecute {
+          self.clearTextInput(focused)
+          focused.typeText(text)
+        }
         return Response(ok: true, data: DataPayload(message: "typed"))
       }
       if let focused = focusedTextInput(app: activeApp) {
-        focused.typeText(text)
+        try safeExecute { focused.typeText(text) }
       } else {
-        activeApp.typeText(text)
+        try safeExecute { activeApp.typeText(text) }
       }
       return Response(ok: true, data: DataPayload(message: "typed"))
+    case .fill:
+      guard let text = command.text else {
+        return Response(ok: false, error: ErrorPayload(message: "fill requires text"))
+      }
+      guard let x = command.x, let y = command.y else {
+        return Response(ok: false, error: ErrorPayload(message: "fill requires x and y"))
+      }
+      try safeExecute { self.tapAt(app: activeApp, x: x, y: y) }
+      Thread.sleep(forTimeInterval: 0.3)
+      if let focused = focusedTextInput(app: activeApp) {
+        try safeExecute { focused.typeText(text) }
+        return Response(ok: true, data: DataPayload(message: "filled"))
+      }
+      let pasteResult = fillViaPaste(app: activeApp, text: text, x: x, y: y)
+      return pasteResult
     case .swipe:
       guard let direction = command.direction else {
         return Response(ok: false, error: ErrorPayload(message: "swipe requires direction"))
       }
-      swipe(app: activeApp, direction: direction)
+      try safeExecute { self.swipe(app: activeApp, direction: direction) }
       return Response(ok: true, data: DataPayload(message: "swiped"))
     case .findText:
       guard let text = command.text else {
@@ -281,15 +376,20 @@ final class RunnerTests: XCTestCase {
         scope: command.scope,
         raw: command.raw ?? false,
       )
-      if options.raw {
-        return Response(ok: true, data: snapshotRaw(app: activeApp, options: options))
-      }
-      return Response(ok: true, data: snapshotFast(app: activeApp, options: options))
+      let payload = options.raw
+        ? snapshotRaw(app: activeApp, options: options)
+        : snapshotFast(app: activeApp, options: options)
+      logSnapshotResult(bundleId: bundleId, app: activeApp, options: options, payload: payload)
+      return Response(ok: true, data: payload)
+    case .bind:
+      return Response(ok: true, data: DataPayload(message: "unreachable"))
     case .back:
-      if tapNavigationBack(app: activeApp) {
+      var didTap = false
+      try safeExecute { didTap = self.tapNavigationBack(app: activeApp) }
+      if didTap {
         return Response(ok: true, data: DataPayload(message: "back"))
       }
-      performBackGesture(app: activeApp)
+      try safeExecute { self.performBackGesture(app: activeApp) }
       return Response(ok: true, data: DataPayload(message: "back"))
     case .home:
       XCUIDevice.shared.press(.home)
@@ -305,12 +405,12 @@ final class RunnerTests: XCTestCase {
       }
       if action == "accept" {
         let button = alert.buttons.allElementsBoundByIndex.first
-        button?.tap()
+        try safeExecute { button?.tap() }
         return Response(ok: true, data: DataPayload(message: "accepted"))
       }
       if action == "dismiss" {
         let button = alert.buttons.allElementsBoundByIndex.last
-        button?.tap()
+        try safeExecute { button?.tap() }
         return Response(ok: true, data: DataPayload(message: "dismissed"))
       }
       let buttonLabels = alert.buttons.allElementsBoundByIndex.map { $0.label }
@@ -319,7 +419,7 @@ final class RunnerTests: XCTestCase {
       guard let scale = command.scale, scale > 0 else {
         return Response(ok: false, error: ErrorPayload(message: "pinch requires scale > 0"))
       }
-      pinch(app: activeApp, scale: scale, x: command.x, y: command.y)
+      try safeExecute { self.pinch(app: activeApp, scale: scale, x: command.x, y: command.y) }
       return Response(ok: true, data: DataPayload(message: "pinched"))
     }
   }
@@ -373,6 +473,27 @@ final class RunnerTests: XCTestCase {
     default:
       return nil
     }
+  }
+
+  private func fillViaPaste(app: XCUIApplication, text: String, x: Double, y: Double) -> Response {
+    let pasteboard = UIPasteboard.general
+    pasteboard.string = text
+
+    let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+    let coord = origin.withOffset(CGVector(dx: x, dy: y))
+    coord.press(forDuration: 1.0)
+    Thread.sleep(forTimeInterval: 0.3)
+
+    let pasteButton = app.menuItems["Paste"]
+    if pasteButton.waitForExistence(timeout: 2) {
+      do {
+        try safeExecute { pasteButton.tap() }
+        return Response(ok: true, data: DataPayload(message: "filled via paste"))
+      } catch {
+        return Response(ok: false, error: ErrorPayload(message: "paste tap failed: \(error)"))
+      }
+    }
+    return Response(ok: false, error: ErrorPayload(message: "no keyboard focus and paste menu not found"))
   }
 
   private func moveCaretToEnd(element: XCUIElement) {
@@ -520,6 +641,76 @@ final class RunnerTests: XCTestCase {
     }
   }
 
+  private func logSnapshotResult(
+    bundleId: String,
+    app: XCUIApplication,
+    options: SnapshotOptions,
+    payload: DataPayload
+  ) {
+    let nodeCount = payload.nodes?.count ?? 0
+    let truncated = payload.truncated == true ? "1" : "0"
+    NSLog(
+      "AGENT_DEVICE_RUNNER_SNAPSHOT bundle=%@ state=%d raw=%@ compact=%@ interactiveOnly=%@ nodes=%d truncated=%@",
+      bundleId,
+      app.state.rawValue,
+      options.raw ? "1" : "0",
+      options.compact ? "1" : "0",
+      options.interactiveOnly ? "1" : "0",
+      nodeCount,
+      truncated
+    )
+    if nodeCount == 0 {
+      NSLog(
+        "AGENT_DEVICE_RUNNER_SNAPSHOT_EMPTY bundle=%@ state=%d scope=%@",
+        bundleId,
+        app.state.rawValue,
+        options.scope ?? "<nil>"
+      )
+    }
+  }
+
+  private func snapshotElement(_ element: XCUIElement) throws -> XCUIElementSnapshot {
+    var captured: XCUIElementSnapshot?
+    try safeExecute {
+      captured = try element.snapshot()
+    }
+    guard let snapshot = captured else {
+      throw NSError(domain: "AgentDeviceRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "snapshot unavailable"])
+    }
+    return snapshot
+  }
+
+  private func captureSnapshot(for element: XCUIElement, app: XCUIApplication) -> XCUIElementSnapshot? {
+    for attempt in 1 ... 3 {
+      let candidates: [XCUIElement] = [element, app.windows.firstMatch, app.otherElements.firstMatch]
+      for (index, candidate) in candidates.enumerated() {
+        do {
+          let snapshot = try snapshotElement(candidate)
+          if index > 0 {
+            NSLog(
+              "AGENT_DEVICE_RUNNER_SNAPSHOT_CAPTURE_FALLBACK attempt=%d candidate=%d type=%@",
+              attempt,
+              index,
+              elementTypeName(snapshot.elementType)
+            )
+          }
+          return snapshot
+        } catch {
+          NSLog(
+            "AGENT_DEVICE_RUNNER_SNAPSHOT_CAPTURE_FAILED attempt=%d candidate=%d error=%@",
+            attempt,
+            index,
+            String(describing: error)
+          )
+        }
+      }
+      if attempt < 3 {
+        Thread.sleep(forTimeInterval: 0.3)
+      }
+    }
+    return nil
+  }
+
   private func snapshotFast(app: XCUIApplication, options: SnapshotOptions) -> DataPayload {
     var nodes: [SnapshotNode] = []
     var truncated = false
@@ -527,10 +718,7 @@ final class RunnerTests: XCTestCase {
     let viewport = app.frame
     let queryRoot = options.scope.flatMap { findScopeElement(app: app, scope: $0) } ?? app
 
-    let rootSnapshot: XCUIElementSnapshot
-    do {
-      rootSnapshot = try queryRoot.snapshot()
-    } catch {
+    guard let rootSnapshot = captureSnapshot(for: queryRoot, app: app) else {
       return DataPayload(nodes: nodes, truncated: truncated)
     }
 
@@ -623,54 +811,55 @@ final class RunnerTests: XCTestCase {
 
   private func snapshotRaw(app: XCUIApplication, options: SnapshotOptions) -> DataPayload {
     let root = options.scope.flatMap { findScopeElement(app: app, scope: $0) } ?? app
+    guard let rootSnapshot = captureSnapshot(for: root, app: app) else {
+      return DataPayload(nodes: [], truncated: false)
+    }
+
     var nodes: [SnapshotNode] = []
     var truncated = false
-    let viewport = app.frame
+    let appViewport = app.frame
+    let rootFrame = rootSnapshot.frame
+    let viewport = appViewport.isEmpty || appViewport.isNull ? rootFrame : appViewport
 
-    func walk(_ element: XCUIElement, depth: Int) {
+    func walk(_ snapshot: XCUIElementSnapshot, depth: Int) {
       if nodes.count >= maxSnapshotElements {
         truncated = true
         return
       }
       if let limit = options.depth, depth > limit { return }
-      if !isVisibleInViewport(element.frame, viewport) { return }
+      if depth > 0, !isVisibleInViewport(snapshot.frame, viewport) { return }
 
-      let label = aggregatedLabel(for: element) ?? element.label.trimmingCharacters(in: .whitespacesAndNewlines)
-      let identifier = element.identifier.trimmingCharacters(in: .whitespacesAndNewlines)
-      let valueText: String? = {
-        guard let value = element.value else { return nil }
-        let text = String(describing: value).trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
-      }()
-      if shouldInclude(element: element, label: label, identifier: identifier, valueText: valueText, options: options) {
+      let label = aggregatedLabel(for: snapshot) ?? snapshot.label.trimmingCharacters(in: .whitespacesAndNewlines)
+      let identifier = snapshot.identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+      let valueText = snapshotValueText(snapshot)
+      if shouldInclude(snapshot: snapshot, label: label, identifier: identifier, valueText: valueText, options: options) {
         nodes.append(
           SnapshotNode(
             index: nodes.count,
-            type: elementTypeName(element.elementType),
+            type: elementTypeName(snapshot.elementType),
             label: label.isEmpty ? nil : label,
             identifier: identifier.isEmpty ? nil : identifier,
             value: valueText,
             rect: SnapshotRect(
-              x: Double(element.frame.origin.x),
-              y: Double(element.frame.origin.y),
-              width: Double(element.frame.size.width),
-              height: Double(element.frame.size.height),
+              x: Double(snapshot.frame.origin.x),
+              y: Double(snapshot.frame.origin.y),
+              width: Double(snapshot.frame.size.width),
+              height: Double(snapshot.frame.size.height),
             ),
-            enabled: element.isEnabled,
-            hittable: element.isHittable,
+            enabled: snapshot.isEnabled,
+            hittable: snapshotHittable(snapshot),
             depth: depth,
           )
         )
       }
 
-      let children = element.children(matching: .any).allElementsBoundByIndex
-      for child in children {
+      for child in snapshot.children {
         walk(child, depth: depth + 1)
         if truncated { return }
       }
     }
 
-    walk(root, depth: 0)
+    walk(rootSnapshot, depth: 0)
     return DataPayload(nodes: nodes, truncated: truncated)
   }
 
@@ -749,6 +938,7 @@ final class RunnerTests: XCTestCase {
 
   private func isVisibleInViewport(_ rect: CGRect, _ viewport: CGRect) -> Bool {
     if rect.isNull || rect.isEmpty { return false }
+    if viewport.isNull || viewport.isEmpty { return true }
     return rect.intersects(viewport)
   }
 
@@ -791,12 +981,16 @@ private func resolveRunnerPort() -> UInt16 {
 }
 
 enum CommandType: String, Codable {
+  case ping
   case tap
+  case tapElement
   case type
+  case fill
   case swipe
   case findText
   case listTappables
   case snapshot
+  case bind
   case back
   case home
   case appSwitcher

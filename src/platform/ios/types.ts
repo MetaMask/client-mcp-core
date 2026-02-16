@@ -43,7 +43,18 @@ export type XCUITestClientConfig = {
  * Optional fields provide parameters for specific commands.
  */
 export type RunnerCommand = {
-  command: 'tap' | 'type' | 'swipe' | 'snapshot' | 'back' | 'home' | 'shutdown';
+  command:
+    | 'ping'
+    | 'tap'
+    | 'tapElement'
+    | 'type'
+    | 'fill'
+    | 'swipe'
+    | 'snapshot'
+    | 'bind'
+    | 'back'
+    | 'home'
+    | 'shutdown';
   text?: string;
   x?: number;
   y?: number;

@@ -32,6 +32,8 @@ export type LaunchInput = {
   platform?: 'browser' | 'ios';
   simulatorDeviceId?: string;
   appBundlePath?: string;
+  useWatchMode?: boolean;
+  watchModePort?: number;
 };
 
 export type CleanupInput = {

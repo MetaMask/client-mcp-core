@@ -83,6 +83,8 @@ async function handleBuildWithCapability(
       {
         buildType: input.buildType ?? 'build:test',
         extensionPathResolved: result.extensionPath,
+        watchModeSupported:
+          typeof buildCapability.startWatchMode === 'function',
       },
       undefined,
       startTime,

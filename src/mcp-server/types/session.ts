@@ -7,4 +7,5 @@ export type SessionState = {
     fixtureServer: number;
   };
   stateMode: 'default' | 'onboarding' | 'custom';
+  watchModePort?: number;
 };

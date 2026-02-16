@@ -9,21 +9,86 @@
 
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-type RunnerEntry = { process: ChildProcess; port: number };
+type RunnerEntry = { process: ChildProcess; port: number; logPath: string };
 const runnerProcesses = new Map<string, RunnerEntry>();
 
 export type RunnerOptions = {
   derivedDataPath: string;
   destination: string;
   timeoutMs?: number;
+  logDir?: string;
 };
 
 const PORT_PATTERN = /AGENT_DEVICE_RUNNER_PORT=(\d+)/u;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const HEALTH_POLL_INTERVAL_MS = 500;
+const DEFAULT_LOG_DIR = join(tmpdir(), 'metamask-mobile-xcuitest-logs');
+const MAX_LOG_BUFFER_CHARS = 128_000;
+const TAIL_LINES = 20;
+
+function appendToBuffer(buffer: string, text: string): string {
+  const merged = buffer + text;
+  if (merged.length <= MAX_LOG_BUFFER_CHARS) {
+    return merged;
+  }
+  return merged.slice(-MAX_LOG_BUFFER_CHARS);
+}
+
+function tail(text: string, lines: number = TAIL_LINES): string {
+  const relevant = text
+    .split(/\r?\n/u)
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+  if (relevant.length === 0) {
+    return '<empty>';
+  }
+  return relevant.slice(-lines).join('\n');
+}
+
+function sanitizeDestination(destination: string): string {
+  return destination.replace(/[^a-zA-Z0-9._-]/gu, '_').slice(0, 120);
+}
+
+async function createRunnerLogFilePath(
+  destination: string,
+  logDir?: string,
+): Promise<string> {
+  const baseDir = logDir ?? DEFAULT_LOG_DIR;
+  await mkdir(baseDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
+  const safeDestination = sanitizeDestination(destination);
+  return join(baseDir, `xcuitest-runner-${stamp}-${safeDestination}.log`);
+}
+
+async function appendLog(
+  logPath: string,
+  stream: 'stdout' | 'stderr' | 'meta',
+  chunk: string,
+): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const prefix = `[${timestamp}] [${stream}] `;
+  await appendFile(logPath, `${prefix}${chunk}`);
+}
+
+function createRunnerStartError(
+  reason: string,
+  logPath: string,
+  stdoutBuffer: string,
+  stderrBuffer: string,
+): Error {
+  const stdoutTail = tail(stdoutBuffer);
+  const stderrTail = tail(stderrBuffer);
+  return new Error(
+    `${reason}\n` +
+      `Runner log: ${logPath}\n` +
+      `stdout tail:\n${stdoutTail}\n` +
+      `stderr tail:\n${stderrTail}`,
+  );
+}
 
 /**
  * Locate the .xctestrun file inside the derived data directory.
@@ -65,6 +130,12 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const xctestrunPath = await findXctestrunFile(options.derivedDataPath);
+  const logPath = await createRunnerLogFilePath(destination, options.logDir);
+  await appendLog(
+    logPath,
+    'meta',
+    `startRunner destination=${destination} timeoutMs=${timeoutMs}\n`,
+  );
 
   return new Promise<number>((resolve, reject) => {
     const proc = spawn('xcodebuild', [
@@ -73,40 +144,56 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       xctestrunPath,
       '-destination',
       destination,
+      '-parallel-testing-enabled',
+      'NO',
+      '-test-timeouts-enabled',
+      'NO',
     ]);
 
     let resolved = false;
     let stdoutBuffer = '';
+    let stderrBuffer = '';
 
     const timer = setTimeout(() => {
       if (!resolved) {
         resolved = true;
         proc.kill();
         runnerProcesses.delete(destination);
-        reject(new Error(`Runner did not emit port within ${timeoutMs}ms`));
+        reject(
+          createRunnerStartError(
+            `Runner did not emit port within ${timeoutMs}ms`,
+            logPath,
+            stdoutBuffer,
+            stderrBuffer,
+          ),
+        );
       }
     }, timeoutMs);
 
     proc.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      appendLog(logPath, 'stdout', text).catch(() => undefined);
       if (resolved) {
         return;
       }
-      stdoutBuffer += chunk.toString();
-      if (stdoutBuffer.length > 64_000) {
-        stdoutBuffer = stdoutBuffer.slice(-32_000);
-      }
+      stdoutBuffer = appendToBuffer(stdoutBuffer, text);
       const match = PORT_PATTERN.exec(stdoutBuffer);
       if (match?.[1]) {
         resolved = true;
         clearTimeout(timer);
         const port = Number(match[1]);
-        runnerProcesses.set(destination, { process: proc, port });
+        runnerProcesses.set(destination, { process: proc, port, logPath });
+        appendLog(logPath, 'meta', `runner ready port=${port}\n`).catch(
+          () => undefined,
+        );
         resolve(port);
       }
     });
 
-    proc.stderr?.on('data', () => {
-      // Drain stderr to prevent pipe buffer deadlock
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      stderrBuffer = appendToBuffer(stderrBuffer, text);
+      appendLog(logPath, 'stderr', text).catch(() => undefined);
     });
 
     proc.on('error', (error) => {
@@ -114,18 +201,31 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
         resolved = true;
         clearTimeout(timer);
         runnerProcesses.delete(destination);
-        reject(error);
+        reject(
+          createRunnerStartError(
+            `Runner process error: ${error.message}`,
+            logPath,
+            stdoutBuffer,
+            stderrBuffer,
+          ),
+        );
       }
     });
 
     proc.on('close', (code) => {
+      appendLog(logPath, 'meta', `runner close code=${String(code)}\n`).catch(
+        () => undefined,
+      );
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
         runnerProcesses.delete(destination);
         reject(
-          new Error(
+          createRunnerStartError(
             `Runner exited with code ${code ?? 'unknown'} before emitting port`,
+            logPath,
+            stdoutBuffer,
+            stderrBuffer,
           ),
         );
       }

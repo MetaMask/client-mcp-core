@@ -21,6 +21,13 @@ import type {
   HandlerOptions,
 } from '../types';
 
+function updateRefMapIfUsable(refMap: Map<string, string>, nodes: unknown[]): void {
+  if (nodes.length === 0 && refMap.size === 0) {
+    return;
+  }
+  getSessionManager().setRefMap(refMap);
+}
+
 /**
  * Handle listing all visible data-testid attributes on the current page.
  *
@@ -54,7 +61,7 @@ export async function handleListTestIds(
       const state = await context.driver.getAppState();
       const { nodes, refMap } = await context.driver.getAccessibilityTree();
 
-      getSessionManager().setRefMap(refMap);
+      updateRefMapIfUsable(refMap, nodes);
 
       return {
         result: { items },
@@ -104,7 +111,7 @@ export async function handleAccessibilitySnapshot(
         input.rootSelector,
       );
 
-      getSessionManager().setRefMap(refMap);
+      updateRefMapIfUsable(refMap, nodes);
 
       const state = await context.driver.getAppState();
       const testIds = await context.driver.getTestIds(OBSERVATION_TESTID_LIMIT);
@@ -159,7 +166,7 @@ export async function handleDescribeScreen(
       const testIds = await context.driver.getTestIds(DEFAULT_TESTID_LIMIT);
       const { nodes, refMap } = await context.driver.getAccessibilityTree();
 
-      sessionManager.setRefMap(refMap);
+      updateRefMapIfUsable(refMap, nodes);
 
       let screenshot: DescribeScreenResult['screenshot'] = null;
 

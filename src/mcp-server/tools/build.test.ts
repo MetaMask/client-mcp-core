@@ -13,6 +13,7 @@ import * as knowledgeStoreModule from '../knowledge-store.js';
 import * as sessionManagerModule from '../session-manager.js';
 import { createMockSessionManager } from '../test-utils';
 import { ErrorCodes } from '../types/errors.js';
+import { launchInputSchema } from '../schemas.js';
 
 describe('build', () => {
   let mockSessionManager: ReturnType<typeof createMockSessionManager>;
@@ -82,6 +83,7 @@ describe('build', () => {
         expect(result.result.extensionPathResolved).toBe(
           '/path/to/dist/chrome',
         );
+        expect(result.result.watchModeSupported).toBe(false);
       }
       expect(mockedBuild).toHaveBeenCalledWith({
         buildType: undefined,
@@ -117,6 +119,31 @@ describe('build', () => {
         buildType: 'build:test',
         force: undefined,
       });
+    });
+
+    it('reports watchModeSupported when capability has startWatchMode', async () => {
+      // Arrange
+      const watchCapability: BuildCapability = {
+        build: vi.fn().mockResolvedValue({
+          success: true,
+          extensionPath: '/path/to/dist',
+          durationMs: 100,
+        }),
+        getExtensionPath: vi.fn().mockReturnValue('/path/to/dist'),
+        isBuilt: vi.fn().mockResolvedValue(true),
+        startWatchMode: vi.fn(),
+        stopWatchMode: vi.fn(),
+        isWatching: vi.fn().mockReturnValue(false),
+      };
+
+      // Act
+      const result = await handleBuild({}, { buildCapability: watchCapability });
+
+      // Assert
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.watchModeSupported).toBe(true);
+      }
     });
 
     it('builds extension with force flag', async () => {
@@ -206,6 +233,48 @@ describe('build', () => {
         expect(result.error.code).toBe(ErrorCodes.MM_BUILD_FAILED);
         expect(result.error.message).toContain('Build process crashed');
       }
+    });
+  });
+
+  describe('launchInputSchema watch mode refinements', () => {
+    it('fails when ios launch omits simulatorDeviceId', () => {
+      const result = launchInputSchema.safeParse({
+        platform: 'ios',
+        appBundlePath: '/path/to/app.app',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].message).toBe(
+          'simulatorDeviceId is required when platform is "ios"',
+        );
+      }
+    });
+
+    it('fails when ios launch omits appBundlePath', () => {
+      const result = launchInputSchema.safeParse({
+        platform: 'ios',
+        simulatorDeviceId: 'sim-1234',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].message).toBe(
+          'appBundlePath is required when platform is "ios"',
+        );
+      }
+    });
+
+    it('passes when ios launch provides watch mode options', () => {
+      const result = launchInputSchema.safeParse({
+        platform: 'ios',
+        simulatorDeviceId: 'sim-1234',
+        appBundlePath: '/path/to/app.app',
+        useWatchMode: true,
+        watchModePort: 8081,
+      });
+
+      expect(result.success).toBe(true);
     });
   });
 });

@@ -20,8 +20,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-CACHE_DIR="$HOME/.metamask-mcp/ios-runner"
-DERIVED_DATA="$CACHE_DIR/DerivedData"
+DERIVED_DATA="${IOS_RUNNER_DERIVED_DATA_PATH:-$REPO_ROOT/ios-runner-derived-data}"
+if [ ! -d "$DERIVED_DATA" ] && [ -d "$HOME/.metamask-mcp/ios-runner/DerivedData" ]; then
+    DERIVED_DATA="$HOME/.metamask-mcp/ios-runner/DerivedData"
+fi
 RUNNER_PID=""
 RUNNER_PORT=""
 DEVICE_UDID=""

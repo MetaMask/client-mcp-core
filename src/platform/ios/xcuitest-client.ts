@@ -42,8 +42,24 @@ export class XCUITestClient {
     await this.sendCommand('tap', { x, y });
   }
 
+  async ping(): Promise<void> {
+    await this.sendCommand('ping');
+  }
+
+  async tapElement(text: string): Promise<void> {
+    await this.sendCommand('tapElement', { text });
+  }
+
   async type(text: string): Promise<void> {
     await this.sendCommand('type', { text });
+  }
+
+  async fill(x: number, y: number, text: string): Promise<void> {
+    await this.sendCommand('fill', { x, y, text });
+  }
+
+  async bind(appBundleId: string): Promise<void> {
+    await this.sendCommand('bind', { appBundleId });
   }
 
   async swipe(
@@ -83,7 +99,7 @@ export class XCUITestClient {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       try {
-        await this.sendCommand<SnapshotDataPayload>('snapshot');
+        await this.sendCommand('ping');
         return true;
       } catch {
         await this.sleep(100);

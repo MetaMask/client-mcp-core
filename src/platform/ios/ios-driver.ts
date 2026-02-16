@@ -11,6 +11,7 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
+import { snapshotAxIos } from './ax-snapshot.js';
 import { takeScreenshot } from './simctl.js';
 import type { SnapshotNode } from './types.js';
 import type { XCUITestClient } from './xcuitest-client.js';
@@ -34,6 +35,11 @@ import type {
 const DEFAULT_ANIMATION_DELAY_MS = 300;
 const DEFAULT_POLL_INTERVAL_MS = 200;
 const DEFAULT_SCREENSHOT_DIR = '/tmp/ios-screenshots';
+const DEFAULT_APP_BUNDLE_ID = 'io.metamask.MetaMask';
+const EMPTY_SNAPSHOT_REBIND_DELAY_MS = 300;
+const DEFAULT_SNAPSHOT_BACKEND = 'xctest-with-ax-fallback';
+
+type SnapshotBackend = 'xctest' | 'ax' | 'xctest-with-ax-fallback';
 
 /**
  * Internal error thrown when an element is not found within the polling timeout.
@@ -88,11 +94,21 @@ export class IOSPlatformDriver implements IPlatformDriver {
 
   readonly #screenshotDir: string;
 
-  readonly #client: XCUITestClient;
+  #client: XCUITestClient;
 
   readonly #deviceUdid: string;
 
   readonly #supportedTools: Set<string>;
+
+  readonly #recoverRunner?: () => Promise<XCUITestClient>;
+
+  readonly #appBundleId: string;
+
+  readonly #snapshotBackend: SnapshotBackend;
+
+  #recoveryInFlight: Promise<void> | undefined;
+
+  #lastRecoveryError: unknown;
 
   /**
    * @param client - XCUITest client instance used for simulator commands.
@@ -101,6 +117,9 @@ export class IOSPlatformDriver implements IPlatformDriver {
    * @param options.animationDelayMs - Delay after taps to allow animations.
    * @param options.screenshotDir - Directory to save screenshots.
    * @param options.supportedTools - Set of tool names supported on iOS (defaults to DEFAULT_SUPPORTED_IOS_TOOLS).
+   * @param options.recoverRunner
+   * @param options.appBundleId
+   * @param options.snapshotBackend
    */
   constructor(
     client: XCUITestClient,
@@ -109,6 +128,9 @@ export class IOSPlatformDriver implements IPlatformDriver {
       animationDelayMs?: number;
       screenshotDir?: string;
       supportedTools?: Set<string>;
+      recoverRunner?: () => Promise<XCUITestClient>;
+      appBundleId?: string;
+      snapshotBackend?: SnapshotBackend;
     },
   ) {
     this.#client = client;
@@ -118,6 +140,10 @@ export class IOSPlatformDriver implements IPlatformDriver {
     this.#screenshotDir = options?.screenshotDir ?? DEFAULT_SCREENSHOT_DIR;
     this.#supportedTools =
       options?.supportedTools ?? DEFAULT_SUPPORTED_IOS_TOOLS;
+    this.#recoverRunner = options?.recoverRunner;
+    this.#appBundleId = options?.appBundleId ?? DEFAULT_APP_BUNDLE_ID;
+    this.#snapshotBackend =
+      options?.snapshotBackend ?? DEFAULT_SNAPSHOT_BACKEND;
   }
 
   /**
@@ -140,14 +166,42 @@ export class IOSPlatformDriver implements IPlatformDriver {
       timeoutMs,
     );
 
-    if (!element.rect) {
-      throw new Error(
-        `Element has no rect for tap: ${targetType}:${targetValue}`,
-      );
+    // tapElement first: triggers proper keyboard/focus behavior via XCUITest element queries.
+    // Coordinate tap fallback for React Native views not exposed to XCUITest queries.
+    let tapped = false;
+    if (element.identifier) {
+      const { identifier } = element;
+      try {
+        await this.#withRunnerRecovery(
+          async () => this.#client.tapElement(identifier),
+          true,
+        );
+        tapped = true;
+      } catch {
+        /* element not queryable — fall through to coordinate tap */
+      }
     }
-
-    const { x, y } = this.#calculateCenter(element.rect);
-    await this.#client.tap(x, y);
+    if (!tapped && element.label) {
+      const { label } = element;
+      try {
+        await this.#withRunnerRecovery(
+          async () => this.#client.tapElement(label),
+          true,
+        );
+        tapped = true;
+      } catch {
+        /* element not queryable — fall through to coordinate tap */
+      }
+    }
+    if (!tapped) {
+      if (!element.rect) {
+        throw new Error(
+          `Element has no rect for tap: ${targetType}:${targetValue}`,
+        );
+      }
+      const { x, y } = this.#calculateCenter(element.rect);
+      await this.#withRunnerRecovery(async () => this.#client.tap(x, y), false);
+    }
     await this.#sleep(this.#animationDelayMs);
 
     return {
@@ -171,29 +225,34 @@ export class IOSPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
   ): Promise<TypeActionResult> {
-    const deadline = Date.now() + timeoutMs;
-    await this.click(targetType, targetValue, refMap, timeoutMs);
+    const element = await this.#pollForElement(
+      targetType,
+      targetValue,
+      refMap,
+      timeoutMs,
+    );
 
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
+    if (!element.rect) {
       throw new Error(
-        `Timeout typing into ${targetType}:${targetValue} (no time remaining after click)`,
+        `Element has no rect for fill: ${targetType}:${targetValue}`,
       );
     }
+
+    const { x, y } = this.#calculateCenter(element.rect);
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        this.#client.type(text),
+        this.#withRunnerRecovery(() => this.#client.fill(x, y, text), false),
         new Promise<never>((_resolve, rejectTimeout) => {
           timeoutId = setTimeout(
             () =>
               rejectTimeout(
                 new Error(
-                  `Timeout typing into ${targetType}:${targetValue} (${remaining}ms)`,
+                  `Timeout typing into ${targetType}:${targetValue} (${timeoutMs}ms)`,
                 ),
               ),
-            remaining,
+            Math.max(timeoutMs, 15_000),
           );
         }),
       ]);
@@ -242,7 +301,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
   async getAccessibilityTree(
     rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
-    const snapshot = await this.#client.snapshot(
+    const snapshot = await this.#snapshotForDiscovery(
       rootSelector ? { scope: rootSelector } : undefined,
     );
     const nodes: A11yNodeTrimmed[] = [];
@@ -274,7 +333,7 @@ export class IOSPlatformDriver implements IPlatformDriver {
    * @returns Promise resolving to array of test ID items.
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
-    const snapshot = await this.#client.snapshot();
+    const snapshot = await this.#snapshotForDiscovery();
     const items: TestIdItem[] = [];
     const maxItems = limit ?? 150;
 
@@ -512,7 +571,20 @@ export class IOSPlatformDriver implements IPlatformDriver {
     }
 
     while (Date.now() - startTime < timeoutMs) {
-      const snapshot = await this.#client.snapshot();
+      let snapshot: SnapshotNode[];
+      try {
+        snapshot = await this.#snapshotForDiscovery();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          message.includes('MM_IOS_RUNNER_RECOVERING') ||
+          message.includes('MM_IOS_EMPTY_SNAPSHOT')
+        ) {
+          await this.#sleep(DEFAULT_POLL_INTERVAL_MS);
+          continue;
+        }
+        throw error;
+      }
 
       let element: SnapshotNode | undefined;
       if (targetType === 'a11yRef' && stableIdentifier) {
@@ -637,6 +709,207 @@ export class IOSPlatformDriver implements IPlatformDriver {
   async #sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  /**
+   *
+   * @param operation
+   * @param allowRecovery
+   * @param fastFailOnRecovering
+   */
+  async #withRunnerRecovery<T>(
+    operation: () => Promise<T>,
+    allowRecovery: boolean,
+    fastFailOnRecovering: boolean = false,
+  ): Promise<T> {
+    if (this.#recoveryInFlight) {
+      if (fastFailOnRecovering) {
+        throw this.#createRunnerRecoveringError();
+      }
+      await this.#recoveryInFlight;
+    }
+
+    try {
+      return await operation();
+    } catch (error) {
+      if (!allowRecovery || !this.#recoverRunner) {
+        throw error;
+      }
+      if (!this.#isRecoverableConnectionError(error)) {
+        throw error;
+      }
+
+      if (fastFailOnRecovering) {
+        this.#startRecoveryInBackground();
+        throw this.#createRunnerRecoveringError();
+      }
+
+      this.#client = await this.#recoverRunner();
+      this.#lastRecoveryError = undefined;
+      return operation();
+    }
+  }
+
+  /**
+   *
+   * @param options
+   * @param options.interactiveOnly
+   * @param options.compact
+   * @param options.depth
+   * @param options.scope
+   */
+  async #snapshotForDiscovery(options?: {
+    interactiveOnly?: boolean;
+    compact?: boolean;
+    depth?: number;
+    scope?: string;
+  }): Promise<SnapshotNode[]> {
+    if (this.#recoveryInFlight) {
+      throw this.#createRunnerRecoveringError();
+    }
+
+    if (this.#snapshotBackend === 'ax') {
+      const axOnly = await snapshotAxIos();
+      if (axOnly.length > 0) {
+        return axOnly;
+      }
+      throw new Error(
+        'MM_IOS_EMPTY_SNAPSHOT: AX snapshot returned empty nodes',
+      );
+    }
+
+    const initial = await this.#withRunnerRecovery(
+      async () => this.#client.snapshot(options),
+      true,
+      true,
+    );
+    if (initial.length > 0) {
+      return initial;
+    }
+
+    let lastAxError: unknown;
+
+    if (this.#snapshotBackend === 'xctest-with-ax-fallback') {
+      try {
+        const axFallback = await snapshotAxIos();
+        if (axFallback.length > 0) {
+          return axFallback;
+        }
+      } catch (error) {
+        lastAxError = error;
+        console.warn('[IOSPlatformDriver] AX snapshot fallback failed', error);
+      }
+    }
+
+    console.warn(
+      `[IOSPlatformDriver] Empty snapshot; rebinding to ${this.#appBundleId} and retrying`,
+    );
+    try {
+      await this.#withRunnerRecovery(
+        async () => this.#client.bind(this.#appBundleId),
+        true,
+        true,
+      );
+      await this.#sleep(EMPTY_SNAPSHOT_REBIND_DELAY_MS);
+      const rebound = await this.#withRunnerRecovery(
+        async () => this.#client.snapshot(options),
+        true,
+        true,
+      );
+      if (rebound.length > 0) {
+        return rebound;
+      }
+
+      if (this.#snapshotBackend === 'xctest-with-ax-fallback') {
+        try {
+          const reboundAxFallback = await snapshotAxIos();
+          if (reboundAxFallback.length > 0) {
+            return reboundAxFallback;
+          }
+        } catch (error) {
+          lastAxError = error;
+          console.warn(
+            '[IOSPlatformDriver] AX snapshot fallback after rebind failed',
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      console.warn('[IOSPlatformDriver] Snapshot rebind retry failed', error);
+    }
+
+    if (lastAxError instanceof Error) {
+      if (lastAxError.message.includes('MM_IOS_AX_PERMISSION_REQUIRED')) {
+        throw lastAxError;
+      }
+      if (lastAxError.message.includes('MM_IOS_AX_BINARY_MISSING')) {
+        throw lastAxError;
+      }
+    }
+
+    throw new Error(
+      `MM_IOS_EMPTY_SNAPSHOT: discovery snapshot is empty after rebind (${this.#appBundleId})`,
+    );
+  }
+
+  /**
+   *
+   */
+  #startRecoveryInBackground(): void {
+    if (!this.#recoverRunner || this.#recoveryInFlight) {
+      return;
+    }
+
+    this.#recoveryInFlight = this.#recoverRunner()
+      .then((client) => {
+        this.#client = client;
+        this.#lastRecoveryError = undefined;
+      })
+      .catch((error) => {
+        this.#lastRecoveryError = error;
+        console.warn(
+          '[IOSPlatformDriver] Background runner recovery failed',
+          error,
+        );
+      })
+      .finally(() => {
+        this.#recoveryInFlight = undefined;
+      });
+  }
+
+  /**
+   *
+   */
+  #createRunnerRecoveringError(): Error {
+    const suffix = this.#lastRecoveryError
+      ? ` Last recovery error: ${
+          this.#lastRecoveryError instanceof Error
+            ? this.#lastRecoveryError.message
+            : String(this.#lastRecoveryError)
+        }`
+      : '';
+
+    return new Error(
+      `MM_IOS_RUNNER_RECOVERING: Runner recovery in progress.${suffix}`,
+    );
+  }
+
+  /**
+   *
+   * @param error
+   */
+  #isRecoverableConnectionError(error: unknown): boolean {
+    const message =
+      error instanceof Error
+        ? error.message.toLowerCase()
+        : String(error).toLowerCase();
+    return (
+      message.includes('fetch failed') ||
+      message.includes('econnrefused') ||
+      message.includes('socket hang up') ||
+      message.includes('runner did not accept connection') ||
+      message.includes('runner not ready')
+    );
+  }
 }
 
 /**
@@ -662,6 +935,21 @@ export function classifyIOSError(error: unknown): {
     errorMessage.toLowerCase().includes('snapshot failed')
   ) {
     return { code: 'MM_IOS_SNAPSHOT_FAILED', message: errorMessage };
+  }
+  if (errorMessage.includes('MM_IOS_EMPTY_SNAPSHOT')) {
+    return { code: 'MM_IOS_EMPTY_SNAPSHOT', message: errorMessage };
+  }
+  if (errorMessage.includes('MM_IOS_AX_PERMISSION_REQUIRED')) {
+    return { code: 'MM_IOS_AX_PERMISSION_REQUIRED', message: errorMessage };
+  }
+  if (errorMessage.includes('MM_IOS_AX_BINARY_MISSING')) {
+    return { code: 'MM_IOS_AX_BINARY_MISSING', message: errorMessage };
+  }
+  if (errorMessage.includes('MM_IOS_AX_SNAPSHOT_FAILED')) {
+    return { code: 'MM_IOS_AX_SNAPSHOT_FAILED', message: errorMessage };
+  }
+  if (errorMessage.includes('MM_IOS_RUNNER_RECOVERING')) {
+    return { code: 'MM_IOS_RUNNER_RECOVERING', message: errorMessage };
   }
   if (errorMessage.includes('Runner') && errorMessage.includes('not ready')) {
     return { code: 'MM_IOS_RUNNER_NOT_READY', message: errorMessage };

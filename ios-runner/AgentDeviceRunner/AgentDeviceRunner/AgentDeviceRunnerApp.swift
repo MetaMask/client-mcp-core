@@ -2,7 +2,7 @@
 //  AgentDeviceRunnerApp.swift
 //  AgentDeviceRunner
 //
-//  Created by Michał Pierzchała on 30/01/2026.
+//  Created by Joao Tavares on 11/02/2026.
 //
 
 import SwiftUI

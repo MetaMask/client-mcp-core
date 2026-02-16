@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "7D4A453C-27A1-45B6-80AA-7B9230409FD1",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:AgentDeviceRunner.xcodeproj",
+        "identifier" : "624A24DD2F3CEBA400FDEFFB",
+        "name" : "AgentDeviceRunnerUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

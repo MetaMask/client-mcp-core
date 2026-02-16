@@ -176,6 +176,24 @@ export const launchInputSchema = z
       .string()
       .optional()
       .describe('Path to MetaMask Mobile .app bundle'),
+    useWatchMode: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Start a long-running dev server (e.g., Metro bundler) instead of a one-shot native build. ' +
+          'Requires the app to already be installed on the target. Skips native rebuild.',
+      ),
+    watchModePort: z
+      .number()
+      .int()
+      .min(1)
+      .max(65535)
+      .describe(
+        'Port for the dev server (e.g., Metro bundler port). ' +
+          'When useWatchMode is true, the MCP server starts the dev server on this port. ' +
+          'When useWatchMode is false, assumes a dev server is already running and connects the app to it.',
+      )
+      .optional(),
   })
   .refine(
     (data) => data.platform !== 'ios' || Boolean(data.simulatorDeviceId),

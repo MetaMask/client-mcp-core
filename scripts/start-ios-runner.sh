@@ -4,8 +4,16 @@
 
 set -euo pipefail
 
-CACHE_DIR="$HOME/.metamask-mcp/ios-runner"
-DERIVED_DATA="$CACHE_DIR/DerivedData"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+DERIVED_DATA="${IOS_RUNNER_DERIVED_DATA_PATH:-$REPO_ROOT/ios-runner-derived-data}"
+
+if [ ! -d "$DERIVED_DATA" ]; then
+    LEGACY_DERIVED_DATA="$HOME/.metamask-mcp/ios-runner/DerivedData"
+    if [ -d "$LEGACY_DERIVED_DATA" ]; then
+        DERIVED_DATA="$LEGACY_DERIVED_DATA"
+    fi
+fi
 
 if [ ! -d "$DERIVED_DATA" ]; then
     echo "❌ Runner not built. Run scripts/build-ios-runner.sh first."
