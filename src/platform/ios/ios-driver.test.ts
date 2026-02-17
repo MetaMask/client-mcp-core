@@ -1,14 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+import { snapshotAxIos } from './ax-snapshot.js';
 import { IOSPlatformDriver } from './ios-driver.js';
 import type { SnapshotNode } from './types.js';
+
+vi.mock('./ax-snapshot.js', () => ({
+  snapshotAxIos: vi.fn().mockResolvedValue([]),
+}));
 
 function createMockClient() {
   return {
     tap: vi.fn().mockResolvedValue(undefined),
     type: vi.fn().mockResolvedValue(undefined),
+    fill: vi.fn().mockResolvedValue(undefined),
     swipe: vi.fn().mockResolvedValue(undefined),
     snapshot: vi.fn().mockResolvedValue([] as SnapshotNode[]),
+    bind: vi.fn().mockResolvedValue(undefined),
     back: vi.fn().mockResolvedValue(undefined),
     home: vi.fn().mockResolvedValue(undefined),
     waitForRunner: vi.fn().mockResolvedValue(true),
@@ -68,6 +75,7 @@ describe('IOSPlatformDriver', () => {
   let driver: IOSPlatformDriver;
 
   beforeEach(() => {
+    vi.mocked(snapshotAxIos).mockResolvedValue([]);
     mockClient = createMockClient();
     driver = new IOSPlatformDriver(mockClient as any, TEST_UDID, {
       animationDelayMs: 0,
@@ -225,8 +233,7 @@ describe('IOSPlatformDriver', () => {
         target: 'testId:amount-input',
         textLength: 3,
       });
-      expect(mockClient.tap).toHaveBeenCalledWith(150, 320);
-      expect(mockClient.type).toHaveBeenCalledWith('0.5');
+      expect(mockClient.fill).toHaveBeenCalledWith(150, 320, '0.5');
     });
 
     it('handles empty text', async () => {
@@ -245,7 +252,7 @@ describe('IOSPlatformDriver', () => {
         target: 'testId:amount-input',
         textLength: 0,
       });
-      expect(mockClient.type).toHaveBeenCalledWith('');
+      expect(mockClient.fill).toHaveBeenCalledWith(150, 320, '');
     });
 
     it('propagates click errors when element not found', async () => {
@@ -331,7 +338,9 @@ describe('IOSPlatformDriver', () => {
     });
 
     it('passes rootSelector as scope to snapshot', async () => {
-      mockClient.snapshot.mockResolvedValue([]);
+      mockClient.snapshot
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(SAMPLE_SNAPSHOT);
 
       await driver.getAccessibilityTree('main-view');
 
@@ -387,10 +396,9 @@ describe('IOSPlatformDriver', () => {
     it('handles empty snapshot', async () => {
       mockClient.snapshot.mockResolvedValue([]);
 
-      const { nodes, refMap } = await driver.getAccessibilityTree();
-
-      expect(nodes).toStrictEqual([]);
-      expect(refMap.size).toBe(0);
+      await expect(driver.getAccessibilityTree()).rejects.toThrowError(
+        'MM_IOS_EMPTY_SNAPSHOT: discovery snapshot is empty after rebind (io.metamask.MetaMask)',
+      );
     });
 
     it('builds correct path hierarchy', async () => {

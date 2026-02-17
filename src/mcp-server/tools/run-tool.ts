@@ -148,6 +148,7 @@ export async function runTool<TInput, TResult>(
 
     driver = requiresSession
       ? (_platformDriver ??
+        sessionManager.getPlatformDriver?.() ??
         new PlaywrightPlatformDriver(
           () => sessionManager.getPage(),
           sessionManager,

@@ -21,6 +21,7 @@ import type {
   StateSnapshotCapability,
   ScreenshotResult,
 } from '../capabilities/types.js';
+import type { IPlatformDriver } from '../platform/types.js';
 
 /**
  * Represents a tracked browser page with its role and URL.
@@ -136,6 +137,18 @@ export type ISessionManager = {
    * @returns true if cleanup was performed, false if no session was active
    */
   cleanup(): Promise<boolean>;
+
+  /**
+   * Get the platform driver for the current session.
+   * Returns undefined when no iOS driver is configured (browser sessions).
+   */
+  getPlatformDriver?(): IPlatformDriver | undefined;
+
+  /**
+   * Set the platform driver for the current session.
+   * Called by launch logic when platform is 'ios'.
+   */
+  setPlatformDriver?(driver: IPlatformDriver): void;
 
   // -----------------------------------------------------------------------------
   // Page Management

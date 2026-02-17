@@ -53,7 +53,12 @@ export async function collectObservation(
       OBSERVATION_TESTID_LIMIT,
     );
     const { nodes, refMap } = await driver.getAccessibilityTree();
-    sessionManager.setRefMap(refMap);
+    // Only update refMap if the new snapshot has content.
+    // Empty snapshots (common on iOS during transitions) should not
+    // wipe the existing usable refMap.
+    if (nodes.length > 0 || refMap.size > 0) {
+      sessionManager.setRefMap(refMap);
+    }
     return createDefaultObservation(state, testIds, nodes);
   } catch (error) {
     debugWarn('collectObservation', error);

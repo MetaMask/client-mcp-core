@@ -15,6 +15,7 @@ import { join } from 'node:path';
 
 type RunnerEntry = { process: ChildProcess; port: number; logPath: string };
 const runnerProcesses = new Map<string, RunnerEntry>();
+const startupLocks = new Map<string, Promise<number>>();
 
 export type RunnerOptions = {
   derivedDataPath: string;
@@ -29,6 +30,8 @@ const HEALTH_POLL_INTERVAL_MS = 500;
 const DEFAULT_LOG_DIR = join(tmpdir(), 'metamask-mobile-xcuitest-logs');
 const MAX_LOG_BUFFER_CHARS = 128_000;
 const TAIL_LINES = 20;
+const RUNNER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2000;
+const RUNNER_KILL_ESCALATION_TIMEOUT_MS = 3000;
 
 function appendToBuffer(buffer: string, text: string): string {
   const merged = buffer + text;
@@ -90,6 +93,63 @@ function createRunnerStartError(
   );
 }
 
+function deleteRunnerEntry(destination: string, process?: ChildProcess): void {
+  const current = runnerProcesses.get(destination);
+  if (!current) {
+    return;
+  }
+  if (!process || current.process === process) {
+    runnerProcesses.delete(destination);
+  }
+}
+
+async function sendShutdownCommand(entry: RunnerEntry): Promise<void> {
+  try {
+    await fetch(`http://127.0.0.1:${entry.port}/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'shutdown' }),
+      signal: AbortSignal.timeout(RUNNER_GRACEFUL_SHUTDOWN_TIMEOUT_MS),
+    });
+  } catch {
+    /* ignore – best-effort graceful shutdown */
+  }
+}
+
+async function killProcessWithEscalation(
+  entry: RunnerEntry,
+  destination: string,
+): Promise<void> {
+  const proc = entry.process;
+
+  if (proc.exitCode !== null || proc.signalCode !== null) {
+    deleteRunnerEntry(destination, proc);
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const escalationTimer = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch {}
+    }, RUNNER_KILL_ESCALATION_TIMEOUT_MS);
+
+    proc.once('close', () => {
+      clearTimeout(escalationTimer);
+      deleteRunnerEntry(destination, proc);
+      resolve();
+    });
+
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      clearTimeout(escalationTimer);
+      deleteRunnerEntry(destination, proc);
+      resolve();
+    }
+  });
+}
+
 /**
  * Locate the .xctestrun file inside the derived data directory.
  *
@@ -120,7 +180,21 @@ async function findXctestrunFile(derivedDataPath: string): Promise<string> {
  * @throws If the runner process exits before emitting a port
  * @throws If no .xctestrun file is found in derivedDataPath
  */
-export async function startRunner(options: RunnerOptions): Promise<number> {
+export function startRunner(options: RunnerOptions): Promise<number> {
+  const { destination } = options;
+  const existing = startupLocks.get(destination);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = startRunnerImpl(options).finally(() => {
+    startupLocks.delete(destination);
+  });
+  startupLocks.set(destination, promise);
+  return promise;
+}
+
+async function startRunnerImpl(options: RunnerOptions): Promise<number> {
   const { destination } = options;
 
   // Stop any existing runner for this destination before starting a new one
@@ -158,7 +232,7 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (!resolved) {
         resolved = true;
         proc.kill();
-        runnerProcesses.delete(destination);
+        deleteRunnerEntry(destination, proc);
         reject(
           createRunnerStartError(
             `Runner did not emit port within ${timeoutMs}ms`,
@@ -200,7 +274,7 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
-        runnerProcesses.delete(destination);
+        deleteRunnerEntry(destination, proc);
         reject(
           createRunnerStartError(
             `Runner process error: ${error.message}`,
@@ -216,10 +290,10 @@ export async function startRunner(options: RunnerOptions): Promise<number> {
       appendLog(logPath, 'meta', `runner close code=${String(code)}\n`).catch(
         () => undefined,
       );
+      deleteRunnerEntry(destination, proc);
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
-        runnerProcesses.delete(destination);
         reject(
           createRunnerStartError(
             `Runner exited with code ${code ?? 'unknown'} before emitting port`,
@@ -244,18 +318,8 @@ export async function stopRunner(destination?: string): Promise<void> {
   if (destination) {
     const entry = runnerProcesses.get(destination);
     if (entry) {
-      try {
-        await fetch(`http://127.0.0.1:${entry.port}/command`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: 'shutdown' }),
-          signal: AbortSignal.timeout(2000),
-        });
-      } catch {
-        /* ignore – best-effort graceful shutdown */
-      }
-      entry.process.kill();
-      runnerProcesses.delete(destination);
+      await sendShutdownCommand(entry);
+      await killProcessWithEscalation(entry, destination);
     }
   } else {
     await stopAllRunners();
@@ -270,18 +334,8 @@ export async function stopRunner(destination?: string): Promise<void> {
 export async function stopAllRunners(): Promise<void> {
   const entries = [...runnerProcesses.entries()];
   for (const [key, entry] of entries) {
-    try {
-      await fetch(`http://127.0.0.1:${entry.port}/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'shutdown' }),
-        signal: AbortSignal.timeout(2000),
-      });
-    } catch {
-      /* ignore – best-effort graceful shutdown */
-    }
-    entry.process.kill();
-    runnerProcesses.delete(key);
+    await sendShutdownCommand(entry);
+    await killProcessWithEscalation(entry, key);
   }
 }
 

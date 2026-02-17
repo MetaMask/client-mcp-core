@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { readdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -13,10 +13,16 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('node:fs/promises', () => ({
   readdir: vi.fn(),
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  appendFile: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockSpawn = vi.mocked(spawn);
 const mockReaddir = vi.mocked(readdir) as unknown as ReturnType<typeof vi.fn>;
+const mockMkdir = vi.mocked(mkdir) as unknown as ReturnType<typeof vi.fn>;
+const mockAppendFile = vi.mocked(appendFile) as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 function createMockProcess(): ChildProcess {
   const proc = new EventEmitter() as ChildProcess;
@@ -38,6 +44,8 @@ function getStdout(proc: ChildProcess): Readable {
 describe('runner-lifecycle', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockAppendFile.mockResolvedValue(undefined);
     await stopRunner();
   });
 
@@ -77,6 +85,10 @@ describe('runner-lifecycle', () => {
         '/derived/Build/Products/Test_iphonesimulator17.4-arm64.xctestrun',
         '-destination',
         'platform=iOS Simulator,id=AAA-111',
+        '-parallel-testing-enabled',
+        'NO',
+        '-test-timeouts-enabled',
+        'NO',
       ]);
     });
 
@@ -184,6 +196,15 @@ describe('runner-lifecycle', () => {
     it('kills the runner process', async () => {
       mockReaddir.mockResolvedValue(['Test.xctestrun']);
       const proc = createMockProcess();
+      Object.defineProperty(proc, 'exitCode', { value: null, writable: true });
+      Object.defineProperty(proc, 'signalCode', {
+        value: null,
+        writable: true,
+      });
+      vi.mocked(proc.kill).mockImplementationOnce(() => {
+        proc.emit('close', 0);
+        return true;
+      });
       mockSpawn.mockReturnValue(proc);
 
       const portPromise = startRunner({

@@ -47,11 +47,29 @@ export async function snapshotAxIos(): Promise<SnapshotNode[]> {
 
 async function resolveAxSnapshotBinaryPath(): Promise<string> {
   const envPath = process.env.METAMASK_AXSNAPSHOT_BINARY;
-  if (envPath && (await existsExecutable(envPath))) {
-    return envPath;
+  if (envPath) {
+    if (!path.isAbsolute(envPath)) {
+      throw new Error(
+        'MM_IOS_AX_BINARY_MISSING: METAMASK_AXSNAPSHOT_BINARY must be an absolute path.',
+      );
+    }
+    if (await existsExecutable(envPath)) {
+      console.warn(
+        `[ax-snapshot] Using custom AXSnapshot binary from METAMASK_AXSNAPSHOT_BINARY: ${envPath}`,
+      );
+      return envPath;
+    }
   }
 
-  const packaged = path.resolve(
+  // Resolve relative to this module's location (works in monorepos and installed packages)
+  const thisDir = path.dirname(__filename);
+  const packaged = path.resolve(thisDir, '..', '..', 'bin', 'axsnapshot');
+  if (await existsExecutable(packaged)) {
+    return packaged;
+  }
+
+  // Fallback: resolve from process.cwd() for backward compatibility
+  const cwdFallback = path.resolve(
     process.cwd(),
     'node_modules',
     '@metamask',
@@ -60,8 +78,8 @@ async function resolveAxSnapshotBinaryPath(): Promise<string> {
     'bin',
     'axsnapshot',
   );
-  if (await existsExecutable(packaged)) {
-    return packaged;
+  if (await existsExecutable(cwdFallback)) {
+    return cwdFallback;
   }
 
   throw new Error(
