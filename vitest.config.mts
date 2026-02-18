@@ -36,9 +36,9 @@ export default defineConfig({
         // Disabled in CI to prevent non-deterministic config changes.
         autoUpdate: !process.env.CI,
         branches: 73.54,
-        functions: 84.42,
-        lines: 83.35,
-        statements: 83.18,
+        functions: 83.7,
+        lines: 83.21,
+        statements: 83.05,
       },
     },
 

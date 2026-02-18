@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -67,6 +68,104 @@ function resolveRunnerXcodeprojPath(): string {
     'AgentDeviceRunner',
     'AgentDeviceRunner.xcodeproj',
   );
+}
+
+const SOURCE_HASH_FILENAME = '.source-hash';
+const SOURCE_FILE_EXTENSIONS = new Set([
+  '.swift',
+  '.m',
+  '.h',
+  '.pbxproj',
+  '.xctestplan',
+]);
+
+function resolveRunnerSourceDir(): string {
+  const pkgRoot = resolvePackageRoot();
+  return path.join(pkgRoot, 'ios-runner');
+}
+
+async function collectSourceFiles(dir: string): Promise<string[]> {
+  const results: string[] = [];
+
+  let entries: string[];
+  try {
+    const dirents = await fs.readdir(dir);
+    entries = dirents;
+  } catch {
+    return results;
+  }
+
+  for (const name of entries) {
+    const fullPath = path.join(dir, name);
+    const stat = await fs.stat(fullPath);
+    if (stat.isDirectory()) {
+      const nested = await collectSourceFiles(fullPath);
+      results.push(...nested);
+    } else if (SOURCE_FILE_EXTENSIONS.has(path.extname(name))) {
+      results.push(fullPath);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Compute a SHA-256 hash of all runner source files (Swift, ObjC, pbxproj, xctestplan).
+ *
+ * Produces a deterministic fingerprint from sorted relative paths and file contents,
+ * independent of absolute paths. Used to detect when cached runner builds are stale.
+ */
+export async function computeRunnerSourceHash(
+  sourceDir?: string,
+): Promise<string> {
+  const dir = sourceDir ?? resolveRunnerSourceDir();
+  const files = await collectSourceFiles(dir);
+
+  const relativePaths = files
+    .map((filePath) => path.relative(dir, filePath))
+    .sort();
+
+  const hash = createHash('sha256');
+  for (const relPath of relativePaths) {
+    const fullPath = path.join(dir, relPath);
+    const content = await fs.readFile(fullPath, 'utf-8');
+    hash.update(relPath);
+    hash.update(content);
+  }
+
+  return hash.digest('hex');
+}
+
+async function readStoredSourceHash(
+  derivedDataPath: string,
+): Promise<string | undefined> {
+  try {
+    const content = await fs.readFile(
+      path.join(derivedDataPath, SOURCE_HASH_FILENAME),
+      'utf-8',
+    );
+    return content.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeSourceHash(
+  derivedDataPath: string,
+  sourceHash: string,
+): Promise<void> {
+  await fs.writeFile(
+    path.join(derivedDataPath, SOURCE_HASH_FILENAME),
+    sourceHash,
+  );
+}
+
+async function isCachedBuildValid(
+  derivedDataPath: string,
+  currentHash: string,
+): Promise<boolean> {
+  const storedHash = await readStoredSourceHash(derivedDataPath);
+  return storedHash === currentHash;
 }
 
 async function runXcodebuildBuildForTesting(params: {
@@ -176,9 +275,18 @@ export async function ensureRunnerBuild(
     await fs.rm(derivedDataPath, { recursive: true, force: true });
   }
 
+  const currentSourceHash = await computeRunnerSourceHash();
+
   const existing = await findXctestrun(derivedDataPath);
   if (existing) {
-    return { derivedDataPath, xctestrunPath: existing };
+    const cacheValid = await isCachedBuildValid(
+      derivedDataPath,
+      currentSourceHash,
+    );
+    if (cacheValid) {
+      return { derivedDataPath, xctestrunPath: existing };
+    }
+    await fs.rm(derivedDataPath, { recursive: true, force: true });
   }
 
   if (!existsSync('/usr/bin/xcodebuild') && !existsSync('xcodebuild')) {
@@ -206,6 +314,8 @@ export async function ensureRunnerBuild(
       )}`,
     );
   }
+
+  await writeSourceHash(derivedDataPath, currentSourceHash);
 
   return { derivedDataPath, xctestrunPath: built };
 }
