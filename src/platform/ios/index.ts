@@ -19,3 +19,9 @@ export {
 
 export type { RunnerOptions } from './runner-lifecycle.js';
 export { startRunner, stopRunner, waitForReady } from './runner-lifecycle.js';
+
+export type {
+  EnsureRunnerBuildOptions,
+  EnsureRunnerBuildResult,
+} from './runner-build.js';
+export { ensureRunnerBuild } from './runner-build.js';
