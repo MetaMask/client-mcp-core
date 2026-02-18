@@ -49,3 +49,4 @@ yalc.lock
 docs/
 
 ios-runner/AxSnapshot/.build
+**/xcuserdata/

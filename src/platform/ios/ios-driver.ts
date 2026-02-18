@@ -409,14 +409,35 @@ export class IOSPlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * @returns Promise resolving to a minimal mobile extension state.
+   * Query runner health and return the best-effort app state.
+   *
+   * iOS has no equivalent of the browser extension state API.
+   * `isLoaded` reflects whether the XCUITest runner is reachable (via ping).
+   * All wallet-specific fields (account, network, balance) are unknown and
+   * returned as `null`. Consumers should not treat `currentScreen: 'unknown'`
+   * as a healthy signal — it means iOS cannot detect the current screen.
+   *
+   * @returns Promise resolving to best-effort mobile app state.
    */
   async getAppState(): Promise<ExtensionState> {
+    let isLoaded = false;
+
+    if (this.#recoveryInFlight) {
+      isLoaded = false;
+    } else {
+      try {
+        await this.#client.ping();
+        isLoaded = true;
+      } catch {
+        isLoaded = false;
+      }
+    }
+
     return {
-      isLoaded: true,
+      isLoaded,
       currentUrl: '',
-      extensionId: '',
-      isUnlocked: true,
+      extensionId: this.#appBundleId,
+      isUnlocked: isLoaded,
       currentScreen: 'unknown',
       accountAddress: null,
       networkName: null,

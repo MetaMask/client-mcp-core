@@ -181,6 +181,8 @@ async function findXctestrunFile(derivedDataPath: string): Promise<string> {
  * @throws If no .xctestrun file is found in derivedDataPath
  */
 export function startRunner(options: RunnerOptions): Promise<number> {
+  registerCleanupHandlers();
+
   const { destination } = options;
   const existing = startupLocks.get(destination);
   if (existing) {
@@ -369,4 +371,47 @@ export async function waitForReady(
   }
 
   return false;
+}
+
+let _cleanupRegistered = false;
+
+/**
+ * Register process signal handlers to prevent zombie xcodebuild processes.
+ *
+ * Idempotent — safe to call multiple times. Automatically called by startRunner().
+ * SIGINT/SIGTERM: graceful stopAllRunners() then re-raise.
+ * exit: synchronous SIGKILL (cannot await in exit handler).
+ */
+export function registerCleanupHandlers(): void {
+  if (_cleanupRegistered) {
+    return;
+  }
+  _cleanupRegistered = true;
+
+  const gracefulShutdown = (signal: NodeJS.Signals) => {
+    stopAllRunners()
+      .catch(() => undefined)
+      .finally(() => {
+        process.kill(process.pid, signal);
+      });
+  };
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+  process.on('exit', () => {
+    for (const [destination, entry] of runnerProcesses.entries()) {
+      try {
+        if (
+          entry.process.exitCode === null &&
+          entry.process.signalCode === null
+        ) {
+          entry.process.kill('SIGKILL');
+        }
+      } catch {
+        /* best-effort */
+      }
+      runnerProcesses.delete(destination);
+    }
+  });
 }

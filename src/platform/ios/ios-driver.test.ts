@@ -18,6 +18,7 @@ function createMockClient() {
     bind: vi.fn().mockResolvedValue(undefined),
     back: vi.fn().mockResolvedValue(undefined),
     home: vi.fn().mockResolvedValue(undefined),
+    ping: vi.fn().mockResolvedValue(undefined),
     waitForRunner: vi.fn().mockResolvedValue(true),
     shutdown: vi.fn().mockResolvedValue(undefined),
   };
@@ -523,14 +524,33 @@ describe('IOSPlatformDriver', () => {
   });
 
   describe('getAppState', () => {
-    it('returns mobile default state', async () => {
+    it('returns loaded state when runner ping succeeds', async () => {
       const state = await driver.getAppState();
 
       expect(state).toStrictEqual({
         isLoaded: true,
         currentUrl: '',
-        extensionId: '',
+        extensionId: 'io.metamask.MetaMask',
         isUnlocked: true,
+        currentScreen: 'unknown',
+        accountAddress: null,
+        networkName: null,
+        chainId: null,
+        balance: null,
+      });
+      expect(mockClient.ping).toHaveBeenCalled();
+    });
+
+    it('returns not-loaded state when runner ping fails', async () => {
+      mockClient.ping.mockRejectedValueOnce(new Error('connection refused'));
+
+      const state = await driver.getAppState();
+
+      expect(state).toStrictEqual({
+        isLoaded: false,
+        currentUrl: '',
+        extensionId: 'io.metamask.MetaMask',
+        isUnlocked: false,
         currentScreen: 'unknown',
         accountAddress: null,
         networkName: null,
