@@ -6,6 +6,7 @@ import type { ExtensionState } from '../../capabilities/types.js';
 export type BuildToolResult = {
   buildType: 'build:test';
   extensionPathResolved: string;
+  watchModeSupported?: boolean;
 };
 
 export type LaunchPrerequisite = {
@@ -18,6 +19,10 @@ export type LaunchResult = {
   extensionId: string;
   state: ExtensionState;
   prerequisites?: LaunchPrerequisite[];
+  watchMode?: {
+    port: number;
+    logFile?: string;
+  };
 };
 
 export type CleanupResult = {

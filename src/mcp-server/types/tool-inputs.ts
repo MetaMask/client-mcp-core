@@ -29,6 +29,11 @@ export type LaunchInput = {
   flowTags?: string[];
   tags?: string[];
   seedContracts?: SmartContractName[];
+  platform?: 'browser' | 'ios';
+  simulatorDeviceId?: string;
+  appBundlePath?: string;
+  useWatchMode?: boolean;
+  watchModePort?: number;
 };
 
 export type CleanupInput = {

@@ -21,6 +21,7 @@ import type { SessionMetadata } from '../types/step-record.js';
  */
 export type MockSessionManagerOptions = {
   hasActive?: boolean;
+  launchInProgress?: boolean;
   sessionId?: string;
   sessionState?: SessionState;
   sessionMetadata?: SessionMetadata;
@@ -56,6 +57,9 @@ export function createMockSessionManager(
   return {
     // Session Lifecycle
     hasActiveSession: vi.fn().mockReturnValue(options.hasActive ?? false),
+    isLaunchInProgress: vi
+      .fn()
+      .mockReturnValue(options.launchInProgress ?? false),
     getSessionId: vi.fn().mockReturnValue(options.sessionId ?? undefined),
     getSessionState: vi.fn().mockReturnValue(options.sessionState ?? undefined),
     getSessionMetadata: vi

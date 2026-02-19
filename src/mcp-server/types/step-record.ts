@@ -90,6 +90,7 @@ export type StepRecord = {
   observation: StepRecordObservation;
   artifacts?: StepRecordArtifacts;
   labels?: string[];
+  automationPlatform?: 'browser' | 'ios';
 };
 
 export type SessionMetadata = {

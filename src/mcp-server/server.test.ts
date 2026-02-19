@@ -20,7 +20,7 @@ vi.mock('./tools/batch.js');
 
 describe('createMcpServer', () => {
   let processExitSpy: MockInstance;
-  let processOnSpy: MockInstance;
+  let processOnceSpy: MockInstance;
   let consoleErrorSpy: MockInstance;
   let signalHandlers: Map<string, () => void>;
   let mockSetRequestHandler: ReturnType<typeof vi.fn>;
@@ -86,8 +86,8 @@ describe('createMcpServer', () => {
     vi.mocked(batchModule.setToolRegistry).mockImplementation(() => {});
 
     signalHandlers = new Map();
-    processOnSpy = vi
-      .spyOn(process, 'on')
+    processOnceSpy = vi
+      .spyOn(process, 'once')
       .mockImplementation(
         (event: string | symbol, handler: (...args: unknown[]) => void) => {
           signalHandlers.set(String(event), handler as () => void);
@@ -156,8 +156,11 @@ describe('createMcpServer', () => {
         version: '1.0.0',
       });
 
-      expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
-      expect(processOnSpy).toHaveBeenCalledWith(
+      expect(processOnceSpy).toHaveBeenCalledWith(
+        'SIGINT',
+        expect.any(Function),
+      );
+      expect(processOnceSpy).toHaveBeenCalledWith(
         'SIGTERM',
         expect.any(Function),
       );

@@ -85,81 +85,127 @@ export const buildInputSchema = z.object({
     .describe('Force rebuild even if a build already exists'),
 });
 
-export const launchInputSchema = z.object({
-  autoBuild: z
-    .boolean()
-    .default(true)
-    .describe('Automatically run build if extension is not found'),
-  stateMode: z
-    .enum(['default', 'onboarding', 'custom'])
-    .default('default')
-    .describe(
-      'Wallet state mode: ' +
-        'default = pre-onboarded wallet with 25 ETH, ' +
-        'onboarding = fresh wallet requiring setup, ' +
-        'custom = use provided fixture',
-    ),
-  fixturePreset: z
-    .string()
-    .min(1)
-    .describe(
-      'Name of preset fixture (e.g., withMultipleAccounts, withERC20Tokens). ' +
-        'Only used when stateMode=custom.',
-    )
-    .optional(),
-  fixture: z
-    .record(z.string(), z.unknown())
-    .describe('Direct fixture object for stateMode=custom')
-    .optional(),
-  ports: z
-    .object({
-      anvil: z
-        .number()
-        .int()
-        .min(1)
-        .max(65535)
-        .describe('Port for Anvil local chain (default: 8545)')
-        .optional(),
-      fixtureServer: z
-        .number()
-        .int()
-        .min(1)
-        .max(65535)
-        .describe('Port for fixture server (default: 12345)')
-        .optional(),
-    })
-    .optional(),
-  slowMo: z
-    .number()
-    .int()
-    .min(0)
-    .max(10000)
-    .default(0)
-    .describe('Slow down Playwright actions by N milliseconds (for debugging)'),
-  extensionPath: z
-    .string()
-    .describe('Custom path to built extension directory')
-    .optional(),
-  goal: z
-    .string()
-    .describe('Goal or task description for this session (for knowledge store)')
-    .optional(),
-  flowTags: z
-    .array(z.string())
-    .describe(
-      'Flow tags for categorization (e.g., ["send"], ["swap", "confirmation"]). ' +
-        'Used for cross-session knowledge retrieval.',
-    )
-    .optional(),
-  tags: z
-    .array(z.string())
-    .describe('Free-form tags for ad-hoc filtering')
-    .optional(),
-  seedContracts: z
-    .array(z.enum(smartContractNames))
-    .describe('Smart contracts to deploy on launch (before extension loads)')
-    .optional(),
-});
+export const launchInputSchema = z
+  .object({
+    autoBuild: z
+      .boolean()
+      .default(true)
+      .describe('Automatically run build if extension is not found'),
+    stateMode: z
+      .enum(['default', 'onboarding', 'custom'])
+      .default('default')
+      .describe(
+        'Wallet state mode: ' +
+          'default = pre-onboarded wallet with 25 ETH, ' +
+          'onboarding = fresh wallet requiring setup, ' +
+          'custom = use provided fixture',
+      ),
+    fixturePreset: z
+      .string()
+      .min(1)
+      .describe(
+        'Name of preset fixture (e.g., withMultipleAccounts, withERC20Tokens). ' +
+          'Only used when stateMode=custom.',
+      )
+      .optional(),
+    fixture: z
+      .record(z.string(), z.unknown())
+      .describe('Direct fixture object for stateMode=custom')
+      .optional(),
+    ports: z
+      .object({
+        anvil: z
+          .number()
+          .int()
+          .min(1)
+          .max(65535)
+          .describe('Port for Anvil local chain (default: 8545)')
+          .optional(),
+        fixtureServer: z
+          .number()
+          .int()
+          .min(1)
+          .max(65535)
+          .describe('Port for fixture server (default: 12345)')
+          .optional(),
+      })
+      .optional(),
+    slowMo: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .default(0)
+      .describe(
+        'Slow down Playwright actions by N milliseconds (for debugging)',
+      ),
+    extensionPath: z
+      .string()
+      .describe('Custom path to built extension directory')
+      .optional(),
+    goal: z
+      .string()
+      .describe(
+        'Goal or task description for this session (for knowledge store)',
+      )
+      .optional(),
+    flowTags: z
+      .array(z.string())
+      .describe(
+        'Flow tags for categorization (e.g., ["send"], ["swap", "confirmation"]). ' +
+          'Used for cross-session knowledge retrieval.',
+      )
+      .optional(),
+    tags: z
+      .array(z.string())
+      .describe('Free-form tags for ad-hoc filtering')
+      .optional(),
+    seedContracts: z
+      .array(z.enum(smartContractNames))
+      .describe('Smart contracts to deploy on launch (before extension loads)')
+      .optional(),
+    platform: z
+      .enum(['browser', 'ios'])
+      .default('browser')
+      .describe('Platform to launch on'),
+    simulatorDeviceId: z
+      .string()
+      .optional()
+      .describe('iOS simulator device UDID'),
+    appBundlePath: z
+      .string()
+      .optional()
+      .describe('Path to MetaMask Mobile .app bundle'),
+    useWatchMode: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Start a long-running dev server (e.g., Metro bundler) instead of a one-shot native build. ' +
+          'Requires the app to already be installed on the target. Skips native rebuild.',
+      ),
+    watchModePort: z
+      .number()
+      .int()
+      .min(1)
+      .max(65535)
+      .describe(
+        'Port for the dev server (e.g., Metro bundler port). ' +
+          'When useWatchMode is true, the MCP server starts the dev server on this port. ' +
+          'When useWatchMode is false, assumes a dev server is already running and connects the app to it.',
+      )
+      .optional(),
+  })
+  .refine(
+    (data) => data.platform !== 'ios' || Boolean(data.simulatorDeviceId),
+    {
+      message: 'simulatorDeviceId is required when platform is "ios"',
+      path: ['simulatorDeviceId'],
+    },
+  )
+  .refine((data) => data.platform !== 'ios' || Boolean(data.appBundlePath), {
+    message: 'appBundlePath is required when platform is "ios"',
+    path: ['appBundlePath'],
+  });
 
 export const cleanupInputSchema = z.object({
   sessionId: z

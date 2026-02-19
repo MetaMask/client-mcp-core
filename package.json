@@ -1,6 +1,6 @@
 {
   "name": "@metamask/client-mcp-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for MetaMask Extension visual testing with LLM agents",
   "keywords": [
     "mcp",
@@ -36,11 +36,20 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "files": [
-    "dist"
+    "dist",
+    "ios-runner",
+    "!ios-runner/**/.build",
+    "!ios-runner/**/.swiftpm",
+    "!ios-runner/**/xcuserdata",
+    "!ios-runner/**/*.xcuserstate",
+    "!ios-runner/**/DerivedData",
+    "!ios-runner/**/*.xctestrun"
   ],
   "scripts": {
-    "build": "ts-bridge --project tsconfig.build.json --clean",
+    "build": "ts-bridge --project tsconfig.build.json --clean && yarn build:axsnapshot",
+    "build:axsnapshot": "./scripts/build-axsnapshot.sh",
     "build:docs": "typedoc",
+    "build:ios-runner": "./scripts/build-ios-runner.sh",
     "lint": "yarn lint:eslint && yarn lint:constraints && yarn lint:misc --check && yarn lint:dependencies --check && yarn lint:changelog",
     "lint:changelog": "auto-changelog validate --prettier",
     "lint:constraints": "yarn constraints",

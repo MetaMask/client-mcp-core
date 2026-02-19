@@ -28,6 +28,7 @@ describe('mock-factories', () => {
       const mock = createMockSessionManager();
 
       expect(typeof mock.hasActiveSession).toBe('function');
+      expect(typeof mock.isLaunchInProgress).toBe('function');
       expect(typeof mock.getSessionId).toBe('function');
       expect(typeof mock.getSessionState).toBe('function');
       expect(typeof mock.getSessionMetadata).toBe('function');
@@ -61,6 +62,7 @@ describe('mock-factories', () => {
       const mock = createMockSessionManager();
 
       expect(mock.hasActiveSession()).toBe(false);
+      expect(mock.isLaunchInProgress()).toBe(false);
       expect(mock.getSessionId()).toBeUndefined();
       expect(mock.getTrackedPages()).toStrictEqual([]);
       expect(mock.getRefMap()).toStrictEqual(new Map());

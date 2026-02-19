@@ -21,6 +21,7 @@ import type {
   StateSnapshotCapability,
   ScreenshotResult,
 } from '../capabilities/types.js';
+import type { IPlatformDriver } from '../platform/types.js';
 
 /**
  * Represents a tracked browser page with its role and URL.
@@ -60,6 +61,16 @@ export type SessionLaunchInput = {
   };
   /** Smart contracts to deploy on launch */
   seedContracts?: string[];
+  /** Platform to launch on (defaults to 'browser') */
+  platform?: 'browser' | 'ios';
+  /** iOS simulator device UDID */
+  simulatorDeviceId?: string;
+  /** Path to MetaMask Mobile .app bundle */
+  appBundlePath?: string;
+  /** Start a long-running dev server instead of one-shot native build */
+  useWatchMode?: boolean;
+  /** Port for the dev server when useWatchMode is true */
+  watchModePort?: number;
 };
 
 /**
@@ -78,6 +89,7 @@ export type SessionScreenshotOptions = {
   name: string;
   fullPage?: boolean;
   selector?: string;
+  includeBase64?: boolean;
 };
 
 /**
@@ -96,6 +108,8 @@ export type ISessionManager = {
    * Check if there is an active session.
    */
   hasActiveSession(): boolean;
+
+  isLaunchInProgress(): boolean;
 
   /**
    * Get the current session ID, or undefined if no session.
@@ -125,6 +139,18 @@ export type ISessionManager = {
    * @returns true if cleanup was performed, false if no session was active
    */
   cleanup(): Promise<boolean>;
+
+  /**
+   * Get the platform driver for the current session.
+   * Returns undefined when no iOS driver is configured (browser sessions).
+   */
+  getPlatformDriver?(): IPlatformDriver | undefined;
+
+  /**
+   * Set the platform driver for the current session.
+   * Called by launch logic when platform is 'ios'.
+   */
+  setPlatformDriver?(driver: IPlatformDriver): void;
 
   // -----------------------------------------------------------------------------
   // Page Management

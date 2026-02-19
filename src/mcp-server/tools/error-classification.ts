@@ -236,6 +236,41 @@ export function classifyDiscoveryError(error: unknown): {
 } {
   const message = extractErrorMessage(error);
 
+  if (message.includes('MM_IOS_AX_PERMISSION_REQUIRED')) {
+    return {
+      code: ErrorCodes.MM_IOS_AX_PERMISSION_REQUIRED,
+      message: `AX snapshot requires Accessibility permission: ${message}`,
+    };
+  }
+
+  if (message.includes('MM_IOS_AX_BINARY_MISSING')) {
+    return {
+      code: ErrorCodes.MM_IOS_AX_BINARY_MISSING,
+      message: `AX snapshot binary missing: ${message}`,
+    };
+  }
+
+  if (message.includes('MM_IOS_AX_SNAPSHOT_FAILED')) {
+    return {
+      code: ErrorCodes.MM_IOS_AX_SNAPSHOT_FAILED,
+      message: `AX snapshot failed: ${message}`,
+    };
+  }
+
+  if (message.includes('MM_IOS_EMPTY_SNAPSHOT')) {
+    return {
+      code: ErrorCodes.MM_IOS_EMPTY_SNAPSHOT,
+      message: `Discovery failed: ${message}`,
+    };
+  }
+
+  if (message.includes('MM_IOS_RUNNER_RECOVERING')) {
+    return {
+      code: ErrorCodes.MM_IOS_RUNNER_RECOVERING,
+      message: `Discovery deferred: ${message}`,
+    };
+  }
+
   for (const pattern of ERROR_PATTERNS.pageClosed) {
     if (message.includes(pattern)) {
       return {

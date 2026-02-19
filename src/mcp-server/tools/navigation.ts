@@ -86,6 +86,10 @@ export async function handleNavigate(
           throw new Error(`Unsupported screen: ${String(input.screen)}`);
       }
 
+      if (!context.page) {
+        throw new Error('No page available for navigation');
+      }
+
       return {
         navigated: true,
         currentUrl: context.page.url(),

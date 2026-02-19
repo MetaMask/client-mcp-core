@@ -2,6 +2,20 @@
 export type * from './capabilities/types.js';
 export * from './capabilities/context.js';
 
+// Platform Abstraction (TargetType excluded — already exported from mcp-server/utils)
+export type {
+  PlatformType,
+  ClickActionResult,
+  TypeActionResult,
+  PlatformScreenshotOptions,
+  IPlatformDriver,
+} from './platform';
+export * from './platform/playwright-driver.js';
+
+// iOS Platform Support
+export * from './platform/ios';
+export * from './platform/ios/ios-driver.js';
+
 // MCP Server - Session Manager Interface
 export * from './mcp-server/session-manager.js';
 

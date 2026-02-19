@@ -357,6 +357,7 @@ export class KnowledgeStore {
    * @param params.screenshotDimensions.width - Screenshot width in pixels
    * @param params.screenshotDimensions.height - Screenshot height in pixels
    * @param params.context - Execution context (e2e or prod)
+   * @param params.automationPlatform - The automation platform ('browser' or 'ios')
    * @returns Path to the recorded step file
    */
   async recordStep(params: {
@@ -379,6 +380,7 @@ export class KnowledgeStore {
       height: number;
     };
     context?: 'e2e' | 'prod';
+    automationPlatform?: 'browser' | 'ios';
   }): Promise<string> {
     const timestamp = new Date();
     const filesafeTimestamp = generateFilesafeTimestamp(timestamp);
@@ -413,6 +415,7 @@ export class KnowledgeStore {
       outcome: params.outcome,
       observation: params.observation,
       labels,
+      automationPlatform: params.automationPlatform,
     };
 
     if (params.screenshotPath) {

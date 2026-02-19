@@ -175,10 +175,10 @@ export function createMcpServer(config: McpServerConfig): McpServer {
     process.exit(0);
   };
 
-  process.on('SIGINT', () => {
+  process.once('SIGINT', () => {
     handleSignal('SIGINT').catch((error) => logger(`SIGINT error: ${error}`));
   });
-  process.on('SIGTERM', () => {
+  process.once('SIGTERM', () => {
     handleSignal('SIGTERM').catch((error) => logger(`SIGTERM error: ${error}`));
   });
 

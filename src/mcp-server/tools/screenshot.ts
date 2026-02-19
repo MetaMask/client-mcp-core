@@ -1,4 +1,3 @@
-import { getSessionManager } from '../session-manager.js';
 import { classifyScreenshotError } from './error-classification.js';
 import { runTool } from './run-tool.js';
 import type {
@@ -28,14 +27,18 @@ export async function handleScreenshot(
     /**
      * Executes the screenshot capture.
      *
+     * @param context - The tool execution context containing the driver.
      * @returns The screenshot result.
      */
-    execute: async () => {
-      const sessionManager = getSessionManager();
-      const result = await sessionManager.screenshot({
+    execute: async (context) => {
+      if (!context.driver) {
+        throw new Error('No platform driver available');
+      }
+      const result = await context.driver.screenshot({
         name: input.name,
         fullPage: input.fullPage ?? true,
         selector: input.selector,
+        includeBase64: input.includeBase64,
       });
 
       const response: ScreenshotToolResult = {

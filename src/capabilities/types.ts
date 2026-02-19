@@ -104,6 +104,30 @@ export type BuildResult = {
   error?: string;
 };
 
+/**
+ * Options for starting a long-running build process (e.g., Metro bundler, webpack watch).
+ */
+export type WatchModeOptions = {
+  /** Port for the dev server (e.g., Metro port) */
+  port?: number;
+  /** Path to tee logs to for agent access */
+  logFile?: string;
+  /** Clear cache before starting */
+  clean?: boolean;
+};
+
+/**
+ * Result of starting watch mode.
+ */
+export type WatchModeResult = {
+  /** Actual port the dev server bound to */
+  port: number;
+  /** Path to log file (agents can read this for debugging) */
+  logFile?: string;
+  /** Process ID of the dev server */
+  pid: number;
+};
+
 export type WalletState = FixtureData;
 
 export type DeployOptions = {
@@ -148,6 +172,12 @@ export type BuildCapability = {
   build(options?: BuildOptions): Promise<BuildResult>;
   getExtensionPath(): string;
   isBuilt(): Promise<boolean>;
+  /** Start a long-running dev server (e.g., Metro bundler, webpack watch). Optional — not all implementations support this. */
+  startWatchMode?(options?: WatchModeOptions): Promise<WatchModeResult>;
+  /** Stop the running dev server. */
+  stopWatchMode?(): Promise<void>;
+  /** Check if a dev server is currently running. */
+  isWatching?(): boolean;
 };
 
 export type FixtureCapability = {
@@ -188,8 +218,11 @@ export type ContractSeedingCapability = {
 };
 
 export type StateSnapshotCapability = {
-  getState(page: Page, options: StateOptions): Promise<StateSnapshot>;
-  detectCurrentScreen(page: Page): Promise<string>;
+  getState(
+    page: Page | undefined,
+    options: StateOptions,
+  ): Promise<StateSnapshot>;
+  detectCurrentScreen(page: Page | undefined): Promise<string>;
 };
 
 export type MockServerCapability = {

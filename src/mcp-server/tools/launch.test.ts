@@ -208,12 +208,40 @@ describe('handleLaunch', () => {
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_SESSION_ALREADY_RUNNING);
         expect(result.error.message).toBe(
-          'A session is already running. Call mm_cleanup first.',
+          'A session is already running or launch is in progress. Call mm_cleanup first.',
         );
         expect(result.error.details).toStrictEqual({
           currentSessionId: 'existing-session-999',
+          launchInProgress: false,
         });
         expect(result.meta.sessionId).toBe('existing-session-999');
+      }
+      expect(mockSessionManager.launch).not.toHaveBeenCalled();
+    });
+
+    it('returns error when launch is in progress', async () => {
+      const mockSessionManager = createMockSessionManager({
+        hasActive: false,
+        launchInProgress: true,
+      });
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
+
+      const input: LaunchInput = { stateMode: 'default' };
+
+      const result = await handleLaunch(input);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_SESSION_ALREADY_RUNNING);
+        expect(result.error.message).toBe(
+          'A session is already running or launch is in progress. Call mm_cleanup first.',
+        );
+        expect(result.error.details).toStrictEqual({
+          currentSessionId: undefined,
+          launchInProgress: true,
+        });
       }
       expect(mockSessionManager.launch).not.toHaveBeenCalled();
     });
@@ -281,6 +309,30 @@ describe('handleLaunch', () => {
         expect(result.error.message).toContain('Launch failed');
         expect(result.error.message).toContain('Browser failed to start');
         expect(result.error.details).toStrictEqual({ input });
+      }
+    });
+
+    it('preserves session-already-running error from session manager', async () => {
+      const mockSessionManager = createMockSessionManager({ hasActive: false });
+      vi.spyOn(mockSessionManager, 'launch').mockRejectedValue(
+        new Error(ErrorCodes.MM_SESSION_ALREADY_RUNNING),
+      );
+      vi.spyOn(mockSessionManager, 'isLaunchInProgress').mockReturnValue(true);
+      vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+        mockSessionManager,
+      );
+
+      const input: LaunchInput = { stateMode: 'default' };
+
+      const result = await handleLaunch(input);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_SESSION_ALREADY_RUNNING);
+        expect(result.error.details).toStrictEqual({
+          currentSessionId: undefined,
+          launchInProgress: true,
+        });
       }
     });
 

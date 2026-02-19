@@ -1,6 +1,9 @@
 import type { Page } from '@playwright/test';
 
 import type { ExtensionState } from '../../capabilities/types.js';
+import { classifyIOSError } from '../../platform/ios/ios-driver.js';
+import { PlaywrightPlatformDriver } from '../../platform/playwright-driver.js';
+import type { IPlatformDriver } from '../../platform/types.js';
 import { knowledgeStore } from '../knowledge-store.js';
 import { getSessionManager } from '../session-manager.js';
 import { collectObservation } from './helpers.js';
@@ -35,10 +38,38 @@ export type ObservationPolicy = 'none' | 'default' | 'custom' | 'failures';
 
 export type ToolExecutionContext = {
   sessionId: string | undefined;
-  page: Page;
+  page: Page | undefined;
+  driver?: IPlatformDriver;
   refMap: Map<string, string>;
   startTime: number;
 };
+
+let _platformDriver: IPlatformDriver | undefined;
+
+/**
+ * Sets the active platform driver for tool execution.
+ *
+ * @param driver - The platform driver to use for subsequent tool calls.
+ */
+export function setPlatformDriver(driver: IPlatformDriver): void {
+  _platformDriver = driver;
+}
+
+/**
+ * Gets the currently active platform driver.
+ *
+ * @returns The active platform driver, or undefined if not set.
+ */
+export function getPlatformDriver(): IPlatformDriver | undefined {
+  return _platformDriver;
+}
+
+/**
+ * Clears the active platform driver.
+ */
+export function clearPlatformDriver(): void {
+  _platformDriver = undefined;
+}
 
 export type ToolExecuteResult<TResult> = {
   result: TResult;
@@ -102,6 +133,8 @@ export async function runTool<TInput, TResult>(
   const effectivePolicy =
     config.options?.observationPolicy ?? config.observationPolicy ?? 'default';
 
+  let driver: IPlatformDriver | undefined;
+
   try {
     if (requiresSession && !sessionManager.hasActiveSession()) {
       return createErrorResponse(
@@ -113,12 +146,38 @@ export async function runTool<TInput, TResult>(
       );
     }
 
+    driver = requiresSession
+      ? (_platformDriver ??
+        sessionManager.getPlatformDriver?.() ??
+        new PlaywrightPlatformDriver(
+          () => sessionManager.getPage(),
+          sessionManager,
+        ))
+      : undefined;
+
+    // Only retrieve the Playwright page when on browser platform.
+    // iOS sessions have no Playwright page — calling getPage() would crash.
+    const isIOSPlatform = driver?.getPlatform() === 'ios';
+    const page =
+      requiresSession && !isIOSPlatform ? sessionManager.getPage() : undefined;
+
     const context: ToolExecutionContext = {
       sessionId,
-      page: requiresSession ? sessionManager.getPage() : (undefined as never),
+      page,
+      driver,
       refMap: requiresSession ? sessionManager.getRefMap() : new Map(),
       startTime,
     };
+
+    if (context.driver && !context.driver.isToolSupported(config.toolName)) {
+      return createErrorResponse(
+        ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        `Tool ${config.toolName} is not supported on ${context.driver.getPlatform()} platform`,
+        { toolName: config.toolName, platform: context.driver.getPlatform() },
+        sessionId,
+        startTime,
+      );
+    }
 
     const executeResult = await config.execute(context);
 
@@ -137,12 +196,12 @@ export async function runTool<TInput, TResult>(
     if (effectivePolicy === 'custom' && customObservation) {
       observation = customObservation;
     } else if (effectivePolicy === 'default' && requiresSession) {
-      observation = await collectObservation(context.page, 'full');
+      observation = await collectObservation(context.driver, 'full');
     } else if (
       (effectivePolicy === 'none' || effectivePolicy === 'failures') &&
       requiresSession
     ) {
-      observation = await collectObservation(context.page, 'minimal');
+      observation = await collectObservation(context.driver, 'minimal');
     }
 
     if (sessionId) {
@@ -159,23 +218,33 @@ export async function runTool<TInput, TResult>(
         observation: observation ?? createEmptyObservation(),
         durationMs: Date.now() - startTime,
         context: sessionManager.getEnvironmentMode(),
+        automationPlatform: context.driver?.getPlatform(),
       });
     }
 
     return createSuccessResponse<TResult>(result, sessionId, startTime);
   } catch (error) {
-    const errorInfo = config.classifyError?.(error) ?? {
-      code: `MM_${config.toolName.toUpperCase().replace(/^MM_/u, '')}_FAILED`,
-      message: extractErrorMessage(error),
-    };
+    const isIOS = driver?.getPlatform() === 'ios';
+    const classifiedError = config.classifyError?.(error);
+
+    let errorInfo: { code: string; message: string };
+    if (classifiedError) {
+      errorInfo = classifiedError;
+    } else if (isIOS) {
+      errorInfo = classifyIOSError(error);
+    } else {
+      errorInfo = {
+        code: `MM_${config.toolName.toUpperCase().replace(/^MM_/u, '')}_FAILED`,
+        message: extractErrorMessage(error),
+      };
+    }
 
     let failureObservation: StepRecordObservation = createEmptyObservation();
 
     if (requiresSession && sessionManager.hasActiveSession()) {
       if (effectivePolicy === 'failures' || effectivePolicy === 'default') {
         try {
-          const page = sessionManager.getPage();
-          failureObservation = await collectObservation(page, 'full');
+          failureObservation = await collectObservation(driver, 'full');
         } catch (collectError) {
           debugWarn('run-tool.collectObservation', collectError);
           failureObservation = await collectObservation(undefined, 'minimal');
@@ -206,6 +275,7 @@ export async function runTool<TInput, TResult>(
         observation: failureObservation,
         durationMs: Date.now() - startTime,
         context: sessionManager.getEnvironmentMode(),
+        automationPlatform: driver?.getPlatform(),
       });
     }
 
