@@ -46,11 +46,17 @@ export async function handleLaunch(
   const sessionManager = getSessionManager();
 
   try {
-    if (sessionManager.hasActiveSession()) {
+    if (
+      sessionManager.hasActiveSession() ||
+      sessionManager.isLaunchInProgress()
+    ) {
       return createErrorResponse(
         ErrorCodes.MM_SESSION_ALREADY_RUNNING,
-        'A session is already running. Call mm_cleanup first.',
-        { currentSessionId: sessionManager.getSessionId() },
+        'A session is already running or launch is in progress. Call mm_cleanup first.',
+        {
+          currentSessionId: sessionManager.getSessionId(),
+          launchInProgress: sessionManager.isLaunchInProgress(),
+        },
         sessionManager.getSessionId(),
         startTime,
       );
@@ -71,6 +77,19 @@ export async function handleLaunch(
     );
   } catch (error) {
     const message = extractErrorMessage(error);
+
+    if (message.includes(ErrorCodes.MM_SESSION_ALREADY_RUNNING)) {
+      return createErrorResponse(
+        ErrorCodes.MM_SESSION_ALREADY_RUNNING,
+        'A session is already running or launch is in progress. Call mm_cleanup first.',
+        {
+          currentSessionId: sessionManager.getSessionId(),
+          launchInProgress: sessionManager.isLaunchInProgress(),
+        },
+        sessionManager.getSessionId(),
+        startTime,
+      );
+    }
 
     if (message.includes('EADDRINUSE') || message.includes('port')) {
       return createErrorResponse(

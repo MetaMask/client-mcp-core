@@ -109,6 +109,8 @@ export type ISessionManager = {
    */
   hasActiveSession(): boolean;
 
+  isLaunchInProgress(): boolean;
+
   /**
    * Get the current session ID, or undefined if no session.
    */
