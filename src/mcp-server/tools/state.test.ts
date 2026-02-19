@@ -249,12 +249,11 @@ describe('state', () => {
         }
         expect(mockStateSnapshot.getState).toHaveBeenCalledWith(mockPage, {
           extensionId: 'ext-123',
-          chainId: 1337,
         });
         expect(mockSessionManager.getExtensionState).not.toHaveBeenCalled();
       });
 
-      it('uses chainId 1 when anvil port not present', async () => {
+      it('uses state snapshot capability without chainId heuristic', async () => {
         // Arrange
         const mockPage = createMockPage();
         vi.spyOn(mockPage, 'url').mockReturnValue(
@@ -297,7 +296,36 @@ describe('state', () => {
         expect(result.ok).toBe(true);
         expect(mockStateSnapshot.getState).toHaveBeenCalledWith(mockPage, {
           extensionId: 'ext-123',
-          chainId: 1,
+        });
+      });
+
+      it('uses state snapshot capability when page is unavailable (ios)', async () => {
+        vi.spyOn(mockSessionManager, 'getSessionState').mockReturnValue({
+          extensionId: 'ios-app',
+        });
+
+        const mockStateSnapshot: StateSnapshotCapability = {
+          getState: vi.fn().mockResolvedValue({
+            isLoaded: true,
+            currentUrl: '',
+            extensionId: 'ios-app',
+            isUnlocked: true,
+            currentScreen: 'home',
+            accountAddress: null,
+            networkName: null,
+            chainId: null,
+            balance: null,
+          }),
+          detectCurrentScreen: vi.fn().mockResolvedValue('home'),
+        };
+
+        const result = await handleGetState({
+          stateSnapshotCapability: mockStateSnapshot,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(mockStateSnapshot.getState).toHaveBeenCalledWith(undefined, {
+          extensionId: 'ios-app',
         });
       });
     });

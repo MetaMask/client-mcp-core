@@ -36,11 +36,10 @@ async function getState(
   sessionManager: ReturnType<typeof getSessionManager>,
   stateSnapshotCapability?: StateSnapshotCapability,
 ): Promise<ExtensionState> {
-  if (stateSnapshotCapability && page) {
+  if (stateSnapshotCapability) {
     const extensionId = sessionManager.getSessionState()?.extensionId;
-    return stateSnapshotCapability.getState(page as Page, {
+    return stateSnapshotCapability.getState(page as Page | undefined, {
       extensionId,
-      chainId: sessionManager.getSessionState()?.ports?.anvil ? 1337 : 1,
     });
   }
 
@@ -81,7 +80,7 @@ export async function handleGetState(
       );
 
       // Tab info is browser-only
-      let tabs;
+      let tabs: GetStateResult['tabs'];
       if (context.page) {
         const trackedPages = sessionManager.getTrackedPages();
         const activePage = sessionManager.getPage();

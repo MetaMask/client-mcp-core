@@ -218,8 +218,11 @@ export type ContractSeedingCapability = {
 };
 
 export type StateSnapshotCapability = {
-  getState(page: Page, options: StateOptions): Promise<StateSnapshot>;
-  detectCurrentScreen(page: Page): Promise<string>;
+  getState(
+    page: Page | undefined,
+    options: StateOptions,
+  ): Promise<StateSnapshot>;
+  detectCurrentScreen(page: Page | undefined): Promise<string>;
 };
 
 export type MockServerCapability = {
