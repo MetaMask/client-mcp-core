@@ -388,16 +388,14 @@ export function registerCleanupHandlers(): void {
   }
   _cleanupRegistered = true;
 
-  const gracefulShutdown = (signal: NodeJS.Signals) => {
+  const gracefulShutdown = (): void => {
     stopAllRunners()
       .catch(() => undefined)
-      .finally(() => {
-        process.kill(process.pid, signal);
-      });
+      .finally(() => undefined);
   };
 
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.once('SIGINT', gracefulShutdown);
+  process.once('SIGTERM', gracefulShutdown);
 
   process.on('exit', () => {
     for (const [destination, entry] of runnerProcesses.entries()) {
