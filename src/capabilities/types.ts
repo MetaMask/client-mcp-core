@@ -43,24 +43,7 @@ export type ScreenshotResult = {
   height: number;
 };
 
-export type ScreenName =
-  | 'unlock'
-  | 'home'
-  | 'onboarding-welcome'
-  | 'onboarding-import'
-  | 'onboarding-create'
-  | 'onboarding-srp'
-  | 'onboarding-password'
-  | 'onboarding-complete'
-  | 'onboarding-metametrics'
-  | 'settings'
-  | 'send'
-  | 'swap'
-  | 'bridge'
-  | 'confirm-transaction'
-  | 'confirm-signature'
-  | 'notification'
-  | 'unknown';
+export type ScreenName = string;
 
 export type ExtensionState = {
   isLoaded: boolean;

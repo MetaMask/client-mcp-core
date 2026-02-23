@@ -1,5 +1,4 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
-import type { ScreenName } from '../../capabilities/types.js';
 
 export type PriorKnowledgeTarget =
   | {
@@ -92,7 +91,7 @@ export type PriorKnowledgeContext = {
 export type KnowledgeStepSummary = {
   timestamp: string;
   tool: string;
-  screen: ScreenName;
+  screen: string;
   snippet: string;
   sessionId?: string;
   matchedFields?: string[];

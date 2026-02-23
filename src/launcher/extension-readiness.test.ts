@@ -7,14 +7,16 @@
 import type { Page } from '@playwright/test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import {
-  waitForExtensionUiReady,
-  DEFAULT_EXTENSION_READINESS_CONFIG,
-} from './extension-readiness.js';
+import { waitForExtensionUiReady } from './extension-readiness.js';
 import type {
   ExtensionReadinessDeps,
   ExtensionReadinessConfig,
 } from './extension-readiness.js';
+
+const testConfig: ExtensionReadinessConfig = {
+  readySelectors: ['[data-testid="ready"]', '[data-testid="fallback-ready"]'],
+  expectedStatesDescription: 'custom ready state',
+};
 
 function createMockLog() {
   return {
@@ -62,44 +64,6 @@ describe('extension-readiness', () => {
     vi.useRealTimers();
   });
 
-  describe('DEFAULT_EXTENSION_READINESS_CONFIG', () => {
-    it('contains expected MetaMask ready selectors', () => {
-      expect(DEFAULT_EXTENSION_READINESS_CONFIG.readySelectors).toContain(
-        '[data-testid="unlock-password"]',
-      );
-      expect(DEFAULT_EXTENSION_READINESS_CONFIG.readySelectors).toContain(
-        '[data-testid="onboarding-create-wallet"]',
-      );
-      expect(DEFAULT_EXTENSION_READINESS_CONFIG.readySelectors).toContain(
-        '[data-testid="account-menu-icon"]',
-      );
-    });
-
-    it('has expected states description', () => {
-      expect(DEFAULT_EXTENSION_READINESS_CONFIG.expectedStatesDescription).toBe(
-        'unlock page, onboarding page, or home page',
-      );
-    });
-
-    it('includes all required selectors', () => {
-      const expectedSelectors = [
-        '[data-testid="unlock-password"]',
-        '[data-testid="onboarding-create-wallet"]',
-        '[data-testid="onboarding-import-wallet"]',
-        '[data-testid="account-menu-icon"]',
-        '[data-testid="get-started"]',
-        '[data-testid="onboarding-terms-checkbox"]',
-        '[data-testid="onboarding-privacy-policy"]',
-      ];
-
-      for (const selector of expectedSelectors) {
-        expect(DEFAULT_EXTENSION_READINESS_CONFIG.readySelectors).toContain(
-          selector,
-        );
-      }
-    });
-  });
-
   describe('waitForExtensionUiReady', () => {
     describe('success paths', () => {
       it('resolves when first selector matches', async () => {
@@ -111,12 +75,12 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await waitForExtensionUiReady(deps);
+        await waitForExtensionUiReady(deps, testConfig);
 
         expect(log.info).toHaveBeenCalledWith('Extension UI is ready');
       });
 
-      it('uses default config when not provided', async () => {
+      it('uses provided config selectors', async () => {
         const page = createMockPage({ waitForSelectorResolves: true });
         const log = createMockLog();
         const deps: ExtensionReadinessDeps = {
@@ -125,13 +89,13 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await waitForExtensionUiReady(deps);
+        await waitForExtensionUiReady(deps, testConfig);
 
         expect(page.waitForSelector).toHaveBeenCalled();
         const { calls } = (page.waitForSelector as ReturnType<typeof vi.fn>)
           .mock;
         const selectors = calls.map((call: unknown[]) => call[0]);
-        expect(selectors).toContain('[data-testid="unlock-password"]');
+        expect(selectors).toContain('[data-testid="ready"]');
       });
 
       it('uses custom config selectors', async () => {
@@ -164,11 +128,7 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await waitForExtensionUiReady(
-          deps,
-          DEFAULT_EXTENSION_READINESS_CONFIG,
-          60000,
-        );
+        await waitForExtensionUiReady(deps, testConfig, 60000);
 
         const { calls } = (page.waitForSelector as ReturnType<typeof vi.fn>)
           .mock;
@@ -184,7 +144,7 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await waitForExtensionUiReady(deps);
+        await waitForExtensionUiReady(deps, testConfig);
 
         const { calls } = (page.waitForSelector as ReturnType<typeof vi.fn>)
           .mock;
@@ -220,6 +180,20 @@ describe('extension-readiness', () => {
     });
 
     describe('error paths', () => {
+      it('throws when no ready selectors are configured', async () => {
+        const page = createMockPage({ waitForSelectorResolves: true });
+        const log = createMockLog();
+        const deps: ExtensionReadinessDeps = {
+          page,
+          screenshotDir: '/tmp/screenshots',
+          log,
+        };
+
+        await expect(
+          waitForExtensionUiReady(deps, { readySelectors: [] }),
+        ).rejects.toThrowError(/must include at least one ready selector/u);
+      });
+
       it('throws error with debug screenshot when no selector matches', async () => {
         const page = createMockPage({
           waitForSelectorResolves: false,
@@ -263,7 +237,9 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await expect(waitForExtensionUiReady(deps)).rejects.toThrowError(
+        await expect(
+          waitForExtensionUiReady(deps, testConfig),
+        ).rejects.toThrowError(
           /Current URL: chrome-extension:\/\/testid\/onboarding\.html/u,
         );
       });
@@ -312,7 +288,9 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await expect(waitForExtensionUiReady(deps)).rejects.toThrowError(
+        await expect(
+          waitForExtensionUiReady(deps, testConfig),
+        ).rejects.toThrowError(
           /Extension UI did not reach expected state within 30000ms./u,
         );
 
@@ -333,9 +311,9 @@ describe('extension-readiness', () => {
           log,
         };
 
-        await expect(waitForExtensionUiReady(deps)).rejects.toThrowError(
-          /Debug screenshot saved to:/u,
-        );
+        await expect(
+          waitForExtensionUiReady(deps, testConfig),
+        ).rejects.toThrowError(/Debug screenshot saved to:/u);
       });
     });
   });
