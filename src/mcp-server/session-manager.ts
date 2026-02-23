@@ -275,9 +275,12 @@ export type ISessionManager = {
   /**
    * Set the current context (e2e or prod).
    *
+   * @param context The target context mode.
+   * @param options Optional context-specific configuration passed through
+   * by the consumer implementation.
    * @throws Error with code MM_CONTEXT_SWITCH_BLOCKED if session is active
    */
-  setContext(context: 'e2e' | 'prod'): void;
+  setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void;
 
   /**
    * Get current context information.

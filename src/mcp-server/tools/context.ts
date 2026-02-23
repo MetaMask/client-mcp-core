@@ -5,6 +5,7 @@ import type { McpResponse, HandlerOptions } from '../types';
 
 export type SetContextInput = {
   context: 'e2e' | 'prod';
+  options?: Record<string, unknown>;
 };
 export type SetContextResult = {
   previousContext: 'e2e' | 'prod';
@@ -38,7 +39,7 @@ export async function handleSetContext(
     execute: async () => {
       const sessionManager = getSessionManager();
       const previousContext = sessionManager.getEnvironmentMode();
-      sessionManager.setContext(input.context);
+      sessionManager.setContext(input.context, input.options);
       const info = sessionManager.getContextInfo();
 
       return {

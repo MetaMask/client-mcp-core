@@ -55,7 +55,46 @@ describe('handleSetContext', () => {
         'fixture',
       ]);
     }
-    expect(mockSessionManager.setContext).toHaveBeenCalledWith('prod');
+    expect(mockSessionManager.setContext).toHaveBeenCalledWith(
+      'prod',
+      undefined,
+    );
+  });
+
+  it('forwards context options to session manager', async () => {
+    const mockSessionManager = createMockSessionManager({
+      environmentMode: 'e2e',
+    });
+    vi.spyOn(mockSessionManager, 'setContext');
+    // eslint-disable-next-line vitest/prefer-spy-on
+    mockSessionManager.getContextInfo = vi.fn().mockReturnValue({
+      currentContext: 'e2e',
+      hasActiveSession: false,
+      sessionId: null,
+      capabilities: { available: ['build', 'fixture', 'chain'] },
+      canSwitchContext: true,
+    });
+    vi.spyOn(sessionManagerModule, 'getSessionManager').mockReturnValue(
+      mockSessionManager,
+    );
+
+    const contextOptions = {
+      mockServer: {
+        enabled: true,
+        port: 18000,
+      },
+    };
+
+    const result = await handleSetContext({
+      context: 'e2e',
+      options: contextOptions,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockSessionManager.setContext).toHaveBeenCalledWith(
+      'e2e',
+      contextOptions,
+    );
   });
 
   it('switches context from prod to e2e', async () => {

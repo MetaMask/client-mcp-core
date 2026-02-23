@@ -445,6 +445,10 @@ export const runStepsInputSchema = z.object({
 
 export const setContextInputSchema = z.object({
   context: z.enum(['e2e', 'prod']).describe('Target context to switch to'),
+  options: z
+    .record(z.string(), z.unknown())
+    .describe('Optional context-specific options forwarded to session manager')
+    .optional(),
 });
 
 export const getContextInputSchema = z
