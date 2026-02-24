@@ -27,22 +27,6 @@ export type ExtensionReadinessConfig = {
 };
 
 /**
- * Default MetaMask extension readiness configuration.
- */
-export const DEFAULT_EXTENSION_READINESS_CONFIG: ExtensionReadinessConfig = {
-  readySelectors: [
-    '[data-testid="unlock-password"]',
-    '[data-testid="onboarding-create-wallet"]',
-    '[data-testid="onboarding-import-wallet"]',
-    '[data-testid="account-menu-icon"]',
-    '[data-testid="get-started"]',
-    '[data-testid="onboarding-terms-checkbox"]',
-    '[data-testid="onboarding-privacy-policy"]',
-  ],
-  expectedStatesDescription: 'unlock page, onboarding page, or home page',
-};
-
-/**
  * Wait for the extension UI to be ready by checking for expected selectors.
  *
  * @param deps - Dependencies including page, screenshot directory, and logger
@@ -51,11 +35,17 @@ export const DEFAULT_EXTENSION_READINESS_CONFIG: ExtensionReadinessConfig = {
  */
 export async function waitForExtensionUiReady(
   deps: ExtensionReadinessDeps,
-  config: ExtensionReadinessConfig = DEFAULT_EXTENSION_READINESS_CONFIG,
+  config: ExtensionReadinessConfig,
   timeout = 30000,
 ): Promise<void> {
   const { page, screenshotDir, log } = deps;
   const { readySelectors, expectedStatesDescription } = config;
+
+  if (readySelectors.length === 0) {
+    throw new Error(
+      'Extension readiness config must include at least one ready selector.',
+    );
+  }
 
   try {
     await Promise.race(
