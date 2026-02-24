@@ -543,11 +543,15 @@ class MetaMaskSessionManager implements ISessionManager {
   }
 
   // Context Management
-  setContext(context: 'e2e' | 'prod'): void {
+  setContext(
+    context: 'e2e' | 'prod',
+    options?: Record<string, unknown>,
+  ): void {
     if (this.hasActiveSession()) {
       throw new Error('Cannot switch context while session is active');
     }
-    // Switch environment context
+    // Switch environment context and apply optional context-specific config
+    void options;
   }
 
   getContextInfo() {
@@ -610,6 +614,30 @@ const prodConfig: ProdEnvironmentConfig = {
   toolPrefix: 'mm',
 };
 ```
+
+### Context Switching Options
+
+`mm_set_context` supports an optional `options` payload that is forwarded to the session manager's `setContext(context, options)` implementation.
+
+```typescript
+type SetContextInput = {
+  context: 'e2e' | 'prod';
+  options?: Record<string, unknown>;
+};
+
+// Example: switch to e2e and pass context-specific overrides
+await handleSetContext({
+  context: 'e2e',
+  options: {
+    mockServer: {
+      enabled: true,
+      port: 18000,
+    },
+  },
+});
+```
+
+Use `options` only for context-specific configuration your `ISessionManager` implementation understands.
 
 ### Custom Tool Definitions
 
