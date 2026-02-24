@@ -543,10 +543,7 @@ class MetaMaskSessionManager implements ISessionManager {
   }
 
   // Context Management
-  setContext(
-    context: 'e2e' | 'prod',
-    options?: Record<string, unknown>,
-  ): void {
+  setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void {
     if (this.hasActiveSession()) {
       throw new Error('Cannot switch context while session is active');
     }
