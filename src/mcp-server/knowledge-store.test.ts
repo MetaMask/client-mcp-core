@@ -9,6 +9,8 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import {
   KnowledgeStore,
+  createDefaultObservation,
+  createKnowledgeStore,
   setKnowledgeStore,
   hasKnowledgeStore,
   knowledgeStore,
@@ -167,6 +169,76 @@ describe('core', () => {
         expect.any(String),
         expect.stringContaining('"goal": "Test send flow"'),
       );
+    });
+  });
+
+  describe('exported helpers', () => {
+    it('createDefaultObservation returns base observation without prior knowledge', () => {
+      const state: ExtensionState = {
+        isLoaded: true,
+        currentUrl: 'chrome-extension://test/home.html',
+        extensionId: 'test-ext',
+        isUnlocked: true,
+        currentScreen: 'home',
+        accountAddress: '0x1234',
+        networkName: 'Localhost 8545',
+        chainId: 1337,
+        balance: '25 ETH',
+      };
+
+      const observation = createDefaultObservation(state);
+
+      expect(observation).toStrictEqual({
+        state,
+        testIds: [],
+        a11y: { nodes: [] },
+      });
+      expect(observation.priorKnowledge).toBeUndefined();
+    });
+
+    it('createDefaultObservation includes provided prior knowledge', () => {
+      const state: ExtensionState = {
+        isLoaded: true,
+        currentUrl: 'chrome-extension://test/home.html',
+        extensionId: 'test-ext',
+        isUnlocked: true,
+        currentScreen: 'home',
+        accountAddress: '0x1234',
+        networkName: 'Localhost 8545',
+        chainId: 1337,
+        balance: '25 ETH',
+      };
+      const priorKnowledge = {
+        schemaVersion: 1 as const,
+        generatedAt: '2024-01-15T10:30:00.000Z',
+        query: {
+          windowHours: 48,
+          usedFlowTags: ['send'],
+          usedFilters: { sinceHours: 48 },
+          candidateSessions: 1,
+          candidateSteps: 2,
+        },
+        relatedSessions: [],
+        similarSteps: [],
+        suggestedNextActions: [],
+      };
+
+      const observation = createDefaultObservation(
+        state,
+        [{ testId: 'send-btn', tag: 'button', visible: true }],
+        [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
+        priorKnowledge,
+      );
+
+      expect(observation.priorKnowledge).toStrictEqual(priorKnowledge);
+      expect(observation.testIds).toHaveLength(1);
+      expect(observation.a11y.nodes).toHaveLength(1);
+    });
+
+    it('createKnowledgeStore returns a KnowledgeStore instance', () => {
+      const store = createKnowledgeStore({ rootDir: '/test/knowledge' });
+
+      expect(store).toBeInstanceOf(KnowledgeStore);
     });
   });
 
@@ -1840,6 +1912,204 @@ describe('similarity', () => {
       if (result?.similarSteps.length) {
         expect(result.similarSteps[0].confidence).toBeLessThan(0.5);
       }
+    });
+
+    it('builds avoid list only for targets meeting failure threshold', async () => {
+      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+      const metadata = {
+        schemaVersion: 1,
+        sessionId: 'mm-session-1',
+        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+        flowTags: [],
+        tags: [],
+        launch: { stateMode: 'default' },
+      };
+
+      const makeFailedStep = (target: {
+        testId?: string;
+        selector?: string;
+      }) => ({
+        ...createStepRecord({
+          tool: {
+            name: 'mm_click',
+            input: { testId: target.testId ?? 'unknown-btn' },
+            target,
+          },
+          observation: {
+            state: { currentScreen: 'home' },
+            testIds: [{ testId: 'confirm-btn', tag: 'button', visible: true }],
+            a11y: { nodes: [] },
+          },
+        }),
+        outcome: {
+          ok: false,
+          error: {
+            code: 'MM_TARGET_NOT_FOUND',
+            message: 'Target not found',
+          },
+        },
+      });
+
+      const failedConfirmA = makeFailedStep({ testId: 'confirm-btn' });
+      const failedConfirmB = makeFailedStep({ testId: 'confirm-btn' });
+      const failedSelector = makeFailedStep({ selector: '.unstable-target' });
+      const successfulStep = createStepRecord({
+        tool: {
+          name: 'mm_click',
+          input: { testId: 'confirm-btn' },
+          target: { testId: 'confirm-btn' },
+        },
+      });
+
+      vi.mocked(fs.readdir)
+        .mockResolvedValueOnce([createDirent('mm-session-1')] as any)
+        .mockResolvedValueOnce([
+          'step1.json',
+          'step2.json',
+          'step3.json',
+          'step4.json',
+        ] as any)
+        .mockResolvedValueOnce([
+          'step1.json',
+          'step2.json',
+          'step3.json',
+          'step4.json',
+        ] as any);
+
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify(metadata))
+        .mockResolvedValueOnce(JSON.stringify(failedConfirmA))
+        .mockResolvedValueOnce(JSON.stringify(failedConfirmB))
+        .mockResolvedValueOnce(JSON.stringify(failedSelector))
+        .mockResolvedValueOnce(JSON.stringify(successfulStep))
+        .mockResolvedValueOnce(JSON.stringify(failedConfirmA))
+        .mockResolvedValueOnce(JSON.stringify(failedConfirmB))
+        .mockResolvedValueOnce(JSON.stringify(failedSelector))
+        .mockResolvedValueOnce(JSON.stringify(successfulStep));
+
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'confirm-btn', tag: 'button', visible: true },
+          ],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
+
+      expect(result).toBeDefined();
+      expect(result?.avoid).toHaveLength(1);
+      expect(result?.avoid?.[0]).toMatchObject({
+        target: { testId: 'confirm-btn' },
+        frequency: 2,
+      });
+    });
+
+    it('skips suggested action when tool is not in action map', async () => {
+      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+      const metadata = {
+        schemaVersion: 1,
+        sessionId: 'mm-session-1',
+        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+        flowTags: [],
+        tags: [],
+        launch: { stateMode: 'default' },
+      };
+      const unknownToolStep = createStepRecord({
+        tool: {
+          name: 'mm_unknown_tool',
+          input: { testId: 'send-btn' },
+          target: { testId: 'send-btn' },
+        },
+        observation: {
+          state: { currentScreen: 'home' },
+          testIds: [{ testId: 'send-btn', tag: 'button', visible: true }],
+          a11y: { nodes: [] },
+        },
+      });
+
+      vi.mocked(fs.readdir)
+        .mockResolvedValueOnce([createDirent('mm-session-1')] as any)
+        .mockResolvedValueOnce(['step1.json'] as any)
+        .mockResolvedValueOnce(['step1.json'] as any);
+
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify(metadata))
+        .mockResolvedValueOnce(JSON.stringify(unknownToolStep))
+        .mockResolvedValueOnce(JSON.stringify(unknownToolStep));
+
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'send-btn', tag: 'button', visible: true },
+          ],
+          a11yNodes: [],
+        },
+        'other-session',
+      );
+
+      expect(result).toBeDefined();
+      expect(result?.similarSteps.length).toBeGreaterThan(0);
+      expect(result?.suggestedNextActions).toStrictEqual([]);
+    });
+
+    it('includes a11y fallback target when testId text matches visible a11y name', async () => {
+      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+      const metadata = {
+        schemaVersion: 1,
+        sessionId: 'mm-session-1',
+        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+        flowTags: [],
+        tags: [],
+        launch: { stateMode: 'default' },
+      };
+      const actionableStep = createStepRecord({
+        tool: {
+          name: 'mm_click',
+          input: { testId: 'send-button' },
+          target: { testId: 'send-button' },
+        },
+        observation: {
+          state: { currentScreen: 'home' },
+          testIds: [{ testId: 'send-button', tag: 'button', visible: true }],
+          a11y: {
+            nodes: [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
+          },
+        },
+      });
+
+      vi.mocked(fs.readdir)
+        .mockResolvedValueOnce([createDirent('mm-session-1')] as any)
+        .mockResolvedValueOnce(['step1.json'] as any)
+        .mockResolvedValueOnce(['step1.json'] as any);
+
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify(metadata))
+        .mockResolvedValueOnce(JSON.stringify(actionableStep))
+        .mockResolvedValueOnce(JSON.stringify(actionableStep));
+
+      const result = await store.generatePriorKnowledge(
+        {
+          currentScreen: 'home',
+          visibleTestIds: [
+            { testId: 'send-button', tag: 'button', visible: true },
+          ],
+          a11yNodes: [
+            { ref: 'e10', role: 'button', name: 'send button', path: [] },
+          ],
+        },
+        'other-session',
+      );
+
+      expect(result).toBeDefined();
+      expect(
+        result?.suggestedNextActions[0]?.fallbackTargets?.[0],
+      ).toStrictEqual({
+        type: 'a11yHint',
+        value: { role: 'button', name: 'send button' },
+      });
     });
   });
 });

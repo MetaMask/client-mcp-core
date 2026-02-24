@@ -438,6 +438,95 @@ describe('extension-id-resolver', () => {
     });
 
     describe('page readiness waiting', () => {
+      it('executes page evaluate callbacks for readiness and extension matching', async () => {
+        const page = createMockPage({
+          extensionId: 'callbackextensionidabcdefghijklmn',
+        });
+        const context = createMockContext({
+          existingWorkers: [],
+          newWorker: null,
+          pages: [page],
+        });
+        const log = createMockLog();
+
+        const promise = resolveExtensionId({ context, log });
+        await vi.runAllTimersAsync();
+        await promise;
+
+        const evaluateMock = page.evaluate as ReturnType<typeof vi.fn>;
+        const readyEvalFn = evaluateMock.mock.calls.find(
+          ([, arg]) => !arg,
+        )?.[0] as (() => boolean) | undefined;
+        const findExtensionEvalFn = evaluateMock.mock.calls.find(
+          ([, arg]) =>
+            Boolean(arg) &&
+            typeof arg === 'object' &&
+            'pattern' in (arg as Record<string, unknown>) &&
+            'useRegex' in (arg as Record<string, unknown>),
+        )?.[0] as
+          | ((args: {
+              pattern: string;
+              useRegex: boolean;
+            }) => string | undefined)
+          | undefined;
+
+        expect(readyEvalFn).toBeDefined();
+        expect(findExtensionEvalFn).toBeDefined();
+
+        const originalDocument = (globalThis as { document?: unknown })
+          .document;
+        const restoreDocument = () => {
+          (globalThis as { document?: unknown }).document = originalDocument;
+        };
+
+        try {
+          const managerWithoutShadow = { shadowRoot: null };
+          (globalThis as { document: unknown }).document = {
+            querySelector: vi.fn().mockReturnValue(managerWithoutShadow),
+          };
+
+          expect(readyEvalFn?.()).toBe(false);
+          expect(
+            findExtensionEvalFn?.({ pattern: 'MetaMask', useRegex: false }),
+          ).toBeUndefined();
+
+          const extensionItem = {
+            shadowRoot: {
+              querySelector: vi
+                .fn()
+                .mockReturnValue({ textContent: 'MetaMask Dev' }),
+            },
+            getAttribute: vi
+              .fn()
+              .mockReturnValue('matchedextensionidabcdefghijklmnop'),
+          };
+          const itemList = {
+            shadowRoot: {
+              querySelectorAll: vi.fn().mockReturnValue([extensionItem]),
+            },
+          };
+          const managerWithItems = {
+            shadowRoot: {
+              querySelector: vi.fn().mockReturnValue(itemList),
+            },
+          };
+
+          (globalThis as { document: unknown }).document = {
+            querySelector: vi.fn().mockReturnValue(managerWithItems),
+          };
+
+          expect(readyEvalFn?.()).toBe(true);
+          expect(
+            findExtensionEvalFn?.({ pattern: 'MetaMask', useRegex: false }),
+          ).toBe('matchedextensionidabcdefghijklmnop');
+          expect(
+            findExtensionEvalFn?.({ pattern: 'Meta[Mm]ask', useRegex: true }),
+          ).toBe('matchedextensionidabcdefghijklmnop');
+        } finally {
+          restoreDocument();
+        }
+      });
+
       it('waits for extensions page to be ready with polling', async () => {
         const page = createMockPage({
           readyResults: [false, false, true], // Not ready, not ready, ready
