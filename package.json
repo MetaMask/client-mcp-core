@@ -1,13 +1,13 @@
 {
   "name": "@metamask/client-mcp-core",
   "version": "0.1.1",
-  "description": "MCP server for MetaMask Extension visual testing with LLM agents",
+  "description": "HTTP daemon and CLI for agent-driven browser extension testing with Playwright",
   "keywords": [
-    "mcp",
     "playwright",
     "llm",
     "visual-testing",
-    "browser-extension"
+    "browser-extension",
+    "cli"
   ],
   "homepage": "https://github.com/MetaMask/client-mcp-core#readme",
   "bugs": {
@@ -35,6 +35,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
+  "bin": {
+    "mm": "./dist/cli/mm.cjs"
+  },
   "files": [
     "dist"
   ],
@@ -57,7 +60,7 @@
     "@isaacs/brace-expansion": "5.0.1"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "express": "^5.2.1",
     "zod": "^4.3.5"
   },
   "devDependencies": {
@@ -71,6 +74,7 @@
     "@metamask/eslint-config-vitest": "^15.0.0",
     "@playwright/test": "^1.49.0",
     "@ts-bridge/cli": "^0.6.3",
+    "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
     "@typescript-eslint/utils": "^8.6.0",
     "@vitest/coverage-istanbul": "^3.0.7",

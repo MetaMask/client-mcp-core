@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { ConsoleErrorBuffer } from './console-error-buffer';
-import type { ConsoleErrorEntry } from './console-error-buffer';
+import { ConsoleErrorBuffer } from './console-error-buffer.js';
+import type { ConsoleErrorEntry } from './console-error-buffer.js';
 
 describe('ConsoleErrorBuffer', () => {
   describe('constructor', () => {

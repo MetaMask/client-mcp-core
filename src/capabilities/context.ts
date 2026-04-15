@@ -22,8 +22,6 @@ export type BaseEnvironmentConfig = {
   extensionName: string;
   /** Default password for wallet unlock operations */
   defaultPassword?: string;
-  /** Prefix for MCP tool names (e.g., "mm" -> "mm_build", "mm_launch") */
-  toolPrefix?: string;
   /** Directory for storing screenshots and other artifacts */
   artifactsDir?: string;
 };

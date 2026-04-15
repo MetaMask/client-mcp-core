@@ -20,7 +20,6 @@ describe('isE2EConfig', () => {
       environment: 'e2e',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       artifactsDir: './test-artifacts',
       defaultChainId: 1337,
       ports: {
@@ -54,7 +53,6 @@ describe('isE2EConfig', () => {
       environment: 'prod',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       defaultChainId: 1,
     };
 
@@ -93,7 +91,6 @@ describe('isProdConfig', () => {
       environment: 'prod',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       artifactsDir: './artifacts',
       defaultChainId: 1,
     };
@@ -119,7 +116,6 @@ describe('isProdConfig', () => {
       environment: 'e2e',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       artifactsDir: './test-artifacts',
       defaultChainId: 1337,
       ports: {

@@ -1,219 +1,295 @@
 # @metamask/client-mcp-core
 
-MCP (Model Context Protocol) server for MetaMask Extension visual testing with LLM agents.
+HTTP daemon and CLI architecture for agent-driven browser extension testing with Playwright.
 
 ## Overview
 
-This package provides the core MCP server infrastructure for enabling LLM agents to interact with the MetaMask browser extension through Playwright.
+This package provides the core infrastructure for enabling LLM agents to interact with browser extensions through Playwright. It ships a persistent HTTP daemon that manages browser lifecycle and a unified `mm` CLI that agents (and developers) use to drive sessions.
+
+The design is **consumer-agnostic**: the core handles protocol, tooling, and knowledge — consumers provide extension-specific logic by implementing the `ISessionManager` interface and injecting capabilities.
+
+```
+                         ┌─────────────────────────────────┐
+                         │         LLM Agent / Dev         │
+                         └────────────┬────────────────────┘
+                                      │  mm CLI commands
+                                      ▼
+                         ┌─────────────────────────────────┐
+                         │     mm CLI  (src/cli/mm.ts)     │
+                         │  discover / auto-start daemon   │
+                         └────────────┬────────────────────┘
+                                      │  HTTP (127.0.0.1)
+                                      ▼
+  ┌───────────────────────────────────────────────────────────────────┐
+  │                    HTTP Daemon (createServer)                     │
+  │                                                                   │
+  │  ┌──────────┐  ┌──────────────┐  ┌────────────┐  ┌────────────┐ │
+  │  │  Routes   │  │ RequestQueue │  │   Tool     │  │ Knowledge  │ │
+  │  │ /health   │  │ (async mutex)│  │  Registry  │  │   Store    │ │
+  │  │ /status   │  │              │  │  25+ tools │  │            │ │
+  │  │ /launch   │  └──────────────┘  └─────┬──────┘  └────────────┘ │
+  │  │ /cleanup  │                          │                         │
+  │  │ /tool/:n  │                          ▼                         │
+  │  └──────────┘               ┌──────────────────┐                 │
+  │                             │   ToolContext     │                 │
+  │                             │  sessionManager   │                 │
+  │                             │  page / refMap    │                 │
+  │                             │  workflowContext  │                 │
+  │                             │  knowledgeStore   │                 │
+  │                             └────────┬─────────┘                 │
+  └──────────────────────────────────────┼───────────────────────────┘
+                                         │
+                   ┌─────────────────────┼─────────────────────┐
+                   │          ISessionManager                   │
+                   │       (consumer implementation)            │
+                   │                                            │
+                   │  Session lifecycle   Page management       │
+                   │  Extension state     A11y reference map    │
+                   │  Navigation          Screenshots           │
+                   │  Capabilities (opt)  Environment config    │
+                   └─────────────────────┬─────────────────────┘
+                                         │
+                   ┌─────────────────────┼─────────────────────┐
+                   │          WorkflowContext                   │
+                   │                                            │
+                   │  build?            fixture?                │
+                   │  chain?            contractSeeding?        │
+                   │  stateSnapshot?    mockServer?             │
+                   │  config: EnvironmentConfig                 │
+                   └─────────────────────┬─────────────────────┘
+                                         │
+                                         ▼
+                   ┌───────────────────────────────────────────┐
+                   │        Playwright  →  Chrome Browser      │
+                   │            Browser Extension               │
+                   └───────────────────────────────────────────┘
+```
 
 ## Requirements
 
-- **Node.js ^20 || ^22 || >=24** (required)
-- **TypeScript >=5.0** (for consumer type definitions)
-- Playwright `^1.49.0` (peer dependency)
+- **Node.js** `^20 || ^22 || >=24`
+- **TypeScript** `>=5.0` (for consumer type definitions)
+- **Playwright** `^1.49.0` (peer dependency)
 
 ## Installation
+
+As a project dependency (the CLI is available via `npx mm` or `yarn mm`):
 
 ```bash
 yarn add @metamask/client-mcp-core
 ```
 
-## Architecture
+As a global CLI (puts `mm` directly on your PATH — recommended for LLM agents):
 
-### High-Level Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           LLM Agent                                     │
-│                    (Claude, GPT, etc.)                                  │
-└─────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  │ MCP Protocol (stdio)
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    @metamask/client-mcp-core                     │
-│                                                                         │
-│  Core MCP Server + Generic Tools                                        │
-│  - Session management                                                   │
-│  - Element interaction (click, type, wait)                              │
-│  - Discovery (testIds, accessibility tree)                              │
-│  - Screenshots                                                          │
-│  - Knowledge store (cross-session learning)                             │
-└─────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  │ Capability Injection
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                   MetaMask Extension Provider                           │
-│                                                                         │
-│  - Build capability (yarn build:test)                                   │
-│  - Fixture/state management                                             │
-│  - Anvil blockchain integration                                         │
-│  - Contract seeding                                                     │
-└─────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  │ Playwright
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Headed Chrome Browser                                │
-│                    + MetaMask Extension                                 │
-└─────────────────────────────────────────────────────────────────────────┘
+```bash
+npm install -g @metamask/client-mcp-core
 ```
 
-### Detailed Architecture
+The global CLI can target any project via `--project` or `MM_PROJECT` (see [Project Targeting](#project-targeting)).
 
-The package follows a **capability-based dependency injection** pattern that separates concerns between:
+## Getting Started
 
-1. **Core MCP Server** - Protocol handling, tool routing, and generic browser interactions
-2. **Session Manager Interface** - Abstract contract for extension-specific session management
-3. **Capabilities** - Optional features injected by consumer implementations
+Consuming this package requires two things: a **daemon entry point** and a **`package.json` configuration**.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         createMcpServer()                               │
-│                                                                         │
-│  ┌─────────────────────┐    ┌─────────────────────────────────────┐    │
-│  │   Tool Definitions  │───▶│         Tool Handlers               │    │
-│  │   (mm_click, etc.)  │    │   (registry.ts + individual tools)  │    │
-│  └─────────────────────┘    └──────────────┬──────────────────────┘    │
-│                                            │                            │
-│                                            ▼                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                    ISessionManager Interface                     │   │
-│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐  │   │
-│  │  │ Page Mgmt   │ │ Navigation  │ │ Screenshots │ │ A11y Refs │  │   │
-│  │  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘  │   │
-│  │  ┌──────────────────────────────────────────────────────────┐   │   │
-│  │  │              Optional Capabilities                        │   │   │
-│  │  │  • BuildCapability      • FixtureCapability              │   │   │
-│  │  │  • ChainCapability      • ContractSeedingCapability      │   │   │
-│  │  │  • StateSnapshotCapability                               │   │   │
-│  │  └──────────────────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  │ setSessionManager()
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│              Consumer Implementation (e.g., MetaMask)                   │
-│                                                                         │
-│  class MetaMaskSessionManager implements ISessionManager {              │
-│    // Browser context, page tracking, extension-specific logic          │
-│    // Capability implementations for build, fixtures, chain, etc.       │
-│  }                                                                      │
-└─────────────────────────────────────────────────────────────────────────┘
+### 1. Create a daemon entry point
+
+```typescript
+// daemon.ts
+import { createServer } from '@metamask/client-mcp-core';
+import { MySessionManager } from './my-session-manager';
+import { createMyContext } from './my-context';
+
+const server = createServer({
+  sessionManager: new MySessionManager(),
+  contextFactory: (options) => createMyContext({ ports: options.ports }),
+});
+
+server.start().then((state) => {
+  console.error(`Daemon started on port ${state.port}`);
+});
 ```
 
-### Core Components
+### 2. Configure `package.json`
 
-| Component             | Description                                                    |
-| --------------------- | -------------------------------------------------------------- |
-| `createMcpServer()`   | Factory function that creates the MCP server instance          |
-| `ISessionManager`     | Interface that consumers must implement for session management |
-| `setSessionManager()` | Injects the consumer's session manager into the core           |
-| `WorkflowContext`     | Container for browser capability and optional capabilities     |
-| `EnvironmentConfig`   | Configuration discriminated by `'e2e'` or `'prod'` mode        |
+```json
+{
+  "mm": {
+    "daemon": "path/to/daemon.ts",
+    "runtime": "tsx"
+  },
+  "scripts": {
+    "mm:serve": "tsx path/to/daemon.ts"
+  }
+}
+```
 
-### Capability System
+The `mm.daemon` field tells the CLI where the daemon entry point lives. The `mm.runtime` field specifies the TypeScript runner (defaults to `tsx`).
 
-The package defines several capabilities that consumers can provide.
+### 3. Use the CLI
 
-#### BuildCapability (Optional)
+```bash
+mm launch              # auto-starts daemon, opens browser session
+mm describe-screen     # get element references
+mm click e3            # interact using a11y refs
+mm cleanup --shutdown  # stop browser and daemon
+```
 
-Enables the `mm_build` tool. Implement this to allow LLM agents to build the extension from source.
+If running from outside the project directory (e.g., a parent folder containing multiple repos):
+
+```bash
+mm --project ./my-extension launch
+mm --project ./my-extension describe-screen
+
+# Or set once via environment variable
+export MM_PROJECT=/path/to/my-extension
+mm launch
+```
+
+## Core Concepts
+
+### Daemon Model
+
+The architecture relies on a persistent background HTTP daemon that manages the browser lifecycle:
+
+- **Worktree Isolation**: Each git worktree runs its own daemon instance, tracked via a `.mm-server` state file in the project root. This allows parallel work across branches.
+- **Port Allocation**: The daemon automatically allocates ports for the HTTP server and test infrastructure (Anvil, fixture server, mock server) to avoid conflicts.
+- **Auto-Start**: The daemon starts automatically on `mm launch` if not already running, and shuts down after a period of inactivity (default: 30 minutes).
+- **Request Serialization**: A `RequestQueue` (async mutex) ensures only one tool executes at a time, preventing race conditions on shared browser state.
+- **Health Checks**: Each daemon generates a unique nonce on startup. The CLI verifies daemon identity via `GET /health` to detect stale `.mm-server` files from crashed processes.
+- **Logs**: Daemon activity is logged to `.mm-daemon.log`.
+
+### Session Manager Interface
+
+`ISessionManager` is the core abstraction boundary between this package and consumer implementations. Consumers must implement this interface to provide extension-specific browser control.
+
+```typescript
+type ISessionManager = {
+  // Session Lifecycle
+  hasActiveSession(): boolean;
+  getSessionId(): string | undefined;
+  launch(input: SessionLaunchInput): Promise<SessionLaunchResult>;
+  cleanup(): Promise<boolean>;
+
+  // Page Management
+  getPage(): Page;
+  setActivePage(page: Page): void;
+  getTrackedPages(): TrackedPage[];
+  classifyPageRole(page: Page, extensionId?: string): TabRole;
+  getContext(): BrowserContext;
+
+  // Extension State
+  getExtensionState(): Promise<ExtensionState>;
+
+  // A11y Reference Map
+  setRefMap(map: Map<string, string>): void;
+  getRefMap(): Map<string, string>;
+  resolveA11yRef(ref: string): string | undefined;
+
+  // Navigation
+  navigateToHome(): Promise<void>;
+  navigateToSettings(): Promise<void>;
+  navigateToUrl(url: string): Promise<Page>;
+  navigateToNotification(): Promise<Page>;
+  waitForNotificationPage(timeoutMs: number): Promise<Page>;
+
+  // Screenshots
+  screenshot(options: SessionScreenshotOptions): Promise<ScreenshotResult>;
+
+  // Capabilities (optional, extension-specific)
+  getBuildCapability(): BuildCapability | undefined;
+  getFixtureCapability(): FixtureCapability | undefined;
+  getChainCapability(): ChainCapability | undefined;
+  getContractSeedingCapability(): ContractSeedingCapability | undefined;
+  getStateSnapshotCapability(): StateSnapshotCapability | undefined;
+
+  // Environment
+  getEnvironmentMode(): EnvironmentMode;
+  setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void;
+  getContextInfo(): { currentContext: 'e2e' | 'prod'; ... };
+};
+```
+
+### Workflow Context & Capabilities
+
+The `WorkflowContext` aggregates optional capabilities that consumers inject through the `contextFactory`. The tool system checks for capabilities at runtime — tools that depend on missing capabilities return clear errors.
+
+```typescript
+type WorkflowContext = {
+  build?: BuildCapability;
+  fixture?: FixtureCapability;
+  chain?: ChainCapability;
+  contractSeeding?: ContractSeedingCapability;
+  stateSnapshot?: StateSnapshotCapability;
+  mockServer?: MockServerCapability;
+  config: EnvironmentConfig;
+};
+```
+
+Capabilities are created by the consumer's `contextFactory` function, which receives allocated port numbers:
+
+```typescript
+function createMyContext(options: {
+  ports: { anvil: number; fixture: number; mock: number };
+}): WorkflowContext {
+  return {
+    build: new MyBuildCapability(),
+    fixture: new MyFixtureCapability(options.ports.fixture),
+    chain: new MyChainCapability(options.ports.anvil),
+    config: {
+      environment: 'e2e',
+      extensionName: 'MyExtension',
+      defaultPassword: 'test-password',
+      artifactsDir: './test-artifacts',
+      defaultChainId: 1337,
+      ports: {
+        anvil: options.ports.anvil,
+        fixtureServer: options.ports.fixture,
+      },
+    },
+  };
+}
+```
+
+### Capability Reference
+
+| Capability                  | Purpose                                 | Enables Tools                                                               |
+| --------------------------- | --------------------------------------- | --------------------------------------------------------------------------- |
+| `BuildCapability`           | Build extension from source             | `build`                                                                     |
+| `FixtureCapability`         | Manage wallet state via fixtures        | `launch` (state modes)                                                      |
+| `ChainCapability`           | Local blockchain (Anvil) lifecycle      | Chain interactions                                                          |
+| `ContractSeedingCapability` | Deploy smart contracts to Anvil         | `seed_contract`, `seed_contracts`, `get_contract_address`, `list_contracts` |
+| `StateSnapshotCapability`   | Read extension state and detect screens | `get_state`                                                                 |
+| `MockServerCapability`      | HTTP mock server for API stubbing       | Mock-dependent tests                                                        |
+
+Each capability interface is defined in `src/capabilities/types.ts`:
 
 ```typescript
 type BuildCapability = {
-  // Build the extension (e.g., yarn build:test)
   build(options?: BuildOptions): Promise<BuildResult>;
-
-  // Get path to built extension directory
   getExtensionPath(): string;
-
-  // Check if extension is already built
   isBuilt(): Promise<boolean>;
 };
 
-type BuildOptions = {
-  buildType?: string; // e.g., "build:test"
-  force?: boolean; // Force rebuild even if exists
-};
-
-type BuildResult = {
-  success: boolean;
-  extensionPath: string;
-  durationMs: number;
-  error?: string;
-};
-```
-
----
-
-#### FixtureCapability (Optional)
-
-Enables wallet state management through fixtures. Essential for E2E testing where you need reproducible wallet states.
-
-```typescript
 type FixtureCapability = {
-  // Start fixture server with given wallet state
   start(state: WalletState): Promise<void>;
-
-  // Stop fixture server
   stop(): Promise<void>;
-
-  // Get default pre-onboarded wallet state (25 ETH, unlocked)
   getDefaultState(): WalletState;
-
-  // Get fresh onboarding state (no wallet configured)
   getOnboardingState(): WalletState;
-
-  // Resolve a named preset to fixture data
   resolvePreset(presetName: string): WalletState;
 };
 
-type WalletState = {
-  data: Record<string, unknown>; // Extension storage state
-  meta?: { version: number };
-};
-```
-
----
-
-#### ChainCapability (Optional)
-
-Manages local blockchain (Anvil) for E2E testing. Required for contract interactions.
-
-```typescript
 type ChainCapability = {
-  // Start the local Anvil node
   start(): Promise<void>;
-
-  // Stop the Anvil node
   stop(): Promise<void>;
-
-  // Check if Anvil is running
   isRunning(): boolean;
-
-  // Set the port for the Anvil node
   setPort(port: number): void;
 };
-```
 
----
-
-#### ContractSeedingCapability (Optional)
-
-Enables smart contract deployment tools (`mm_seed_contract`, `mm_seed_contracts`, etc.).
-
-```typescript
 type ContractSeedingCapability = {
-  // Deploy a single contract
   deployContract(
     name: string,
     options?: DeployOptions,
   ): Promise<ContractDeployment>;
-
-  // Deploy multiple contracts in sequence
   deployContracts(
     names: string[],
     options?: DeployOptions,
@@ -221,1264 +297,297 @@ type ContractSeedingCapability = {
     deployed: ContractDeployment[];
     failed: { name: string; error: string }[];
   }>;
-
-  // Get deployed contract address by name
   getContractAddress(name: string): string | null;
-
-  // List all deployed contracts in this session
   listDeployedContracts(): ContractInfo[];
-
-  // Get available contract names
   getAvailableContracts(): string[];
-
-  // Clear the deployment registry
   clearRegistry(): void;
-
-  // Initialize the capability (called during session launch)
   initialize(): void;
 };
 
-type DeployOptions = {
-  hardfork?: string; // EVM hardfork (default: "prague")
-  deployerOptions?: {
-    fromAddress?: string; // Impersonate address
-    fromPrivateKey?: string; // Deploy from specific key
-  };
-};
-```
-
----
-
-#### StateSnapshotCapability (Optional)
-
-```typescript
 type StateSnapshotCapability = {
-  // Get detailed state snapshot
   getState(page: Page, options: StateOptions): Promise<StateSnapshot>;
-
-  // Detect current screen from page content
   detectCurrentScreen(page: Page): Promise<string>;
 };
 
-type StateOptions = {
-  extensionId?: string;
-  chainId?: number;
-};
-```
-
----
-
-#### MockServerCapability (Optional)
-
-Enables mock server for API testing scenarios.
-
-```typescript
 type MockServerCapability = {
-  // Start the mock server
   start(): Promise<void>;
-
-  // Stop the mock server
   stop(): Promise<void>;
-
-  // Check if mock server is running
   isRunning(): boolean;
-
-  // Get the server instance
   getServer(): unknown;
-
-  // Get the port the server is running on
   getPort(): number;
 };
 ```
 
-## Client Integration
+### Tool System
 
-### How to Consume the Package
-
-Consumers must:
-
-1. **Implement `ISessionManager`** - The core interface for session management
-2. **Inject the session manager** - Call `setSessionManager()` before starting the server
-3. **Start the MCP server** - Call `server.start()`
-
-### McpServerConfig
-
-The `createMcpServer()` function accepts a configuration object:
+Tools are standalone functions registered in a central `toolRegistry`. Each tool receives a `ToolContext` and returns a `ToolResponse`.
 
 ```typescript
-export type McpServerConfig = {
-  name: string;
-  version: string;
-  onCleanup?: () => Promise<void>;
-  logger?: (message: string) => void;
+type ToolFunction<TParams, TResult> = (
+  params: TParams,
+  context: ToolContext,
+) => Promise<ToolResponse<TResult>>;
+
+type ToolContext = {
+  sessionManager: ISessionManager;
+  page: Page;
+  refMap: Map<string, string>;
+  workflowContext: WorkflowContext;
+  knowledgeStore: KnowledgeStore;
 };
 ```
 
-### Minimal Integration Example
+The daemon routes `POST /tool/:name` requests through the registry, applies Zod validation on inputs, executes the tool through the request queue, and captures observations (extension state, test IDs, a11y snapshot) after each execution.
 
-```typescript
-import {
-  createMcpServer,
-  setSessionManager,
-  ISessionManager,
-  type McpServerConfig,
-} from '@metamask/client-mcp-core';
+**Registered tools:**
 
-// 1. Implement the ISessionManager interface
-class MyExtensionSessionManager implements ISessionManager {
-  // ... implement all required methods
-  // See ISessionManager interface for full contract
-}
+| Tool                     | Description                                                                                                                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Lifecycle**            |                                                                                                                                                                                                     |
+| `build`                  | Triggers an extension build using the configured `BuildCapability`. Accepts build type and force options.                                                                                           |
+| `launch`                 | Launches a new browser session with the configured extension. Supports state modes (`default`, `onboarding`, `custom`), fixture presets, goal/tag metadata, and optional contract seeding on start. |
+| `cleanup`                | Tears down the active browser session and cleans up all resources (browser, services, fixtures).                                                                                                    |
+| **Interaction**          |                                                                                                                                                                                                     |
+| `click`                  | Clicks an element identified by a11y ref, test ID, or CSS selector. Waits for the element to be visible before clicking.                                                                            |
+| `type`                   | Types text into an input element identified by a11y ref, test ID, or CSS selector. Uses Playwright's `fill()` for reliable input.                                                                   |
+| `wait_for`               | Waits for an element to become visible on the page within a configurable timeout.                                                                                                                   |
+| `clipboard`              | Reads from or writes to the system clipboard via Chrome DevTools Protocol. Useful for pasting seed phrases or copying addresses.                                                                    |
+| **Navigation**           |                                                                                                                                                                                                     |
+| `navigate`               | Navigates the browser to a named screen (`home`, `settings`, `notification`) or an arbitrary URL.                                                                                                   |
+| `switch_to_tab`          | Switches the active page to a tab matching a given role (e.g., `extension`, `dapp`) or URL prefix.                                                                                                  |
+| `close_tab`              | Closes a browser tab matching a given role or URL. Falls back to the extension tab if the active tab is closed.                                                                                     |
+| `wait_for_notification`  | Waits for the extension notification popup to appear within a timeout. Returns the notification page URL.                                                                                           |
+| **Discovery**            |                                                                                                                                                                                                     |
+| `describe_screen`        | Captures a comprehensive screen snapshot: extension state, visible test IDs, trimmed a11y tree with refs, optional screenshot, and prior knowledge from historical sessions.                        |
+| `accessibility_snapshot` | Captures a trimmed accessibility tree of the current page with deterministic refs (`e1`, `e2`, ...). Supports scoping to a root CSS selector.                                                       |
+| `list_testids`           | Collects all visible `data-testid` attributes from the current page with text previews and visibility status.                                                                                       |
+| **State**                |                                                                                                                                                                                                     |
+| `get_state`              | Retrieves the current extension state (URL, screen, network, balance, account) and tracked tab information.                                                                                         |
+| `get_context`            | Returns the current environment context (`e2e` or `prod`), session status, available capabilities, and whether context switching is allowed.                                                        |
+| `set_context`            | Switches the session environment between `e2e` and `prod` modes. Blocked while a session is active.                                                                                                 |
+| **Screenshots**          |                                                                                                                                                                                                     |
+| `screenshot`             | Captures a screenshot of the current page. Supports naming, full-page capture, scoping to a CSS selector, and optional base64 output.                                                               |
+| **Knowledge**            |                                                                                                                                                                                                     |
+| `knowledge_last`         | Retrieves the N most recent step records from the knowledge store, with optional scope and filter parameters.                                                                                       |
+| `knowledge_search`       | Searches step records by query string with token-based matching and synonym expansion. Scores results by relevance to screen, URL, test IDs, and a11y nodes.                                        |
+| `knowledge_summarize`    | Generates a recipe-style summary of a session's tool invocations, showing the step sequence with targets and outcomes.                                                                              |
+| `knowledge_sessions`     | Lists available knowledge sessions with metadata (goal, flow tags, timestamps), with optional filtering.                                                                                            |
+| **Contracts**            |                                                                                                                                                                                                     |
+| `seed_contract`          | Deploys a single smart contract to the local Anvil chain by name. Requires `ContractSeedingCapability`.                                                                                             |
+| `seed_contracts`         | Deploys multiple smart contracts in sequence. Returns both successful deployments and individual failures.                                                                                          |
+| `get_contract_address`   | Looks up the deployed address of a contract by name from the session's deployment registry.                                                                                                         |
+| `list_contracts`         | Lists all contracts deployed in the current session with addresses and deployment timestamps.                                                                                                       |
+| **Batching**             |                                                                                                                                                                                                     |
+| `run_steps`              | Executes a batch of tool invocations sequentially. Supports `stopOnError` to halt on first failure. Returns per-step results with timing.                                                           |
 
-// 2. Create and inject your session manager
-const sessionManager = new MyExtensionSessionManager();
-setSessionManager(sessionManager);
+### Accessibility References
 
-// 3. Create and start the MCP server
-const config: McpServerConfig = {
-  name: 'my-extension-mcp',
-  version: '1.0.0',
-  onCleanup: async () => {
-    // Optional cleanup logic
-  },
-};
+The core uses Playwright's `ariaSnapshot()` to build a deterministic reference map of interactive elements. Each element gets a short ref like `e1`, `e2`, etc., mapped to an ARIA selector.
 
-const server = createMcpServer(config);
-await server.start();
+Agents call `describe_screen` to get the current reference map, then use refs for interaction:
+
+```
+mm describe-screen    → { ..., a11y: [{ ref: "e1", role: "button", name: "Submit" }, ...] }
+mm click e1           → clicks the "Submit" button
+mm type e3 "hello"    → types into the element mapped to e3
 ```
 
-### Full Integration Example
+This accessibility-first approach provides reliable element targeting that survives minor UI changes.
+
+### Knowledge Store
+
+The `KnowledgeStore` provides cross-session learning by recording every tool execution as a structured step record:
+
+- **Step Recording**: Each tool invocation captures the tool name, input, outcome, observation (extension state, visible test IDs, a11y nodes), and timing.
+- **Session Metadata**: Sessions are tagged with goals, flow tags, and free-form tags for filtering.
+- **Prior Knowledge**: Before tool execution, the store can generate context from historical sessions — similar steps, suggested actions, and patterns to avoid — based on the current screen state.
+- **Search**: Token-based search with synonym expansion across sessions, scored by relevance to screen, URL, test IDs, and a11y nodes.
+- **Sensitive Data Handling**: Input text for password fields and other sensitive inputs is automatically redacted.
+
+Knowledge artifacts are stored on disk at `test-artifacts/llm-knowledge/` organized by session ID.
+
+### Environment Modes
+
+The package supports two environment modes via discriminated union configuration:
+
+**E2E Testing** — Full test infrastructure with local chain, fixtures, and contract seeding:
 
 ```typescript
-import {
-  createMcpServer,
-  setSessionManager,
-  ISessionManager,
-  SessionLaunchInput,
-  SessionLaunchResult,
-  TrackedPage,
-  type ExtensionState,
-  type BuildCapability,
-  type FixtureCapability,
-  type ChainCapability,
-  type ContractSeedingCapability,
-  type EnvironmentMode,
-} from '@metamask/client-mcp-core';
-import type { Page, BrowserContext } from '@playwright/test';
-
-class MetaMaskSessionManager implements ISessionManager {
-  private context?: BrowserContext;
-  private activePage?: Page;
-  private extensionId?: string;
-  private sessionId?: string;
-  private refMap = new Map<string, string>();
-
-  // Capabilities (inject via constructor or lazy-load)
-  private buildCapability?: BuildCapability;
-  private fixtureCapability?: FixtureCapability;
-  private chainCapability?: ChainCapability;
-  private contractSeedingCapability?: ContractSeedingCapability;
-
-  // Session Lifecycle
-  hasActiveSession(): boolean {
-    return this.context !== undefined;
-  }
-
-  getSessionId(): string | undefined {
-    return this.sessionId;
-  }
-
-  async launch(input: SessionLaunchInput): Promise<SessionLaunchResult> {
-    // 1. Start local chain if needed
-    if (this.chainCapability) {
-      await this.chainCapability.start();
-    }
-
-    // 2. Start fixture server if needed
-    if (this.fixtureCapability && input.stateMode !== 'onboarding') {
-      const fixture = input.fixture ?? this.fixtureCapability.getDefaultState();
-      await this.fixtureCapability.start(fixture);
-    }
-
-    // 3. Launch browser with extension
-    // ... Playwright browser launch logic
-
-    // 4. Return session info
-    return {
-      sessionId: this.sessionId!,
-      extensionId: this.extensionId!,
-      state: await this.getExtensionState(),
-    };
-  }
-
-  async cleanup(): Promise<boolean> {
-    if (!this.hasActiveSession()) return false;
-
-    // Close browser, stop services
-    await this.context?.close();
-    await this.chainCapability?.stop();
-    await this.fixtureCapability?.stop();
-
-    this.context = undefined;
-    this.activePage = undefined;
-    return true;
-  }
-
-  // Page Management
-  getPage(): Page {
-    if (!this.activePage) throw new Error('No active session');
-    return this.activePage;
-  }
-
-  setActivePage(page: Page): void {
-    this.activePage = page;
-  }
-
-  getTrackedPages(): TrackedPage[] {
-    // Return all tracked pages with roles
-    return [];
-  }
-
-  getContext(): BrowserContext {
-    if (!this.context) throw new Error('No active session');
-    return this.context;
-  }
-
-  // Extension State
-  async getExtensionState(): Promise<ExtensionState> {
-    // Query extension for current state
-    return {
-      isLoaded: true,
-      currentUrl: this.activePage?.url() ?? '',
-      extensionId: this.extensionId ?? '',
-      isUnlocked: false,
-      currentScreen: 'unknown',
-      accountAddress: null,
-      networkName: null,
-      chainId: null,
-      balance: null,
-    };
-  }
-
-  // A11y Reference Map
-  setRefMap(map: Map<string, string>): void {
-    this.refMap = map;
-  }
-
-  getRefMap(): Map<string, string> {
-    return this.refMap;
-  }
-
-  clearRefMap(): void {
-    this.refMap.clear();
-  }
-
-  resolveA11yRef(ref: string): string | undefined {
-    return this.refMap.get(ref);
-  }
-
-  // Navigation
-  async navigateToHome(): Promise<void> {
-    // Navigate to extension home page
-  }
-
-  async navigateToSettings(): Promise<void> {
-    // Navigate to extension settings page
-  }
-
-  async navigateToUrl(url: string): Promise<Page> {
-    // Open URL in new tab and return the page
-    return this.activePage!;
-  }
-
-  async navigateToNotification(): Promise<Page> {
-    // Navigate to notification page
-    return this.activePage!;
-  }
-
-  async waitForNotificationPage(timeoutMs: number): Promise<Page> {
-    // Wait for notification popup to appear
-    return this.activePage!;
-  }
-
-  // Screenshots
-  async screenshot(options: { name: string; fullPage?: boolean }) {
-    // ... screenshot logic
-    return { path: '', base64: '', width: 0, height: 0 };
-  }
-
-  // Capabilities
-  getBuildCapability() {
-    return this.buildCapability;
-  }
-  getFixtureCapability() {
-    return this.fixtureCapability;
-  }
-  getChainCapability() {
-    return this.chainCapability;
-  }
-  getContractSeedingCapability() {
-    return this.contractSeedingCapability;
-  }
-  getStateSnapshotCapability() {
-    return undefined;
-  }
-
-  // Environment
-  getEnvironmentMode(): EnvironmentMode {
-    return 'e2e';
-  }
-
-  // Required by interface but implementation-specific
-  classifyPageRole(
-    page: Page,
-  ): 'extension' | 'notification' | 'dapp' | 'other' {
-    return 'extension';
-  }
-  getSessionState() {
-    return undefined;
-  }
-  getSessionMetadata() {
-    return undefined;
-  }
-
-  // Context Management
-  setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void {
-    if (this.hasActiveSession()) {
-      throw new Error('Cannot switch context while session is active');
-    }
-    // Switch environment context and apply optional context-specific config
-    void options;
-  }
-
-  getContextInfo() {
-    return {
-      currentContext: this.getEnvironmentMode(),
-      hasActiveSession: this.hasActiveSession(),
-      sessionId: this.sessionId ?? null,
-      capabilities: {
-        available: [
-          this.buildCapability && 'build',
-          this.fixtureCapability && 'fixture',
-          this.chainCapability && 'chain',
-          this.contractSeedingCapability && 'contractSeeding',
-        ].filter(Boolean) as string[],
-      },
-      canSwitchContext: !this.hasActiveSession(),
-    };
-  }
-}
-
-// Bootstrap the server
-async function main() {
-  const sessionManager = new MetaMaskSessionManager();
-  setSessionManager(sessionManager);
-
-  const server = createMcpServer({
-    name: 'metamask-mcp',
-    version: '1.0.0',
-  });
-
-  await server.start();
-}
-
-main().catch(console.error);
-```
-
-### Environment Configuration
-
-The package supports two environment modes:
-
-```typescript
-// E2E Testing Environment
 const e2eConfig: E2EEnvironmentConfig = {
   environment: 'e2e',
   extensionName: 'MetaMask',
   defaultPassword: 'password123',
-  toolPrefix: 'mm',
   artifactsDir: './test-artifacts',
   defaultChainId: 1337,
-  ports: {
-    anvil: 8545,
-    fixtureServer: 12345,
-  },
+  ports: { anvil: 8545, fixtureServer: 12345 },
 };
+```
 
-// Production-like Environment
+**Production-like** — Minimal configuration without test infrastructure:
+
+```typescript
 const prodConfig: ProdEnvironmentConfig = {
   environment: 'prod',
   extensionName: 'MetaMask',
-  toolPrefix: 'mm',
 };
 ```
 
-### Context Switching Options
+Use `set_context` / `get_context` tools to switch between modes at runtime (requires no active session).
 
-`mm_set_context` supports an optional `options` payload that is forwarded to the session manager's `setContext(context, options)` implementation.
+## Server Configuration
+
+The `createServer()` function accepts a `ServerConfig` object:
 
 ```typescript
-type SetContextInput = {
-  context: 'e2e' | 'prod';
-  options?: Record<string, unknown>;
+type ServerConfig = {
+  /** Session manager instance (required) */
+  sessionManager: ISessionManager;
+  /** Factory function to create workflow context (required) */
+  contextFactory: (options: ContextFactoryOptions) => WorkflowContext;
+  /** Idle timeout in milliseconds (optional, defaults to 30000) */
+  idleTimeoutMs?: number;
+  /** Path to log file (optional) */
+  logFilePath?: string;
 };
 
-// Example: switch to e2e and pass context-specific overrides
-await handleSetContext({
-  context: 'e2e',
-  options: {
-    mockServer: {
-      enabled: true,
-      port: 18000,
-    },
-  },
-});
-```
-
-Use `options` only for context-specific configuration your `ISessionManager` implementation understands.
-
-### Custom Tool Definitions
-
-The package provides a fixed set of tools prefixed with `mm_`. Custom tool injection is currently not supported. You can inspect the available tool definitions using `getToolDefinitions()`:
-
-```typescript
-import { getToolDefinitions } from '@metamask/client-mcp-core';
-
-const tools = getToolDefinitions();
-console.log(`Available tools: ${tools.map((t) => t.name).join(', ')}`);
-```
-
-### Registering Custom Tool Handlers
-
-Custom tool handlers are not supported. The server uses a fixed set of handlers for the provided tools.
-
-## Available Tools
-
-All tools are prefixed with `mm_` and return a standardized response format:
-
-```typescript
-type ToolResponse<Result> =
-  | {
-      ok: true;
-      meta: {
-        timestamp: string; // ISO timestamp
-        sessionId?: string; // Current session ID
-        durationMs: number; // Operation duration
-      };
-      result: Result; // Success payload
-    }
-  | {
-      ok: false;
-      meta: {
-        timestamp: string;
-        sessionId?: string;
-        durationMs: number;
-      };
-      error: {
-        code: string;
-        message: string;
-        details?: Record<string, unknown>;
-      };
-    };
-```
-
----
-
-### Session Management Tools
-
-#### `mm_build`
-
-Build the extension from source. Requires `BuildCapability`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `buildType` | `"build:test"` | `"build:test"` | Build script to run |
-| `force` | `boolean` | `false` | Force rebuild even if build exists |
-
-**Output:**
-
-```typescript
-{
-  buildType: 'build:test';
-  extensionPathResolved: string; // Absolute path to built extension
-}
-```
-
-**Example:**
-
-```json
-{ "buildType": "build:test", "force": true }
-```
-
----
-
-#### `mm_launch`
-
-Launch a headed Chrome browser with the extension loaded. This is typically the first tool called.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `autoBuild` | `boolean` | `true` | Auto-build if extension not found |
-| `stateMode` | `"default" \| "onboarding" \| "custom"` | `"default"` | Wallet initialization mode |
-| `fixturePreset` | `string` | - | Named preset when `stateMode="custom"` |
-| `fixture` | `object` | - | Direct fixture object when `stateMode="custom"` |
-| `ports.anvil` | `number` | `8545` | Anvil RPC port |
-| `ports.fixtureServer` | `number` | `12345` | Fixture server port |
-| `slowMo` | `number` | `0` | Slow down actions (ms) for debugging |
-| `extensionPath` | `string` | - | Custom extension directory path |
-| `goal` | `string` | - | Session goal for knowledge store |
-| `flowTags` | `string[]` | - | Flow categorization tags |
-| `tags` | `string[]` | - | Free-form tags |
-| `seedContracts` | `string[]` | - | Contracts to deploy on launch |
-
-**State Modes:**
-
-- `default` - Pre-onboarded wallet with 25 ETH, ready to use
-- `onboarding` - Fresh state, requires wallet setup flow
-- `custom` - Use provided fixture or preset
-
-**Output:**
-
-```typescript
-{
-  sessionId: string;        // Unique session identifier
-  extensionId: string;      // Extension's Chrome ID
-  state: ExtensionState;    // Initial extension state
-  prerequisites?: [{        // Steps taken before launch
-    step: string;
-    description: string;
-  }];
-}
-```
-
-**Example:**
-
-```json
-{
-  "stateMode": "default",
-  "goal": "Test send flow",
-  "flowTags": ["send"],
-  "seedContracts": ["hst"]
-}
-```
-
----
-
-#### `mm_cleanup`
-
-Stop the browser and all services (Anvil, fixture server). Always call when done.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `sessionId` | `string` | - | Optional session ID to clean up |
-
-**Output:**
-
-```typescript
-{
-  cleanedUp: boolean; // Whether cleanup was performed
-}
-```
-
----
-
-### Discovery Tools
-
-#### `mm_get_state`
-
-Get current extension state including screen, balance, network, and account.
-
-**Input:** None
-
-**Output:**
-
-```typescript
-{
-  state: {
-    isLoaded: boolean;
-    currentUrl: string;
-    extensionId: string;
-    isUnlocked: boolean;
-    currentScreen: ScreenName;
-    accountAddress: string | null;
-    networkName: string | null;
-    chainId: number | null;
-    balance: string | null;
+type ContextFactoryOptions = {
+  ports: {
+    anvil: number;
+    fixture: number;
+    mock: number;
   };
-  tabs?: {
-    active: { role: TabRole; url: string };
-    tracked: { role: TabRole; url: string }[];
-  };
-}
+};
 ```
 
----
+The returned `ServerInstance` exposes:
 
-#### `mm_list_testids`
+- `start(): Promise<DaemonState>` — Allocates ports, starts HTTP server, writes `.mm-server` state, sets up idle timeout and signal handlers.
+- `stop(): Promise<void>` — Stops accepting connections, cleans up session, removes `.mm-server` state.
 
-List all visible `data-testid` attributes on the current page. Use to discover interaction targets.
+## HTTP API
 
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | `number` | `150` | Maximum items to return (1-500) |
+The daemon exposes the following endpoints on `127.0.0.1`:
 
-**Output:**
+| Method | Path          | Description                                  |
+| ------ | ------------- | -------------------------------------------- |
+| `GET`  | `/health`     | Health check with nonce verification         |
+| `GET`  | `/status`     | Daemon status (PID, port, uptime, sub-ports) |
+| `POST` | `/launch`     | Start a browser session                      |
+| `POST` | `/cleanup`    | Stop the current browser session             |
+| `POST` | `/tool/:name` | Execute a registered tool with JSON body     |
+
+All responses follow a consistent shape:
 
 ```typescript
-{
-  items: [{
-    testId: string;    // The data-testid value
-    tag: string;       // HTML tag (button, input, div, etc.)
-    text?: string;     // Visible text content
-    visible: boolean;  // Whether element is visible
-  }];
-}
+// Success
+{ ok: true, result: T, observations?: { state, testIds, a11y } }
+
+// Error
+{ ok: false, error: { code: string, message: string } }
 ```
 
-**Example Output:**
+## CLI Reference
 
-```json
-{
-  "items": [
-    {
-      "testId": "account-menu-icon",
-      "tag": "button",
-      "text": "",
-      "visible": true
-    },
-    {
-      "testId": "eth-overview-send",
-      "tag": "button",
-      "text": "Send",
-      "visible": true
-    },
-    {
-      "testId": "token-balance",
-      "tag": "span",
-      "text": "25 ETH",
-      "visible": true
-    }
-  ]
-}
+The `mm` CLI provides a unified interface for agents and developers. All commands communicate with the daemon over HTTP — the daemon is auto-started on `mm launch` if not already running.
+
+### Global Options
+
+| Option             | Description                                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `--project <path>` | Target a specific project directory (absolute or relative). Overrides `MM_PROJECT` and git-based discovery. |
+
+| Environment Variable | Description                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `MM_PROJECT`         | Default project directory when `--project` is not provided. Falls back to the current git worktree root. |
+
+### Project Targeting
+
+By default, the CLI resolves the target project from the current git worktree. This works when running from inside the project directory. For other scenarios, the resolution order is:
+
+1. **`--project <path>`** — Explicit flag, highest priority. Accepts absolute or relative paths.
+2. **`MM_PROJECT`** — Environment variable. Useful for setting once in agent config or shell profile.
+3. **Git worktree** — `git rev-parse --show-toplevel` from the current working directory (existing behavior).
+
+```bash
+# From inside the project (unchanged)
+mm launch
+
+# From a parent folder containing multiple repos
+mm --project ./metamask-extension launch
+
+# Via environment variable
+export MM_PROJECT=/path/to/metamask-extension
+mm describe-screen
 ```
 
----
-
-#### `mm_accessibility_snapshot`
-
-Get a trimmed accessibility tree with deterministic refs (e1, e2, ...). Refs can be used with `mm_click` and `mm_type`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `rootSelector` | `string` | - | CSS selector to scope the snapshot |
-
-**Included Roles:**
-
-- **Actionable:** button, link, checkbox, radio, switch, textbox, combobox, menuitem
-- **Important:** dialog, alert, status, heading
-
-**Output:**
-
-```typescript
-{
-  nodes: [{
-    ref: string;       // Deterministic ref (e1, e2, e3, ...)
-    role: string;      // ARIA role
-    name: string;      // Accessible name
-    disabled?: boolean;
-    checked?: boolean;
-    expanded?: boolean;
-    path: string[];    // Ancestor path for context
-  }];
-}
-```
-
-**Example Output:**
-
-```json
-{
-  "nodes": [
-    { "ref": "e1", "role": "button", "name": "Send", "path": ["main", "div"] },
-    { "ref": "e2", "role": "button", "name": "Swap", "path": ["main", "div"] },
-    { "ref": "e3", "role": "textbox", "name": "Amount", "path": ["form"] }
-  ]
-}
-```
-
----
-
-#### `mm_describe_screen`
-
-Comprehensive screen state combining extension state, testIds, and accessibility snapshot. Optionally includes screenshot.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `includeScreenshot` | `boolean` | `false` | Capture screenshot |
-| `screenshotName` | `string` | - | Screenshot filename |
-| `includeScreenshotBase64` | `boolean` | `false` | Include base64 in response |
-
-**Output:**
-
-```typescript
-{
-  state: ExtensionState;
-  testIds: { items: TestIdItem[] };
-  a11y: { nodes: A11yNodeTrimmed[] };
-  screenshot: {
-    path: string;
-    width: number;
-    height: number;
-    base64?: string;
-  } | null;
-  priorKnowledge?: PriorKnowledgeV1;  // Past session hints
-}
-```
-
----
-
-### Interaction Tools
-
-#### `mm_click`
-
-Click an element. Specify exactly ONE of: `a11yRef`, `testId`, or `selector`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `a11yRef` | `string` | - | Accessibility ref from `mm_accessibility_snapshot` (e.g., "e5") |
-| `testId` | `string` | - | `data-testid` attribute value |
-| `selector` | `string` | - | CSS selector |
-| `timeoutMs` | `number` | `15000` | Max wait time (0-60000) |
-
-**Output:**
-
-```typescript
-{
-  clicked: boolean;
-  target: string;                 // Resolved selector
-  pageClosedAfterClick?: boolean; // True if click caused page close
-}
-```
-
-**Examples:**
-
-```json
-{ "a11yRef": "e5" }
-{ "testId": "confirm-btn" }
-{ "selector": "button.primary" }
-```
-
----
-
-#### `mm_type`
-
-Type text into an input element. Specify exactly ONE of: `a11yRef`, `testId`, or `selector`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `a11yRef` | `string` | - | Accessibility ref |
-| `testId` | `string` | - | `data-testid` value |
-| `selector` | `string` | - | CSS selector |
-| `text` | `string` | **required** | Text to type |
-| `timeoutMs` | `number` | `15000` | Max wait time |
-
-**Output:**
-
-```typescript
-{
-  typed: boolean;
-  target: string;
-  textLength: number;
-}
-```
-
-**Example:**
-
-```json
-{ "testId": "amount-input", "text": "0.5" }
-```
-
----
-
-#### `mm_wait_for`
-
-Wait for an element to become visible. Specify exactly ONE of: `a11yRef`, `testId`, or `selector`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `a11yRef` | `string` | - | Accessibility ref |
-| `testId` | `string` | - | `data-testid` value |
-| `selector` | `string` | - | CSS selector |
-| `timeoutMs` | `number` | `15000` | Max wait time (100-120000) |
-
-**Output:**
-
-```typescript
-{
-  found: boolean;
-  target: string;
-}
-```
-
----
-
-#### `mm_clipboard`
-
-Read from or write to the browser clipboard. Useful for pasting content (e.g., Secret Recovery Phrase) into components that support paste functionality.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `action` | `"write" \| "read"` | **required** | Clipboard action |
-| `text` | `string` | - | Text to write (required when `action="write"`) |
-
-**Output:**
-
-```typescript
-{
-  action: "write" | "read";
-  success: boolean;
-  text?: string;  // Present when action="read" and successful
-}
-```
-
-**Examples:**
-
-```json
-{ "action": "write", "text": "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12" }
-{ "action": "read" }
-```
-
-**Use Case - Fast SRP Entry:**
-
-```
-1. mm_clipboard { "action": "write", "text": "abandon abandon ... about" }
-2. mm_click { "testId": "srp-input-import__paste-button" }
-→ All 12 words populated instantly via paste
-```
-
----
-
-#### `mm_navigate`
-
-Navigate to a specific screen in the extension.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `screen` | `"home" \| "settings" \| "notification" \| "url"` | **required** | Target screen |
-| `url` | `string` | - | Required when `screen="url"` |
-
-**Output:**
-
-```typescript
-{
-  navigated: boolean;
-  currentUrl: string;
-}
-```
-
-**Examples:**
-
-```json
-{ "screen": "home" }
-{ "screen": "settings" }
-{ "screen": "url", "url": "https://app.uniswap.org" }
-```
-
----
-
-### Multi-Tab Tools
-
-#### `mm_wait_for_notification`
-
-Wait for a notification popup to appear (e.g., after dApp interaction). Sets the notification page as active.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `timeoutMs` | `number` | `15000` | Max wait time (1000-60000) |
-
-**Output:**
-
-```typescript
-{
-  found: boolean;
-  pageUrl: string;
-}
-```
-
----
-
-#### `mm_switch_to_tab`
-
-Switch the active page for subsequent interactions.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `role` | `"extension" \| "notification" \| "dapp" \| "other"` | - | Tab role to switch to |
-| `url` | `string` | - | URL prefix to match |
-
-**Output:**
-
-```typescript
-{
-  switched: boolean;
-  activeTab: {
-    role: TabRole;
-    url: string;
-  }
-}
-```
-
-**Example:**
-
-```json
-{ "role": "dapp" }
-{ "url": "https://app.uniswap.org" }
-```
-
----
-
-#### `mm_close_tab`
-
-Close a specific tab. Cannot close the extension home page.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `role` | `"notification" \| "dapp" \| "other"` | - | Tab role to close |
-| `url` | `string` | - | URL prefix to match |
-
-**Output:**
-
-```typescript
-{
-  closed: boolean;
-  closedUrl: string;
-}
-```
-
----
-
-### Screenshot Tools
-
-#### `mm_screenshot`
-
-Capture a screenshot and save to `test-artifacts/screenshots/`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `string` | **required** | Filename (without extension) |
-| `fullPage` | `boolean` | `true` | Capture full page |
-| `selector` | `string` | - | Capture specific element only |
-| `includeBase64` | `boolean` | `false` | Include base64 in response |
-
-**Output:**
-
-```typescript
-{
-  path: string;      // File path
-  width: number;
-  height: number;
-  base64?: string;   // If includeBase64=true
-}
-```
-
----
-
-### Smart Contract Tools
-
-#### `mm_seed_contract`
-
-Deploy a smart contract to the local Anvil node. Requires `ContractSeedingCapability`.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `contractName` | `string` | **required** | Contract to deploy (see list below) |
-| `hardfork` | `string` | `"prague"` | EVM hardfork |
-| `deployerOptions.fromAddress` | `string` | - | Impersonate address |
-| `deployerOptions.fromPrivateKey` | `string` | - | Deploy from specific key |
-
-**Available Contracts:**
-| Name | Description |
-|------|-------------|
-| `hst` | ERC-20 TST token |
-| `nfts` | ERC-721 NFT collection |
-| `erc1155` | ERC-1155 multi-token |
-| `piggybank` | Simple ETH storage |
-| `failing` | Always reverts (error testing) |
-| `multisig` | Multi-signature wallet |
-| `entrypoint` | ERC-4337 EntryPoint |
-| `simpleAccountFactory` | ERC-4337 account factory |
-| `verifyingPaymaster` | ERC-4337 paymaster |
-
-**Output:**
-
-```typescript
-{
-  contractName: string;
-  contractAddress: string;
-  deployedAt: string; // ISO timestamp
-}
-```
-
----
-
-#### `mm_seed_contracts`
-
-Deploy multiple contracts in sequence.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `contracts` | `string[]` | **required** | Contracts to deploy (1-9) |
-| `hardfork` | `string` | `"prague"` | EVM hardfork |
-
-**Output:**
-
-```typescript
-{
-  deployed: [{ contractName, contractAddress, deployedAt }];
-  failed: [{ contractName, error }];
-}
-```
-
----
-
-#### `mm_get_contract_address`
-
-Get the deployed address of a contract.
-
-**Input:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `contractName` | `string` | Contract name to look up |
-
-**Output:**
-
-```typescript
-{
-  contractName: string;
-  contractAddress: string | null;
-}
-```
-
----
-
-#### `mm_list_contracts`
-
-List all contracts deployed in this session.
-
-**Input:** None
-
-**Output:**
-
-```typescript
-{
-  contracts: [{
-    contractName: string;
-    contractAddress: string;
-    deployedAt: string;
-  }];
-}
-```
-
----
-
-### Knowledge Store Tools
-
-The knowledge store enables cross-session learning by recording tool invocations and their context.
-
-#### `mm_knowledge_last`
-
-Get the last N step records from the knowledge store.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `n` | `number` | `20` | Number of steps (1-200) |
-| `scope` | `"current" \| "all" \| { sessionId }` | `"current"` | Which sessions to query |
-| `filters.flowTag` | `string` | - | Filter by flow tag |
-| `filters.tag` | `string` | - | Filter by tag |
-| `filters.screen` | `string` | - | Filter by screen |
-| `filters.sinceHours` | `number` | - | Only steps from last N hours |
-
-**Output:**
-
-```typescript
-{
-  steps: [{
-    timestamp: string;
-    tool: string;
-    screen: ScreenName;
-    snippet: string;      // Human-readable summary
-    sessionId?: string;
-    matchedFields?: string[];
-    sessionGoal?: string;
-  }];
-}
-```
-
----
-
-#### `mm_knowledge_search`
-
-Search step records by tool name, screen, testId, or accessibility names.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `query` | `string` | **required** | Search query (1-200 chars) |
-| `limit` | `number` | `20` | Max results (1-100) |
-| `scope` | `"current" \| "all" \| { sessionId }` | `"all"` | Which sessions to search |
-| `filters` | `KnowledgeFilters` | - | Additional filters |
-
-**Output:**
-
-```typescript
-{
-  matches: KnowledgeStepSummary[];
-  query: string;
-}
-```
-
----
-
-#### `mm_knowledge_summarize`
-
-Generate a recipe-like summary of steps taken in a session.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `scope` | `"current" \| { sessionId }` | `"current"` | Session to summarize |
-
-**Output:**
-
-```typescript
-{
-  sessionId: string;
-  stepCount: number;
-  recipe: [{
-    stepNumber: number;
-    tool: string;
-    notes: string;
-  }];
-}
-```
-
----
-
-#### `mm_knowledge_sessions`
-
-List recent sessions with metadata.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | `number` | `10` | Max sessions (1-50) |
-| `filters` | `KnowledgeFilters` | - | Filter options |
-
-**Output:**
-
-```typescript
-{
-  sessions: [{
-    sessionId: string;
-    createdAt: string;
-    goal?: string;
-    flowTags: string[];
-    tags: string[];
-  }];
-}
-```
-
----
-
-### Batching Tools
-
-#### `mm_run_steps`
-
-Execute multiple tools in sequence. Reduces round trips for multi-step flows.
-
-**Input:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `steps` | `array` | **required** | Tool calls to execute (1-50) |
-| `steps[].tool` | `string` | **required** | Tool name (e.g., `mm_click`) |
-| `steps[].args` | `object` | `{}` | Tool arguments |
-| `stopOnError` | `boolean` | `false` | Stop on first error |
-| `includeObservations` | `"none" \| "failures" \| "all"` | `"all"` | When to include state observations |
-
-**Output:**
-
-```typescript
-{
-  steps: [{
-    tool: string;
-    ok: boolean;
-    result?: unknown;
-    error?: { code: string; message: string; details?: unknown };
-    meta: { durationMs: number; timestamp: string };
-  }];
-  summary: {
-    ok: boolean;      // All steps succeeded
-    total: number;
-    succeeded: number;
-    failed: number;
-    durationMs: number;
-  };
-}
-```
-
-**Example:**
-
-```json
-{
-  "steps": [
-    { "tool": "mm_click", "args": { "testId": "send-button" } },
-    { "tool": "mm_type", "args": { "testId": "amount-input", "text": "0.1" } },
-    { "tool": "mm_click", "args": { "testId": "confirm-button" } }
-  ],
-  "stopOnError": true
-}
-```
+### Lifecycle
+
+| Command                                                                               | Description                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm launch [--state default\|onboarding\|custom] [--extension-path <path>] [--force]` | Auto-starts the daemon if needed, then launches a headed Chrome session with the configured extension. Use `--state` to control wallet initialization (pre-configured, onboarding flow, or custom fixture). Use `--extension-path` to override the extension directory. Use `--force` to replace an existing session. |
+| `mm cleanup [--shutdown]`                                                             | Stops the browser, tears down test services (fixture server, Anvil, mock server), and releases session resources. Add `--shutdown` to also terminate the daemon process.                                                                                                                                              |
+| `mm status`                                                                           | Displays the daemon's current status: PID, port, uptime, allocated sub-ports, and whether a browser session is active.                                                                                                                                                                                                |
+| `mm serve [--background]`                                                             | Manually starts the HTTP daemon without launching a browser session. Use `--background` to detach the process. Fails if a daemon is already running for this worktree.                                                                                                                                                |
+
+### Interaction
+
+| Command                              | Description                                                                                                                                                                                                                                                                |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm click <ref>`                     | Clicks an element by its accessibility reference (e.g., `e3`). The ref comes from a prior `describe-screen` call. Waits for the element to be visible before clicking.                                                                                                     |
+| `mm type <ref> <text>`               | Types text into an input element identified by its accessibility reference. Replaces any existing content in the field.                                                                                                                                                    |
+| `mm describe-screen`                 | Captures the full screen state: extension info, visible test IDs, a trimmed accessibility tree with deterministic refs (`e1`, `e2`, ...), and prior knowledge from historical sessions. This is the primary command for understanding what's on screen before interacting. |
+| `mm screenshot [--name <name>]`      | Takes a full-page screenshot of the current page. Saves to the artifacts directory. Use `--name` to set a descriptive filename.                                                                                                                                            |
+| `mm wait-for <ref> [--timeout <ms>]` | Blocks until an element identified by its accessibility reference becomes visible, or the timeout expires. Default timeout is 5 seconds.                                                                                                                                   |
+
+### Navigation
+
+| Command                | Description                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `mm navigate <url>`    | Opens a new tab and navigates to the given URL. Useful for navigating to dApps or external pages. |
+| `mm navigate-home`     | Navigates the extension tab to the wallet home screen.                                            |
+| `mm navigate-settings` | Navigates the extension tab to the settings page.                                                 |
+
+### State & Knowledge
+
+| Command                       | Description                                                                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm get-state`                | Returns the current extension state: loaded status, current URL, screen name, network, chain ID, account address, and balance. Also lists all tracked browser tabs. |
+| `mm knowledge-search <query>` | Searches the knowledge store for past tool invocations matching the query. Results are scored by relevance to screen, URL, test IDs, and a11y nodes.                |
+| `mm knowledge-last`           | Retrieves the most recent step records from the current session's knowledge store.                                                                                  |
+| `mm knowledge-sessions`       | Lists recent knowledge sessions with metadata (goal, flow tags, timestamps).                                                                                        |
+| `mm run-steps <json>`         | Executes a batch of tool invocations sequentially from a JSON definition. Each step specifies a tool name and arguments.                                            |
+
+For the full agent-facing reference and workflow guidelines, see [SKILL.md](./SKILL.md).
+
+## Error Classification
+
+Tool errors are classified into specific error codes for structured handling:
+
+| Code                        | Meaning                                       |
+| --------------------------- | --------------------------------------------- |
+| `MM_TARGET_NOT_FOUND`       | Element not found by ref, testId, or selector |
+| `MM_WAIT_TIMEOUT`           | Timeout waiting for element or condition      |
+| `MM_CLICK_FAILED`           | Click operation failed                        |
+| `MM_TYPE_FAILED`            | Type operation failed                         |
+| `MM_NAVIGATION_FAILED`      | Navigation error or network failure           |
+| `MM_PAGE_CLOSED`            | Browser page was closed unexpectedly          |
+| `MM_NOTIFICATION_TIMEOUT`   | Notification popup did not appear             |
+| `MM_TAB_NOT_FOUND`          | Tab not found by role or URL                  |
+| `MM_DISCOVERY_FAILED`       | Discovery tool failure                        |
+| `MM_SCREENSHOT_FAILED`      | Screenshot capture failure                    |
+| `MM_CONTRACT_NOT_FOUND`     | Unknown contract name                         |
+| `MM_SEED_FAILED`            | Contract deployment failure                   |
+| `MM_CONTEXT_SWITCH_BLOCKED` | Context switch while session is active        |
 
 ## Development
 
-### Building
-
 ```bash
-yarn build
-```
-
-### Testing
-
-```bash
-yarn test
-```
-
-### Local Development with yalc
-
-```bash
-# In this repo
-yarn build && yalc publish
-
-# In consumer repo
-yalc add @metamask/client-mcp-core
+yarn build        # Build the package
+yarn test         # Run tests and type checks
+yarn lint         # Lint everything
+yarn lint:fix     # Auto-fix lint issues
 ```
 
 ## License
 
-MIT
+(MIT OR Apache-2.0)
