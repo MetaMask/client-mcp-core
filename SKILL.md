@@ -154,7 +154,7 @@ mm serve [--background]
 mm describe-screen
 ```
 
-The a11y tree only includes actionable roles: `button`, `link`, `checkbox`, `radio`, `switch`, `textbox`, `combobox`, `menuitem`, and important roles: `dialog`, `alert`, `status`, `heading`.
+The a11y tree includes actionable roles: `button`, `link`, `checkbox`, `radio`, `switch`, `textbox`, `combobox`, `menuitem`; structural roles: `menu`, `listbox`, `option`, `tab`, `tabpanel`, `list`, `listitem`; and important roles: `dialog`, `alert`, `status`, `heading`.
 
 Each node looks like:
 
@@ -163,9 +163,15 @@ Each node looks like:
   "ref": "e3",
   "role": "button",
   "name": "Confirm",
-  "path": ["dialog:Transaction"]
+  "path": ["dialog:Transaction"],
+  "testId": "confirm-footer-button",
+  "textContent": "Confirm"
 }
 ```
+
+The `testId` and `textContent` fields appear only on nodes with short or generic names — they provide extra context from the DOM to help identify ambiguous elements. Nodes with clear names omit these fields.
+
+When 3+ consecutive identical nodes appear (same role, name, and path), they are collapsed into a summary like `… 3 more "maskicon" (refs e2–e4)` to reduce token waste. Individual refs still work for targeting.
 
 Use the `ref` value (`e3`) for click/type/wait-for commands.
 
@@ -199,13 +205,16 @@ Clicks an element. Waits up to 15s for it to become visible.
 
 ```
 mm click e3
+mm click --testid end-accessory --within "testid:account-list-item/0"
 ```
+
+Use `--within` to scope the target inside a parent element. Values use the format `testid:<id>`, `selector:<css>`, or a bare a11y ref (`e5`).
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 
 #### `mm type <ref> <text>`
 
-Types text into an input field. Replaces existing content (uses `fill()`).
+Types text into an input field. **Clears the field first**, then sets the new value (uses Playwright's `fill()`). No `clearFirst` flag needed — clearing is always implicit.
 
 ```
 mm type e5 "0x1234abcd..."
@@ -217,6 +226,7 @@ Blocks until an element becomes visible. Default timeout: 15s.
 
 ```
 mm wait-for e7 [--timeout <ms>]
+mm wait-for --testid confirm-btn --within "testid:dialog-container"
 ```
 
 ### Navigation
@@ -283,7 +293,9 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. The `includeObservations` param controls whether final-state observations appear in the response: `'all'` (default), `'none'`, or `'failures'` (only on partial failure).
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. The `includeObservations` param controls whether final-state observations appear in the response: `'all'` (default), `'none'`, or `'failures'` (only on partial failure). Use `batchTimeoutMs` to set an overall deadline — if exceeded, remaining steps are marked as skipped and partial results are returned immediately. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+
+Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
 ## Element Targeting
 
@@ -326,6 +338,7 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_CAPABILITY_NOT_AVAILABLE` | Feature requires a capability not configured | Check environment mode (e2e vs prod)                      |
 | `MM_CONTEXT_SWITCH_BLOCKED`   | Can't switch context with active session     | Run `mm cleanup` first                                    |
 | `MM_INVALID_INPUT`            | Bad parameters                               | Fix input and retry                                       |
+| `MM_BATCH_TIMEOUT`            | `batchTimeoutMs` deadline exceeded           | Remaining steps were skipped; check partial results       |
 | `MM_CONTRACT_NOT_FOUND`       | Unknown contract name for seeding            | See available contracts below                             |
 
 ## Available Contracts (E2E only)
