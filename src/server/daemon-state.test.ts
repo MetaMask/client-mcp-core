@@ -14,8 +14,8 @@ import {
   isDaemonVersionMatch,
   generateNonce,
 } from './daemon-state.js';
+import pkg from '../../package.json';
 import type { DaemonState } from '../types/http.js';
-import { PACKAGE_VERSION } from '../version.js';
 
 const tmpDir = path.join(os.tmpdir(), `mm-daemon-state-test-${Date.now()}`);
 
@@ -24,7 +24,7 @@ const mockState: DaemonState = {
   pid: process.pid,
   startedAt: new Date().toISOString(),
   nonce: 'test-nonce-abc',
-  version: PACKAGE_VERSION,
+  version: pkg.version,
   subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
 };
 
@@ -198,7 +198,7 @@ describe('daemon-state', () => {
   });
 
   describe('isDaemonVersionMatch', () => {
-    it('returns true when version matches PACKAGE_VERSION', () => {
+    it('returns true when version matches package.json version', () => {
       expect(isDaemonVersionMatch(mockState)).toBe(true);
     });
 

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+import pkg from '../../package.json';
 import {
   acquireStartupLock,
   isDaemonAlive,
@@ -14,7 +15,6 @@ import {
   removeDaemonState,
 } from '../server/daemon-state.js';
 import type { DaemonState } from '../types/http.js';
-import { PACKAGE_VERSION } from '../version.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
@@ -656,7 +656,7 @@ export async function discoverDaemon(
       }
 
       process.stderr.write(
-        `Daemon version mismatch (running: ${state.version ?? 'unknown'}, cli: ${PACKAGE_VERSION}). Restarting...\n`,
+        `Daemon version mismatch (running: ${state.version ?? 'unknown'}, cli: ${pkg.version}). Restarting...\n`,
       );
       await shutdownDaemon(worktreeRoot, state);
       state = null;

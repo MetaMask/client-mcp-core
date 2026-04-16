@@ -3,8 +3,8 @@ import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+import pkg from '../../package.json';
 import type { DaemonState } from '../types/http.js';
-import { PACKAGE_VERSION } from '../version.js';
 
 const DAEMON_STATE_FILE = '.mm-server';
 const DAEMON_STATE_TMP_FILE = '.mm-server.tmp';
@@ -109,7 +109,7 @@ export async function isDaemonAlive(state: DaemonState): Promise<boolean> {
  * @returns Whether the versions match.
  */
 export function isDaemonVersionMatch(state: DaemonState): boolean {
-  return state.version === PACKAGE_VERSION;
+  return state.version === pkg.version;
 }
 
 /**

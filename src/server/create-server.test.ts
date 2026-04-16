@@ -16,8 +16,8 @@ import {
   shouldIncludeObservationsInResponse,
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
+import pkg from '../../package.json';
 import type { DaemonState, ServerConfig, ToolResponse } from '../types/http.js';
-import { PACKAGE_VERSION } from '../version.js';
 
 const tmpDir = path.join(os.tmpdir(), `mm-create-server-test-${Date.now()}`);
 
@@ -545,7 +545,7 @@ describe('createServer integration', () => {
     expect(daemonState).not.toBeNull();
     expect(daemonState?.port).toBe(state.port);
     expect(daemonState?.nonce).toBe(state.nonce);
-    expect(daemonState?.version).toBe(PACKAGE_VERSION);
+    expect(daemonState?.version).toBe(pkg.version);
   });
 
   it('passes workflow context to session manager on start', async () => {

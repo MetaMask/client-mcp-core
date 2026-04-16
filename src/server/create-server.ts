@@ -7,6 +7,7 @@ import * as http from 'node:http';
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { allocatePort } from './port-allocator.js';
 import { RequestQueue } from './request-queue.js';
+import pkg from '../../package.json';
 import type { WorkflowContext } from '../capabilities/context.js';
 import type { ExtensionState } from '../capabilities/types.js';
 import {
@@ -34,7 +35,6 @@ import type {
 import { extractErrorMessage } from '../utils/errors.js';
 import type { ToolName } from '../validation/schemas.js';
 import { toolSchemas } from '../validation/schemas.js';
-import { PACKAGE_VERSION } from '../version.js';
 
 /**
  * Extracts target selection fields from a tool's validated input.
@@ -597,7 +597,7 @@ export function createServer(config: ServerConfig): ServerInstance {
         pid: process.pid,
         startedAt,
         nonce,
-        version: PACKAGE_VERSION,
+        version: pkg.version,
         subPorts,
       };
 

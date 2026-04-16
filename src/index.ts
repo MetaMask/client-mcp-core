@@ -42,6 +42,3 @@ export * from './launcher/retry.js';
 
 // Error classification
 export * from './tools/error-classification.js';
-
-// Version
-export * from './version.js';
