@@ -455,4 +455,27 @@ describe('runStepsTool', () => {
       });
     }
   });
+
+  it('excludes observations when includeObservations is "none"', async () => {
+    const clickHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { clicked: true },
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([['click', clickHandler]]),
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [{ tool: 'click', args: { testId: 'btn' } }],
+        includeObservations: 'none',
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0]).not.toHaveProperty('observation');
+    }
+  });
 });

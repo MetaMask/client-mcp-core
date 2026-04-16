@@ -131,6 +131,17 @@ describe('seeding tools', () => {
         expect(result.error.message).toContain('Contract not found');
       }
     });
+
+    it('returns capability unavailable when no seeding capability exists', async () => {
+      const context = createMockContext();
+
+      const result = await seedContractTool({ contractName: 'hst' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
+      }
+    });
   });
 
   describe('seedContractsTool', () => {
@@ -197,6 +208,17 @@ describe('seeding tools', () => {
         expect(result.error.message).toContain('Anvil not running');
       }
     });
+
+    it('returns capability unavailable when no seeding capability exists', async () => {
+      const context = createMockContext();
+
+      const result = await seedContractsTool({ contracts: ['hst'] }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
+      }
+    });
   });
 
   describe('getContractAddressTool', () => {
@@ -257,6 +279,20 @@ describe('seeding tools', () => {
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_SEED_FAILED);
         expect(result.error.message).toContain('Connection lost');
+      }
+    });
+
+    it('returns capability unavailable when no seeding capability exists', async () => {
+      const context = createMockContext();
+
+      const result = await getContractAddressTool(
+        { contractName: 'hst' },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE);
       }
     });
   });

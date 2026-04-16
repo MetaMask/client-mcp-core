@@ -5,10 +5,9 @@ import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
-import { allocatePort } from './port-allocator.js';
 import { RequestQueue } from './request-queue.js';
 import pkg from '../../package.json';
-import type { WorkflowContext } from '../capabilities/context.js';
+import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { ExtensionState } from '../capabilities/types.js';
 import {
   KnowledgeStore,
@@ -246,11 +245,7 @@ export function createServer(config: ServerConfig): ServerInstance {
   let startedAt = '';
   let daemonPort = 0;
   let workflowContext: WorkflowContext | null = null;
-  let subPorts: { anvil: number; fixture: number; mock: number } = {
-    anvil: 0,
-    fixture: 0,
-    mock: 0,
-  };
+  let subPorts: PortMap = {};
   let shuttingDown = false;
   let shutdownHandler: (() => void) | null = null;
   let lastRequestTime = Date.now();
@@ -549,100 +544,135 @@ export function createServer(config: ServerConfig): ServerInstance {
         .toString()
         .trim();
 
-      // Allocate sub-ports for external services (anvil, fixture, mock).
-      // These use allocate-then-close because the external services bind
-      // their own sockets — a small TOCTOU window is acceptable here.
-      const [anvilAlloc, fixtureAlloc, mockAlloc] = await Promise.all([
-        allocatePort(),
-        allocatePort(),
-        allocatePort(),
-      ]);
+      try {
+        workflowContext = await config.contextFactory();
+      } catch (error) {
+        throw new Error(
+          `contextFactory failed during server startup: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
 
-      subPorts = {
-        anvil: anvilAlloc.port,
-        fixture: fixtureAlloc.port,
-        mock: mockAlloc.port,
-      };
+      if (
+        !workflowContext ||
+        typeof workflowContext !== 'object' ||
+        !workflowContext.config ||
+        typeof workflowContext.config.environment !== 'string'
+      ) {
+        throw new Error(
+          'contextFactory must return an object with a valid config.environment field',
+        );
+      }
 
-      await Promise.all([
-        new Promise<void>((resolve) =>
-          anvilAlloc.server.close(() => resolve()),
-        ),
-        new Promise<void>((resolve) =>
-          fixtureAlloc.server.close(() => resolve()),
-        ),
-        new Promise<void>((resolve) => mockAlloc.server.close(() => resolve())),
-      ]);
+      const rawPorts = workflowContext.allocatedPorts;
+      if (rawPorts !== undefined) {
+        if (typeof rawPorts !== 'object' || rawPorts === null) {
+          throw new Error('allocatedPorts must be a plain object');
+        }
+        for (const [key, val] of Object.entries(rawPorts)) {
+          if (typeof val !== 'number' || !Number.isFinite(val)) {
+            throw new Error(
+              `allocatedPorts["${key}"] must be a finite number, got ${String(val)}`,
+            );
+          }
+        }
+      }
 
-      workflowContext = config.contextFactory({ ports: subPorts });
+      subPorts = workflowContext.allocatedPorts ?? {};
       config.sessionManager.setWorkflowContext(workflowContext);
       startedAt = new Date().toISOString();
 
-      // Bind daemon directly to port 0 to eliminate TOCTOU race —
-      // the OS assigns the port atomically at listen time.
-      httpServer = await new Promise<http.Server>((resolve, reject) => {
-        const srv = http.createServer(app);
-        srv.listen(0, '127.0.0.1', () => {
-          const addr = srv.address();
-          if (addr && typeof addr !== 'string') {
-            daemonPort = addr.port;
-          }
-          resolve(srv);
-        });
-        srv.on('error', reject);
-      });
-
-      const state: DaemonState = {
-        port: daemonPort,
-        pid: process.pid,
-        startedAt,
-        nonce,
-        version: pkg.version,
-        subPorts,
-      };
-
-      await writeDaemonState(worktreeRoot, state);
-      appendLog(
-        config.logFilePath,
-        `[INFO] Daemon started on port ${daemonPort} (pid ${process.pid})`,
-      );
-
-      shutdownHandler = (): void => {
-        instance
-          .stop()
-          .then(() => process.exit(0))
-          .catch((error: Error) => {
-            appendLog(
-              config.logFilePath,
-              `[ERROR] Daemon failed to shut down: ${error.message}`,
-            );
-            process.exit(1);
-          });
-      };
-
-      process.on('SIGTERM', shutdownHandler);
-      process.on('SIGINT', shutdownHandler);
-
-      const { idleShutdownMs } = config;
-      if (idleShutdownMs && idleShutdownMs > 0) {
-        const checkMs = Math.min(idleShutdownMs / 10, 60_000);
-        idleCheckInterval = setInterval(() => {
-          if (Date.now() - lastRequestTime > idleShutdownMs) {
-            appendLog(
-              config.logFilePath,
-              '[INFO] Idle timeout reached, shutting down',
-            );
-            if (idleCheckInterval) {
-              clearInterval(idleCheckInterval);
-              idleCheckInterval = null;
+      // Everything after setWorkflowContext may have side-effects the
+      // consumer expects to be cleaned up.  Wrap in try/catch so a
+      // listen() or writeDaemonState() failure still runs cleanup.
+      try {
+        // Bind daemon directly to port 0 to eliminate TOCTOU race —
+        // the OS assigns the port atomically at listen time.
+        httpServer = await new Promise<http.Server>((resolve, reject) => {
+          const srv = http.createServer(app);
+          srv.listen(0, '127.0.0.1', () => {
+            const addr = srv.address();
+            if (addr && typeof addr !== 'string') {
+              daemonPort = addr.port;
             }
-            shutdownHandler?.();
-          }
-        }, checkMs);
-        idleCheckInterval.unref();
-      }
+            resolve(srv);
+          });
+          srv.on('error', reject);
+        });
 
-      return state;
+        const state: DaemonState = {
+          port: daemonPort,
+          pid: process.pid,
+          startedAt,
+          nonce,
+          version: pkg.version,
+          subPorts,
+        };
+
+        await writeDaemonState(worktreeRoot, state);
+        appendLog(
+          config.logFilePath,
+          `[INFO] Daemon started on port ${daemonPort} (pid ${process.pid})`,
+        );
+
+        shutdownHandler = (): void => {
+          instance
+            .stop()
+            .then(() => process.exit(0))
+            .catch((error: Error) => {
+              appendLog(
+                config.logFilePath,
+                `[ERROR] Daemon failed to shut down: ${error.message}`,
+              );
+              process.exit(1);
+            });
+        };
+
+        process.on('SIGTERM', shutdownHandler);
+        process.on('SIGINT', shutdownHandler);
+
+        const { idleShutdownMs } = config;
+        if (idleShutdownMs && idleShutdownMs > 0) {
+          const checkMs = Math.min(idleShutdownMs / 10, 60_000);
+          idleCheckInterval = setInterval(() => {
+            if (Date.now() - lastRequestTime > idleShutdownMs) {
+              appendLog(
+                config.logFilePath,
+                '[INFO] Idle timeout reached, shutting down',
+              );
+              if (idleCheckInterval) {
+                clearInterval(idleCheckInterval);
+                idleCheckInterval = null;
+              }
+              shutdownHandler?.();
+            }
+          }, checkMs);
+          idleCheckInterval.unref();
+        }
+
+        return state;
+      } catch (startupError) {
+        // Best-effort rollback: close the HTTP server if it was created,
+        // then let the session manager clean up any resources the
+        // contextFactory may have started.
+        const serverToClose = httpServer;
+        if (serverToClose) {
+          await new Promise<void>((resolve) => {
+            serverToClose.close(() => {
+              httpServer = null;
+              resolve();
+            });
+          });
+        }
+        try {
+          await config.sessionManager.cleanup();
+        } catch {
+          // Swallow — we're already propagating startupError.
+        }
+        workflowContext = null; // eslint-disable-line require-atomic-updates
+        subPorts = {};
+        throw startupError;
+      }
     },
 
     async stop(): Promise<void> {

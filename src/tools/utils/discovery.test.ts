@@ -308,6 +308,17 @@ describe('collectTrimmedA11ySnapshot', () => {
     expect(result.refMap.size).toBe(0);
   });
 
+  it('handles empty parsed roots from valid yaml', async () => {
+    const page = createMockPage({
+      a11ySnapshot: '- text: just text\n- /url: https://example.com',
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(0);
+    expect(result.refMap.size).toBe(0);
+  });
+
   it('uses root selector when provided', async () => {
     const a11yTree = `- dialog:\n  - button "Close"`;
 

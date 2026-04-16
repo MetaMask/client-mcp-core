@@ -95,13 +95,26 @@ Consuming this package requires two things: a **daemon entry point** and a **con
 
 ```typescript
 // daemon.ts
-import { createServer } from '@metamask/client-mcp-core';
+import { createServer, allocatePort } from '@metamask/client-mcp-core';
 import { MySessionManager } from './my-session-manager';
 import { createMyContext } from './my-context';
 
 const server = createServer({
   sessionManager: new MySessionManager(),
-  contextFactory: (options) => createMyContext({ ports: options.ports }),
+  contextFactory: async () => {
+    // Consumer owns port allocation — use the allocatePort() helper
+    // or any other strategy that fits your infrastructure.
+    const anvil = await allocatePort();
+    const fixture = await allocatePort();
+    await Promise.all([
+      new Promise<void>((r) => anvil.server.close(() => r())),
+      new Promise<void>((r) => fixture.server.close(() => r())),
+    ]);
+
+    return createMyContext({
+      ports: { anvil: anvil.port, fixture: fixture.port },
+    });
+  },
 });
 
 server.start().then((state) => {
@@ -151,7 +164,7 @@ mm launch
 The architecture relies on a persistent background HTTP daemon that manages the browser lifecycle:
 
 - **Worktree Isolation**: Each git worktree runs its own daemon instance, tracked via a `.mm-server` state file in the project root. This allows parallel work across branches.
-- **Port Allocation**: The daemon automatically allocates ports for the HTTP server and test infrastructure (Anvil, fixture server, mock server) to avoid conflicts.
+- **Port Allocation**: The daemon allocates its own HTTP port automatically. Sub-service ports (Anvil, fixture server, etc.) are allocated by the consumer's `contextFactory` and reported back via `allocatedPorts`. The `allocatePort()` helper is exported for convenience.
 - **Auto-Start**: The daemon starts automatically on `mm launch` if not already running, and shuts down after a period of inactivity (default: 30 minutes).
 - **Request Serialization**: A `RequestQueue` (async mutex) ensures only one tool executes at a time, preventing race conditions on shared browser state.
 - **Health Checks**: Each daemon generates a unique nonce on startup. The CLI verifies daemon identity via `GET /health` to detect stale `.mm-server` files from crashed processes.
@@ -221,19 +234,24 @@ type WorkflowContext = {
   stateSnapshot?: StateSnapshotCapability;
   mockServer?: MockServerCapability;
   config: EnvironmentConfig;
+  allocatedPorts?: PortMap; // reported to /status and persisted in .mm-server
 };
 ```
 
-Capabilities are created by the consumer's `contextFactory` function, which receives allocated port numbers:
+Capabilities are created by the consumer's `contextFactory` function. The factory is responsible for allocating any sub-service ports it needs (the `allocatePort()` helper is exported for convenience):
 
 ```typescript
-function createMyContext(options: {
-  ports: { anvil: number; fixture: number; mock: number };
-}): WorkflowContext {
+async function createMyContext(options: {
+  ports: { anvil: number; fixture: number };
+}): Promise<WorkflowContext> {
   return {
     build: new MyBuildCapability(),
     fixture: new MyFixtureCapability(options.ports.fixture),
     chain: new MyChainCapability(options.ports.anvil),
+    allocatedPorts: {
+      anvil: options.ports.anvil,
+      fixture: options.ports.fixture,
+    },
     config: {
       environment: 'e2e',
       extensionName: 'MyExtension',
@@ -441,26 +459,24 @@ The `createServer()` function accepts a `ServerConfig` object:
 type ServerConfig = {
   /** Session manager instance (required) */
   sessionManager: ISessionManager;
-  /** Factory function to create workflow context (required) */
-  contextFactory: (options: ContextFactoryOptions) => WorkflowContext;
-  /** Idle timeout in milliseconds (optional, defaults to 30000) */
-  idleTimeoutMs?: number;
+  /** Factory function to create workflow context (may be sync or async) */
+  contextFactory: () => WorkflowContext | Promise<WorkflowContext>;
+  /** Idle timeout in milliseconds (optional, defaults to 1_800_000 = 30 min) */
+  idleShutdownMs?: number;
+  /** Per-request execution timeout in milliseconds (default: 30_000) */
+  requestTimeoutMs?: number;
   /** Path to log file (optional) */
   logFilePath?: string;
 };
-
-type ContextFactoryOptions = {
-  ports: {
-    anvil: number;
-    fixture: number;
-    mock: number;
-  };
-};
 ```
+
+The `contextFactory` is called once during `start()`. It is responsible for allocating any sub-service ports and returning a `WorkflowContext`. The core validates the returned shape at runtime — `config.environment` must be a string and every value in `allocatedPorts` (if provided) must be a finite number.
+
+The `allocatePort()` utility is exported as a convenience for consumers who need ephemeral port allocation inside their factory.
 
 The returned `ServerInstance` exposes:
 
-- `start(): Promise<DaemonState>` — Allocates ports, starts HTTP server, writes `.mm-server` state, sets up idle timeout and signal handlers.
+- `start(): Promise<DaemonState>` — Calls `contextFactory`, starts HTTP server, writes `.mm-server` state, sets up idle timeout and signal handlers.
 - `stop(): Promise<void>` — Stops accepting connections, cleans up session, removes `.mm-server` state.
 
 ## HTTP API

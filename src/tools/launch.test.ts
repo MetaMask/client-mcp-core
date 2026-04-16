@@ -183,6 +183,20 @@ describe('launchTool', () => {
       }
       expect(context.sessionManager.launch).not.toHaveBeenCalled();
     });
+
+    it('cleans up and relaunches when force is true', async () => {
+      const context = createMockContext({ hasActive: true });
+      vi.spyOn(context.sessionManager, 'cleanup').mockResolvedValue(true);
+
+      const result = await launchTool(
+        { stateMode: 'default', force: true },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.cleanup).toHaveBeenCalled();
+      expect(context.sessionManager.launch).toHaveBeenCalled();
+    });
   });
 
   describe('launch failures', () => {

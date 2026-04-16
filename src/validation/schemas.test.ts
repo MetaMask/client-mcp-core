@@ -13,6 +13,7 @@ import {
   switchToTabInputSchema,
   closeTabInputSchema,
   clipboardInputSchema,
+  navigateInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -275,6 +276,50 @@ describe('clipboardInputSchema', () => {
       const result = clipboardInputSchema.safeParse(input);
 
       expect(result.success).toBe(true);
+    });
+  });
+});
+
+describe('navigateInputSchema', () => {
+  describe('refine validation: url required when screen is "url"', () => {
+    it('passes with screen "home"', () => {
+      const input = { screen: 'home' as const };
+      const result = navigateInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('passes with screen "settings"', () => {
+      const input = { screen: 'settings' as const };
+      const result = navigateInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('passes with screen "url" and url provided', () => {
+      const input = { screen: 'url' as const, url: 'https://example.com' };
+      const result = navigateInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('fails with screen "url" and no url', () => {
+      const input = { screen: 'url' as const };
+      const result = navigateInputSchema.safeParse(input);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].message).toBe(
+          'url is required when screen is "url"',
+        );
+      }
+    });
+
+    it('fails with screen "url" and empty url', () => {
+      const input = { screen: 'url' as const, url: '' };
+      const result = navigateInputSchema.safeParse(input);
+
+      expect(result.success).toBe(false);
     });
   });
 });

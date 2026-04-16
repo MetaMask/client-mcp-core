@@ -197,6 +197,25 @@ describe('screenshotTool', () => {
   });
 
   describe('error handling', () => {
+    it('generates default name when not provided', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(context.sessionManager, 'screenshot').mockResolvedValue({
+        path: '/path/to/screenshot.png',
+        width: 1280,
+        height: 720,
+      });
+
+      const result = await screenshotTool({}, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.screenshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: expect.stringMatching(/^screenshot-\d+$/u),
+        }),
+      );
+    });
+
     it('returns error when no active session', async () => {
       const context = createMockContext({ hasActive: false });
 

@@ -25,7 +25,7 @@ const mockState: DaemonState = {
   startedAt: new Date().toISOString(),
   nonce: 'test-nonce-abc',
   version: pkg.version,
-  subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+  subPorts: { serviceA: 3001, serviceB: 3002 },
 };
 
 describe('daemon-state', () => {

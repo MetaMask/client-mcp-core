@@ -434,3 +434,34 @@ describe('hasCapability', () => {
     expect(hasCapability(context, 'mockServer')).toBe(true);
   });
 });
+
+describe('WorkflowContext with allocatedPorts', () => {
+  it('accepts allocatedPorts with port mappings', () => {
+    const context: WorkflowContext = {
+      config: {
+        environment: 'e2e',
+        extensionName: 'MetaMask',
+      },
+      allocatedPorts: {
+        anvil: 3000,
+        fixture: 4000,
+      },
+    };
+
+    expect(context.allocatedPorts).toStrictEqual({
+      anvil: 3000,
+      fixture: 4000,
+    });
+  });
+
+  it('allows WorkflowContext without allocatedPorts (field is optional)', () => {
+    const context: WorkflowContext = {
+      config: {
+        environment: 'e2e',
+        extensionName: 'MetaMask',
+      },
+    };
+
+    expect(context.allocatedPorts).toBeUndefined();
+  });
+});

@@ -6,7 +6,7 @@
 
 import type { Page } from '@playwright/test';
 
-import type { WorkflowContext } from '../capabilities/context.js';
+import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { KnowledgeStore } from '../knowledge-store/knowledge-store.js';
 import type { ISessionManager } from '../server/session-manager.js';
 
@@ -55,23 +55,6 @@ export type ToolFunction<TParams = unknown, TResult = unknown> = (
 ) => Promise<ToolResponse<TResult>>;
 
 /**
- * Port configuration passed to contextFactory at runtime.
- *
- * These ports are used to configure test infrastructure (Anvil, fixture server, mock server).
- */
-export type ContextFactoryOptions = {
-  /** Port configuration for test services */
-  ports: {
-    /** Anvil local chain port */
-    anvil: number;
-    /** Fixture server port */
-    fixture: number;
-    /** Mock server port */
-    mock: number;
-  };
-};
-
-/**
  * Configuration for createServer().
  *
  * This configuration is used to initialize the HTTP server with
@@ -80,8 +63,8 @@ export type ContextFactoryOptions = {
 export type ServerConfig = {
   /** Session manager instance */
   sessionManager: ISessionManager;
-  /** Factory function to create workflow context */
-  contextFactory: (options: ContextFactoryOptions) => WorkflowContext;
+  /** Factory function to create workflow context (may be sync or async) */
+  contextFactory: () => WorkflowContext | Promise<WorkflowContext>;
   /** Idle timeout for daemon auto-shutdown in milliseconds (default: 1_800_000 = 30 min) */
   idleShutdownMs?: number;
   /** Per-request execution timeout in milliseconds (default: 30_000) */
@@ -107,13 +90,6 @@ export type DaemonState = {
   nonce: string;
   /** Package version of the daemon process (absent in state files written before version tracking) */
   version?: string;
-  /** Port configuration for test services */
-  subPorts: {
-    /** Anvil local chain port */
-    anvil: number;
-    /** Fixture server port */
-    fixture: number;
-    /** Mock server port */
-    mock: number;
-  };
+  /** Port configuration for sub-services */
+  subPorts: PortMap;
 };

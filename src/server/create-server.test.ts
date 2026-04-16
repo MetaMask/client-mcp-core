@@ -17,6 +17,7 @@ import {
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
 import pkg from '../../package.json';
+import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { DaemonState, ServerConfig, ToolResponse } from '../types/http.js';
 
 const tmpDir = path.join(os.tmpdir(), `mm-create-server-test-${Date.now()}`);
@@ -102,8 +103,10 @@ function buildConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
     sessionManager:
       createMockSessionManager() as unknown as ServerConfig['sessionManager'],
-    contextFactory: () =>
-      ({}) as unknown as ReturnType<ServerConfig['contextFactory']>,
+    contextFactory: async () =>
+      ({
+        config: { environment: 'prod', extensionName: 'Test Extension' },
+      }) satisfies WorkflowContext,
     ...overrides,
   };
 }
@@ -488,13 +491,13 @@ describe('createServer integration', () => {
     const res = await httpRequest(`http://127.0.0.1:${state.port}/status`);
     const body = (await res.json()) as {
       daemon: { pid: number; port: number };
-      ports: Record<string, number>;
+      ports: PortMap;
     };
 
     expect(res.status).toBe(200);
     expect(body.daemon.pid).toBe(process.pid);
     expect(body.daemon.port).toBe(state.port);
-    expect(body.ports).toBeDefined();
+    expect(body.ports).toStrictEqual({});
   });
 
   it('pOST /launch delegates to session manager', async () => {
@@ -551,20 +554,216 @@ describe('createServer integration', () => {
   it('passes workflow context to session manager on start', async () => {
     await server.stop();
 
-    const workflowContext = { config: { environment: 'e2e' as const } };
+    const workflowContext: WorkflowContext = {
+      config: { environment: 'e2e', extensionName: 'Test Extension' },
+    };
     const mockSM = createMockSessionManager();
     const customServer = createServer(
       buildConfig({
         sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
-        contextFactory: () =>
-          workflowContext as unknown as ReturnType<
-            ServerConfig['contextFactory']
-          >,
+        contextFactory: vi.fn().mockResolvedValue(workflowContext),
       }),
     );
 
     await customServer.start();
     expect(mockSM.setWorkflowContext).toHaveBeenCalledWith(workflowContext);
+    await customServer.stop();
+  });
+
+  it('fails startup when contextFactory rejects', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi
+          .fn<ServerConfig['contextFactory']>()
+          .mockRejectedValue(new Error('port allocation failed')),
+      }),
+    );
+
+    await expect(customServer.start()).rejects.toThrowError(
+      'contextFactory failed during server startup: port allocation failed',
+    );
+  });
+
+  it('preserves original error as cause when contextFactory rejects', async () => {
+    await server.stop();
+
+    const cause = new Error('root cause');
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi
+          .fn<ServerConfig['contextFactory']>()
+          .mockRejectedValue(cause),
+      }),
+    );
+
+    await expect(customServer.start()).rejects.toThrowError(
+      expect.objectContaining({ cause }),
+    );
+  });
+
+  it('fails startup when contextFactory resolves with null', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi.fn().mockResolvedValue(null),
+      }),
+    );
+
+    await expect(customServer.start()).rejects.toThrowError(
+      'contextFactory must return an object with a valid config.environment field',
+    );
+  });
+
+  it('fails startup when contextFactory resolves without config', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi.fn().mockResolvedValue({}),
+      }),
+    );
+
+    await expect(customServer.start()).rejects.toThrowError(
+      'contextFactory must return an object with a valid config.environment field',
+    );
+  });
+
+  it('fails startup when allocatedPorts contains non-number values', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi.fn().mockResolvedValue({
+          config: { environment: 'prod', extensionName: 'Test' },
+          allocatedPorts: { bad: 'not-a-number' },
+        }),
+      }),
+    );
+
+    await expect(customServer.start()).rejects.toThrowError(
+      'allocatedPorts["bad"] must be a finite number',
+    );
+  });
+
+  it('does not call setWorkflowContext when contextFactory rejects', async () => {
+    await server.stop();
+
+    const mockSM = createMockSessionManager();
+    const customServer = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        contextFactory: vi
+          .fn<ServerConfig['contextFactory']>()
+          .mockRejectedValue(new Error('boom')),
+      }),
+    );
+
+    await customServer.start().catch(() => {});
+    expect(mockSM.setWorkflowContext).not.toHaveBeenCalled();
+  });
+
+  it('does not write .mm-server when contextFactory rejects', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi
+          .fn<ServerConfig['contextFactory']>()
+          .mockRejectedValue(new Error('boom')),
+      }),
+    );
+
+    await customServer.start().catch(() => {});
+    const daemonState = await readDaemonState(tmpDir);
+    expect(daemonState).toBeNull();
+  });
+
+  it('cleans up session when startup fails after contextFactory succeeds', async () => {
+    await server.stop();
+
+    const mockSM = createMockSessionManager();
+    const customServer = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        contextFactory: vi.fn().mockResolvedValue({
+          config: { environment: 'prod', extensionName: 'Test' },
+        } satisfies WorkflowContext),
+      }),
+    );
+
+    await fs.chmod(tmpDir, 0o444);
+    try {
+      await expect(customServer.start()).rejects.toThrowError(/EACCES/u);
+      expect(mockSM.cleanup).toHaveBeenCalled();
+    } finally {
+      await fs.chmod(tmpDir, 0o755).catch(() => {});
+    }
+  });
+
+  it('accepts a synchronous contextFactory', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: () => ({
+          config: { environment: 'prod' as const, extensionName: 'Sync' },
+        }),
+      }),
+    );
+
+    const customState = await customServer.start();
+    expect(customState.port).toBeGreaterThan(0);
+    await customServer.stop();
+  });
+
+  it('gET /status returns empty ports when allocatedPorts is undefined', async () => {
+    await server.stop();
+
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi.fn().mockResolvedValue({
+          config: { environment: 'prod', extensionName: 'Test Extension' },
+        } satisfies WorkflowContext),
+      }),
+    );
+
+    const customState = await customServer.start();
+    const res = await httpRequest(
+      `http://127.0.0.1:${customState.port}/status`,
+    );
+    const body = (await res.json()) as { ports: PortMap };
+
+    expect(res.status).toBe(200);
+    expect(body.ports).toStrictEqual({});
+
+    await customServer.stop();
+  });
+
+  it('gET /status returns custom allocated ports', async () => {
+    await server.stop();
+
+    const allocatedPorts = { serviceA: 3001, serviceB: 3002 };
+    const customServer = createServer(
+      buildConfig({
+        contextFactory: vi.fn().mockResolvedValue({
+          config: { environment: 'prod', extensionName: 'Test Extension' },
+          allocatedPorts,
+        } satisfies WorkflowContext),
+      }),
+    );
+
+    const customState = await customServer.start();
+    const res = await httpRequest(
+      `http://127.0.0.1:${customState.port}/status`,
+    );
+    const body = (await res.json()) as { ports: PortMap };
+
+    expect(res.status).toBe(200);
+    expect(body.ports).toStrictEqual(allocatedPorts);
+
     await customServer.stop();
   });
 
@@ -916,5 +1115,86 @@ describe('createServer with logging', () => {
       .readFile(path.join(tmpDir, 'daemon.log'), 'utf-8')
       .catch(() => '');
     expect(logContent).toContain('/health');
+  });
+
+  it('logs fatal errors to stderr and file', async () => {
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    // Trigger a cleanup error by making sessionManager.cleanup() throw
+    const mockSM = createMockSessionManager();
+    mockSM.hasActiveSession.mockReturnValue(true);
+    mockSM.cleanup.mockRejectedValue(new Error('Cleanup failed'));
+
+    const testServer = createServer({
+      sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+      contextFactory: vi.fn().mockResolvedValue({
+        config: {
+          environment: 'e2e',
+          extensionName: 'Test',
+          defaultPassword: 'test',
+          artifactsDir: tmpDir,
+          defaultChainId: 1,
+          ports: { anvil: 8545, fixtureServer: 12345 },
+        },
+      } satisfies WorkflowContext),
+      logFilePath: path.join(tmpDir, 'error.log'),
+    });
+
+    await testServer.start();
+    await testServer.stop();
+
+    // Verify stderr was called with fatal error
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ERROR] Cleanup failed'),
+    );
+
+    stderrSpy.mockRestore();
+  });
+
+  it('handles log file write errors gracefully', async () => {
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    // Create a read-only directory to cause write errors
+    const readOnlyDir = path.join(tmpDir, 'readonly');
+    await fs.mkdir(readOnlyDir, { recursive: true });
+    const logPath = path.join(readOnlyDir, 'daemon.log');
+
+    // Make directory read-only
+    await fs.chmod(readOnlyDir, 0o444);
+
+    try {
+      const testServer = createServer(buildConfig({ logFilePath: logPath }));
+      const testState = await testServer.start();
+
+      // Make a request to trigger logging
+      await httpRequest(`http://127.0.0.1:${testState.port}/health`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await testServer.stop();
+
+      // Verify that stderr was called with the write error message
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to write log'),
+      );
+    } finally {
+      stderrSpy.mockRestore();
+      // Restore write permissions for cleanup
+      await fs.chmod(readOnlyDir, 0o755).catch(() => {});
+    }
+  });
+
+  it('handles server close timeout with force close', async () => {
+    const testServer = createServer(buildConfig());
+    const testState = await testServer.start();
+
+    // Make a request to ensure server is active
+    await httpRequest(`http://127.0.0.1:${testState.port}/health`);
+
+    // Stop should complete even if server doesn't close gracefully
+    expect(await testServer.stop()).toBeUndefined();
   });
 });

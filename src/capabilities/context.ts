@@ -7,6 +7,9 @@ import type {
   MockServerCapability,
 } from './types.js';
 
+/** Sparse port-name → port-number map. `Partial` ensures lookups resolve to `number | undefined`. */
+export type PortMap = Partial<Record<string, number>>;
+
 /**
  * Environment mode discriminator.
  * - 'e2e': End-to-end testing environment with local chain, fixtures, and contract seeding
@@ -110,6 +113,8 @@ export type WorkflowContext = {
   stateSnapshot?: StateSnapshotCapability;
   mockServer?: MockServerCapability;
   config: EnvironmentConfig;
+  /** Port metadata reported back to core from the contextFactory. Used for DaemonState persistence and /status endpoint. */
+  allocatedPorts?: PortMap;
 };
 
 /**
