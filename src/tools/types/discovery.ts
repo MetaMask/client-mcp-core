@@ -9,6 +9,16 @@ export const ACTIONABLE_ROLES = [
   'menuitem',
 ] as const;
 
+export const STRUCTURAL_ROLES = [
+  'menu',
+  'listbox',
+  'option',
+  'tab',
+  'tabpanel',
+  'list',
+  'listitem',
+] as const;
+
 export const IMPORTANT_ROLES = [
   'dialog',
   'alert',
@@ -18,10 +28,12 @@ export const IMPORTANT_ROLES = [
 
 export const INCLUDED_ROLES = [
   ...ACTIONABLE_ROLES,
+  ...STRUCTURAL_ROLES,
   ...IMPORTANT_ROLES,
 ] as const;
 
 export type ActionableRole = (typeof ACTIONABLE_ROLES)[number];
+export type StructuralRole = (typeof STRUCTURAL_ROLES)[number];
 export type ImportantRole = (typeof IMPORTANT_ROLES)[number];
 export type IncludedRole = (typeof INCLUDED_ROLES)[number];
 
@@ -40,6 +52,8 @@ export type A11yNodeTrimmed = {
   checked?: boolean;
   expanded?: boolean;
   path: string[];
+  testId?: string;
+  textContent?: string;
 };
 
 export type RawA11yNode = {

@@ -197,6 +197,50 @@ describe('collectTestIds', () => {
     expect(result[0].text?.length).toBeLessThanOrEqual(200);
   });
 
+  it('handles isVisible rejection gracefully', async () => {
+    const mockLocators = [
+      {
+        getAttribute: vi.fn().mockResolvedValue('btn-1'),
+        isVisible: vi.fn().mockRejectedValue(new Error('detached')),
+        textContent: vi.fn().mockResolvedValue('OK'),
+      },
+    ];
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue(mockLocators),
+      }),
+    } as unknown as Page;
+
+    const result = await collectTestIds(page);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].visible).toBe(false);
+  });
+
+  it('handles textContent rejection gracefully', async () => {
+    const mockLocators = [
+      {
+        getAttribute: vi.fn().mockResolvedValue('btn-1'),
+        isVisible: vi.fn().mockResolvedValue(true),
+        textContent: vi.fn().mockRejectedValue(new Error('detached')),
+      },
+    ];
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue(mockLocators),
+      }),
+    } as unknown as Page;
+
+    const result = await collectTestIds(page);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].text).toBeUndefined();
+  });
+
   it('handles page load state failure', async () => {
     const page = createMockPage({
       testIds: [{ testId: 'test-1', visible: true }],
@@ -350,6 +394,245 @@ describe('collectTrimmedA11ySnapshot', () => {
     expect(result.nodes[1].name).toBe('Child');
     expect(result.nodes[2].name).toBe('Grandchild');
   });
+
+  it('collapses 3+ consecutive identical nodes into summary', async () => {
+    const a11yTree = [
+      '- main:',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+      '  - button "Submit"',
+    ].join('\n');
+
+    const page = createMockPage({ a11ySnapshot: a11yTree });
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(3);
+    expect(result.nodes[0]).toMatchObject({
+      ref: 'e1',
+      role: 'button',
+      name: 'maskicon',
+    });
+    expect(result.nodes[1].name).toContain('3 more');
+    expect(result.nodes[1].name).toContain('maskicon');
+    expect(result.nodes[2]).toMatchObject({
+      ref: 'e5',
+      role: 'button',
+      name: 'Submit',
+    });
+    expect(result.refMap.has('e1')).toBe(true);
+    expect(result.refMap.has('e2')).toBe(true);
+    expect(result.refMap.has('e3')).toBe(true);
+    expect(result.refMap.has('e4')).toBe(true);
+  });
+
+  it('does not collapse nodes with same role and name but different paths', async () => {
+    const a11yTree = [
+      '- main:',
+      '  - dialog "A":',
+      '    - button "OK"',
+      '    - button "OK"',
+      '    - button "OK"',
+      '  - dialog "B":',
+      '    - button "OK"',
+      '    - button "OK"',
+      '    - button "OK"',
+    ].join('\n');
+
+    const page = createMockPage({ a11ySnapshot: a11yTree });
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    const dialogAButtons = result.nodes.filter(
+      (n) => n.role === 'button' && n.path.some((p) => p.includes('dialog:A')),
+    );
+    const dialogBButtons = result.nodes.filter(
+      (n) => n.role === 'button' && n.path.some((p) => p.includes('dialog:B')),
+    );
+    expect(dialogAButtons.length).toBeGreaterThanOrEqual(1);
+    expect(dialogBButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not collapse fewer than 3 identical nodes', async () => {
+    const a11yTree = [
+      '- main:',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+      '  - button "Submit"',
+    ].join('\n');
+
+    const page = createMockPage({ a11ySnapshot: a11yTree });
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(3);
+    expect(result.nodes[0].name).toBe('maskicon');
+    expect(result.nodes[1].name).toBe('maskicon');
+    expect(result.nodes[2].name).toBe('Submit');
+  });
+
+  it('enriches nodes with short names using testId from DOM', async () => {
+    const a11yTree = `- main:\n  - button "x"`;
+    const mockGetAttribute = vi.fn().mockResolvedValue('action-button');
+    const mockTextContent = vi.fn().mockResolvedValue('Click me');
+    const mockBodyLocator = {
+      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
+    };
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn((selector: string) => {
+        if (selector === 'body') {
+          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        }
+        return {
+          first: vi.fn().mockReturnValue({
+            getAttribute: mockGetAttribute,
+            textContent: mockTextContent,
+          }),
+        };
+      }),
+    } as unknown as Page;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes.length).toBeGreaterThan(0);
+    expect(result.nodes[0].testId).toBe('action-button');
+    expect(result.nodes[0].textContent).toBe('Click me');
+  });
+
+  it('skips textContent enrichment when text matches the node name', async () => {
+    const a11yTree = `- main:\n  - button "maskicon"`;
+    const mockBodyLocator = {
+      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
+    };
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn((selector: string) => {
+        if (selector === 'body') {
+          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        }
+        return {
+          first: vi.fn().mockReturnValue({
+            getAttribute: vi.fn().mockResolvedValue(null),
+            textContent: vi.fn().mockResolvedValue('maskicon'),
+          }),
+        };
+      }),
+    } as unknown as Page;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes[0].textContent).toBeUndefined();
+    expect(result.nodes[0].testId).toBeUndefined();
+  });
+
+  it('skips enrichment when all node names exceed threshold', async () => {
+    const a11yTree = `- main:\n  - button "A very long button name that exceeds threshold"`;
+    const page = createMockPage({ a11ySnapshot: a11yTree });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].testId).toBeUndefined();
+    expect(result.nodes[0].textContent).toBeUndefined();
+  });
+
+  it('handles enrichment errors when getAttribute/textContent reject', async () => {
+    const a11yTree = `- main:\n  - button "x"`;
+    const mockBodyLocator = {
+      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
+    };
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn((selector: string) => {
+        if (selector === 'body') {
+          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        }
+        return {
+          first: vi.fn().mockReturnValue({
+            getAttribute: vi.fn().mockRejectedValue(new Error('detached')),
+            textContent: vi.fn().mockRejectedValue(new Error('detached')),
+          }),
+        };
+      }),
+    } as unknown as Page;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].testId).toBeUndefined();
+    expect(result.nodes[0].textContent).toBeUndefined();
+  });
+
+  it('handles enrichment errors when locator.first() throws', async () => {
+    const a11yTree = `- main:\n  - button "y"`;
+    const mockBodyLocator = {
+      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
+    };
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn((selector: string) => {
+        if (selector === 'body') {
+          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        }
+        return {
+          first: vi.fn().mockImplementation(() => {
+            throw new Error('locator disposed');
+          }),
+        };
+      }),
+    } as unknown as Page;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].testId).toBeUndefined();
+    expect(result.nodes[0].textContent).toBeUndefined();
+  });
+
+  it('does not collapse nodes with different textContent', async () => {
+    const a11yTree = [
+      '- main:',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+      '  - button "maskicon"',
+    ].join('\n');
+
+    const textValues = ['Rename', 'Account details', 'Hide', 'Remove'];
+    let callIdx = 0;
+    const mockBodyLocator = {
+      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
+    };
+
+    const page = {
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn((selector: string) => {
+        if (selector === 'body') {
+          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        }
+        const idx = callIdx;
+        callIdx += 1;
+        return {
+          first: vi.fn().mockReturnValue({
+            getAttribute: vi.fn().mockResolvedValue(null),
+            textContent: vi
+              .fn()
+              .mockResolvedValue(textValues[idx % textValues.length]),
+          }),
+        };
+      }),
+    } as unknown as Page;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(4);
+    expect(result.nodes[0].textContent).toBe('Rename');
+    expect(result.nodes[1].textContent).toBe('Account details');
+  });
 });
 
 describe('resolveTarget', () => {
@@ -452,6 +735,41 @@ describe('waitForTarget', () => {
     await waitForTarget(page, 'selector', '.submit-button', new Map(), 5000);
 
     expect(page.locator).toHaveBeenCalledWith('.submit-button');
+  });
+
+  it('scopes target within a parent when within is provided', async () => {
+    const childLocator = createMockLocator({ visible: true });
+    const firstParentLocator = {
+      waitFor: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn().mockReturnValue(childLocator),
+    };
+    const parentLocator = {
+      first: vi.fn().mockReturnValue(firstParentLocator),
+    };
+
+    const page = {
+      locator: vi.fn().mockReturnValue(parentLocator),
+    } as unknown as Page;
+
+    const result = await waitForTarget(
+      page,
+      'testId',
+      'end-accessory',
+      new Map(),
+      5000,
+      { type: 'testId', value: 'account-cell' },
+    );
+
+    expect(page.locator).toHaveBeenCalledWith('[data-testid="account-cell"]');
+    expect(parentLocator.first).toHaveBeenCalled();
+    expect(firstParentLocator.waitFor).toHaveBeenCalledWith({
+      state: 'visible',
+      timeout: 5000,
+    });
+    expect(firstParentLocator.locator).toHaveBeenCalledWith(
+      '[data-testid="end-accessory"]',
+    );
+    expect(result).toBe(childLocator);
   });
 });
 

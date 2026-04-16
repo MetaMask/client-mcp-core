@@ -302,7 +302,154 @@ export async function collectTrimmedA11ySnapshot(
     traverseNode(root, []);
   }
 
-  return { nodes: trimmedNodes, refMap };
+  await enrichNodesWithDOMContext(page, trimmedNodes, refMap);
+
+  const collapsedNodes = collapseIdenticalRuns(trimmedNodes);
+
+  return { nodes: collapsedNodes, refMap };
+}
+
+const GENERIC_NAME_MAX_LENGTH = 20;
+const ENRICHMENT_BATCH_LIMIT = 100;
+const ENRICHMENT_ELEMENT_TIMEOUT_MS = 500;
+const TEXT_CONTENT_MAX_LENGTH = 60;
+
+type EnrichmentResult = {
+  ref: string;
+  testId: string | null;
+  textContent: string | null;
+};
+
+/**
+ * Enriches a11y nodes that have generic or empty names with data-testid
+ * values and visible text content from the corresponding DOM elements.
+ *
+ * @param page - The Playwright page to query.
+ * @param nodes - The trimmed a11y nodes to enrich (mutated in place).
+ * @param refMap - Map of a11y refs to selectors for element lookup.
+ */
+async function enrichNodesWithDOMContext(
+  page: Page,
+  nodes: A11yNodeTrimmed[],
+  refMap: Map<string, string>,
+): Promise<void> {
+  const candidates = nodes.filter(
+    (node) => !node.name || node.name.length <= GENERIC_NAME_MAX_LENGTH,
+  );
+
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const enrichBatch = candidates.slice(0, ENRICHMENT_BATCH_LIMIT);
+
+  const results = await Promise.allSettled(
+    enrichBatch.map(async (node): Promise<EnrichmentResult> => {
+      const selector = refMap.get(node.ref);
+      if (!selector) {
+        return { ref: node.ref, testId: null, textContent: null };
+      }
+      try {
+        const locator = page.locator(selector).first();
+        const [testId, rawText] = await Promise.all([
+          locator
+            .getAttribute('data-testid', {
+              timeout: ENRICHMENT_ELEMENT_TIMEOUT_MS,
+            })
+            .catch(() => null),
+          locator
+            .textContent({ timeout: ENRICHMENT_ELEMENT_TIMEOUT_MS })
+            .catch(() => null),
+        ]);
+        const trimmedText = rawText?.trim().slice(0, TEXT_CONTENT_MAX_LENGTH);
+        const textContent =
+          trimmedText && trimmedText !== node.name ? trimmedText : null;
+        return { ref: node.ref, testId, textContent };
+      } catch {
+        return { ref: node.ref, testId: null, textContent: null };
+      }
+    }),
+  );
+
+  const enrichMap = new Map<string, EnrichmentResult>();
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      enrichMap.set(result.value.ref, result.value);
+    }
+  }
+
+  for (const node of enrichBatch) {
+    const data = enrichMap.get(node.ref);
+    if (!data) {
+      continue;
+    }
+    if (data.testId) {
+      node.testId = data.testId;
+    }
+    if (data.textContent) {
+      node.textContent = data.textContent;
+    }
+  }
+}
+
+const COLLAPSE_THRESHOLD = 3;
+
+/**
+ * Checks whether two string arrays contain identical elements in order.
+ *
+ * @param left - First array to compare.
+ * @param right - Second array to compare.
+ * @returns True if both arrays are equal.
+ */
+function arraysEqual(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length && left.every((val, idx) => val === right[idx])
+  );
+}
+
+/**
+ * Collapses consecutive runs of identical a11y nodes into a summary entry.
+ * The refMap retains individual entries so refs still resolve — collapsing
+ * only affects the agent-facing representation to reduce token waste.
+ *
+ * @param nodes - The flat list of trimmed a11y nodes to collapse.
+ * @returns A new array with runs of 3+ identical nodes collapsed.
+ */
+function collapseIdenticalRuns(nodes: A11yNodeTrimmed[]): A11yNodeTrimmed[] {
+  const collapsed: A11yNodeTrimmed[] = [];
+  let cursor = 0;
+  while (cursor < nodes.length) {
+    const current = nodes[cursor];
+    let runEnd = cursor + 1;
+    while (
+      runEnd < nodes.length &&
+      nodes[runEnd].role === current.role &&
+      nodes[runEnd].name === current.name &&
+      nodes[runEnd].testId === current.testId &&
+      nodes[runEnd].textContent === current.textContent &&
+      arraysEqual(nodes[runEnd].path, current.path)
+    ) {
+      runEnd += 1;
+    }
+
+    const runLength = runEnd - cursor;
+    if (runLength >= COLLAPSE_THRESHOLD) {
+      collapsed.push(current);
+      const lastInRun = nodes[runEnd - 1];
+      collapsed.push({
+        ref: `${current.ref}\u2013${lastInRun.ref}`,
+        role: current.role,
+        name: `\u2026 ${runLength - 1} more "${current.name || current.role}" (refs ${current.ref}\u2013${lastInRun.ref})`,
+        path: current.path,
+      });
+    } else {
+      for (let idx = cursor; idx < runEnd; idx += 1) {
+        collapsed.push(nodes[idx]);
+      }
+    }
+    cursor = runEnd;
+  }
+  return collapsed;
 }
 
 /**
@@ -318,20 +465,33 @@ function buildA11ySelector(role: IncludedRole, name: string): string {
 }
 
 /**
- * Resolve a target element to a Playwright Locator.
+ * Target type for scoping selectors.
+ */
+export type TargetType = 'a11yRef' | 'testId' | 'selector';
+
+/**
+ * Optional parent scope for chained locator resolution.
+ */
+export type WithinScope = {
+  type: TargetType;
+  value: string;
+};
+
+/**
+ * Resolve a target element to a Playwright Locator, optionally scoped within a parent.
  *
- * @param page The Playwright page to search
+ * @param scope The Playwright Page or Locator to search within
  * @param targetType The type of target identifier (a11yRef, testId, or CSS selector)
  * @param targetValue The target value to resolve
  * @param refMap Map of a11y refs to selectors (used when targetType is 'a11yRef')
  * @returns Playwright Locator for the resolved element
  */
-export async function resolveTarget(
-  page: Page,
-  targetType: 'a11yRef' | 'testId' | 'selector',
+function resolveTargetScoped(
+  scope: Page | Locator,
+  targetType: TargetType,
   targetValue: string,
   refMap: Map<string, string>,
-): Promise<Locator> {
+): Locator {
   switch (targetType) {
     case 'a11yRef': {
       const selector = refMap.get(targetValue);
@@ -341,12 +501,12 @@ export async function resolveTarget(
             `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
         );
       }
-      return page.locator(selector);
+      return scope.locator(selector);
     }
     case 'testId':
-      return page.locator(`[data-testid="${targetValue}"]`);
+      return scope.locator(`[data-testid="${targetValue}"]`);
     case 'selector':
-      return page.locator(targetValue);
+      return scope.locator(targetValue);
     default: {
       const exhaustiveCheck: never = targetType;
       throw new Error(`Unknown target type: ${exhaustiveCheck as string}`);
@@ -355,23 +515,60 @@ export async function resolveTarget(
 }
 
 /**
- * Wait for a target element to become visible.
+ * Resolve a target element to a Playwright Locator (page-level).
+ *
+ * @param page The Playwright page to search
+ * @param targetType The type of target identifier (a11yRef, testId, or CSS selector)
+ * @param targetValue The target value to resolve
+ * @param refMap Map of a11y refs to selectors (used when targetType is 'a11yRef')
+ * @returns Playwright Locator for the resolved element
+ */
+export async function resolveTarget(
+  page: Page,
+  targetType: TargetType,
+  targetValue: string,
+  refMap: Map<string, string>,
+): Promise<Locator> {
+  return resolveTargetScoped(page, targetType, targetValue, refMap);
+}
+
+/**
+ * Wait for a target element to become visible, optionally scoped within a parent.
  *
  * @param page The Playwright page to search
  * @param targetType The type of target identifier (a11yRef, testId, or CSS selector)
  * @param targetValue The target value to resolve
  * @param refMap Map of a11y refs to selectors (used when targetType is 'a11yRef')
  * @param timeoutMs Maximum time to wait in milliseconds
+ * @param within Optional parent scope — resolves the target within this element
  * @returns Playwright Locator for the visible element
  */
 export async function waitForTarget(
   page: Page,
-  targetType: 'a11yRef' | 'testId' | 'selector',
+  targetType: TargetType,
   targetValue: string,
   refMap: Map<string, string>,
   timeoutMs: number,
+  within?: WithinScope,
 ): Promise<Locator> {
-  const locator = await resolveTarget(page, targetType, targetValue, refMap);
+  let scope: Page | Locator = page;
+  if (within) {
+    const parentLocator = resolveTargetScoped(
+      page,
+      within.type,
+      within.value,
+      refMap,
+    );
+    await parentLocator
+      .first()
+      .waitFor({ state: 'visible', timeout: timeoutMs });
+    // Use .first() to guarantee the child search is scoped to exactly one
+    // parent element.  Without this, Playwright chains the child locator
+    // across ALL matching parents, producing phantom multi-matches
+    // (e.g. 63 "end-accessory" buttons across 63 account cells).
+    scope = parentLocator.first();
+  }
+  const locator = resolveTargetScoped(scope, targetType, targetValue, refMap);
   await locator.waitFor({ state: 'visible', timeout: timeoutMs });
   return locator;
 }
