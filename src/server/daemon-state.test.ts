@@ -191,8 +191,9 @@ describe('daemon-state', () => {
     it('throws when lock release fails with a non-ENOENT error', async () => {
       await fs.mkdir(path.join(tmpDir, '.mm-server.lock'));
 
+      // Linux returns EISDIR, macOS returns EPERM for unlink on a directory
       await expect(releaseStartupLock(tmpDir)).rejects.toMatchObject({
-        code: 'EPERM',
+        code: expect.stringMatching(/^(EPERM|EISDIR)$/u),
       });
     });
   });
