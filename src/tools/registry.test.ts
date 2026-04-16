@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toolRegistry } from './registry.js';
+import { toolRegistry, TOOL_CATEGORIES, getToolCategory } from './registry.js';
 
 describe('toolRegistry', () => {
   it('has expected tool entries', () => {
@@ -44,5 +44,39 @@ describe('toolRegistry', () => {
     for (const key of toolRegistry.keys()) {
       expect(key.startsWith('mm_')).toBe(false);
     }
+  });
+});
+
+describe('TOOL_CATEGORIES and getToolCategory', () => {
+  it('every key in toolRegistry exists in TOOL_CATEGORIES', () => {
+    for (const key of toolRegistry.keys()) {
+      expect(TOOL_CATEGORIES).toHaveProperty(key);
+    }
+  });
+
+  it('every key in TOOL_CATEGORIES exists in toolRegistry', () => {
+    for (const key of Object.keys(TOOL_CATEGORIES)) {
+      expect(toolRegistry.has(key)).toBe(true);
+    }
+  });
+
+  it('getToolCategory returns mutating for nonexistent tool', () => {
+    expect(getToolCategory('nonexistent_tool')).toBe('mutating');
+  });
+
+  it('getToolCategory returns mutating for click', () => {
+    expect(getToolCategory('click')).toBe('mutating');
+  });
+
+  it('getToolCategory returns readonly for knowledge_last', () => {
+    expect(getToolCategory('knowledge_last')).toBe('readonly');
+  });
+
+  it('getToolCategory returns discovery for describe_screen', () => {
+    expect(getToolCategory('describe_screen')).toBe('discovery');
+  });
+
+  it('getToolCategory returns batch for run_steps', () => {
+    expect(getToolCategory('run_steps')).toBe('batch');
   });
 });

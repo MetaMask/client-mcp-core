@@ -17,9 +17,75 @@ mm cleanup --shutdown      # 5. Clean up when done
 **Critical rules:**
 
 - **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — they change after every action.
-- **Always `describe-screen` after interacting.** The screen state changed; your old refs are stale.
+- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `state`, `testIds`, and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need `priorKnowledge` or screenshots.
 - **One target per command.** Specify exactly ONE of: a11y ref (`e5`), testId, or CSS selector.
 - **Errors are structured.** Check the `error.code` field to decide recovery strategy (see Error Codes below).
+
+## Observation Behavior
+
+Tool responses include different data based on the tool's category:
+
+| Category      | Examples                                                          | Observations in response?                 |
+| ------------- | ----------------------------------------------------------------- | ----------------------------------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build                     | Yes — `state` + `a11y` + `testIds`        |
+| **Read-only** | get*state, knowledge*\*, get_context, set_context                 | No — faster response                      |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot | Data is already in `result`               |
+| **Batch**     | run_steps                                                         | Controlled by `includeObservations` param |
+
+### Using inline observations (mutating tools)
+
+After a mutating action, the response includes fresh screen state:
+
+```json
+{
+  "ok": true,
+  "result": { ... },
+  "observations": {
+    "state": { "screen": "send", "url": "...", "balance": "1.5 ETH" },
+    "testIds": ["send-amount-input", "send-button"],
+    "a11y": {
+      "nodes": [
+        { "ref": "e1", "role": "textbox", "name": "Amount" },
+        { "ref": "e2", "role": "button", "name": "Send" }
+      ]
+    }
+  }
+}
+```
+
+You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed.
+
+```bash
+mm click e3                 # mutating: response includes fresh observations
+# observations.a11y.nodes has updated refs — use them directly:
+mm type e1 "0.01"           # use ref from previous response
+```
+
+Call `describe-screen` explicitly when you need:
+
+- `priorKnowledge` (historical actions for this screen)
+- A screenshot via `includeScreenshot`
+- Full context after unexpected navigation
+
+### `run_steps` and `includeObservations`
+
+The `run_steps` tool collects observations once after all steps complete. Control inclusion with the `includeObservations` parameter:
+
+| Value             | Behavior                                      |
+| ----------------- | --------------------------------------------- |
+| `'all'` (default) | Always include final state observations       |
+| `'none'`          | Never include observations (fastest response) |
+| `'failures'`      | Include observations only if any step failed  |
+
+```json
+{
+  "steps": [
+    { "tool": "click", "args": { "a11yRef": "e3" } },
+    { "tool": "type", "args": { "a11yRef": "e5", "text": "0.01" } }
+  ],
+  "includeObservations": "failures"
+}
+```
 
 ## Commands
 
@@ -217,7 +283,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. The `includeObservations` param controls whether final-state observations appear in the response: `'all'` (default), `'none'`, or `'failures'` (only on partial failure).
 
 ## Element Targeting
 

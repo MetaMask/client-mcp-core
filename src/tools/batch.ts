@@ -31,7 +31,6 @@ export async function runStepsTool(
     );
   }
 
-  // TODO: implement observation policy filtering using input.includeObservations
   const { steps: stepInputs, stopOnError = false } = input;
   const stepResults: StepResult[] = [];
   let succeeded = 0;
@@ -115,8 +114,6 @@ export async function runStepsTool(
           timestamp: new Date().toISOString(),
         },
       });
-
-      // TODO: implement observation policy filtering
 
       if (response.ok) {
         succeeded += 1;

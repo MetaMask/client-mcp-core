@@ -13,7 +13,8 @@ import {
   KnowledgeStore,
   createDefaultObservation,
 } from '../knowledge-store/knowledge-store.js';
-import { toolRegistry } from '../tools/registry.js';
+import { toolRegistry, getToolCategory } from '../tools/registry.js';
+import type { ToolCategory } from '../tools/registry.js';
 import type {
   StepRecordObservation,
   StepRecordOutcome,
@@ -24,7 +25,12 @@ import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
 } from '../tools/utils/discovery.js';
-import type { DaemonState, ServerConfig, ToolContext } from '../types/http.js';
+import type {
+  DaemonState,
+  ServerConfig,
+  ToolContext,
+  ToolResponse,
+} from '../types/http.js';
 import { extractErrorMessage } from '../utils/errors.js';
 import type { ToolName } from '../validation/schemas.js';
 import { toolSchemas } from '../validation/schemas.js';
@@ -161,6 +167,66 @@ export function buildResponseBody(
   }
 
   return { ...(toolResult as Record<string, unknown>), observations };
+}
+
+/**
+ * Whether to run Playwright observation collection for this tool invocation.
+ *
+ * Observations are always collected for the knowledge store, regardless of
+ * whether they appear in the HTTP response. The only exception is batch
+ * with `'none'` policy, which skips collection entirely for best performance.
+ *
+ * @param category - The tool category to check.
+ * @param validatedInput - The validated input payload (checked for batch policy).
+ * @returns True if observations should be collected.
+ */
+export function shouldCollectObservations(
+  category: ToolCategory,
+  validatedInput?: Record<string, unknown>,
+): boolean {
+  if (category === 'batch') {
+    const policy =
+      (validatedInput as { includeObservations?: string })
+        ?.includeObservations ?? 'all';
+    return policy !== 'none';
+  }
+  return true;
+}
+
+/**
+ * Whether to include observations in the HTTP response.
+ *
+ * @param category - The tool category.
+ * @param toolResult - The result returned by the tool.
+ * @param validatedInput - The validated input payload (used for batch policy).
+ * @returns True if observations should be included in the response.
+ */
+export function shouldIncludeObservationsInResponse(
+  category: ToolCategory,
+  toolResult: ToolResponse,
+  validatedInput?: Record<string, unknown>,
+): boolean {
+  if (category === 'mutating') {
+    return true;
+  }
+  if (category === 'batch') {
+    const policy =
+      (validatedInput as { includeObservations?: string })
+        ?.includeObservations ?? 'all';
+    if (policy === 'none') {
+      return false;
+    }
+    if (policy === 'failures') {
+      if (!toolResult.ok) {
+        return true;
+      }
+      const result = toolResult.result as Record<string, unknown>;
+      const summary = result?.summary as Record<string, unknown> | undefined;
+      return summary !== undefined && !summary.ok;
+    }
+    return true; // 'all'
+  }
+  return false; // readonly, discovery
 }
 
 /**
@@ -362,13 +428,21 @@ export function createServer(config: ServerConfig): ServerInstance {
     const startTime = Date.now();
     const currentWorkflowContext = workflowContext;
 
+    const category = getToolCategory(toolName);
+
     try {
       const { toolResult, observations } = await queue.enqueue(async () => {
         const context = buildToolContext(currentWorkflowContext);
         const result = await tool(validatedInput, context);
 
         let obs: StepRecordObservation | undefined;
-        if (config.sessionManager.hasActiveSession()) {
+        if (
+          shouldCollectObservations(
+            category,
+            validatedInput as Record<string, unknown>,
+          ) &&
+          config.sessionManager.hasActiveSession()
+        ) {
           try {
             const page = config.sessionManager.getPage();
             const state = await config.sessionManager.getExtensionState();
@@ -397,7 +471,17 @@ export function createServer(config: ServerConfig): ServerInstance {
         startTime,
       );
 
-      res.json(buildResponseBody(toolResult, observations));
+      const includeInResponse = shouldIncludeObservationsInResponse(
+        category,
+        toolResult,
+        validatedInput as Record<string, unknown>,
+      );
+      res.json(
+        buildResponseBody(
+          toolResult,
+          includeInResponse ? observations : undefined,
+        ),
+      );
     } catch (error) {
       await recordToolStep(
         toolName,

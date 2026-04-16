@@ -12,9 +12,11 @@ import {
   extractScreenshotInfo,
   extractToolOutcome,
   buildResponseBody,
+  shouldCollectObservations,
+  shouldIncludeObservationsInResponse,
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
-import type { DaemonState, ServerConfig } from '../types/http.js';
+import type { DaemonState, ServerConfig, ToolResponse } from '../types/http.js';
 import { PACKAGE_VERSION } from '../version.js';
 
 const tmpDir = path.join(os.tmpdir(), `mm-create-server-test-${Date.now()}`);
@@ -336,6 +338,122 @@ describe('buildResponseBody', () => {
       ok: true,
       observations: obs,
     });
+  });
+});
+
+describe('shouldCollectObservations', () => {
+  it('returns true for mutating', () => {
+    expect(shouldCollectObservations('mutating')).toBe(true);
+  });
+
+  it('returns true for readonly (collected for knowledge store)', () => {
+    expect(shouldCollectObservations('readonly')).toBe(true);
+  });
+
+  it('returns true for discovery (collected for knowledge store)', () => {
+    expect(shouldCollectObservations('discovery')).toBe(true);
+  });
+
+  it('returns true for batch with default policy', () => {
+    expect(shouldCollectObservations('batch')).toBe(true);
+  });
+
+  it("returns true for batch with 'all' policy", () => {
+    expect(
+      shouldCollectObservations('batch', { includeObservations: 'all' }),
+    ).toBe(true);
+  });
+
+  it("returns false for batch with 'none' policy", () => {
+    expect(
+      shouldCollectObservations('batch', { includeObservations: 'none' }),
+    ).toBe(false);
+  });
+
+  it("returns true for batch with 'failures' policy", () => {
+    expect(
+      shouldCollectObservations('batch', { includeObservations: 'failures' }),
+    ).toBe(true);
+  });
+});
+
+describe('shouldIncludeObservationsInResponse', () => {
+  const okResult: ToolResponse = { ok: true, result: {} };
+  const failResult: ToolResponse = {
+    ok: false,
+    error: { code: 'ERR', message: 'fail' },
+  };
+  const summaryFailResult: ToolResponse = {
+    ok: true,
+    result: { summary: { ok: false } },
+  };
+
+  it('returns true for mutating', () => {
+    expect(shouldIncludeObservationsInResponse('mutating', okResult)).toBe(
+      true,
+    );
+  });
+
+  it('returns false for readonly', () => {
+    expect(shouldIncludeObservationsInResponse('readonly', okResult)).toBe(
+      false,
+    );
+  });
+
+  it('returns false for discovery', () => {
+    expect(shouldIncludeObservationsInResponse('discovery', okResult)).toBe(
+      false,
+    );
+  });
+
+  it("returns true for batch with 'all' (default)", () => {
+    expect(shouldIncludeObservationsInResponse('batch', okResult, {})).toBe(
+      true,
+    );
+  });
+
+  it("returns false for batch with 'none'", () => {
+    expect(
+      shouldIncludeObservationsInResponse('batch', okResult, {
+        includeObservations: 'none',
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true for batch with 'failures' when tool failed", () => {
+    expect(
+      shouldIncludeObservationsInResponse('batch', failResult, {
+        includeObservations: 'failures',
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true for batch with 'failures' when summary.ok is false", () => {
+    expect(
+      shouldIncludeObservationsInResponse('batch', summaryFailResult, {
+        includeObservations: 'failures',
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for batch with 'failures' when tool succeeded", () => {
+    const batchOk: ToolResponse = {
+      ok: true,
+      result: { summary: { ok: true } },
+    };
+    expect(
+      shouldIncludeObservationsInResponse('batch', batchOk, {
+        includeObservations: 'failures',
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for batch with 'failures' when summary is missing", () => {
+    expect(
+      shouldIncludeObservationsInResponse('batch', okResult, {
+        includeObservations: 'failures',
+      }),
+    ).toBe(false);
   });
 });
 
@@ -663,6 +781,111 @@ describe('createServer with active session', () => {
     );
 
     expect(res.status).toBe(200);
+  });
+
+  it('read-only tool response omits observations', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/get_state`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as { ok: boolean; observations?: unknown };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeUndefined();
+  });
+
+  it('mutating tool response includes observations with state, testIds, a11y', async () => {
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: { state: unknown; testIds: unknown[]; a11y: unknown };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    expect(body.observations?.state).toBeDefined();
+    expect(body.observations?.testIds).toBeDefined();
+    expect(body.observations?.a11y).toBeDefined();
+  });
+
+  it('playwright helpers called for read-only tools (knowledge store)', async () => {
+    const { collectTestIds, collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
+    const collectTestIdsSpy = vi.mocked(collectTestIds);
+    const collectA11ySpy = vi.mocked(collectTrimmedA11ySnapshot);
+
+    collectTestIdsSpy.mockClear();
+    collectA11ySpy.mockClear();
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/get_state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(collectTestIdsSpy).toHaveBeenCalled();
+    expect(collectA11ySpy).toHaveBeenCalled();
+  });
+
+  it('observation Playwright helpers called for mutating tools', async () => {
+    const { collectTestIds, collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
+    const collectTestIdsSpy = vi.mocked(collectTestIds);
+    const collectA11ySpy = vi.mocked(collectTrimmedA11ySnapshot);
+
+    collectTestIdsSpy.mockClear();
+    collectA11ySpy.mockClear();
+
+    await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(collectTestIdsSpy).toHaveBeenCalled();
+    expect(collectA11ySpy).toHaveBeenCalled();
+  });
+
+  it('recordStep is called for mutating tool routes', async () => {
+    const { KnowledgeStore } =
+      await import('../knowledge-store/knowledge-store.js');
+    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
+      recordStep: ReturnType<typeof vi.fn>;
+    };
+    mockStore.recordStep.mockClear();
+
+    await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(mockStore.recordStep).toHaveBeenCalled();
+  });
+
+  it('recordStep is called for read-only tool routes', async () => {
+    const { KnowledgeStore } =
+      await import('../knowledge-store/knowledge-store.js');
+    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
+      recordStep: ReturnType<typeof vi.fn>;
+    };
+    mockStore.recordStep.mockClear();
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/get_state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(mockStore.recordStep).toHaveBeenCalled();
   });
 });
 
