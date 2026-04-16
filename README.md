@@ -89,7 +89,7 @@ The global CLI can target any project via `--project` or `MM_PROJECT` (see [Proj
 
 ## Getting Started
 
-Consuming this package requires two things: a **daemon entry point** and a **`package.json` configuration**.
+Consuming this package requires two things: a **daemon entry point** and a **configuration file**.
 
 ### 1. Create a daemon entry point
 
@@ -109,21 +109,20 @@ server.start().then((state) => {
 });
 ```
 
-### 2. Configure `package.json`
+### 2. Create a configuration file
 
-```json
-{
-  "mm": {
-    "daemon": "path/to/daemon.ts",
-    "runtime": "tsx"
-  },
-  "scripts": {
-    "mm:serve": "tsx path/to/daemon.ts"
-  }
-}
+Create `mm-client-cli.config.ts` in your project root:
+
+```typescript
+export default {
+  daemon: 'path/to/daemon.ts',
+  runtime: 'tsx',
+};
 ```
 
-The `mm.daemon` field tells the CLI where the daemon entry point lives. The `mm.runtime` field specifies the TypeScript runner (defaults to `tsx`).
+The `daemon` field tells the CLI where the daemon entry point lives. The `runtime` field specifies the TypeScript runner (defaults to `tsx`).
+
+The CLI uses [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig) for config discovery, so you can also use `mm-client-cli.config.js`, `.mm-client-clirc.json`, or other supported formats.
 
 ### 3. Use the CLI
 

@@ -22,6 +22,7 @@ export * from './tools/types';
 
 // HTTP Server Types
 export type * from './types/http.js';
+export type { MmClientCliConfig } from './cli/mm.js';
 export * from './tools/registry.js';
 
 // Server utilities

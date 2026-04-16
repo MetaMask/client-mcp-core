@@ -2,6 +2,7 @@
 /* eslint-disable n/no-process-env */
 /* eslint-disable n/no-sync */
 /* eslint-disable require-atomic-updates */
+import { cosmiconfig } from 'cosmiconfig';
 import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -56,9 +57,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ...actual,
     realpath: vi.fn(async (p: string) => p),
     stat: vi.fn(async () => ({ isDirectory: () => true })),
-    readFile: vi.fn(async () =>
-      JSON.stringify({ mm: { daemon: './daemon.ts', runtime: 'tsx' } }),
-    ),
+    readFile: vi.fn(),
   };
 });
 
@@ -71,6 +70,14 @@ vi.mock('../server/daemon-state.js', () => ({
   releaseStartupLock: vi.fn(async () => {}),
 }));
 
+const mockSearch = vi.fn();
+
+vi.mock('cosmiconfig', () => ({
+  cosmiconfig: vi.fn(() => ({
+    search: mockSearch,
+  })),
+}));
+
 let exitSpy: MockInstance;
 let stderrSpy: MockInstance;
 let stdoutSpy: MockInstance;
@@ -78,6 +85,11 @@ let stdoutSpy: MockInstance;
 // eslint-disable-next-line vitest/require-top-level-describe
 beforeEach(() => {
   vi.clearAllMocks();
+  mockSearch.mockResolvedValue({
+    config: { daemon: './daemon.ts', runtime: 'tsx' },
+    filepath: '/mock/worktree/mm-client-cli.config.ts',
+    isEmpty: false,
+  });
   exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
     throw new Error('process.exit');
   }) as never);
@@ -470,12 +482,12 @@ describe('shutdownDaemon', () => {
 });
 
 describe('readDaemonConfig', () => {
-  it('reads and parses mm config from package.json', async () => {
-    vi.mocked(fs.readFile).mockResolvedValueOnce(
-      JSON.stringify({
-        mm: { daemon: './my-daemon.ts', runtime: 'tsx' },
-      }),
-    );
+  it('reads and parses config from cosmiconfig', async () => {
+    mockSearch.mockResolvedValueOnce({
+      config: { daemon: './my-daemon.ts', runtime: 'tsx' },
+      filepath: '/project/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
 
     const result = await readDaemonConfig('/project');
 
@@ -483,31 +495,69 @@ describe('readDaemonConfig', () => {
       daemonPath: './my-daemon.ts',
       runtime: 'tsx',
     });
+    expect(cosmiconfig).toHaveBeenCalledWith('mm-client-cli', {
+      searchPlaces: [
+        'mm-client-cli.config.ts',
+        'mm-client-cli.config.js',
+        'mm-client-cli.config.cjs',
+        'mm-client-cli.config.mjs',
+        '.mm-client-clirc',
+        '.mm-client-clirc.json',
+        '.mm-client-clirc.yaml',
+        '.mm-client-clirc.yml',
+        '.mm-client-clirc.js',
+        '.mm-client-clirc.ts',
+        '.mm-client-clirc.cjs',
+      ],
+      stopDir: '/project',
+    });
+    expect(mockSearch).toHaveBeenCalledWith('/project');
   });
 
   it('defaults runtime to tsx when not specified', async () => {
-    vi.mocked(fs.readFile).mockResolvedValueOnce(
-      JSON.stringify({ mm: { daemon: './d.ts' } }),
-    );
+    mockSearch.mockResolvedValueOnce({
+      config: { daemon: './d.ts' },
+      filepath: '/project/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
 
     const result = await readDaemonConfig('/project');
 
     expect(result.runtime).toBe('tsx');
   });
 
-  it('exits when package.json cannot be read', async () => {
-    vi.mocked(fs.readFile).mockRejectedValueOnce(new Error('ENOENT'));
+  it('exits when no config file is found', async () => {
+    mockSearch.mockResolvedValueOnce(null);
 
     await expect(readDaemonConfig('/project')).rejects.toThrowError(
       'process.exit',
     );
     expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Cannot read package.json'),
+      expect.stringContaining('No mm-client-cli config found'),
     );
   });
 
-  it('exits when mm.daemon is not configured', async () => {
-    vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify({}));
+  it('exits when config file is empty', async () => {
+    mockSearch.mockResolvedValueOnce({
+      config: undefined,
+      filepath: '/project/mm-client-cli.config.ts',
+      isEmpty: true,
+    });
+
+    await expect(readDaemonConfig('/project')).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No mm-client-cli config found'),
+    );
+  });
+
+  it('exits when daemon is not configured', async () => {
+    mockSearch.mockResolvedValueOnce({
+      config: { runtime: 'tsx' },
+      filepath: '/project/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
 
     await expect(readDaemonConfig('/project')).rejects.toThrowError(
       'process.exit',
@@ -773,6 +823,21 @@ describe('sendRequest', () => {
       'process.exit',
     );
     expect(stderrSpy).toHaveBeenCalledWith('Error: Request failed\n');
+  });
+
+  it('reaches the final fallback after repeated transient failures when exit does not throw', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+    exitSpy.mockRestore();
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      return undefined as never;
+    }) as never);
+
+    await sendRequest(3000, 'GET', '/health', null);
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('request failed after 4 attempts'),
+    );
+    expect(process.exit).toHaveBeenCalledWith(1);
   });
 });
 
@@ -1582,9 +1647,11 @@ describe('handleServe', () => {
     vi.mocked(readDaemonState).mockResolvedValueOnce(null);
 
     vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFile).mockResolvedValue(
-      JSON.stringify({ mm: { daemon: './daemon.ts', runtime: 'node' } }),
-    );
+    mockSearch.mockResolvedValueOnce({
+      config: { daemon: './daemon.ts', runtime: 'node' },
+      filepath: '/root/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
 
     const mockState = {
       port: 4000,
@@ -1630,9 +1697,11 @@ describe('handleServe', () => {
     vi.mocked(isDaemonAlive).mockResolvedValueOnce(false);
 
     vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFile).mockResolvedValue(
-      JSON.stringify({ mm: { daemon: './d.ts', runtime: 'node' } }),
-    );
+    mockSearch.mockResolvedValueOnce({
+      config: { daemon: './d.ts', runtime: 'node' },
+      filepath: '/root/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
 
     const { spawn } = await import('node:child_process');
     vi.mocked(spawn).mockReturnValue({
@@ -1692,9 +1761,11 @@ describe('autoStartDaemon', () => {
     vi.mocked(readDaemonState).mockResolvedValueOnce(null);
 
     vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFile).mockResolvedValue(
-      JSON.stringify({ mm: { daemon: './daemon.ts', runtime: 'node' } }),
-    );
+    mockSearch.mockResolvedValueOnce({
+      config: { daemon: './daemon.ts', runtime: 'node' },
+      filepath: '/root/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
 
     const mockState = {
       port: 3000,

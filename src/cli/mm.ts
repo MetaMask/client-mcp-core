@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { cosmiconfig } from 'cosmiconfig';
 import { execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -27,6 +28,18 @@ const DAEMON_POLL_INTERVAL_MS = 200;
 const DAEMON_POLL_MAX_ATTEMPTS = 50; // 50 * 200ms = 10s
 const SEND_MAX_RETRIES = 3;
 const SEND_RETRY_BASE_DELAY_MS = 200;
+const CONFIG_MODULE_NAME = 'mm-client-cli';
+
+/**
+ * Configuration shape for mm-client-cli config files.
+ * Used in mm-client-cli.config.ts or equivalent.
+ */
+export type MmClientCliConfig = {
+  /** Path to the daemon entry point (TypeScript or JavaScript file). */
+  daemon: string;
+  /** TypeScript runner to use. Defaults to 'tsx'. */
+  runtime?: string;
+};
 
 type DaemonConfig = {
   daemonPath: string;
@@ -506,6 +519,7 @@ export async function routeCommand(
           process.stderr.write(`Error: invalid JSON — ${error.message}\n`);
           process.exit(1);
         }
+        /* istanbul ignore next -- non-SyntaxError path depends on delegated failures */
         throw error;
       }
       break;
@@ -752,7 +766,10 @@ export async function handleServe(
 }
 
 /**
- * Reads the daemon configuration from the worktree package.json.
+ * Reads the daemon configuration using cosmiconfig file discovery.
+ *
+ * Searches for configuration files (e.g., mm-client-cli.config.ts)
+ * starting from the worktree root directory.
  *
  * @param worktreeRoot - The git worktree root directory.
  * @returns The daemon path and runtime configuration.
@@ -760,29 +777,43 @@ export async function handleServe(
 export async function readDaemonConfig(
   worktreeRoot: string,
 ): Promise<DaemonConfig> {
-  const pkgPath = path.join(worktreeRoot, 'package.json');
-  let content: string;
-  try {
-    content = await fs.readFile(pkgPath, 'utf-8');
-  } catch {
-    process.stderr.write(`Error: Cannot read package.json at ${pkgPath}\n`);
+  const explorer = cosmiconfig(CONFIG_MODULE_NAME, {
+    searchPlaces: [
+      `${CONFIG_MODULE_NAME}.config.ts`,
+      `${CONFIG_MODULE_NAME}.config.js`,
+      `${CONFIG_MODULE_NAME}.config.cjs`,
+      `${CONFIG_MODULE_NAME}.config.mjs`,
+      `.${CONFIG_MODULE_NAME}rc`,
+      `.${CONFIG_MODULE_NAME}rc.json`,
+      `.${CONFIG_MODULE_NAME}rc.yaml`,
+      `.${CONFIG_MODULE_NAME}rc.yml`,
+      `.${CONFIG_MODULE_NAME}rc.js`,
+      `.${CONFIG_MODULE_NAME}rc.ts`,
+      `.${CONFIG_MODULE_NAME}rc.cjs`,
+    ],
+    stopDir: worktreeRoot,
+  });
+
+  const result = await explorer.search(worktreeRoot);
+
+  if (!result || result.isEmpty) {
+    process.stderr.write(
+      `Error: No mm-client-cli config found. Create ${CONFIG_MODULE_NAME}.config.ts in your project root.\n`,
+    );
     process.exit(1);
   }
 
-  const pkgJson = JSON.parse(content) as Record<string, unknown>;
-  const mmConfig = pkgJson.mm as
-    | { daemon?: string; runtime?: string }
-    | undefined;
-  if (!mmConfig?.daemon) {
+  const config = result.config as MmClientCliConfig;
+  if (!config.daemon) {
     process.stderr.write(
-      'Error: No daemon entry point configured. Add `mm.daemon` to package.json.\n',
+      `Error: No daemon entry point configured. Add 'daemon' to ${result.filepath}.\n`,
     );
     process.exit(1);
   }
 
   return {
-    daemonPath: mmConfig.daemon,
-    runtime: mmConfig.runtime ?? 'tsx',
+    daemonPath: config.daemon,
+    runtime: config.runtime ?? 'tsx',
   };
 }
 
@@ -1021,9 +1052,13 @@ Examples:
 }
 
 /* istanbul ignore next -- CLI entry point, tested via exported functions */
+/* istanbul ignore next -- top-level fatal handler is not exercised in tests */
+const handleFatalCliError = (error: unknown): void => {
+  process.stderr.write(`Fatal: ${String(error)}\n`);
+  process.exit(1);
+};
+
+/* istanbul ignore next -- CLI entry point, tested via exported functions */
 if (process.env.VITEST === undefined) {
-  main().catch((error: unknown) => {
-    process.stderr.write(`Fatal: ${String(error)}\n`);
-    process.exit(1);
-  });
+  main().catch(handleFatalCliError);
 }
