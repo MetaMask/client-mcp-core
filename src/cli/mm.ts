@@ -177,6 +177,35 @@ export async function main(): Promise<void> {
 }
 
 /**
+ * Resolves `--within` scoping from CLI arguments.
+ *
+ * @param args - The CLI arguments to scan.
+ * @returns A within target object, or undefined if `--within` is absent.
+ */
+export function resolveWithinFromArgs(
+  args: string[],
+): { a11yRef: string } | { testId: string } | { selector: string } | undefined {
+  const withinIdx = args.indexOf('--within');
+  if (withinIdx < 0) {
+    return undefined;
+  }
+  const val = args[withinIdx + 1];
+  if (!val || val.startsWith('--')) {
+    process.stderr.write('Error: --within requires a value\n');
+    process.exit(1);
+  }
+
+  // "testid:value" → testId, "selector:value" → selector, otherwise auto-detect
+  if (val.startsWith('testid:')) {
+    return { testId: val.slice('testid:'.length) };
+  }
+  if (val.startsWith('selector:')) {
+    return { selector: val.slice('selector:'.length) };
+  }
+  return /^e[0-9]+$/u.test(val) ? { a11yRef: val } : { testId: val };
+}
+
+/**
  * Resolves element targeting from CLI arguments. Supports three targeting modes:
  * --selector <css>  → CSS selector (explicit)
  * --testid <id>     → data-testid value (explicit)
@@ -258,16 +287,15 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm click <ref> [--selector <css>] [--testid <id>]\n',
+          'Usage: mm click <ref> [--selector <css>] [--testid <id>] [--within <scope>]\n',
         );
         process.exit(1);
       }
-      await sendRequest(
-        port,
-        'POST',
-        '/tool/click',
-        resolveTargetFromArgs(args),
-      );
+      const clickWithin = resolveWithinFromArgs(args);
+      await sendRequest(port, 'POST', '/tool/click', {
+        ...resolveTargetFromArgs(args),
+        ...(clickWithin ? { within: clickWithin } : {}),
+      });
       break;
     }
     case 'type': {
@@ -278,7 +306,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm type <ref> <text> [--selector <css>] [--testid <id>]\n',
+          'Usage: mm type <ref> <text> [--selector <css>] [--testid <id>] [--within <scope>]\n',
         );
         process.exit(1);
       }
@@ -293,9 +321,11 @@ export async function routeCommand(
         process.stderr.write('Usage: mm type <ref> <text>\n');
         process.exit(1);
       }
+      const typeWithin = resolveWithinFromArgs(args);
       await sendRequest(port, 'POST', '/tool/type', {
         ...resolveTargetFromArgs(args),
         text,
+        ...(typeWithin ? { within: typeWithin } : {}),
       });
       break;
     }
@@ -316,14 +346,16 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>]\n',
+          'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
         );
         process.exit(1);
       }
       const timeoutMs = parseIntFlag(args, '--timeout');
+      const waitWithin = resolveWithinFromArgs(args);
       await sendRequest(port, 'POST', '/tool/wait_for', {
         ...resolveTargetFromArgs(args),
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        ...(waitWithin ? { within: waitWithin } : {}),
       });
       break;
     }
@@ -605,10 +637,21 @@ export async function sendRequest(
       }
 
       const result = data.result ?? data;
-      if (typeof result === 'string') {
-        process.stdout.write(`${result}\n`);
+      const observations = data.observations as
+        | Record<string, unknown>
+        | undefined;
+      let output: unknown = result;
+      if (observations) {
+        const base =
+          typeof result === 'object' && result !== null
+            ? (result as Record<string, unknown>)
+            : { result };
+        output = { ...base, observations };
+      }
+      if (typeof output === 'string') {
+        process.stdout.write(`${output}\n`);
       } else {
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
       }
       return;
     } catch (error) {
@@ -1005,11 +1048,11 @@ Lifecycle:
   mm build [--force]
 
 Interaction:
-  mm click <ref> [--selector <css>] [--testid <id>]
-  mm type <ref> <text> [--selector <css>] [--testid <id>]
+  mm click <ref> [--selector <css>] [--testid <id>] [--within <scope>]
+  mm type <ref> <text> [--selector <css>] [--testid <id>] [--within <scope>]
   mm describe-screen
   mm screenshot [--name <name>]
-  mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>]
+  mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
   mm wait-for-notification [--timeout <ms>]
   mm clipboard <read|write> [text]
 

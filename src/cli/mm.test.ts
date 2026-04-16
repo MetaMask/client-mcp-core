@@ -12,6 +12,7 @@ import type { MockInstance } from 'vitest';
 import {
   extractProjectFlag,
   resolveTargetFromArgs,
+  resolveWithinFromArgs,
   getPositionalTarget,
   isTransientError,
   parseIntFlag,
@@ -213,6 +214,60 @@ describe('resolveTargetFromArgs', () => {
     expect(() => resolveTargetFromArgs([])).toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: element target is required\n',
+    );
+  });
+});
+
+describe('resolveWithinFromArgs', () => {
+  it('returns undefined when --within is not present', () => {
+    expect(resolveWithinFromArgs(['e1', '--timeout', '5000'])).toBeUndefined();
+    expect(resolveWithinFromArgs([])).toBeUndefined();
+  });
+
+  it('returns testId when value starts with "testid:"', () => {
+    expect(resolveWithinFromArgs(['--within', 'testid:parent'])).toStrictEqual({
+      testId: 'parent',
+    });
+  });
+
+  it('returns selector when value starts with "selector:"', () => {
+    expect(
+      resolveWithinFromArgs(['--within', 'selector:.container']),
+    ).toStrictEqual({
+      selector: '.container',
+    });
+  });
+
+  it('returns a11yRef when value matches /^e\\d+$/', () => {
+    expect(resolveWithinFromArgs(['--within', 'e1'])).toStrictEqual({
+      a11yRef: 'e1',
+    });
+    expect(resolveWithinFromArgs(['--within', 'e123'])).toStrictEqual({
+      a11yRef: 'e123',
+    });
+  });
+
+  it('returns testId for bare non-ref value', () => {
+    expect(resolveWithinFromArgs(['--within', 'parent-id'])).toStrictEqual({
+      testId: 'parent-id',
+    });
+    expect(resolveWithinFromArgs(['--within', 'eabc'])).toStrictEqual({
+      testId: 'eabc',
+    });
+  });
+
+  it('exits when --within has no value', () => {
+    expect(() => resolveWithinFromArgs(['--within'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --within requires a value\n',
+    );
+  });
+
+  it('exits when --within value starts with --', () => {
+    expect(() => resolveWithinFromArgs(['--within', '--other'])).toThrowError(
+      'process.exit',
     );
   });
 });
