@@ -6,6 +6,73 @@ import { extractErrorMessage } from '../utils';
 import type { ToolName } from '../validation/schemas.js';
 import { toolSchemas } from '../validation/schemas.js';
 
+/** Tools whose args include a target selection (a11yRef/testId/selector). */
+const TARGET_TOOLS = new Set(['click', 'type', 'wait_for']);
+
+/**
+ * Maps CLI-style compound tool names to their registry name + injected args.
+ * The CLI handles these conversions for standalone commands, but agents using
+ * run-steps bypass CLI parsing and may send compound names directly.
+ */
+const TOOL_ALIASES: Record<
+  string,
+  { tool: string; inject: Record<string, unknown> }
+> = {
+  navigate_home: { tool: 'navigate', inject: { screen: 'home' } },
+  'navigate-home': { tool: 'navigate', inject: { screen: 'home' } },
+  navigate_settings: { tool: 'navigate', inject: { screen: 'settings' } },
+  'navigate-settings': { tool: 'navigate', inject: { screen: 'settings' } },
+  navigate_notification: {
+    tool: 'navigate',
+    inject: { screen: 'notification' },
+  },
+  'navigate-notification': {
+    tool: 'navigate',
+    inject: { screen: 'notification' },
+  },
+};
+
+type NormalisedStep = {
+  tool: string;
+  args: Record<string, unknown>;
+};
+
+/**
+ * Resolves tool aliases and normalises shorthand arg keys.
+ *
+ * @param tool - Raw tool name (may be an alias like `navigate_home`).
+ * @param args - Raw step arguments.
+ * @returns Resolved tool name and normalised arguments.
+ */
+function normaliseStep(
+  tool: string,
+  args: Record<string, unknown>,
+): NormalisedStep {
+  const alias = TOOL_ALIASES[tool];
+  const resolvedTool = alias ? alias.tool : tool;
+  let normalised = alias ? { ...alias.inject, ...args } : args;
+
+  if (TARGET_TOOLS.has(resolvedTool)) {
+    if ('ref' in normalised && !('a11yRef' in normalised)) {
+      const { ref, ...rest } = normalised;
+      normalised = { a11yRef: ref, ...rest };
+    }
+
+    if (typeof normalised.within === 'object' && normalised.within !== null) {
+      const withinObj = normalised.within as Record<string, unknown>;
+      if ('ref' in withinObj && !('a11yRef' in withinObj)) {
+        const { ref: withinRef, ...withinRest } = withinObj;
+        normalised = {
+          ...normalised,
+          within: { a11yRef: withinRef, ...withinRest },
+        };
+      }
+    }
+  }
+
+  return { tool: resolvedTool, args: normalised };
+}
+
 /**
  * Executes a batch of tool steps sequentially.
  *
@@ -31,15 +98,41 @@ export async function runStepsTool(
     );
   }
 
-  const { steps: stepInputs, stopOnError = false } = input;
+  const { steps: stepInputs, stopOnError = false, batchTimeoutMs } = input;
   const stepResults: StepResult[] = [];
   let succeeded = 0;
   let failed = 0;
+  let skipped = 0;
   const batchStartTime = Date.now();
+  const batchDeadline = batchTimeoutMs
+    ? batchStartTime + batchTimeoutMs
+    : undefined;
 
   for (const stepInput of stepInputs) {
+    if (batchDeadline && Date.now() > batchDeadline) {
+      const remainingIndex = stepInputs.indexOf(stepInput);
+      for (const remaining of stepInputs.slice(remainingIndex)) {
+        stepResults.push({
+          tool: remaining.tool,
+          ok: false,
+          error: {
+            code: 'MM_BATCH_TIMEOUT',
+            message: `Batch deadline exceeded after ${batchTimeoutMs}ms`,
+          },
+          meta: {
+            durationMs: 0,
+            timestamp: new Date().toISOString(),
+            skipped: true,
+          },
+        });
+        skipped += 1;
+        failed += 1;
+      }
+      break;
+    }
     const stepStartTime = Date.now();
-    const { tool, args = {} } = stepInput;
+    const { tool: rawTool, args: rawArgs = {} } = stepInput;
+    const { tool, args } = normaliseStep(rawTool, rawArgs);
     const handler = context.toolRegistry.get(tool) as
       | ToolFunction<Record<string, unknown>, unknown>
       | undefined;
@@ -151,6 +244,7 @@ export async function runStepsTool(
       total: stepResults.length,
       succeeded,
       failed,
+      skipped,
       durationMs: Date.now() - batchStartTime,
     },
   });

@@ -105,6 +105,7 @@ export type StepResult = {
   meta: {
     durationMs: number;
     timestamp: string;
+    skipped?: boolean;
   };
 };
 
@@ -115,6 +116,7 @@ export type RunStepsResult = {
     total: number;
     succeeded: number;
     failed: number;
+    skipped: number;
     durationMs: number;
   };
 };

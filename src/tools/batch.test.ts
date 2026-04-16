@@ -478,4 +478,150 @@ describe('runStepsTool', () => {
       expect(result.result.steps[0]).not.toHaveProperty('observation');
     }
   });
+
+  it('marks remaining steps as skipped when batchTimeoutMs is exceeded', async () => {
+    const clickHandler = vi.fn().mockImplementation(
+      async () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ ok: true, result: 'clicked' }), 50);
+        }),
+    );
+    const typeHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: 'typed',
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['click', clickHandler],
+        ['type', typeHandler],
+      ]),
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'click', args: { testId: 'btn' } },
+          { tool: 'type', args: { testId: 'input', text: 'hello' } },
+          { tool: 'click', args: { testId: 'submit' } },
+        ],
+        batchTimeoutMs: 1,
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps).toHaveLength(3);
+      // First step may succeed or be skipped depending on timing
+      // Steps after deadline should be skipped
+      const skippedSteps = result.result.steps.filter(
+        (step) => step.meta.skipped === true,
+      );
+      expect(skippedSteps.length).toBeGreaterThan(0);
+      skippedSteps.forEach((step) => {
+        expect(step.ok).toBe(false);
+        expect(step.error?.code).toBe('MM_BATCH_TIMEOUT');
+      });
+      expect(result.result.summary.skipped).toBeGreaterThan(0);
+    }
+  });
+
+  it('resolves navigate_home alias to navigate with screen: home', async () => {
+    const navigateHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { navigated: true },
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([['navigate', navigateHandler]]),
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'navigate_home' }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(true);
+    }
+    expect(navigateHandler).toHaveBeenCalledWith({ screen: 'home' }, context);
+  });
+
+  it('resolves navigate-home (hyphenated) alias to navigate with screen: home', async () => {
+    const navigateHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { navigated: true },
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([['navigate', navigateHandler]]),
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'navigate-home' }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(true);
+    }
+    expect(navigateHandler).toHaveBeenCalledWith({ screen: 'home' }, context);
+  });
+
+  it('resolves navigate_settings alias to navigate with screen: settings', async () => {
+    const navigateHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { navigated: true },
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([['navigate', navigateHandler]]),
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'navigate_settings' }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(true);
+    }
+    expect(navigateHandler).toHaveBeenCalledWith(
+      { screen: 'settings' },
+      context,
+    );
+  });
+
+  it('normalises within.ref to within.a11yRef in step args', async () => {
+    const clickHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: 'clicked',
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([['click', clickHandler]]),
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          {
+            tool: 'click',
+            args: { testId: 'btn', within: { ref: 'e1' } },
+          },
+        ],
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(clickHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          testId: 'btn',
+          within: { a11yRef: 'e1' },
+        }),
+        context,
+      );
+    }
+  });
 });
