@@ -440,6 +440,26 @@ export function createServer(config: ServerConfig): ServerInstance {
         ) {
           try {
             const page = config.sessionManager.getPage();
+
+            if (category === 'mutating') {
+              await page
+                .waitForLoadState('domcontentloaded')
+                .catch(() => undefined);
+              await page
+                .waitForFunction(
+                  async () =>
+                    new Promise<boolean>((resolve) => {
+                      requestAnimationFrame(() => {
+                        const allSettled = document
+                          .getAnimations()
+                          .every((a: Animation) => a.playState !== 'running');
+                        resolve(allSettled);
+                      });
+                    }),
+                  { timeout: 3000 },
+                )
+                .catch(() => undefined);
+            }
             const state = await config.sessionManager.getExtensionState();
             const testIds = await collectTestIds(
               page,

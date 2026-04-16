@@ -74,7 +74,10 @@ function createMockSessionManager() {
       state: {},
     })),
     cleanup: vi.fn(async () => true),
-    getPage: vi.fn(() => ({})),
+    getPage: vi.fn(() => ({
+      waitForLoadState: vi.fn(async () => undefined),
+      waitForFunction: vi.fn(async () => undefined),
+    })),
     setActivePage: vi.fn(),
     getTrackedPages: vi.fn(() => []),
     classifyPageRole: vi.fn(() => 'extension'),
