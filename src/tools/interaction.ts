@@ -11,10 +11,12 @@ import type {
   TypeResult,
   WaitForInput,
   WaitForResult,
+  WithinTarget,
 } from './types';
 import { ErrorCodes } from './types';
 import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
 import { waitForTarget } from './utils/discovery.js';
+import type { WithinScope } from './utils/discovery.js';
 import { validateTargetSelection } from './utils/targets.js';
 import {
   isInvalidTargetSelection,
@@ -26,6 +28,30 @@ import {
   requireActiveSession,
 } from './utils.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
+
+/**
+ * Converts a WithinTarget input to the WithinScope format expected by waitForTarget.
+ *
+ * @param within - The optional within target from tool input.
+ * @returns The resolved scope, or undefined if no within target is provided.
+ */
+function resolveWithinScope(
+  within: WithinTarget | undefined,
+): WithinScope | undefined {
+  if (!within) {
+    return undefined;
+  }
+  if (within.a11yRef) {
+    return { type: 'a11yRef', value: within.a11yRef };
+  }
+  if (within.testId) {
+    return { type: 'testId', value: within.testId };
+  }
+  if (within.selector) {
+    return { type: 'selector', value: within.selector };
+  }
+  return undefined;
+}
 
 /**
  * Clicks an element identified by ref, test ID, or selector.
@@ -66,6 +92,7 @@ export async function clickTool(
       targetValue,
       context.refMap,
       timeoutMs,
+      resolveWithinScope(input.within),
     );
 
     try {
@@ -130,6 +157,7 @@ export async function typeTool(
       targetValue,
       context.refMap,
       timeoutMs,
+      resolveWithinScope(input.within),
     );
 
     await locator.fill(input.text);
@@ -184,6 +212,7 @@ export async function waitForTool(
       targetValue,
       context.refMap,
       timeoutMs,
+      resolveWithinScope(input.within),
     );
 
     return createToolSuccess({

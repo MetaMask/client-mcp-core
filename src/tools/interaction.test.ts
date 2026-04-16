@@ -68,6 +68,7 @@ describe('interaction', () => {
         'my-button',
         context.refMap,
         15000,
+        undefined,
       );
       expect(locator.click).toHaveBeenCalled();
     });
@@ -89,6 +90,32 @@ describe('interaction', () => {
         'my-button',
         context.refMap,
         5000,
+        undefined,
+      );
+    });
+
+    it('passes within scope to waitForTarget', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await clickTool(
+        { testId: 'btn', within: { testId: 'parent' } },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'testId',
+        'btn',
+        context.refMap,
+        15000,
+        { type: 'testId', value: 'parent' },
       );
     });
 
@@ -114,6 +141,7 @@ describe('interaction', () => {
         'button.primary',
         context.refMap,
         15000,
+        undefined,
       );
     });
 
@@ -140,6 +168,7 @@ describe('interaction', () => {
         'e5',
         refMap,
         15000,
+        undefined,
       );
     });
 
@@ -290,6 +319,7 @@ describe('interaction', () => {
         'amount-input',
         context.refMap,
         15000,
+        undefined,
       );
       expect(locator.fill).toHaveBeenCalledWith('0.5');
     });
@@ -314,6 +344,32 @@ describe('interaction', () => {
         'input',
         context.refMap,
         3000,
+        undefined,
+      );
+    });
+
+    it('passes within scope to waitForTarget', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await typeTool(
+        { testId: 'input', text: 'hello', within: { selector: '.form' } },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'testId',
+        'input',
+        context.refMap,
+        15000,
+        { type: 'selector', value: '.form' },
       );
     });
 
@@ -363,6 +419,7 @@ describe('interaction', () => {
         'e3',
         refMap,
         15000,
+        undefined,
       );
     });
 
@@ -498,6 +555,7 @@ describe('interaction', () => {
         'loading-spinner',
         context.refMap,
         15000,
+        undefined,
       );
     });
 
@@ -518,6 +576,32 @@ describe('interaction', () => {
         'element',
         context.refMap,
         30000,
+        undefined,
+      );
+    });
+
+    it('passes within scope to waitForTarget', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await waitForTool(
+        { a11yRef: 'e5', within: { a11yRef: 'e1' } },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'a11yRef',
+        'e5',
+        context.refMap,
+        15000,
+        { type: 'a11yRef', value: 'e1' },
       );
     });
 
@@ -546,6 +630,7 @@ describe('interaction', () => {
         '.success-message',
         context.refMap,
         15000,
+        undefined,
       );
     });
 
@@ -572,6 +657,7 @@ describe('interaction', () => {
         'e10',
         refMap,
         15000,
+        undefined,
       );
     });
 

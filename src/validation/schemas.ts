@@ -265,6 +265,29 @@ export const screenshotInputSchema = z.object({
     .describe('Include base64-encoded image in response'),
 });
 
+export const withinTargetSchema = z
+  .object({
+    a11yRef: a11yRefPattern.optional(),
+    testId: z.string().min(1).optional(),
+    selector: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      const provided = [data.a11yRef, data.testId, data.selector].filter(
+        Boolean,
+      );
+      return provided.length === 1;
+    },
+    {
+      message:
+        'Exactly one of a11yRef, testId, or selector must be provided in within',
+    },
+  )
+  .describe(
+    'Scope the target search within a parent element. ' +
+      'Accepts the same targeting options (a11yRef, testId, or selector).',
+  );
+
 export const clickInputSchema = targetSelectionSchema.and(
   z.object({
     timeoutMs: z
@@ -274,6 +297,7 @@ export const clickInputSchema = targetSelectionSchema.and(
       .max(60000)
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
+    within: withinTargetSchema.optional(),
   }),
 );
 
@@ -287,6 +311,7 @@ export const typeInputSchema = targetSelectionSchema.and(
       .max(60000)
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
+    within: withinTargetSchema.optional(),
   }),
 );
 
@@ -299,6 +324,7 @@ export const waitForInputSchema = targetSelectionSchema.and(
       .max(120000)
       .default(15000)
       .describe('Timeout to wait for element'),
+    within: withinTargetSchema.optional(),
   }),
 );
 
@@ -449,6 +475,16 @@ export const runStepsInputSchema = z.object({
       'When to include observations in results: ' +
         'none = never (fastest), failures = only for failed steps, all = always',
     ),
+  batchTimeoutMs: z
+    .number()
+    .int()
+    .min(1000)
+    .max(300_000)
+    .describe(
+      'Overall timeout for the batch in milliseconds. ' +
+        'When exceeded, remaining steps are marked as skipped and partial results are returned.',
+    )
+    .optional(),
 });
 
 export const setContextInputSchema = z.object({

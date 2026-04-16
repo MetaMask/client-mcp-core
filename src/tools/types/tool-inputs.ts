@@ -65,17 +65,26 @@ export type TargetSelection = {
   selector?: string;
 };
 
+export type WithinTarget = {
+  a11yRef?: string;
+  testId?: string;
+  selector?: string;
+};
+
 export type ClickInput = TargetSelection & {
   timeoutMs?: number;
+  within?: WithinTarget;
 };
 
 export type TypeInput = TargetSelection & {
   text: string;
   timeoutMs?: number;
+  within?: WithinTarget;
 };
 
 export type WaitForInput = TargetSelection & {
   timeoutMs?: number;
+  within?: WithinTarget;
 };
 
 export type KnowledgeScope =
@@ -122,6 +131,7 @@ export type RunStepsInput = {
   }[];
   stopOnError?: boolean;
   includeObservations?: 'none' | 'failures' | 'all';
+  batchTimeoutMs?: number;
 };
 
 export type SwitchToTabInput = {
