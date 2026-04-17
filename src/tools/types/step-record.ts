@@ -65,6 +65,12 @@ export type StepRecordObservation = {
   testIds: TestIdItem[];
   a11y: {
     nodes: A11yNodeTrimmed[];
+    /** Present only in diff-mode compact observations (Phase 2). */
+    diff?: {
+      added: string[];
+      removed: string[];
+      unchanged: number;
+    };
   };
   priorKnowledge?: PriorKnowledgeV1;
 };
