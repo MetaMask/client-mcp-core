@@ -1,0 +1,1026 @@
+src/tools/interaction.test.ts
+  c96b0b317ca5b6a0 10-15,27,752-891
+src/tools/interaction.ts
+  c96b0b317ca5b6a0 10-11,229-277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "c26a8d30b7d3c6b57b5fb454ec8c6ade4ebd005d",
+  "prompts": {
+    "02ffddd5d2359966": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-f800aae1-5620-494e-b471-fe37b861ed32",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "04358c43185d8f5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-bd2f80d1-f1de-4744-9ad9-84a68e0b2e98",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "06eb4e78904149ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27efa54b0ffecS9kjAL7jB3kKq-4efeeddd-b27d-4af9-80e8-7f07feb4ec00",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 9365,
+      "overriden_lines": 0
+    },
+    "0726d3f93c1e9356": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-bfa67fda-21f1-4587-a2ca-b6c918a01b1c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "10aff39ead54f0e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353cb96ffesMDQEnKQqJRn5U-8d9540c3-ac65-4f39-91f3-e6ec3d02b130",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "118c483f2ddf47f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-82ca9ddd-bd37-420e-9e3d-5b7f8bea4e04",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "1479545ff31af09e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2744a550affendVr6pLhrwqjby-a96a0c3a-72fc-44be-963a-85d93010ec08",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "17a2e315e4bb621e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-d8e5c6ea-0b24-4125-b9c1-aaffddbbeba8",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "18f00c680fe4960b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-0481e09b-65ff-4c2c-b931-df5b5ed38cf0",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "1d58be85eaa04cde": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-209c778d-4d98-4963-99e2-09e36abd756c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "1e898b4f07c06174": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-904fb586-07a2-4b76-a942-0bedcec9e5f8",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "2080ae70ab94e571": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353cb96ffesMDQEnKQqJRn5U-feea21b5-3a10-478e-8571-6ec1584a9686",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "20d1cbacf13b4260": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-74a6436a-930d-4c0a-9d6c-24812bc6d8b7",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "21eb0b7ed418683e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-b7299f33-6066-4366-b74f-a1eeff3fb108",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "251a3675b8dcfd04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-35ef12c2-aac4-44ca-bedb-c941563aa22c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "29ae26ff15a28931": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-07533ff7-c876-4d75-85c1-7d41481ce1ef",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "30ae461b7df4bacb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2737ef9e3ffe0Ma5gmXWefFmrA-43b0175c-84f0-4964-b09b-582faa463337",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "31d02b795c036b62": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265add324ffevi5s3bVH23TDSj-9e3f9e54-87b7-48ad-a61c-b17ceb234a74",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "31d960c0482c941c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-31b9b90c-c3ff-41dd-96b5-9fb39f90a38a",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "3244993968fc8ad8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2737ef9e3ffe0Ma5gmXWefFmrA-00ab306f-1a01-4540-871b-48c054ab4714",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "341cf55655b70278": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-3bd4b093-f707-4fb3-adc7-63a7cd7532f6",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "3445325e5118fa8b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_267612ff1ffeUTKd1b9gVGv4r2-0b2cddad-08dc-416d-bf89-54e305e76b74",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "3642bf3ceeda8e2a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353cb96ffesMDQEnKQqJRn5U-dbdf37a2-7bf7-4f80-b6e3-64111c61cf3f",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "39c0b1391304bd02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-af77505c-582a-47cc-b3a0-226297a2aef0",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "3cd5fe28a85e5a75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-986d3f68-58d6-4f26-8b9b-eeb1585c0f78",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "436f11004f897713": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-a08d975b-6685-41e7-8c1f-9a043d55fc1e",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "46f6590733e5eb7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27357ed93ffe6VHcX0v8qP5hgG-cc97ab2b-9d97-4481-a8a1-2b4637d04322",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "4a9cf11d9fede4f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-78fc7018-ef37-42f5-8aa9-4eb8ea7a9520",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "4c6406f08032c5c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-933e8780-9275-4068-9648-872684f85559",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "500c6e2b4bc9ca65": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-9a58754e-cd50-4bfb-b172-e3e60a7dac31",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "513f4f5716002bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-9299f296-81be-4a9e-96e2-2ff8b68fafc8",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "5143c87254bfbcd9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-90c08b87-6ab4-4573-9449-fc6f239b6cd6",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "53d9b75164de480f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-cc205ec4-8bca-4c33-8087-7aab13f29704",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "5499febddd8d79f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-ff3e100e-211b-4bef-b659-e565b2cea73c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "558f59d159adb99c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-a8e7126f-8014-489e-859c-3ef5c3751c54",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "56aeae6ab0dc5f30": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-1c68dce8-1edd-4284-a3ea-661662259cc9",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "585686e9ba9bf380": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-56cf06b4-65a4-48f8-a5d0-56cbedd9a4d1",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    },
+    "590ba2322652da7d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-e647feb0-f6ef-405d-af86-18988f855981",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "61086155766da42b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-f89fe00d-3caa-42e3-9795-c06880dde600",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "63f3e8d4d251fbb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-06e55f7e-000e-4d35-97b5-e712dc481a5c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "679907ab6e7a4c03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27357ed93ffe6VHcX0v8qP5hgG-ead2d9e0-c18a-4476-a660-33b49fc05cc0",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "6c72469b57937509": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-0a64a4c3-c7ff-4387-95c4-7bdedef1270c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "75fe452328ab3c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-5291296c-019d-4393-b4e0-1928b6614466",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "76eb4490cbc9af9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_27353a87bffecnfuBShhfM17Ar",
+        "model": "opencode/claude-haiku-4-5"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "7fb38d420ce93c9d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-ccd8a101-01d1-47ab-aeb8-14b298fd4a67",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "81a059d1ec8c0cf0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-11d11764-fa83-4b3e-a293-eb000f8ffb16",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "8f9c426f6b33d59f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_26523c23dffel9Ah9x47G2Eq3s",
+        "model": "opencode/claude-opus-4-6"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "90079d066fb024f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-635646ab-c690-457c-8024-d7ce76396c68",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "937cf199fab672ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-a1b64dd0-955b-4138-8c5b-f169489f8746",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "9bd32680d326d5b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-d8b861ba-1085-4548-9cf4-be1f5e31cf00",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "9d215ea1f972978a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-98b0524c-a403-451b-aecf-9d05965ed781",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "9dbb86030f83be91": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-0f92d005-22b7-4e67-8111-31d69fdbef59",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "a1fca9c4c99e558c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353cb96ffesMDQEnKQqJRn5U-223e3cb9-e9fc-44b8-84a9-8e7e7dd203e5",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a1fff6d52258ab17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-e9412425-201d-42e4-9424-48fec2a5d284",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "a94505bc3c83563b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2744a550affendVr6pLhrwqjby-97d2802f-35e7-4972-87af-c8c6330d918c",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "ac9cdd96253922ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-a2c21d82-092e-4395-9df6-4ec3feb0504d",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "afe17bc4cba3253a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27357ed93ffe6VHcX0v8qP5hgG-06a1d883-9c14-4030-94f6-444ced5234f5",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    },
+    "b3d279b4f563961d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-da11c050-1140-467f-85f5-5089a705a2d6",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "b60ce9ab1c3b1420": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-ebeb769c-5e80-4096-8d0a-0e911af3bb1e",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "b655b4a2195e9a09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_273e4c9a5ffeY97fvSgGbR1X7a-d2224f93-39e5-43d1-9962-b9c4829ef801",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "c1d3c07cc2cc1950": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-0136869a-fcda-4891-b150-51660e9d19d9",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "c20f41d26a3e1903": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-7aa82ce7-696b-4230-81b4-2c706e21bb0d",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "c25381ca6696461c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-1c77e940-ef02-408b-8044-23d2211f9753",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "c5c8e963e85f3102": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2737ef9e3ffe0Ma5gmXWefFmrA-fea91d88-4ab1-485e-a58a-ab86399ab346",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    },
+    "c96b0b317ca5b6a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265052f1cffe7ZRGExejJdkch6-be692d56-5abb-4dce-b9ad-12d646cbe246",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 525,
+      "total_deletions": 58,
+      "accepted_lines": 525,
+      "overriden_lines": 0
+    },
+    "cb8ea8d84e458769": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-b75a6d77-ac38-4a17-a463-64f8cd548347",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "cd92da6343b21d01": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2744a550affendVr6pLhrwqjby-c9e7a8a5-64dc-49c3-9436-f9a4003a75cc",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "cec2d3a90ee3a92b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353cb96ffesMDQEnKQqJRn5U-f8b53242-02ff-4a2c-9534-58868c1c25c0",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "d393d00cc055b5a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-7b5059ab-9516-4b30-8501-8c304cb706f9",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "d3dfb7815aae48b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2772a6d82ffeJJbbk6HeiW9D9r-61f462e1-0b2f-4d90-9352-a547a73bbe5f",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 240,
+      "overriden_lines": 0
+    },
+    "d5948c0e8055d641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2657ca33effegR4IpxWNiXmdZO-d4fc3e56-8b88-4846-874c-ef1a1585d198",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "db70ae68144f7683": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_265ae75bcffeAWrGNT1KbrUowy",
+        "model": "opencode/claude-opus-4-6"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "e2ee2181d2a52e4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-0d3a535b-9425-4d0a-8371-25ca3afbd8ea",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "f30318056e5400fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27357ed93ffe6VHcX0v8qP5hgG-1bb8f5ed-72dd-46cb-8c15-78735ba59bcc",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 30,
+      "overriden_lines": 0
+    },
+    "f3789a0ecdfd221b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265ae75bcffeAWrGNT1KbrUowy-3c4ab090-db0d-4347-8d17-88cb9f5bc0b5",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "f3cfbf9ee79b163d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_26523c23dffel9Ah9x47G2Eq3s-5c2a68ab-1d23-4d35-b4d3-cedc04c12e8a",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "f9ee4eff736301ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_26523c23dffel9Ah9x47G2Eq3s-9e4c1bcc-24b4-459c-ab2a-1c2dcc54abd3",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "fb2693222070879e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_27353a87bffecnfuBShhfM17Ar-0cc1026c-feae-4541-b855-55ce7bc4b5df",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
