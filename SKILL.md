@@ -34,6 +34,16 @@ Tool responses include different data based on the tool's category:
 
 **Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
 
+**Diff-Based Observations:** After the first mutating tool call sets a baseline, subsequent mutations return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
+```json
+{
+  "added": ["e4", "e5"],      // new node refs
+  "removed": ["e2"],          // disappeared node refs
+  "unchanged": 3              // count of unchanged nodes
+}
+```
+The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `launch`, or `cleanup` — the next mutation returns a full compact observation (no `diff` field). When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
+
 ### Using inline observations (mutating tools)
 
 After a mutating action, the response includes fresh screen state:
