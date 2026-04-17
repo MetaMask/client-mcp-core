@@ -27,8 +27,8 @@ Tool responses include different data based on the tool's category:
 
 | Category      | Examples                                                          | Observations in response?                 |
 | ------------- | ----------------------------------------------------------------- | ----------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build                     | Yes — `state` + `a11y` + `testIds`        |
-| **Read-only** | get*state, knowledge*\*, get_context, set_context                 | No — faster response                      |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard          | Yes — `state` + `a11y` + `testIds`        |
+| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context      | No — faster response                      |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot | Data is already in `result`               |
 | **Batch**     | run_steps                                                         | Controlled by `includeObservations` param |
 
@@ -96,16 +96,19 @@ The `run_steps` tool collects observations once after all steps complete. Contro
 Starts the daemon (if not running) and launches a headed Chrome session with the extension.
 
 ```
-mm launch [--state default|onboarding|custom] [--extension-path <path>] [--force]
+mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
 ```
 
 | Flag                      | Description                                                     |
 | ------------------------- | --------------------------------------------------------------- |
+| `--context e2e\|prod`     | Set the environment context before launching                    |
 | `--state default`         | Pre-onboarded wallet with 25 ETH on local Anvil chain (default) |
 | `--state onboarding`      | Fresh wallet requiring manual onboarding setup                  |
 | `--state custom`          | Use a custom fixture for wallet state                           |
 | `--extension-path <path>` | Override the extension build directory                          |
+| `--goal <text>`           | Tag the session with a goal for knowledge store                 |
 | `--force`                 | Replace an existing active session                              |
+| `--flow-tags <tags>`      | Comma-separated flow tags for cross-session knowledge           |
 
 Returns: `sessionId`, `extensionId`, `state` (current extension state).
 
@@ -146,6 +149,7 @@ mm serve [--background]
 **Your primary observation tool.** Returns the complete screen state:
 
 - **Extension state**: current URL, screen name, network, account, balance
+- **Active tab**: the currently focused tab's role and URL (if tracked)
 - **Test IDs**: visible `data-testid` attributes with text previews
 - **A11y tree**: interactive elements with deterministic refs (`e1`, `e2`, ...)
 - **Prior knowledge**: suggested actions from past sessions on this screen
@@ -173,17 +177,7 @@ The `testId` and `textContent` fields appear only on nodes with short or generic
 
 When 3+ consecutive identical nodes appear (same role, name, and path), they are collapsed into a summary like `… 3 more "maskicon" (refs e2–e4)` to reduce token waste. Individual refs still work for targeting.
 
-Use the `ref` value (`e3`) for click/type/wait-for commands.
-
-#### `mm get-state`
-
-Returns extension state and tracked tabs without the full a11y tree.
-
-```
-mm get-state
-```
-
-Returns: `state` (extension state) and `tabs` (active + tracked tabs with roles and URLs).
+Use the `ref` value (`e3`) for click/type/get-text/wait-for commands.
 
 #### `mm screenshot`
 
@@ -220,6 +214,18 @@ Types text into an input field. **Clears the field first**, then sets the new va
 mm type e5 "0x1234abcd..."
 ```
 
+#### `mm get-text <ref>`
+
+Reads the text content of an element. Returns the inner text, target descriptor, and character length. Useful for asserting visible values without screenshots. Categorized as read-only (no observations in response).
+
+```
+mm get-text e5
+mm get-text --testid balance-amount
+mm get-text --testid amount --within "testid:tx-row"
+```
+
+Returns: `text` (string content), `target` (descriptor like `testId:balance-amount`), `length` (character count).
+
 #### `mm wait-for <ref>`
 
 Blocks until an element becomes visible. Default timeout: 15s.
@@ -227,6 +233,23 @@ Blocks until an element becomes visible. Default timeout: 15s.
 ```
 mm wait-for e7 [--timeout <ms>]
 mm wait-for --testid confirm-btn --within "testid:dialog-container"
+```
+
+#### `mm wait-for-notification`
+
+Waits for the extension notification popup to appear within a timeout. Returns the notification page URL.
+
+```
+mm wait-for-notification [--timeout <ms>]
+```
+
+#### `mm clipboard`
+
+Reads from or writes to the system clipboard via Chrome DevTools Protocol. Useful for pasting seed phrases or copying addresses.
+
+```
+mm clipboard read
+mm clipboard write "0x1234abcd..."
 ```
 
 ### Navigation
@@ -253,6 +276,53 @@ Navigates the extension tab to the settings page.
 
 ```
 mm navigate-settings
+```
+
+#### `mm switch-to-tab`
+
+Switches the active page to a tab matching a given role or URL prefix. Supports a positional role as the first argument.
+
+```
+mm switch-to-tab dapp
+mm switch-to-tab --role extension
+mm switch-to-tab --url https://app.uniswap.org
+```
+
+#### `mm close-tab`
+
+Closes a browser tab matching a given role or URL. Falls back to the extension tab if the active tab is closed.
+
+```
+mm close-tab --role dapp
+mm close-tab --url https://app.uniswap.org
+```
+
+### State & Context
+
+#### `mm get-state`
+
+Returns extension state and tracked tabs without the full a11y tree.
+
+```
+mm get-state
+```
+
+Returns: `state` (extension state) and `tabs` (active + tracked tabs with roles and URLs).
+
+#### `mm get-context`
+
+Returns the current environment context (`e2e` or `prod`), session status, available capabilities, and whether context switching is allowed.
+
+```
+mm get-context
+```
+
+#### `mm set-context`
+
+Switches the session environment between `e2e` and `prod` modes. Blocked while a session is active — run `mm cleanup` first.
+
+```
+mm set-context <e2e|prod>
 ```
 
 ### Knowledge Store
@@ -299,7 +369,7 @@ Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigat
 
 ## Element Targeting
 
-Every interaction command (`click`, `type`, `wait-for`) needs a target. You must provide exactly ONE of:
+Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a target. You must provide exactly ONE of:
 
 | Method           | Format              | Stability                       | When to use                                          |
 | ---------------- | ------------------- | ------------------------------- | ---------------------------------------------------- |
