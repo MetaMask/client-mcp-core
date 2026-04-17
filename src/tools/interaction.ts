@@ -7,6 +7,8 @@ import {
 import type {
   ClickInput,
   ClickResult,
+  GetTextInput,
+  GetTextResult,
   TypeInput,
   TypeResult,
   WaitForInput,
@@ -218,6 +220,61 @@ export async function waitForTool(
     return createToolSuccess({
       found: true,
       target: `${targetType}:${targetValue}`,
+    });
+  } catch (error) {
+    const errorInfo = classifyWaitError(error);
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+}
+
+/**
+ * Reads the text content of an element identified by ref, test ID, or selector.
+ *
+ * @param input - The target element and timeout options.
+ * @param context - The tool execution context.
+ * @returns The text content of the matched element.
+ */
+export async function getTextTool(
+  input: GetTextInput,
+  context: ToolContext,
+): Promise<ToolResponse<GetTextResult>> {
+  const missingSession = requireActiveSession<GetTextResult>(context);
+  if (missingSession) {
+    return missingSession;
+  }
+
+  const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
+  const validation = validateTargetSelection(input);
+
+  if (isInvalidTargetSelection(validation)) {
+    return createToolError(ErrorCodes.MM_INVALID_INPUT, validation.error);
+  }
+
+  if (!isValidTargetSelection(validation)) {
+    return createToolError(
+      ErrorCodes.MM_INVALID_INPUT,
+      'Invalid target selection',
+    );
+  }
+
+  const { type: targetType, value: targetValue } = validation;
+
+  try {
+    const locator = await waitForTarget(
+      context.page,
+      targetType,
+      targetValue,
+      context.refMap,
+      timeoutMs,
+      resolveWithinScope(input.within),
+    );
+
+    const text = (await locator.textContent()) ?? '';
+
+    return createToolSuccess({
+      text,
+      target: `${targetType}:${targetValue}`,
+      length: text.length,
     });
   } catch (error) {
     const errorInfo = classifyWaitError(error);

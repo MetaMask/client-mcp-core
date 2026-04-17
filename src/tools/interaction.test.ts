@@ -7,7 +7,12 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-import { clickTool, typeTool, waitForTool } from './interaction.js';
+import {
+  clickTool,
+  getTextTool,
+  typeTool,
+  waitForTool,
+} from './interaction.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
 import * as discoveryModule from './utils/discovery.js';
@@ -19,6 +24,7 @@ function createMockLocator() {
     click: vi.fn().mockResolvedValue(undefined),
     fill: vi.fn().mockResolvedValue(undefined),
     waitFor: vi.fn().mockResolvedValue(undefined),
+    textContent: vi.fn().mockResolvedValue('Hello World'),
   };
 }
 
@@ -741,6 +747,148 @@ describe('interaction', () => {
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
       }
+    });
+  });
+
+  describe('getTextTool', () => {
+    it('returns textContent by testId', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await getTextTool({ testId: 'my-element' }, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.text).toBe('Hello World');
+        expect(result.result).toHaveLength(11);
+        expect(result.result.target).toBe('testId:my-element');
+      }
+    });
+
+    it('returns empty string when textContent is null', async () => {
+      const locator = createMockLocator();
+      locator.textContent.mockResolvedValue(null);
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await getTextTool({ testId: 'empty-node' }, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.text).toBe('');
+        expect(result.result).toHaveLength(0);
+      }
+    });
+
+    it('returns textContent by a11yRef', async () => {
+      const locator = createMockLocator();
+      locator.textContent.mockResolvedValue('Ref content');
+      const context = createMockContext({
+        refMap: new Map([['e1', 'button[name="Submit"]']]),
+      });
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await getTextTool({ a11yRef: 'e1' }, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.text).toBe('Ref content');
+      }
+    });
+
+    it('returns textContent by CSS selector', async () => {
+      const locator = createMockLocator();
+      locator.textContent.mockResolvedValue('Selector content');
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await getTextTool({ selector: '#result-text' }, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.text).toBe('Selector content');
+        expect(result.result.target).toBe('selector:#result-text');
+      }
+    });
+
+    it('returns error when element not found', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Timeout waiting for selector'),
+      );
+
+      const result = await getTextTool({ testId: 'missing' }, context);
+
+      expect(result.ok).toBe(false);
+    });
+
+    it('returns error with invalid target selection', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(targetsModule, 'validateTargetSelection').mockReturnValue({
+        valid: false,
+        error: 'No target provided',
+      } as any);
+
+      const result = await getTextTool({} as any, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+      }
+    });
+
+    it('returns error when no session active', async () => {
+      const result = await getTextTool(
+        { testId: 'element' },
+        createMockContext({ hasActive: false }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+
+    it('supports --within scoping', async () => {
+      const locator = createMockLocator();
+      locator.textContent.mockResolvedValue('Scoped text');
+      const context = createMockContext();
+      const spy = vi
+        .spyOn(discoveryModule, 'waitForTarget')
+        .mockResolvedValue(locator as any);
+
+      const result = await getTextTool(
+        {
+          testId: 'child-element',
+          within: { testId: 'parent-container' },
+        },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(spy).toHaveBeenCalledWith(
+        expect.anything(),
+        'testId',
+        'child-element',
+        expect.any(Map),
+        expect.any(Number),
+        { type: 'testId', value: 'parent-container' },
+      );
     });
   });
 });
