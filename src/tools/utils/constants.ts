@@ -22,3 +22,6 @@ export const OBSERVATION_TESTID_LIMIT = 50;
 
 /** Maximum length for text content preview in discovery */
 export const TEXT_PREVIEW_MAX_LENGTH = 100;
+
+/** Minimum number of option nodes under a combobox/listbox to trigger collapsing */
+export const OPTION_COLLAPSE_MIN_COUNT = 3;
