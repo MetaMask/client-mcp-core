@@ -110,6 +110,13 @@ export async function describeScreenTool(
 
     context.sessionManager.setRefMap(refMap);
 
+    const trackedPages = context.sessionManager.getTrackedPages();
+    const activePage = context.sessionManager.getPage();
+    const activeTracked = trackedPages.find((tp) => tp.page === activePage);
+    const activeTab = activeTracked
+      ? { role: activeTracked.role, url: activePage.url() }
+      : undefined;
+
     let screenshot: DescribeScreenResult['screenshot'] = null;
 
     if (input.includeScreenshot) {
@@ -143,6 +150,7 @@ export async function describeScreenTool(
 
     return createToolSuccess({
       state,
+      activeTab,
       testIds: { items: testIds },
       a11y: { nodes },
       screenshot,
