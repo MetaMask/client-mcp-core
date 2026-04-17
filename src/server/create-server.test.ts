@@ -1201,3 +1201,163 @@ describe('createServer with logging', () => {
     expect(await testServer.stop()).toBeUndefined();
   });
 });
+
+describe('observation compaction in HTTP responses', () => {
+  let server: ServerInstance;
+  let state: DaemonState;
+  let mockSM: ReturnType<typeof createMockSessionManager>;
+
+  const comboboxAndOptions = [
+    { ref: 'e1', role: 'combobox', name: 'Language', path: ['root'] },
+    ...Array.from({ length: 10 }, (_, i) => ({
+      ref: `e${i + 2}`,
+      role: 'option',
+      name: `Lang ${i + 1}`,
+      path: ['root', 'combobox'],
+    })),
+    { ref: 'e12', role: 'button', name: 'Submit', path: ['root'] },
+  ];
+
+  beforeEach(async () => {
+    await fs.mkdir(tmpDir, { recursive: true });
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+
+    mockSM = createMockSessionManager();
+    mockSM.hasActiveSession.mockReturnValue(true);
+    mockSM.getExtensionState.mockResolvedValue({
+      isLoaded: true,
+      currentUrl: 'chrome-extension://test/home.html',
+    });
+
+    const { collectTrimmedA11ySnapshot } = await import(
+      '../tools/utils/discovery.js'
+    );
+    vi.mocked(collectTrimmedA11ySnapshot).mockResolvedValue({
+      nodes: comboboxAndOptions as never,
+      refMap: new Map(),
+    });
+
+    server = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+      }),
+    );
+    state = await server.start();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+    exitSpy.mockRestore();
+
+    const { collectTrimmedA11ySnapshot } = await import(
+      '../tools/utils/discovery.js'
+    );
+    vi.mocked(collectTrimmedA11ySnapshot).mockResolvedValue({
+      nodes: [],
+      refMap: new Map(),
+    });
+
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('mutating tool returns compact observations in HTTP response', async () => {
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: { a11y: { nodes: unknown[] } };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    // 12 original nodes → compacted: combobox + summary + button = 3
+    expect(body.observations!.a11y.nodes).toHaveLength(3);
+  });
+
+  it('knowledge store receives full uncompacted observations', async () => {
+    const { KnowledgeStore } = await import(
+      '../knowledge-store/knowledge-store.js'
+    );
+    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)
+      ?.value as {
+      recordStep: ReturnType<typeof vi.fn>;
+    };
+    mockStore.recordStep.mockClear();
+
+    await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(mockStore.recordStep).toHaveBeenCalled();
+    const recorded = mockStore.recordStep.mock.calls[0][0] as {
+      observation: { a11y: { nodes: unknown[] } };
+    };
+    expect(recorded.observation.a11y.nodes).toHaveLength(12);
+  });
+
+  it('batch with includeObservations=all returns compact observations', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/run_steps`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          steps: [{ tool: 'get_state' }],
+          includeObservations: 'all',
+        }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: { a11y: { nodes: unknown[] } };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    expect(body.observations!.a11y.nodes).toHaveLength(3);
+  });
+
+  it('batch with includeObservations=none omits observations', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/run_steps`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          steps: [{ tool: 'get_state' }],
+          includeObservations: 'none',
+        }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: unknown;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeUndefined();
+  });
+
+  it('describe_screen response omits observations', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/describe_screen`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: unknown;
+    };
+
+    // Discovery tools never include observations in the HTTP response
+    expect(body.observations).toBeUndefined();
+  });
+});

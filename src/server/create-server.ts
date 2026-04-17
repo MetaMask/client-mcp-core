@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
+import { compactObservation } from './observation-compaction.js';
 import { RequestQueue } from './request-queue.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
@@ -491,12 +492,11 @@ export function createServer(config: ServerConfig): ServerInstance {
         toolResult,
         validatedInput as Record<string, unknown>,
       );
-      res.json(
-        buildResponseBody(
-          toolResult,
-          includeInResponse ? observations : undefined,
-        ),
-      );
+      const responseObservations =
+        includeInResponse && observations
+          ? compactObservation(observations)
+          : undefined;
+      res.json(buildResponseBody(toolResult, responseObservations));
     } catch (error) {
       await recordToolStep(
         toolName,
