@@ -1,8 +1,9 @@
-import type { StepRecordObservation } from '../tools/types/step-record.js';
 import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
+import type { StepRecordObservation } from '../tools/types/step-record.js';
 import { OPTION_COLLAPSE_MIN_COUNT } from '../tools/utils/constants.js';
 
-const OPTION_RANGE_PATTERN = /^(?<prefix>[^\d]+)(?<start>\d+)\u2013\k<prefix>(?<end>\d+)$/u;
+const OPTION_RANGE_PATTERN =
+  /^(?<prefix>[^\d]+)(?<start>\d+)\u2013\k<prefix>(?<end>\d+)$/u;
 
 type RefRange = {
   firstRef: string;
@@ -10,6 +11,14 @@ type RefRange = {
   count: number;
 };
 
+/**
+ * Parses a ref string into its first/last ref and total node count.
+ * Handles range refs like "e2–e6" from collapseIdenticalRuns, returning
+ * the spanning range and the count of individual nodes it represents.
+ *
+ * @param ref - A node ref string, either a simple ref (e.g. "e3") or a range (e.g. "e2–e6").
+ * @returns The first ref, last ref, and total count of nodes the ref represents.
+ */
 function parseRefRange(ref: string): RefRange {
   const match = OPTION_RANGE_PATTERN.exec(ref);
   if (!match?.groups) {
@@ -31,6 +40,12 @@ function parseRefRange(ref: string): RefRange {
   };
 }
 
+/**
+ * Builds a summary node representing a collapsed group of option nodes.
+ *
+ * @param nodes - Array of option nodes to summarize.
+ * @returns A single summary node representing the collapsed options.
+ */
 function buildOptionSummary(nodes: A11yNodeTrimmed[]): A11yNodeTrimmed {
   const firstRange = parseRefRange(nodes[0].ref);
   const lastRange = parseRefRange(nodes[nodes.length - 1].ref);
@@ -108,6 +123,7 @@ export function collapseOptionSubtrees(
  * Creates a compacted copy of an observation while preserving non-a11y fields.
  *
  * @param observation - Observation to compact.
+ * @param previousObservation - Optional previous observation to compute diff against.
  * @returns A new compacted observation, or the original observation on failure.
  */
 export function compactObservation(
@@ -151,12 +167,26 @@ export function compactObservation(
   }
 }
 
+/**
+ * Checks if two string arrays are equal.
+ *
+ * @param left - First array to compare.
+ * @param right - Second array to compare.
+ * @returns True if arrays have equal length and identical elements.
+ */
 function arraysEqual(left: string[], right: string[]): boolean {
   return (
     left.length === right.length && left.every((val, idx) => val === right[idx])
   );
 }
 
+/**
+ * Checks if two accessibility nodes have changed.
+ *
+ * @param a - First node to compare.
+ * @param b - Second node to compare.
+ * @returns True if any property differs between the nodes.
+ */
 export function nodeChanged(a: A11yNodeTrimmed, b: A11yNodeTrimmed): boolean {
   return (
     a.name !== b.name ||
@@ -170,6 +200,13 @@ export function nodeChanged(a: A11yNodeTrimmed, b: A11yNodeTrimmed): boolean {
   );
 }
 
+/**
+ * Computes the diff between two observations, returning only changed or new nodes.
+ *
+ * @param current - The current observation to compare.
+ * @param previous - The previous observation to compare against.
+ * @returns A new observation containing only changed/new nodes with diff metadata.
+ */
 export function diffObservation(
   current: StepRecordObservation,
   previous: StepRecordObservation,
