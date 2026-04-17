@@ -329,6 +329,25 @@ export async function routeCommand(
       });
       break;
     }
+    case 'get-text': {
+      const getTextTarget = getPositionalTarget(args);
+      if (
+        !getTextTarget &&
+        !args.includes('--selector') &&
+        !args.includes('--testid')
+      ) {
+        process.stderr.write(
+          'Usage: mm get-text <ref> [--selector <css>] [--testid <id>] [--within <scope>]\n',
+        );
+        process.exit(1);
+      }
+      const getTextWithin = resolveWithinFromArgs(args);
+      await sendRequest(port, 'POST', '/tool/get_text', {
+        ...resolveTargetFromArgs(args),
+        ...(getTextWithin ? { within: getTextWithin } : {}),
+      });
+      break;
+    }
     case 'describe-screen':
       await sendRequest(port, 'POST', '/tool/describe_screen', {});
       break;
@@ -409,14 +428,18 @@ export async function routeCommand(
     case 'switch-to-tab': {
       const tabRole = parseStringFlag(args, '--role');
       const tabUrl = parseStringFlag(args, '--url');
-      if (!tabRole && !tabUrl) {
+      // Support positional arg as role: mm switch-to-tab dapp
+      const positionalRole =
+        !tabRole && !tabUrl ? getPositionalTarget(args) : undefined;
+      const resolvedRole = tabRole ?? positionalRole;
+      if (!resolvedRole && !tabUrl) {
         process.stderr.write(
-          'Usage: mm switch-to-tab --role <role> | --url <url>\n',
+          'Usage: mm switch-to-tab <role> | --role <role> | --url <url>\n',
         );
         process.exit(1);
       }
       await sendRequest(port, 'POST', '/tool/switch_to_tab', {
-        ...(tabRole ? { role: tabRole } : {}),
+        ...(resolvedRole ? { role: resolvedRole } : {}),
         ...(tabUrl ? { url: tabUrl } : {}),
       });
       break;
@@ -974,6 +997,7 @@ export function parseStringFlag(
 export function parseLaunchArgs(args: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   const knownFlags = new Set([
+    '--context',
     '--state',
     '--extension-path',
     '--goal',
@@ -985,6 +1009,13 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     const arg = args[i];
     if (arg === '--force') {
       result.force = true;
+    } else if (arg === '--context') {
+      i += 1;
+      if (!args[i] || args[i].startsWith('--')) {
+        process.stderr.write('Error: --context requires a value (e2e|prod)\n');
+        process.exit(1);
+      }
+      result.context = args[i];
     } else if (arg === '--state') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
@@ -1041,7 +1072,7 @@ Environment Variables:
                       Falls back to the current git worktree root.
 
 Lifecycle:
-  mm launch [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
+  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
   mm cleanup [--shutdown]
   mm status
   mm serve [--background]
@@ -1050,6 +1081,7 @@ Lifecycle:
 Interaction:
   mm click <ref> [--selector <css>] [--testid <id>] [--within <scope>]
   mm type <ref> <text> [--selector <css>] [--testid <id>] [--within <scope>]
+  mm get-text <ref> [--selector <css>] [--testid <id>] [--within <scope>]
   mm describe-screen
   mm screenshot [--name <name>]
   mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
@@ -1060,7 +1092,7 @@ Navigation:
   mm navigate <url>
   mm navigate-home
   mm navigate-settings
-  mm switch-to-tab --role <role> | --url <url>
+  mm switch-to-tab <role> | --role <role> | --url <url>
   mm close-tab --role <role> | --url <url>
 
 Discovery:

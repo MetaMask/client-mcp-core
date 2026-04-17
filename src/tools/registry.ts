@@ -8,7 +8,12 @@ import {
   describeScreenTool,
   listTestIdsTool,
 } from './discovery-tools.js';
-import { clickTool, typeTool, waitForTool } from './interaction.js';
+import {
+  clickTool,
+  getTextTool,
+  typeTool,
+  waitForTool,
+} from './interaction.js';
 import {
   knowledgeLastTool,
   knowledgeSearchTool,
@@ -52,6 +57,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['click', clickTool],
   ['type', typeTool],
   ['wait_for', waitForTool],
+  ['get_text', getTextTool],
   ['knowledge_last', knowledgeLastTool],
   ['knowledge_search', knowledgeSearchTool],
   ['knowledge_summarize', knowledgeSummarizeTool],
@@ -88,6 +94,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   knowledge_search: 'readonly',
   knowledge_summarize: 'readonly',
   knowledge_sessions: 'readonly',
+  get_text: 'readonly',
   get_state: 'readonly',
   get_context: 'readonly',
   // set_context is blocked while a session is active (MM_CONTEXT_SWITCH_BLOCKED),

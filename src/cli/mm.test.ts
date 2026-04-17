@@ -432,6 +432,34 @@ describe('parseLaunchArgs', () => {
     );
   });
 
+  it('parses --context value', () => {
+    expect(parseLaunchArgs(['--context', 'prod'])).toStrictEqual({
+      context: 'prod',
+    });
+  });
+
+  it('parses --context with other flags', () => {
+    expect(
+      parseLaunchArgs(['--context', 'prod', '--state', 'onboarding']),
+    ).toStrictEqual({
+      context: 'prod',
+      stateMode: 'onboarding',
+    });
+  });
+
+  it('exits for --context without value', () => {
+    expect(() => parseLaunchArgs(['--context'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --context requires a value (e2e|prod)\n',
+    );
+  });
+
+  it('exits for --context with flag as value', () => {
+    expect(() => parseLaunchArgs(['--context', '--force'])).toThrowError(
+      'process.exit',
+    );
+  });
+
   it('writes warning for unknown flags', () => {
     parseLaunchArgs(['--unknown']);
     expect(stderrSpy).toHaveBeenCalledWith(
@@ -1175,8 +1203,71 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes switch-to-tab with positional role', async () => {
+    await routeCommand('switch-to-tab', ['dapp'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/switch_to_tab',
+      expect.objectContaining({
+        body: JSON.stringify({ role: 'dapp' }),
+      }),
+    );
+  });
+
   it('exits when switch-to-tab has no flags', async () => {
     await expect(routeCommand('switch-to-tab', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+  });
+
+  it('routes get-text with positional ref', async () => {
+    await routeCommand('get-text', ['e1'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_text',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1' }),
+      }),
+    );
+  });
+
+  it('routes get-text with --testid', async () => {
+    await routeCommand('get-text', ['--testid', 'result-box'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_text',
+      expect.objectContaining({
+        body: JSON.stringify({ testId: 'result-box' }),
+      }),
+    );
+  });
+
+  it('routes get-text with --selector', async () => {
+    await routeCommand('get-text', ['--selector', '#output'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_text',
+      expect.objectContaining({
+        body: JSON.stringify({ selector: '#output' }),
+      }),
+    );
+  });
+
+  it('routes get-text with --within scoping', async () => {
+    await routeCommand(
+      'get-text',
+      ['--testid', 'amount', '--within', 'testid:tx-row'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_text',
+      expect.objectContaining({
+        body: JSON.stringify({
+          testId: 'amount',
+          within: { testId: 'tx-row' },
+        }),
+      }),
+    );
+  });
+
+  it('exits when get-text has no target', async () => {
+    await expect(routeCommand('get-text', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
   });
