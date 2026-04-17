@@ -112,9 +112,10 @@ export function collapseOptionSubtrees(
  */
 export function compactObservation(
   observation: StepRecordObservation,
+  previousObservation?: StepRecordObservation | null,
 ): StepRecordObservation {
   try {
-    return {
+    const optionFiltered: StepRecordObservation = {
       ...observation,
       a11y: {
         ...observation.a11y,
@@ -123,6 +124,28 @@ export function compactObservation(
         ),
       },
     };
+
+    if (!previousObservation) {
+      return optionFiltered;
+    }
+
+    const previousFiltered: StepRecordObservation = {
+      ...previousObservation,
+      a11y: {
+        ...previousObservation.a11y,
+        nodes: observationCompactionDeps.collapseOptionSubtrees(
+          previousObservation.a11y.nodes,
+        ),
+      },
+    };
+
+    const diffResult = diffObservation(optionFiltered, previousFiltered);
+
+    if (diffResult.a11y.nodes.length >= optionFiltered.a11y.nodes.length) {
+      return optionFiltered;
+    }
+
+    return diffResult;
   } catch {
     return observation;
   }

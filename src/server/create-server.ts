@@ -251,6 +251,7 @@ export function createServer(config: ServerConfig): ServerInstance {
   let shutdownHandler: (() => void) | null = null;
   let lastRequestTime = Date.now();
   let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
+  let lastObservation: StepRecordObservation | null = null;
 
   // eslint-disable-next-line import-x/no-named-as-default-member
   app.use(express.json({ limit: '10mb' }));
@@ -494,9 +495,19 @@ export function createServer(config: ServerConfig): ServerInstance {
       );
       const responseObservations =
         includeInResponse && observations
-          ? compactObservation(observations)
+          ? compactObservation(observations, lastObservation)
           : undefined;
       res.json(buildResponseBody(toolResult, responseObservations));
+
+      if (
+        toolName === 'describe_screen' ||
+        toolName === 'launch' ||
+        toolName === 'cleanup'
+      ) {
+        lastObservation = null;
+      } else if (observations) {
+        lastObservation = observations;
+      }
     } catch (error) {
       await recordToolStep(
         toolName,

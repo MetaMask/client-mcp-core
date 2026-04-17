@@ -233,6 +233,42 @@ describe('compactObservation', () => {
     expect(second).toStrictEqual(first);
   });
 
+  it('returns a diff when the previous observation produces a smaller payload', () => {
+    const previous = createObservation([
+      createNode('e1', 'button', { name: 'Continue' }),
+      createNode('e2', 'button', { name: 'Cancel' }),
+    ]);
+    const current = createObservation([
+      createNode('e1', 'button', { name: 'Continue' }),
+      createNode('e3', 'button', { name: 'Confirm' }),
+    ]);
+
+    const result = compactObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([
+      createNode('e3', 'button', { name: 'Confirm' }),
+    ]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: ['e3'],
+      removed: ['e2'],
+      unchanged: 1,
+    });
+  });
+
+  it('returns the full compacted observation when the diff is not smaller', () => {
+    const previous = createObservation([createNode('e1', 'button')]);
+    const current = createObservation(
+      Array.from({ length: 10 }, (_, index) =>
+        createNode(`e${index + 10}`, 'button', { name: `Action ${index + 1}` }),
+      ),
+    );
+
+    const result = compactObservation(current, previous);
+
+    expect(result.a11y.diff).toBeUndefined();
+    expect(result.a11y.nodes).toStrictEqual(current.a11y.nodes);
+  });
+
   it('falls back to the original observation when compaction throws', () => {
     const observation = {
       state: {},

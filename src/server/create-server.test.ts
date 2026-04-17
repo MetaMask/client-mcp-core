@@ -32,6 +32,11 @@ vi.mock('../tools/utils/discovery.js', () => ({
     nodes: [],
     refMap: new Map(),
   }),
+  waitForTarget: vi.fn().mockResolvedValue({
+    click: vi.fn().mockResolvedValue(undefined),
+    fill: vi.fn().mockResolvedValue(undefined),
+    textContent: vi.fn().mockResolvedValue(''),
+  }),
 }));
 
 vi.mock('../knowledge-store/knowledge-store.js', () => {
@@ -1218,6 +1223,23 @@ describe('observation compaction in HTTP responses', () => {
     { ref: 'e12', role: 'button', name: 'Submit', path: ['root'] },
   ];
 
+  const initialButtons = [
+    { ref: 'e1', role: 'button', name: 'Continue', path: ['root'] },
+    { ref: 'e2', role: 'button', name: 'Cancel', path: ['root'] },
+  ];
+
+  const changedButtons = [
+    { ref: 'e1', role: 'button', name: 'Continue', path: ['root'] },
+    { ref: 'e3', role: 'button', name: 'Confirm', path: ['root'] },
+  ];
+
+  const manyNewButtons = Array.from({ length: 10 }, (_, index) => ({
+    ref: `e${index + 10}`,
+    role: 'button',
+    name: `Action ${index + 1}`,
+    path: ['root'],
+  }));
+
   beforeEach(async () => {
     await fs.mkdir(tmpDir, { recursive: true });
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
@@ -1275,6 +1297,210 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations).toBeDefined();
     // 12 original nodes → compacted: combobox + summary + button = 3
     expect(body.observations!.a11y.nodes).toHaveLength(3);
+  });
+
+  it('first mutation returns a full compact observation when no baseline exists', async () => {
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          nodes: unknown[];
+          diff?: unknown;
+        };
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    expect(body.observations!.a11y.diff).toBeUndefined();
+    expect(body.observations!.a11y.nodes).toHaveLength(3);
+  });
+
+  it('second mutation returns a diff-based observation', async () => {
+    const { collectTrimmedA11ySnapshot } = await import(
+      '../tools/utils/discovery.js'
+    );
+    vi.mocked(collectTrimmedA11ySnapshot)
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: changedButtons as never,
+        refMap: new Map(),
+      });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          nodes: unknown[];
+          diff?: { added: string[]; removed: string[]; unchanged: number };
+        };
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations?.a11y.diff).toStrictEqual({
+      added: ['e3'],
+      removed: ['e2'],
+      unchanged: 1,
+    });
+    expect(body.observations?.a11y.nodes).toHaveLength(1);
+  });
+
+  it('describe_screen resets the diff baseline', async () => {
+    const { collectTrimmedA11ySnapshot } = await import(
+      '../tools/utils/discovery.js'
+    );
+    vi.mocked(collectTrimmedA11ySnapshot)
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: changedButtons as never,
+        refMap: new Map(),
+      });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/describe_screen`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          nodes: unknown[];
+          diff?: unknown;
+        };
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    expect(body.observations!.a11y.diff).toBeUndefined();
+    expect(body.observations!.a11y.nodes.length).toBeGreaterThan(1);
+  });
+
+  it('falls back to the full observation when the diff is not smaller', async () => {
+    const { collectTrimmedA11ySnapshot } = await import(
+      '../tools/utils/discovery.js'
+    );
+    vi.mocked(collectTrimmedA11ySnapshot)
+      .mockResolvedValueOnce({
+        nodes: [initialButtons[0]] as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: manyNewButtons as never,
+        refMap: new Map(),
+      });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          nodes: unknown[];
+          diff?: unknown;
+        };
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    expect(body.observations!.a11y.diff).toBeUndefined();
+    expect(body.observations!.a11y.nodes).toHaveLength(10);
+  });
+
+  it('knowledge store always receives the full observation instead of the diff', async () => {
+    const { collectTrimmedA11ySnapshot } = await import(
+      '../tools/utils/discovery.js'
+    );
+    vi.mocked(collectTrimmedA11ySnapshot)
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: changedButtons as never,
+        refMap: new Map(),
+      });
+
+    const { KnowledgeStore } = await import(
+      '../knowledge-store/knowledge-store.js'
+    );
+    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
+      recordStep: ReturnType<typeof vi.fn>;
+    };
+    mockStore.recordStep.mockClear();
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    expect(mockStore.recordStep).toHaveBeenCalledTimes(2);
+    const recorded = mockStore.recordStep.mock.calls[1][0] as {
+      observation: { a11y: { nodes: unknown[]; diff?: unknown } };
+    };
+
+    expect(recorded.observation.a11y.diff).toBeUndefined();
+    expect(recorded.observation.a11y.nodes).toStrictEqual(changedButtons);
   });
 
   it('knowledge store receives full uncompacted observations', async () => {
