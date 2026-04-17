@@ -47,6 +47,10 @@ export async function launchTool(
       }
     }
 
+    if (input.context) {
+      sessionManager.setContext(input.context);
+    }
+
     const result = await sessionManager.launch(input);
     const isProdMode = sessionManager.getEnvironmentMode() === 'prod';
 

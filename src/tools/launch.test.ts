@@ -166,6 +166,35 @@ describe('launchTool', () => {
       expect(result.ok).toBe(true);
       expect(context.sessionManager.launch).toHaveBeenCalledWith(input);
     });
+
+    it('calls setContext before launch when context is provided', async () => {
+      const context = createMockContext({ hasActive: false });
+      const input: LaunchInput = {
+        context: 'prod',
+        stateMode: 'onboarding',
+      };
+
+      await launchTool(input, context);
+
+      expect(context.sessionManager.setContext).toHaveBeenCalledWith('prod');
+      expect(context.sessionManager.launch).toHaveBeenCalledWith(input);
+      const setContextOrder = (
+        context.sessionManager.setContext as ReturnType<typeof vi.fn>
+      ).mock.invocationCallOrder[0];
+      const launchOrder = (
+        context.sessionManager.launch as ReturnType<typeof vi.fn>
+      ).mock.invocationCallOrder[0];
+      expect(setContextOrder).toBeLessThan(launchOrder);
+    });
+
+    it('does not call setContext when context is not provided', async () => {
+      const context = createMockContext({ hasActive: false });
+      const input: LaunchInput = { stateMode: 'default' };
+
+      await launchTool(input, context);
+
+      expect(context.sessionManager.setContext).not.toHaveBeenCalled();
+    });
   });
 
   describe('session already running', () => {
