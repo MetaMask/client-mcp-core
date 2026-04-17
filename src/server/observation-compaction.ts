@@ -127,3 +127,75 @@ export function compactObservation(
     return observation;
   }
 }
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length && left.every((val, idx) => val === right[idx])
+  );
+}
+
+export function nodeChanged(a: A11yNodeTrimmed, b: A11yNodeTrimmed): boolean {
+  return (
+    a.name !== b.name ||
+    a.role !== b.role ||
+    a.disabled !== b.disabled ||
+    a.checked !== b.checked ||
+    a.expanded !== b.expanded ||
+    a.testId !== b.testId ||
+    a.textContent !== b.textContent ||
+    !arraysEqual(a.path, b.path)
+  );
+}
+
+export function diffObservation(
+  current: StepRecordObservation,
+  previous: StepRecordObservation,
+): StepRecordObservation {
+  const prevMap = new Map(
+    previous.a11y.nodes.map((node) => [node.ref, node] as const),
+  );
+  const currMap = new Map(
+    current.a11y.nodes.map((node) => [node.ref, node] as const),
+  );
+  const changedOrNewNodes: A11yNodeTrimmed[] = [];
+  const addedRefs: string[] = [];
+  const removedRefs: string[] = [];
+  let unchangedCount = 0;
+
+  for (const [ref, currNode] of currMap) {
+    const prevNode = prevMap.get(ref);
+
+    if (!prevNode) {
+      addedRefs.push(ref);
+      changedOrNewNodes.push(currNode);
+      continue;
+    }
+
+    if (nodeChanged(currNode, prevNode)) {
+      changedOrNewNodes.push(currNode);
+      continue;
+    }
+
+    unchangedCount += 1;
+  }
+
+  for (const ref of prevMap.keys()) {
+    if (!currMap.has(ref)) {
+      removedRefs.push(ref);
+    }
+  }
+
+  return {
+    state: current.state,
+    testIds: current.testIds,
+    a11y: {
+      nodes: changedOrNewNodes,
+      diff: {
+        added: addedRefs,
+        removed: removedRefs,
+        unchanged: unchangedCount,
+      },
+    },
+    priorKnowledge: current.priorKnowledge,
+  };
+}

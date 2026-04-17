@@ -5,6 +5,8 @@ import type { StepRecordObservation } from '../tools/types/step-record.js';
 import {
   collapseOptionSubtrees,
   compactObservation,
+  diffObservation,
+  nodeChanged,
   observationCompactionDeps,
 } from './observation-compaction.js';
 
@@ -30,6 +32,23 @@ function createOptionRun(count: number, start = 1): A11yNodeTrimmed[] {
       path: ['root', 'combo', `option-${refNumber}`],
     });
   });
+}
+
+function createObservation(
+  nodes: A11yNodeTrimmed[],
+  overrides: Partial<StepRecordObservation> = {},
+): StepRecordObservation {
+  return {
+    state: overrides.state ?? ({} as StepRecordObservation['state']),
+    testIds: overrides.testIds ?? [],
+    a11y: {
+      nodes,
+      ...(overrides.a11y?.diff ? { diff: overrides.a11y.diff } : {}),
+    },
+    ...(overrides.priorKnowledge
+      ? { priorKnowledge: overrides.priorKnowledge }
+      : {}),
+  } as StepRecordObservation;
 }
 
 describe('collapseOptionSubtrees', () => {
@@ -243,5 +262,207 @@ describe('compactObservation', () => {
 
     expect(result).not.toBe(observation);
     expect(result.a11y.nodes).toStrictEqual([]);
+  });
+});
+
+describe('nodeChanged', () => {
+  it('returns true when the name changes', () => {
+    const previous = createNode('e1', 'button', { name: 'Continue' });
+    const current = createNode('e1', 'button', { name: 'Confirm' });
+
+    expect(nodeChanged(current, previous)).toBe(true);
+  });
+
+  it('returns true when the role changes', () => {
+    const previous = createNode('e1', 'button');
+    const current = createNode('e1', 'link');
+
+    expect(nodeChanged(current, previous)).toBe(true);
+  });
+
+  it('returns true when the path changes', () => {
+    const previous = createNode('e1', 'button', { path: ['root', 'page'] });
+    const current = createNode('e1', 'button', {
+      path: ['root', 'dialog', 'page'],
+    });
+
+    expect(nodeChanged(current, previous)).toBe(true);
+  });
+
+  it('returns true when the disabled state changes', () => {
+    const previous = createNode('e1', 'button', { disabled: false });
+    const current = createNode('e1', 'button', { disabled: true });
+
+    expect(nodeChanged(current, previous)).toBe(true);
+  });
+
+  it('returns false for identical nodes', () => {
+    const previous = createNode('e1', 'checkbox', {
+      checked: true,
+      expanded: false,
+      testId: 'accept',
+      textContent: 'Accept terms',
+      path: ['root', 'form', 'accept'],
+    });
+    const current = createNode('e1', 'checkbox', {
+      checked: true,
+      expanded: false,
+      testId: 'accept',
+      textContent: 'Accept terms',
+      path: ['root', 'form', 'accept'],
+    });
+
+    expect(nodeChanged(current, previous)).toBe(false);
+  });
+
+  it('does not compare refs', () => {
+    const previous = createNode('e1', 'button', {
+      name: 'Continue',
+      path: ['root', 'actions'],
+    });
+    const current = createNode('e999', 'button', {
+      name: 'Continue',
+      path: ['root', 'actions'],
+    });
+
+    expect(nodeChanged(current, previous)).toBe(false);
+  });
+});
+
+describe('diffObservation', () => {
+  it('tracks added nodes and omits unchanged nodes from the diff payload', () => {
+    const stable = createNode('e1', 'button', { name: 'Continue' });
+    const added = createNode('e2', 'button', { name: 'Cancel' });
+    const previous = createObservation([stable]);
+    const current = createObservation([stable, added]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([added]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: ['e2'],
+      removed: [],
+      unchanged: 1,
+    });
+  });
+
+  it('tracks removed nodes without including them in nodes', () => {
+    const stable = createNode('e1', 'button', { name: 'Continue' });
+    const removed = createNode('e2', 'button', { name: 'Cancel' });
+    const previous = createObservation([stable, removed]);
+    const current = createObservation([stable]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: [],
+      removed: ['e2'],
+      unchanged: 1,
+    });
+  });
+
+  it('includes changed nodes without marking them as added or removed', () => {
+    const previous = createObservation([
+      createNode('e1', 'button', { disabled: false, name: 'Continue' }),
+    ]);
+    const changed = createNode('e1', 'button', {
+      disabled: true,
+      name: 'Continue',
+    });
+    const current = createObservation([changed]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([changed]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: [],
+      removed: [],
+      unchanged: 0,
+    });
+  });
+
+  it('returns an empty diff payload when nothing changed', () => {
+    const previous = createObservation([
+      createNode('e1', 'button'),
+      createNode('e2', 'checkbox', { checked: true }),
+    ]);
+    const current = createObservation([
+      createNode('e1', 'button'),
+      createNode('e2', 'checkbox', { checked: true }),
+    ]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: [],
+      removed: [],
+      unchanged: 2,
+    });
+  });
+
+  it('supports mixed added, removed, changed, and unchanged nodes', () => {
+    const unchangedNodes = Array.from({ length: 5 }, (_, index) =>
+      createNode(`u${index + 1}`, 'button', { name: `Stable ${index + 1}` }),
+    );
+    const previous = createObservation([
+      ...unchangedNodes,
+      createNode('c1', 'button', { disabled: false, name: 'Changed' }),
+      createNode('r1', 'button', { name: 'Removed' }),
+    ]);
+    const changed = createNode('c1', 'button', {
+      disabled: true,
+      name: 'Changed',
+    });
+    const addedOne = createNode('a1', 'button', { name: 'Added 1' });
+    const addedTwo = createNode('a2', 'button', { name: 'Added 2' });
+    const current = createObservation([
+      ...unchangedNodes,
+      changed,
+      addedOne,
+      addedTwo,
+    ]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([changed, addedOne, addedTwo]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: ['a1', 'a2'],
+      removed: ['r1'],
+      unchanged: 5,
+    });
+  });
+
+  it('preserves the current state and testIds', () => {
+    const state = {
+      mode: 'current',
+    } as unknown as StepRecordObservation['state'];
+    const testIds = [{ testId: 'submit', tag: 'button', visible: true }];
+    const previous = createObservation([]);
+    const current = createObservation([createNode('e1', 'button')], {
+      state,
+      testIds,
+    });
+
+    const result = diffObservation(current, previous);
+
+    expect(result.state).toBe(state);
+    expect(result.testIds).toBe(testIds);
+  });
+
+  it('preserves the current priorKnowledge', () => {
+    const priorKnowledge = {
+      schemaVersion: 1,
+      notes: ['cached'],
+    } as unknown as StepRecordObservation['priorKnowledge'];
+    const previous = createObservation([]);
+    const current = createObservation([createNode('e1', 'button')], {
+      priorKnowledge,
+    });
+
+    const result = diffObservation(current, previous);
+
+    expect(result.priorKnowledge).toBe(priorKnowledge);
   });
 });
