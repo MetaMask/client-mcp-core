@@ -25,12 +25,14 @@ mm cleanup --shutdown      # 5. Clean up when done
 
 Tool responses include different data based on the tool's category:
 
-| Category      | Examples                                                          | Observations in response?                 |
-| ------------- | ----------------------------------------------------------------- | ----------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard          | Yes — `state` + `a11y` + `testIds`        |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context      | No — faster response                      |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot | Data is already in `result`               |
-| **Batch**     | run_steps                                                         | Controlled by `includeObservations` param |
+| Category      | Examples                                                          | Observations in response?                          |
+| ------------- | ----------------------------------------------------------------- | -------------------------------------------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard          | Yes — `state` + `a11y` (compacted) + `testIds`    |
+| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context      | No — faster response                               |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot | Data is already in `result`                        |
+| **Batch**     | run_steps                                                         | Controlled by `includeObservations` param          |
+
+**Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
 
 ### Using inline observations (mutating tools)
 
@@ -53,7 +55,13 @@ After a mutating action, the response includes fresh screen state:
 }
 ```
 
-You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed.
+You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed. Note that refs in compacted observations may be summary nodes (e.g., `"55 options (refs e2–e56)"`) when there are 3+ options under a combobox or listbox.
+
+**Quick reference:**
+
+- Use `observations.state` for quick checks (screen name, loading status, balance, etc.)
+- Use `observations.a11y.nodes` with the compact refs for the next interaction
+- Call `describe-screen` only when you need the full tree or `priorKnowledge`
 
 ```bash
 mm click e3                 # mutating: response includes fresh observations
@@ -66,6 +74,7 @@ Call `describe-screen` explicitly when you need:
 - `priorKnowledge` (historical actions for this screen)
 - A screenshot via `includeScreenshot`
 - Full context after unexpected navigation
+- The complete, unfiltered a11y tree (e.g., all options in a dropdown)
 
 ### `run_steps` and `includeObservations`
 
