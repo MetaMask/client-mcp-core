@@ -65,6 +65,8 @@ export type ServerConfig = {
   sessionManager: ISessionManager;
   /** Factory function to create workflow context (may be sync or async) */
   contextFactory: () => WorkflowContext | Promise<WorkflowContext>;
+  /** Shared knowledge store instance (optional — a new instance is created if omitted) */
+  knowledgeStore?: KnowledgeStore;
   /** Idle timeout for daemon auto-shutdown in milliseconds (default: 1_800_000 = 30 min) */
   idleShutdownMs?: number;
   /** Per-request execution timeout in milliseconds (default: 30_000) */

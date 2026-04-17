@@ -238,7 +238,7 @@ export function createServer(config: ServerConfig): ServerInstance {
   const app = express();
   const queue = new RequestQueue(config.requestTimeoutMs);
   const nonce = randomUUID();
-  const knowledgeStore = new KnowledgeStore();
+  const knowledgeStore = config.knowledgeStore ?? new KnowledgeStore();
 
   let httpServer: http.Server | null = null;
   let worktreeRoot = '';
