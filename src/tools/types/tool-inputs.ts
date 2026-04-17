@@ -9,6 +9,7 @@ export type BuildInput = {
 
 export type LaunchInput = {
   autoBuild?: boolean;
+  context?: 'e2e' | 'prod';
   stateMode?: 'default' | 'onboarding' | 'custom';
   fixturePreset?: string;
   fixture?: Record<string, unknown>;
@@ -83,6 +84,11 @@ export type TypeInput = TargetSelection & {
 };
 
 export type WaitForInput = TargetSelection & {
+  timeoutMs?: number;
+  within?: WithinTarget;
+};
+
+export type GetTextInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
 };

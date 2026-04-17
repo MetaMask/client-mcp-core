@@ -59,6 +59,7 @@ export type ScreenshotInfo = {
 
 export type DescribeScreenResult = {
   state: ExtensionState;
+  activeTab?: TabInfo;
   testIds: {
     items: TestIdItem[];
   };
@@ -91,6 +92,12 @@ export type TypeResult = {
 export type WaitForResult = {
   found: boolean;
   target: string;
+};
+
+export type GetTextResult = {
+  text: string;
+  target: string;
+  length: number;
 };
 
 export type StepResult = {

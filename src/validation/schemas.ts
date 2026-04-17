@@ -90,6 +90,14 @@ export const launchInputSchema = z.object({
     .boolean()
     .default(true)
     .describe('Automatically run build if extension is not found'),
+  context: z
+    .enum(['e2e', 'prod'])
+    .describe(
+      'Environment context to use for this session. ' +
+        'Sets the context before launching so you can start in prod mode directly: ' +
+        'mm launch --context prod --state onboarding',
+    )
+    .optional(),
   stateMode: z
     .enum(['default', 'onboarding', 'custom'])
     .default('default')
@@ -328,6 +336,19 @@ export const waitForInputSchema = targetSelectionSchema.and(
   }),
 );
 
+export const getTextInputSchema = targetSelectionSchema.and(
+  z.object({
+    timeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(60000)
+      .default(15000)
+      .describe('Timeout to wait for element to become visible'),
+    within: withinTargetSchema.optional(),
+  }),
+);
+
 export const knowledgeLastInputSchema = z.object({
   n: z
     .number()
@@ -544,6 +565,7 @@ export const toolSchemas = {
   click: clickInputSchema,
   type: typeInputSchema,
   wait_for: waitForInputSchema,
+  get_text: getTextInputSchema,
   knowledge_last: knowledgeLastInputSchema,
   knowledge_search: knowledgeSearchInputSchema,
   knowledge_summarize: knowledgeSummarizeInputSchema,
@@ -577,6 +599,7 @@ export type ScreenshotInputZ = z.infer<typeof screenshotInputSchema>;
 export type ClickInputZ = z.infer<typeof clickInputSchema>;
 export type TypeInputZ = z.infer<typeof typeInputSchema>;
 export type WaitForInputZ = z.infer<typeof waitForInputSchema>;
+export type GetTextInputZ = z.infer<typeof getTextInputSchema>;
 export type KnowledgeLastInputZ = z.infer<typeof knowledgeLastInputSchema>;
 export type KnowledgeSearchInputZ = z.infer<typeof knowledgeSearchInputSchema>;
 export type KnowledgeSummarizeInputZ = z.infer<
