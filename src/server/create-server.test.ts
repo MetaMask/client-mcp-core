@@ -1251,9 +1251,8 @@ describe('observation compaction in HTTP responses', () => {
       currentUrl: 'chrome-extension://test/home.html',
     });
 
-    const { collectTrimmedA11ySnapshot } = await import(
-      '../tools/utils/discovery.js'
-    );
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
     vi.mocked(collectTrimmedA11ySnapshot).mockResolvedValue({
       nodes: comboboxAndOptions as never,
       refMap: new Map(),
@@ -1271,9 +1270,8 @@ describe('observation compaction in HTTP responses', () => {
     await server.stop();
     exitSpy.mockRestore();
 
-    const { collectTrimmedA11ySnapshot } = await import(
-      '../tools/utils/discovery.js'
-    );
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
     vi.mocked(collectTrimmedA11ySnapshot).mockResolvedValue({
       nodes: [],
       refMap: new Map(),
@@ -1296,7 +1294,7 @@ describe('observation compaction in HTTP responses', () => {
     expect(res.status).toBe(200);
     expect(body.observations).toBeDefined();
     // 12 original nodes → compacted: combobox + summary + button = 3
-    expect(body.observations!.a11y.nodes).toHaveLength(3);
+    expect(body.observations?.a11y.nodes).toHaveLength(3);
   });
 
   it('first mutation returns a full compact observation when no baseline exists', async () => {
@@ -1317,14 +1315,13 @@ describe('observation compaction in HTTP responses', () => {
 
     expect(res.status).toBe(200);
     expect(body.observations).toBeDefined();
-    expect(body.observations!.a11y.diff).toBeUndefined();
-    expect(body.observations!.a11y.nodes).toHaveLength(3);
+    expect(body.observations?.a11y.diff).toBeUndefined();
+    expect(body.observations?.a11y.nodes).toHaveLength(3);
   });
 
   it('second mutation returns a diff-based observation', async () => {
-    const { collectTrimmedA11ySnapshot } = await import(
-      '../tools/utils/discovery.js'
-    );
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
     vi.mocked(collectTrimmedA11ySnapshot)
       .mockResolvedValueOnce({
         nodes: initialButtons as never,
@@ -1366,9 +1363,8 @@ describe('observation compaction in HTTP responses', () => {
   });
 
   it('describe_screen resets the diff baseline', async () => {
-    const { collectTrimmedA11ySnapshot } = await import(
-      '../tools/utils/discovery.js'
-    );
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
     vi.mocked(collectTrimmedA11ySnapshot)
       .mockResolvedValueOnce({
         nodes: initialButtons as never,
@@ -1389,14 +1385,11 @@ describe('observation compaction in HTTP responses', () => {
       body: JSON.stringify({ a11yRef: 'e1' }),
     });
 
-    await httpRequest(
-      `http://127.0.0.1:${state.port}/tool/describe_screen`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      },
-    );
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/describe_screen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
 
     const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
       method: 'POST',
@@ -1415,14 +1408,13 @@ describe('observation compaction in HTTP responses', () => {
 
     expect(res.status).toBe(200);
     expect(body.observations).toBeDefined();
-    expect(body.observations!.a11y.diff).toBeUndefined();
-    expect(body.observations!.a11y.nodes.length).toBeGreaterThan(1);
+    expect(body.observations?.a11y.diff).toBeUndefined();
+    expect(body.observations?.a11y.nodes.length).toBeGreaterThan(1);
   });
 
   it('falls back to the full observation when the diff is not smaller', async () => {
-    const { collectTrimmedA11ySnapshot } = await import(
-      '../tools/utils/discovery.js'
-    );
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
     vi.mocked(collectTrimmedA11ySnapshot)
       .mockResolvedValueOnce({
         nodes: [initialButtons[0]] as never,
@@ -1456,14 +1448,13 @@ describe('observation compaction in HTTP responses', () => {
 
     expect(res.status).toBe(200);
     expect(body.observations).toBeDefined();
-    expect(body.observations!.a11y.diff).toBeUndefined();
-    expect(body.observations!.a11y.nodes).toHaveLength(10);
+    expect(body.observations?.a11y.diff).toBeUndefined();
+    expect(body.observations?.a11y.nodes).toHaveLength(10);
   });
 
   it('knowledge store always receives the full observation instead of the diff', async () => {
-    const { collectTrimmedA11ySnapshot } = await import(
-      '../tools/utils/discovery.js'
-    );
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
     vi.mocked(collectTrimmedA11ySnapshot)
       .mockResolvedValueOnce({
         nodes: initialButtons as never,
@@ -1474,9 +1465,8 @@ describe('observation compaction in HTTP responses', () => {
         refMap: new Map(),
       });
 
-    const { KnowledgeStore } = await import(
-      '../knowledge-store/knowledge-store.js'
-    );
+    const { KnowledgeStore } =
+      await import('../knowledge-store/knowledge-store.js');
     const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
       recordStep: ReturnType<typeof vi.fn>;
     };
@@ -1504,11 +1494,9 @@ describe('observation compaction in HTTP responses', () => {
   });
 
   it('knowledge store receives full uncompacted observations', async () => {
-    const { KnowledgeStore } = await import(
-      '../knowledge-store/knowledge-store.js'
-    );
-    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)
-      ?.value as {
+    const { KnowledgeStore } =
+      await import('../knowledge-store/knowledge-store.js');
+    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
       recordStep: ReturnType<typeof vi.fn>;
     };
     mockStore.recordStep.mockClear();
@@ -1545,7 +1533,7 @@ describe('observation compaction in HTTP responses', () => {
 
     expect(res.status).toBe(200);
     expect(body.observations).toBeDefined();
-    expect(body.observations!.a11y.nodes).toHaveLength(3);
+    expect(body.observations?.a11y.nodes).toHaveLength(3);
   });
 
   it('batch with includeObservations=none omits observations', async () => {

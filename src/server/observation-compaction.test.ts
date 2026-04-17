@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
-import type { StepRecordObservation } from '../tools/types/step-record.js';
 import {
   collapseOptionSubtrees,
   compactObservation,
@@ -9,6 +7,8 @@ import {
   nodeChanged,
   observationCompactionDeps,
 } from './observation-compaction.js';
+import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
+import type { StepRecordObservation } from '../tools/types/step-record.js';
 
 function createNode(
   ref: string,
@@ -154,10 +154,14 @@ describe('collapseOptionSubtrees', () => {
 
   it('treats malformed option range refs as single options during compaction', () => {
     const combobox = createNode('e1', 'combobox');
-    const malformedSummary = createNode(`e${'9'.repeat(400)}\u2013e2`, 'option', {
-      name: 'Malformed range',
-      path: ['root', 'combo', 'option-weird'],
-    });
+    const malformedSummary = createNode(
+      `e${'9'.repeat(400)}\u2013e2`,
+      'option',
+      {
+        name: 'Malformed range',
+        path: ['root', 'combo', 'option-weird'],
+      },
+    );
     const optionTwo = createNode('e3', 'option', {
       name: 'Option 3',
       path: ['root', 'combo', 'option-3'],
