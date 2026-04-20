@@ -462,7 +462,27 @@ export function createServer(config: ServerConfig): ServerInstance {
                 )
                 .catch(() => undefined);
             }
-            const state = await config.sessionManager.getExtensionState();
+            let state = await config.sessionManager.getExtensionState();
+
+            // Post-mutation recheck: if currentScreen is 'unknown' after a mutation,
+            // the extension's internal router may not have updated yet. Poll briefly.
+            if (category === 'mutating' && state.currentScreen === 'unknown') {
+              const RECHECK_DEADLINE_MS = 500;
+              const RECHECK_INTERVAL_MS = 100;
+              const deadline = Date.now() + RECHECK_DEADLINE_MS;
+
+              while (Date.now() < deadline) {
+                await new Promise<void>((resolve) =>
+                  setTimeout(resolve, RECHECK_INTERVAL_MS),
+                );
+                const rechecked =
+                  await config.sessionManager.getExtensionState();
+                if (rechecked.currentScreen !== 'unknown') {
+                  state = rechecked;
+                  break;
+                }
+              }
+            }
             const testIds = await collectTestIds(
               page,
               OBSERVATION_TESTID_LIMIT,

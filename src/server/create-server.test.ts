@@ -1094,6 +1094,159 @@ describe('createServer with active session', () => {
 
     expect(mockStore.recordStep).toHaveBeenCalled();
   });
+
+  describe('post-mutation state recheck', () => {
+    it('resolves immediately when getExtensionState returns a known screen', async () => {
+      mockSM.getExtensionState.mockReset();
+      mockSM.getExtensionState.mockResolvedValue({
+        isLoaded: true,
+        currentScreen: 'home',
+        currentUrl: 'chrome-extension://test/home.html',
+      });
+
+      const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = (await res.json()) as {
+        ok: boolean;
+        observations?: { state: { currentScreen?: string } };
+      };
+
+      expect(res.status).toBe(200);
+      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+      expect(body.observations?.state.currentScreen).toBe('home');
+    });
+
+    it("retries when first call returns 'unknown', resolves on second call", async () => {
+      mockSM.getExtensionState.mockReset();
+      mockSM.getExtensionState
+        .mockResolvedValueOnce({
+          isLoaded: true,
+          currentScreen: 'unknown',
+          currentUrl: 'chrome-extension://test/unknown.html',
+        })
+        .mockResolvedValueOnce({
+          isLoaded: true,
+          currentScreen: 'home',
+          currentUrl: 'chrome-extension://test/home.html',
+        });
+
+      const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = (await res.json()) as {
+        ok: boolean;
+        observations?: { state: { currentScreen?: string } };
+      };
+
+      expect(res.status).toBe(200);
+      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(2);
+      expect(body.observations?.state.currentScreen).toBe('home');
+    });
+
+    it("retries up to deadline and returns 'unknown' if all calls return 'unknown'", async () => {
+      vi.useFakeTimers();
+      mockSM.getExtensionState.mockReset();
+      mockSM.getExtensionState.mockResolvedValue({
+        isLoaded: true,
+        currentScreen: 'unknown',
+        currentUrl: 'chrome-extension://test/unknown.html',
+      });
+
+      const start = Date.now();
+      const responsePromise = httpRequest(
+        `http://127.0.0.1:${state.port}/cleanup`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(500);
+      vi.useRealTimers();
+
+      const res = await responsePromise;
+      const body = (await res.json()) as {
+        ok: boolean;
+        observations?: { state: { currentScreen?: string } };
+      };
+
+      expect(res.status).toBe(200);
+      expect(Date.now() - start).toBeLessThanOrEqual(600);
+      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(6);
+      expect(body.observations?.state.currentScreen).toBe('unknown');
+    });
+
+    it('does not recheck for readonly tool category', async () => {
+      mockSM.getExtensionState.mockReset();
+      mockSM.getExtensionState.mockResolvedValue({
+        isLoaded: true,
+        currentScreen: 'unknown',
+        currentUrl: 'chrome-extension://test/unknown.html',
+      });
+
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}/tool/knowledge_last`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not recheck for discovery tool category', async () => {
+      mockSM.getExtensionState.mockReset();
+      mockSM.getExtensionState.mockResolvedValue({
+        isLoaded: true,
+        currentScreen: 'unknown',
+        currentUrl: 'chrome-extension://test/unknown.html',
+      });
+
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}/tool/list_testids`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not recheck for batch tool category', async () => {
+      mockSM.getExtensionState.mockReset();
+      mockSM.getExtensionState.mockResolvedValue({
+        isLoaded: true,
+        currentScreen: 'unknown',
+        currentUrl: 'chrome-extension://test/unknown.html',
+      });
+
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}/tool/run_steps`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            steps: [{ tool: 'knowledge_last', args: {} }],
+          }),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('createServer with logging', () => {
