@@ -303,6 +303,59 @@ describe('compactObservation', () => {
     expect(result).not.toBe(observation);
     expect(result.a11y.nodes).toStrictEqual([]);
   });
+
+  describe('activeTab passthrough', () => {
+    it('preserves state.activeTab when present', () => {
+      const state = {
+        isLoaded: true,
+        currentUrl: 'chrome-extension://extension/home.html',
+        extensionId: 'extension-id',
+        isUnlocked: true,
+        currentScreen: 'home',
+        accountAddress: '0x123',
+        networkName: 'Ethereum Mainnet',
+        chainId: 1,
+        balance: '1 ETH',
+        activeTab: {
+          role: 'dapp',
+          url: 'https://app.uniswap.org/',
+          title: 'Uniswap',
+        },
+      } satisfies StepRecordObservation['state'];
+      const observation = createObservation(
+        [createNode('e1', 'listbox'), ...createOptionRun(6, 2)],
+        { state },
+      );
+
+      const result = compactObservation(observation);
+
+      expect(result.state).toBe(state);
+      expect(result.state.activeTab).toStrictEqual(state.activeTab);
+    });
+
+    it('works when state.activeTab is undefined (backward compat)', () => {
+      const state = {
+        isLoaded: true,
+        currentUrl: 'chrome-extension://extension/home.html',
+        extensionId: 'extension-id',
+        isUnlocked: false,
+        currentScreen: 'unlock',
+        accountAddress: null,
+        networkName: null,
+        chainId: null,
+        balance: null,
+      } satisfies StepRecordObservation['state'];
+      const observation = createObservation(
+        [createNode('e1', 'listbox'), ...createOptionRun(6, 2)],
+        { state },
+      );
+
+      const result = compactObservation(observation);
+
+      expect(result.state).toBe(state);
+      expect(result.state.activeTab).toBeUndefined();
+    });
+  });
 });
 
 describe('nodeChanged', () => {
