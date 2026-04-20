@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "635aa5dcb6b31ef877806cd30a6e815de3e6eef1",
+  "prompts": {
+    "fd5dbeda366b7c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_265052f1cffe7ZRGExejJdkch6-dd2fb194-ece0-455a-8e2b-8a4c714b7763",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
