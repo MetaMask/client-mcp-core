@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0]
 
-### Uncategorized
+### Changed
 
 - feat: move from mcp to cli ([#20](https://github.com/MetaMask/client-mcp-core/pull/20))
 
