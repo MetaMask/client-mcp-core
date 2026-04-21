@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Changed
+
+- feat: move from mcp to cli ([#20](https://github.com/MetaMask/client-mcp-core/pull/20))
+
 ## [0.1.1]
 
 ### Uncategorized
@@ -19,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/MetaMask/client-mcp-core/releases/tag/v0.1.0
