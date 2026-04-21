@@ -55,6 +55,11 @@ export type ExtensionState = {
   networkName: string | null;
   chainId: number | null;
   balance: string | null;
+  activeTab?: {
+    role: string;
+    url: string;
+    title?: string;
+  };
 };
 
 export type LaunchOptions = {

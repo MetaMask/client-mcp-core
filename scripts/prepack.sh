@@ -9,3 +9,5 @@ if [[ -n $SKIP_PREPACK ]]; then
 fi
 
 yarn build
+
+chmod +x dist/cli/mm.cjs

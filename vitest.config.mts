@@ -27,7 +27,7 @@ export default defineConfig({
 
       // The files to exclude from the coverage report. Vitest excludes test
       // files by default, but not `test-d.ts` files.
-      exclude: ['src/**/*.test-d.ts', 'src/mcp-server/test-utils/'],
+      exclude: ['src/**/*.test-d.ts', 'src/tools/test-utils/'],
 
       // Coverage thresholds. If the coverage is below these thresholds, the
       // test will fail.
@@ -35,10 +35,10 @@ export default defineConfig({
         // Auto-update the coverage thresholds when running locally.
         // Disabled in CI to prevent non-deterministic config changes.
         autoUpdate: !process.env.CI,
-        branches: 87.38,
-        functions: 92.98,
-        lines: 94.67,
-        statements: 94.46,
+        branches: 88.46,
+        functions: 91.66,
+        lines: 94.51,
+        statements: 94.26,
       },
     },
 

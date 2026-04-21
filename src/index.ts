@@ -2,26 +2,36 @@
 export type * from './capabilities/types.js';
 export * from './capabilities/context.js';
 
-// MCP Server - Session Manager Interface
-export * from './mcp-server/session-manager.js';
+// Session Manager Interface (transport-agnostic)
+export type {
+  ISessionManager,
+  TrackedPage,
+  SessionLaunchInput,
+  SessionLaunchResult,
+  SessionScreenshotOptions,
+} from './server/session-manager.js';
 
-// MCP Server - Server
-export * from './mcp-server/server.js';
+// Core Components
+export * from './knowledge-store/knowledge-store.js';
+export * from './tools/utils/discovery.js';
+export * from './validation/schemas.js';
+export * from './knowledge-store/tokenization.js';
 
-// MCP Server - Core Components
-export * from './mcp-server/knowledge-store.js';
-export * from './mcp-server/discovery.js';
-export * from './mcp-server/schemas.js';
-export * from './mcp-server/tools/definitions.js';
-export * from './mcp-server/tokenization.js';
+// Types
+export * from './tools/types';
 
-// MCP Server - Types
-export * from './mcp-server/types';
+// HTTP Server Types
+export type * from './types/http.js';
+export type { MmClientCliConfig } from './cli/mm.js';
+export * from './tools/registry.js';
 
-// MCP Server - Utils
-export * from './mcp-server/utils';
+// Server utilities
+export * from './server/request-queue.js';
+export * from './server/port-allocator.js';
+export * from './server/daemon-state.js';
+export * from './server/create-server.js';
 
-// Shared utilities
+// Utils
 export * from './utils';
 
 // Launcher utilities
@@ -30,26 +40,5 @@ export * from './launcher/extension-readiness.js';
 export * from './launcher/console-error-buffer.js';
 export * from './launcher/retry.js';
 
-// MCP Server - Tool Handlers
-export * from './mcp-server/tools/build.js';
-export * from './mcp-server/tools/launch.js';
-export * from './mcp-server/tools/cleanup.js';
-export * from './mcp-server/tools/state.js';
-export * from './mcp-server/tools/seeding.js';
-export * from './mcp-server/tools/interaction.js';
-export * from './mcp-server/tools/navigation.js';
-export * from './mcp-server/tools/discovery-tools.js';
-export * from './mcp-server/tools/screenshot.js';
-export * from './mcp-server/tools/knowledge.js';
-export * from './mcp-server/tools/batch.js';
-export * from './mcp-server/tools/context.js';
-export * from './mcp-server/tools/clipboard.js';
-
-// Run tool utility
-export * from './mcp-server/tools/run-tool.js';
-
 // Error classification
-export * from './mcp-server/tools/error-classification.js';
-
-// Helpers
-export * from './mcp-server/tools/helpers.js';
+export * from './tools/error-classification.js';

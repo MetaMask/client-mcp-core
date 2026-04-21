@@ -20,7 +20,6 @@ describe('isE2EConfig', () => {
       environment: 'e2e',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       artifactsDir: './test-artifacts',
       defaultChainId: 1337,
       ports: {
@@ -54,7 +53,6 @@ describe('isE2EConfig', () => {
       environment: 'prod',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       defaultChainId: 1,
     };
 
@@ -93,7 +91,6 @@ describe('isProdConfig', () => {
       environment: 'prod',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       artifactsDir: './artifacts',
       defaultChainId: 1,
     };
@@ -119,7 +116,6 @@ describe('isProdConfig', () => {
       environment: 'e2e',
       extensionName: 'MetaMask',
       defaultPassword: 'password123',
-      toolPrefix: 'mm',
       artifactsDir: './test-artifacts',
       defaultChainId: 1337,
       ports: {
@@ -436,5 +432,36 @@ describe('hasCapability', () => {
     expect(hasCapability(context, 'contractSeeding')).toBe(true);
     expect(hasCapability(context, 'stateSnapshot')).toBe(true);
     expect(hasCapability(context, 'mockServer')).toBe(true);
+  });
+});
+
+describe('WorkflowContext with allocatedPorts', () => {
+  it('accepts allocatedPorts with port mappings', () => {
+    const context: WorkflowContext = {
+      config: {
+        environment: 'e2e',
+        extensionName: 'MetaMask',
+      },
+      allocatedPorts: {
+        anvil: 3000,
+        fixture: 4000,
+      },
+    };
+
+    expect(context.allocatedPorts).toStrictEqual({
+      anvil: 3000,
+      fixture: 4000,
+    });
+  });
+
+  it('allows WorkflowContext without allocatedPorts (field is optional)', () => {
+    const context: WorkflowContext = {
+      config: {
+        environment: 'e2e',
+        extensionName: 'MetaMask',
+      },
+    };
+
+    expect(context.allocatedPorts).toBeUndefined();
   });
 });
