@@ -1,0 +1,14 @@
+CHANGELOG.md
+  h_bf2df3051e8d1a 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "a94a7b5b919deeb46f80db2519c9cb861db41505",
+  "prompts": {},
+  "humans": {
+    "h_bf2df3051e8d1a": {
+      "author": "cryptotavares"
+    }
+  }
+}
