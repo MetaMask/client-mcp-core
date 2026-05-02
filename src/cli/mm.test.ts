@@ -29,6 +29,7 @@ import {
   discoverDaemon,
   autoStartDaemon,
   handleServe,
+  handleStop,
   sleep,
   main,
 } from './mm.js';
@@ -922,6 +923,46 @@ describe('sendRequest', () => {
     );
     expect(process.exit).toHaveBeenCalledWith(1);
   });
+
+  it('merges observations into object result', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        result: { action: 'clicked' },
+        observations: { state: 'home' },
+      }),
+    } as Response);
+
+    await sendRequest(3000, 'POST', '/tool/click', { a11yRef: 'e1' });
+
+    const output = (stdoutSpy.mock.calls[0] as string[])[0];
+    const parsed = JSON.parse(output);
+    expect(parsed).toStrictEqual({
+      action: 'clicked',
+      observations: { state: 'home' },
+    });
+  });
+
+  it('wraps non-object result when observations are present', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        result: 'simple string',
+        observations: { state: 'home' },
+      }),
+    } as Response);
+
+    await sendRequest(3000, 'POST', '/tool/click', { a11yRef: 'e1' });
+
+    const output = (stdoutSpy.mock.calls[0] as string[])[0];
+    const parsed = JSON.parse(output);
+    expect(parsed).toStrictEqual({
+      result: 'simple string',
+      observations: { state: 'home' },
+    });
+  });
 });
 
 describe('routeCommand', () => {
@@ -1734,6 +1775,188 @@ describe('main', () => {
 
     process.argv = origArgv;
   });
+
+  it('routes stop command to handleStop', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce(null);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'stop'];
+
+    await main();
+
+    expect(stderrSpy).toHaveBeenCalledWith('No daemon is running.\n');
+    process.argv = origArgv;
+  });
+
+  it('routes stop --force command to handleStop with force', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce(null);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'stop', '--force'];
+
+    await main();
+
+    expect(stderrSpy).toHaveBeenCalledWith('No daemon is running.\n');
+    process.argv = origArgv;
+  });
+
+  it('routes serve command', async () => {
+    const { readDaemonState, isDaemonAlive } =
+      await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce({
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    });
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'serve'];
+
+    await expect(main()).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('daemon already running'),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('routes launch command through discoverDaemon', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch'];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('routes cleanup command through discoverDaemon', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: {} }),
+    } as Response);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'cleanup'];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/cleanup',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('routes cleanup --shutdown command', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: {} }),
+    } as Response);
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation(vi.fn() as unknown as typeof process.kill);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'cleanup', '--shutdown'];
+
+    await main();
+
+    expect(killSpy).toHaveBeenCalledWith(123, 'SIGTERM');
+
+    process.argv = origArgv;
+    killSpy.mockRestore();
+  });
+
+  it('routes general commands through discoverDaemon and routeCommand', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { status: 'running' } }),
+    } as Response);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'status'];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/status',
+      expect.objectContaining({ method: 'GET' }),
+    );
+
+    process.argv = origArgv;
+  });
 });
 
 describe('type command --selector/--testid text resolution', () => {
@@ -1864,6 +2087,147 @@ describe('handleServe', () => {
     await promise;
 
     expect(removeDaemonState).toHaveBeenCalledWith('/root');
+  });
+});
+
+describe('handleStop', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('prints message and returns when no daemon state exists', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce(null);
+
+    await handleStop('/root', false);
+
+    expect(stderrSpy).toHaveBeenCalledWith('No daemon is running.\n');
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns without error when no daemon state exists and --force is set', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce(null);
+
+    await handleStop('/root', true);
+
+    expect(stderrSpy).toHaveBeenCalledWith('No daemon is running.\n');
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('sends cleanup, shuts down daemon, and prints confirmation when alive', async () => {
+    const { readDaemonState, isDaemonAlive, removeDaemonState } =
+      await import('../server/daemon-state.js');
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation(vi.fn() as unknown as typeof process.kill);
+
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: {} }),
+    } as Response);
+
+    await handleStop('/root', false);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/cleanup',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(killSpy).toHaveBeenCalledWith(123, 'SIGTERM');
+    expect(removeDaemonState).toHaveBeenCalledWith('/root');
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    expect(stdoutSpy).toHaveBeenCalledWith(
+      'Daemon stopped (was PID 123 on port 3000).\n',
+    );
+
+    killSpy.mockRestore();
+  });
+
+  it('still shuts down when cleanup request throws', async () => {
+    const { readDaemonState, isDaemonAlive, removeDaemonState } =
+      await import('../server/daemon-state.js');
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation(vi.fn() as unknown as typeof process.kill);
+
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+
+    await handleStop('/root', false);
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(killSpy).toHaveBeenCalledWith(123, 'SIGTERM');
+    expect(removeDaemonState).toHaveBeenCalledWith('/root');
+    expect(stdoutSpy).toHaveBeenCalledWith(
+      'Daemon stopped (was PID 123 on port 3000).\n',
+    );
+
+    killSpy.mockRestore();
+  });
+
+  it('exits with error for stale state without --force', async () => {
+    const { readDaemonState, isDaemonAlive } =
+      await import('../server/daemon-state.js');
+
+    const mockState = {
+      port: 3000,
+      pid: 99999,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(false);
+
+    await expect(handleStop('/root', false)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('mm stop --force'),
+    );
+  });
+
+  it('removes stale state file with --force', async () => {
+    const { readDaemonState, isDaemonAlive, removeDaemonState } =
+      await import('../server/daemon-state.js');
+
+    const mockState = {
+      port: 3000,
+      pid: 99999,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(false);
+
+    await handleStop('/root', true);
+
+    expect(removeDaemonState).toHaveBeenCalledWith('/root');
+    expect(stdoutSpy).toHaveBeenCalledWith('Removed stale daemon state.\n');
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });
 
