@@ -148,14 +148,18 @@ export async function main(): Promise<void> {
   const args = remainingArgs;
   const command = args[0];
 
-  // mm serve manages daemon lifecycle directly (no discovery needed)
   if (command === 'serve') {
     const background = args.includes('--background');
     await handleServe(worktreeRoot, background);
     return;
   }
 
-  // Discover existing daemon or auto-start for launch
+  if (command === 'stop') {
+    const force = args.includes('--force');
+    await handleStop(worktreeRoot, force);
+    return;
+  }
+
   const daemonState = await discoverDaemon(worktreeRoot, command);
 
   if (command === 'launch') {
@@ -605,6 +609,61 @@ export function isTransientError(error: unknown): boolean {
 }
 
 /**
+ * Low-level HTTP transport to the daemon. Single attempt, no retries,
+ * no stdout/stderr output, no process.exit.
+ *
+ * @param port - The daemon HTTP server port.
+ * @param method - The HTTP method to use.
+ * @param requestPath - The URL path for the request.
+ * @param body - The request body payload, or null for no body.
+ * @param timeoutMs - Optional override for the abort timeout in milliseconds.
+ * @returns The parsed JSON response body.
+ */
+export async function daemonFetch(
+  port: number,
+  method: string,
+  requestPath: string,
+  body: unknown,
+  timeoutMs?: number,
+): Promise<Record<string, unknown>> {
+  const commandName = requestPath.split('/').pop() ?? '';
+  const timeout =
+    timeoutMs ??
+    COMMAND_TIMEOUTS_MS[commandName] ??
+    COMMAND_TIMEOUTS_MS.default;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const headers: Record<string, string> = {};
+    if (body !== null) {
+      headers['Content-Type'] = 'application/json';
+    }
+    const options: RequestInit = {
+      method,
+      signal: controller.signal,
+      headers,
+      ...(body === null ? {} : { body: JSON.stringify(body) }),
+    };
+    const response = await fetch(
+      `http://127.0.0.1:${port}${requestPath}`,
+      options,
+    );
+    const data = (await response.json()) as Record<string, unknown>;
+
+    if (!response.ok || data.ok === false) {
+      const errorData = data.error as { message?: string } | undefined;
+      throw new Error(errorData?.message ?? 'Request failed');
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Sends an HTTP request to the daemon and prints the response.
  * Retries transient network errors (ECONNREFUSED, ECONNRESET, etc.)
  * with linear backoff up to SEND_MAX_RETRIES times.
@@ -631,33 +690,8 @@ export async function sendRequest(
       await sleep(SEND_RETRY_BASE_DELAY_MS * attempt);
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-
     try {
-      const headers: Record<string, string> = {};
-      if (body !== null) {
-        headers['Content-Type'] = 'application/json';
-      }
-      const options: RequestInit = {
-        method,
-        signal: controller.signal,
-        headers,
-        ...(body === null ? {} : { body: JSON.stringify(body) }),
-      };
-      const response = await fetch(
-        `http://127.0.0.1:${port}${requestPath}`,
-        options,
-      );
-      const data = (await response.json()) as Record<string, unknown>;
-
-      if (!response.ok || data.ok === false) {
-        const errorData = data.error as { message?: string } | undefined;
-        process.stderr.write(
-          `Error: ${errorData?.message ?? 'Request failed'}\n`,
-        );
-        process.exit(1);
-      }
+      const data = await daemonFetch(port, method, requestPath, body, timeout);
 
       const result = data.result ?? data;
       const observations = data.observations as
@@ -688,15 +722,16 @@ export async function sendRequest(
         continue;
       }
 
-      process.stderr.write(`Error: ${String(error)}\n`);
+      const errorText = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Error: ${errorText}\n`);
       process.exit(1);
-    } finally {
-      clearTimeout(timer);
     }
   }
 
+  const lastErrorText =
+    lastError instanceof Error ? lastError.message : String(lastError);
   process.stderr.write(
-    `Error: request failed after ${SEND_MAX_RETRIES + 1} attempts: ${String(lastError)}\n`,
+    `Error: request failed after ${SEND_MAX_RETRIES + 1} attempts: ${lastErrorText}\n`,
   );
   process.exit(1);
 }
@@ -829,6 +864,58 @@ export async function handleServe(
       resolve();
     });
   });
+}
+
+/**
+ * Stops the daemon, optionally cleaning up the browser session first.
+ *
+ * Behavior:
+ * - No state file: prints "no daemon running" and exits 0 (idempotent).
+ * - Daemon alive: sends best-effort POST /cleanup, then calls shutdownDaemon().
+ * - State file exists but daemon is dead (stale):
+ *   - With --force: removes the stale state file.
+ *   - Without --force: prints error suggesting --force, exits 1.
+ *
+ * @param worktreeRoot - The git worktree root directory.
+ * @param force - Whether to force-remove stale state files.
+ */
+export async function handleStop(
+  worktreeRoot: string,
+  force: boolean,
+): Promise<void> {
+  const state = await readDaemonState(worktreeRoot);
+
+  if (!state) {
+    process.stderr.write('No daemon is running.\n');
+    return;
+  }
+
+  const alive = await isDaemonAlive(state);
+
+  if (alive) {
+    try {
+      await daemonFetch(state.port, 'POST', '/cleanup', {}, 5_000);
+    } catch {
+      /* best-effort — daemon shutdown proceeds regardless */
+    }
+    await shutdownDaemon(worktreeRoot, state);
+    process.stdout.write(
+      `Daemon stopped (was PID ${state.pid} on port ${state.port}).\n`,
+    );
+    return;
+  }
+
+  if (force) {
+    await removeDaemonState(worktreeRoot);
+    process.stdout.write('Removed stale daemon state.\n');
+    return;
+  }
+
+  process.stderr.write(
+    'Error: daemon is not running but .mm-server state file exists (stale).\n' +
+      'Use `mm stop --force` to remove the stale state.\n',
+  );
+  process.exit(1);
 }
 
 /**
@@ -1075,6 +1162,7 @@ Lifecycle:
   mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
   mm cleanup [--shutdown]
   mm status
+  mm stop [--force]
   mm serve [--background]
   mm build [--force]
 
