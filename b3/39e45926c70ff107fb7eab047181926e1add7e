@@ -1,0 +1,28 @@
+src/tools/utils/cdp.ts
+  df57433d60760f0a 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "b339e45926c70ff107fb7eab047181926e1add7e",
+  "prompts": {
+    "df57433d60760f0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_206efd8a7ffejZGGCHYg0wiT1B-5c2e7135-2e27-456d-87ce-8a50aa98c2c5",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 1404,
+      "total_deletions": 159,
+      "accepted_lines": 1404,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_bf2df3051e8d1a": {
+      "author": "cryptotavares"
+    }
+  }
+}
