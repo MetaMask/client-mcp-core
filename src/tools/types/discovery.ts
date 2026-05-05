@@ -62,5 +62,7 @@ export type RawA11yNode = {
   disabled?: boolean;
   checked?: boolean | 'mixed';
   expanded?: boolean;
+  backendDOMNodeId?: number;
+  ignored?: boolean;
   children?: RawA11yNode[];
 };

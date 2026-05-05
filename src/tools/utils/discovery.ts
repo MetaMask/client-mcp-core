@@ -1,5 +1,6 @@
-import type { Page, Locator } from '@playwright/test';
+import type { Page, Locator, CDPSession } from '@playwright/test';
 
+import { withCdpSession } from './cdp.js';
 import { TEXT_PREVIEW_MAX_LENGTH } from './constants.js';
 import { debugWarn } from '../../utils';
 import type {
@@ -210,6 +211,545 @@ export async function collectTestIds(
   return results;
 }
 
+type CdpAXProperty = {
+  name: string;
+  value?: {
+    value?: unknown;
+  };
+};
+
+type CdpAXNode = {
+  nodeId: string;
+  ignored: boolean;
+  role?: {
+    value?: unknown;
+  };
+  name?: {
+    value?: unknown;
+  };
+  properties?: CdpAXProperty[];
+  parentId?: string;
+  childIds?: string[];
+  backendDOMNodeId?: number;
+};
+
+type RefTarget = {
+  selector: string;
+  backendDOMNodeId?: number;
+  role: string;
+  name: string;
+};
+
+/**
+ * Extracts the normalized ARIA role from a CDP accessibility node.
+ *
+ * @param node The raw CDP accessibility node.
+ * @returns The lower-cased role name, or an empty string when absent.
+ */
+function getRole(node: CdpAXNode): string {
+  return typeof node.role?.value === 'string'
+    ? node.role.value.toLowerCase()
+    : '';
+}
+
+/**
+ * Extracts the accessible name from a CDP accessibility node.
+ *
+ * @param node The raw CDP accessibility node.
+ * @returns The accessible name when present.
+ */
+function getName(node: CdpAXNode): string | undefined {
+  return typeof node.name?.value === 'string' ? node.name.value : undefined;
+}
+
+/**
+ * Coerces a CDP property value into a boolean.
+ *
+ * CDP accessibility properties may arrive as native booleans or as the
+ * string literals `"true"` / `"false"`.
+ *
+ * @param value The raw CDP property value.
+ * @returns The normalized boolean, or undefined when absent/unrecognized.
+ */
+function coerceBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (value === 'true') {
+    return true;
+  }
+
+  if (value === 'false') {
+    return false;
+  }
+
+  return undefined;
+}
+
+/**
+ * Reads a boolean accessibility property from a CDP node.
+ *
+ * @param node The raw CDP accessibility node.
+ * @param propertyName The boolean property to read.
+ * @returns The normalized boolean value when present.
+ */
+function getBooleanProperty(
+  node: CdpAXNode,
+  propertyName: 'disabled' | 'expanded',
+): boolean | undefined {
+  const property = node.properties?.find(
+    (entry) => entry.name === propertyName,
+  );
+  return coerceBoolean(property?.value?.value);
+}
+
+/**
+ * Reads the checked state from a CDP accessibility node.
+ *
+ * @param node The raw CDP accessibility node.
+ * @returns The normalized checked state, including mixed values.
+ */
+function getCheckedProperty(node: CdpAXNode): boolean | 'mixed' | undefined {
+  const property = node.properties?.find((entry) => entry.name === 'checked');
+  const value = property?.value?.value;
+
+  if (value === 'mixed') {
+    return 'mixed';
+  }
+
+  return coerceBoolean(value);
+}
+
+/**
+ * Converts a raw CDP accessibility node into the internal tree shape.
+ *
+ * @param node The raw CDP accessibility node.
+ * @returns The normalized internal accessibility node.
+ */
+function normalizeAxNode(node: CdpAXNode): RawA11yNode {
+  return {
+    role: getRole(node),
+    name: getName(node),
+    disabled: getBooleanProperty(node, 'disabled'),
+    checked: getCheckedProperty(node),
+    expanded: getBooleanProperty(node, 'expanded'),
+    backendDOMNodeId: node.backendDOMNodeId,
+    ignored: node.ignored,
+  };
+}
+
+/**
+ * Rebuilds a nested accessibility tree from CDP's flat AX node list.
+ *
+ * @param nodes The flat CDP accessibility node list.
+ * @returns Root nodes for the reconstructed tree.
+ */
+function buildAxTree(nodes: CdpAXNode[]): RawA11yNode[] {
+  if (nodes.length === 0) {
+    return [];
+  }
+
+  const rawNodesById = new Map<string, RawA11yNode>();
+
+  for (const node of nodes) {
+    rawNodesById.set(node.nodeId, normalizeAxNode(node));
+  }
+
+  for (const node of nodes) {
+    const rawNode = rawNodesById.get(node.nodeId);
+    if (!rawNode || !node.childIds?.length) {
+      continue;
+    }
+
+    const children = node.childIds
+      .map((childId) => rawNodesById.get(childId))
+      .filter((child): child is RawA11yNode => child !== undefined);
+
+    if (children.length > 0) {
+      rawNode.children = children;
+    }
+  }
+
+  return nodes
+    .filter((node) => !node.parentId || !rawNodesById.has(node.parentId))
+    .map((node) => rawNodesById.get(node.nodeId))
+    .filter((node): node is RawA11yNode => node !== undefined);
+}
+
+/**
+ * Resolves a root selector to the backend node id needed by CDP
+ * accessibility APIs, with Playwright auto-waiting.
+ *
+ * Playwright's locator ensures the element is attached before CDP
+ * resolves it, which prevents empty snapshots on late-appearing
+ * elements (modals, popovers).  Element resolution itself uses CDP's
+ * `DOM.querySelector` to stay compatible with LavaMoat-protected pages
+ * where `page.evaluate()` is restricted.
+ *
+ * @param page The Playwright page that owns the target element.
+ * @param cdpSession The active CDP session.
+ * @param rootSelector The CSS selector to resolve.
+ * @returns The backend node id, or null when the selector matches nothing.
+ */
+async function resolveRootBackendNodeId(
+  page: Page,
+  cdpSession: CDPSession,
+  rootSelector: string,
+): Promise<number | null> {
+  try {
+    await page.locator(rootSelector).first().waitFor({ state: 'attached' });
+  } catch {
+    return null;
+  }
+
+  const documentResult = await cdpSession.send('DOM.getDocument', { depth: 0 });
+  const queryResult = await cdpSession.send('DOM.querySelector', {
+    nodeId: documentResult.root.nodeId,
+    selector: rootSelector,
+  });
+
+  if (!queryResult.nodeId) {
+    return null;
+  }
+
+  const describeResult = await cdpSession.send('DOM.describeNode', {
+    nodeId: queryResult.nodeId,
+  });
+
+  return describeResult.node.backendNodeId;
+}
+
+/**
+ * Collects raw accessibility data from CDP and normalizes it into a tree.
+ *
+ * @param page The Playwright page to snapshot.
+ * @param cdpSession The active CDP session.
+ * @param rootSelector Optional CSS selector that scopes the snapshot.
+ * @returns The normalized raw accessibility tree.
+ */
+async function collectRawAxTree(
+  page: Page,
+  cdpSession: CDPSession,
+  rootSelector?: string,
+): Promise<RawA11yNode[]> {
+  await cdpSession.send('Accessibility.enable');
+
+  try {
+    if (!rootSelector) {
+      const result = await cdpSession.send('Accessibility.getFullAXTree');
+      return buildAxTree(result.nodes);
+    }
+
+    const backendNodeId = await resolveRootBackendNodeId(
+      page,
+      cdpSession,
+      rootSelector,
+    );
+    if (backendNodeId === null) {
+      return [];
+    }
+
+    try {
+      const result = await cdpSession.send('Accessibility.queryAXTree', {
+        backendNodeId,
+      });
+      return buildAxTree(result.nodes);
+    } catch (error) {
+      debugWarn(
+        `queryAXTree failed for selector="${rootSelector}", falling back to getPartialAXTree:`,
+        error,
+      );
+      const result = await cdpSession.send('Accessibility.getPartialAXTree', {
+        backendNodeId,
+      });
+      return buildAxTree(result.nodes);
+    }
+  } finally {
+    await cdpSession.send('Accessibility.disable').catch(() => undefined);
+  }
+}
+
+/**
+ * Determines whether a generic-role node is meaningful enough to expose.
+ *
+ * A generic node is only useful to an agent when it carries a non-empty
+ * accessible name — without one, there is no way to build a stable selector
+ * and the agent has no semantic context for what the element represents.
+ *
+ * @param node The normalized accessibility node.
+ * @returns True when the generic node carries a meaningful name.
+ */
+function shouldIncludeGenericNode(node: RawA11yNode): boolean {
+  if (node.role !== 'generic') {
+    return false;
+  }
+
+  return (node.name ?? '').trim().length > 0;
+}
+
+/**
+ * Determines whether a normalized accessibility node should become a ref.
+ *
+ * @param node The normalized accessibility node.
+ * @returns True when the node belongs in the trimmed snapshot.
+ */
+function shouldIncludeNode(node: RawA11yNode): boolean {
+  if (node.ignored) {
+    return false;
+  }
+  return INCLUDED_ROLES_SET.has(node.role) || shouldIncludeGenericNode(node);
+}
+
+/**
+ * Builds the most stable Playwright selector available for a DOM-backed AX node.
+ *
+ * @param cdpSession The active CDP session.
+ * @param backendDOMNodeId The backend DOM node id for the target element.
+ * @returns A Playwright-compatible selector when one can be synthesized.
+ */
+async function buildSelectorFromBackendNode(
+  cdpSession: CDPSession,
+  backendDOMNodeId: number,
+): Promise<string | undefined> {
+  const resolvedNode = await cdpSession.send('DOM.resolveNode', {
+    backendNodeId: backendDOMNodeId,
+    objectGroup: `mm-discovery-${backendDOMNodeId}`,
+  });
+  const { objectId } = resolvedNode.object;
+
+  if (!objectId) {
+    return undefined;
+  }
+
+  try {
+    const selectorResult = await cdpSession.send('Runtime.callFunctionOn', {
+      objectId,
+      returnByValue: true,
+      functionDeclaration: `function() {
+        const escapeCss = (value) => {
+          if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') {
+            return globalThis.CSS.escape(String(value));
+          }
+
+          return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+        };
+
+        if (!(this instanceof Element)) {
+          return null;
+        }
+
+        const testId = this.getAttribute('data-testid');
+        if (testId) {
+          const candidate = '[data-testid="' + escapeCss(testId) + '"]';
+          if (document.querySelectorAll(candidate).length === 1) {
+            return candidate;
+          }
+        }
+
+        if (this.id) {
+          const candidate = '#' + escapeCss(this.id);
+          if (document.querySelectorAll(candidate).length === 1) {
+            return candidate;
+          }
+        }
+
+        const parts = [];
+        let current = this;
+
+        while (current && current instanceof Element) {
+          let selector = current.localName;
+          if (!selector) {
+            return null;
+          }
+
+          if (current.parentElement) {
+            const siblings = Array.from(current.parentElement.children).filter(
+              (sibling) => sibling.localName === current.localName,
+            );
+
+            if (siblings.length > 1) {
+              selector += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
+            }
+          }
+
+          parts.unshift(selector);
+          const joined = parts.join(' > ');
+
+          try {
+            if (document.querySelectorAll(joined).length === 1) {
+              return joined;
+            }
+          } catch {
+            return null;
+          }
+
+          current = current.parentElement;
+        }
+
+        return parts.join(' > ');
+      }`,
+    });
+
+    return typeof selectorResult.result.value === 'string'
+      ? selectorResult.result.value
+      : undefined;
+  } finally {
+    await cdpSession
+      .send('Runtime.releaseObjectGroup', {
+        objectGroup: `mm-discovery-${backendDOMNodeId}`,
+      })
+      .catch(() => undefined);
+  }
+}
+
+/**
+ * Builds the selector target that backs a trimmed accessibility ref.
+ *
+ * Standard included roles (button, link, heading, etc.) use a cheap ARIA
+ * selector built from the role and name — no CDP round-trips required.
+ * Only generic or other non-standard nodes pay the cost of DOM selector
+ * resolution, since they cannot produce a meaningful ARIA selector.
+ *
+ * @param cdpSession The active CDP session.
+ * @param node The normalized accessibility node.
+ * @param role The normalized role for the node.
+ * @param name The accessible name for the node.
+ * @returns The selector target used to populate the ref map.
+ */
+async function buildRefTarget(
+  cdpSession: CDPSession,
+  node: RawA11yNode,
+  role: string,
+  name: string,
+): Promise<RefTarget | null> {
+  if (INCLUDED_ROLES_SET.has(role)) {
+    return {
+      selector: buildA11ySelector(role as IncludedRole, name),
+      backendDOMNodeId: node.backendDOMNodeId,
+      role,
+      name,
+    };
+  }
+
+  let domSelector: string | undefined;
+
+  if (node.backendDOMNodeId !== null && node.backendDOMNodeId !== undefined) {
+    try {
+      domSelector = await buildSelectorFromBackendNode(
+        cdpSession,
+        node.backendDOMNodeId,
+      );
+    } catch (error) {
+      debugWarn(
+        `Failed to resolve DOM selector for backendDOMNodeId=${node.backendDOMNodeId} (role=${role}, name=${name}):`,
+        error,
+      );
+    }
+  }
+
+  const selector =
+    domSelector ?? (name ? `text=${JSON.stringify(name)}` : undefined);
+
+  if (!domSelector && selector) {
+    debugWarn(
+      `Using text= fallback selector for generic node (role=${role}, name=${name}). ` +
+        `DOM resolution failed; targeting by visible text is less stable.`,
+      undefined,
+    );
+  }
+
+  if (!selector) {
+    return null;
+  }
+
+  return {
+    selector,
+    backendDOMNodeId: node.backendDOMNodeId,
+    role,
+    name,
+  };
+}
+
+/**
+ * Trims a normalized AX tree into the public accessibility snapshot shape.
+ *
+ * @param cdpSession The active CDP session.
+ * @param parsedRoots The normalized raw accessibility tree roots.
+ * @returns The trimmed nodes and their backing ref map.
+ */
+async function trimAxTreeToA11yNodes(
+  cdpSession: CDPSession,
+  parsedRoots: RawA11yNode[],
+): Promise<{
+  nodes: A11yNodeTrimmed[];
+  refMap: Map<string, string>;
+}> {
+  const trimmedNodes: A11yNodeTrimmed[] = [];
+  const refMap = new Map<string, string>();
+  let refCounter = 1;
+
+  /**
+   * Walks the normalized tree and emits trimmed nodes with deterministic refs.
+   *
+   * @param node The current node being visited.
+   * @param ancestorPath The semantic ancestor path collected so far.
+   * @returns Resolves once the current subtree has been processed.
+   */
+  async function traverseNode(
+    node: RawA11yNode,
+    ancestorPath: string[],
+  ): Promise<void> {
+    const role = node.role?.toLowerCase() ?? '';
+    const name = node.name ?? '';
+    const isPathNode = role === 'dialog' || role === 'heading';
+    const childPath = isPathNode
+      ? [...ancestorPath, `${role}:${name}`]
+      : ancestorPath;
+
+    if (shouldIncludeNode(node)) {
+      const refTarget = await buildRefTarget(cdpSession, node, role, name);
+
+      if (refTarget) {
+        const ref = `e${refCounter}`;
+        refCounter += 1;
+
+        const trimmedNode: A11yNodeTrimmed = {
+          ref,
+          role,
+          name,
+          path: isPathNode ? childPath : ancestorPath,
+        };
+
+        if (node.disabled !== undefined) {
+          trimmedNode.disabled = node.disabled;
+        }
+        if (node.checked !== undefined) {
+          trimmedNode.checked = node.checked === true;
+        }
+        if (node.expanded !== undefined) {
+          trimmedNode.expanded = node.expanded;
+        }
+
+        trimmedNodes.push(trimmedNode);
+        refMap.set(ref, refTarget.selector);
+      }
+    }
+
+    if (node.children) {
+      for (const child of node.children) {
+        await traverseNode(child, childPath);
+      }
+    }
+  }
+
+  for (const root of parsedRoots) {
+    await traverseNode(root, []);
+  }
+
+  return { nodes: trimmedNodes, refMap };
+}
+
 /**
  * Collect a trimmed accessibility tree snapshot with deterministic refs.
  *
@@ -224,89 +764,25 @@ export async function collectTrimmedA11ySnapshot(
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
 }> {
-  const locator = rootSelector
-    ? page.locator(rootSelector).first()
-    : page.locator('body').first();
+  return withCdpSession(page, async (cdpSession) => {
+    const parsedRoots = await collectRawAxTree(page, cdpSession, rootSelector);
 
-  const snapshotYaml: string = await locator.ariaSnapshot();
-
-  if (!snapshotYaml) {
-    return { nodes: [], refMap: new Map() };
-  }
-
-  const parsedRoots = parseAriaSnapshotYaml(snapshotYaml);
-
-  if (parsedRoots.length === 0) {
-    return { nodes: [], refMap: new Map() };
-  }
-
-  const trimmedNodes: A11yNodeTrimmed[] = [];
-  const refMap = new Map<string, string>();
-  let refCounter = 1;
-
-  /**
-   * Recursively traverse accessibility tree and collect included roles.
-   *
-   * @param node The current accessibility node to process
-   * @param ancestorPath The path of ancestor nodes for context
-   */
-  function traverseNode(node: RawA11yNode, ancestorPath: string[]): void {
-    const role = node.role?.toLowerCase() ?? '';
-    const name = node.name ?? '';
-
-    if (INCLUDED_ROLES_SET.has(role)) {
-      const ref = `e${refCounter}`;
-      refCounter += 1;
-      const currentPath = [...ancestorPath];
-
-      if (role === 'dialog' || role === 'heading') {
-        currentPath.push(`${role}:${name}`);
-      }
-
-      const trimmedNode: A11yNodeTrimmed = {
-        ref,
-        role,
-        name,
-        path: currentPath,
-      };
-
-      if (node.disabled !== undefined) {
-        trimmedNode.disabled = node.disabled;
-      }
-      if (node.checked !== undefined) {
-        trimmedNode.checked = node.checked === true;
-      }
-      if (node.expanded !== undefined) {
-        trimmedNode.expanded = node.expanded;
-      }
-
-      trimmedNodes.push(trimmedNode);
-
-      const selector = buildA11ySelector(role as IncludedRole, name);
-      refMap.set(ref, selector);
+    if (parsedRoots.length === 0) {
+      return { nodes: [], refMap: new Map() };
     }
 
-    const updatedPath =
-      role === 'dialog' || role === 'heading'
-        ? [...ancestorPath, `${role}:${name}`]
-        : ancestorPath;
+    const { nodes, refMap } = await trimAxTreeToA11yNodes(
+      cdpSession,
+      parsedRoots,
+    );
 
-    if (node.children) {
-      for (const child of node.children) {
-        traverseNode(child, updatedPath);
-      }
-    }
-  }
+    await enrichNodesWithDOMContext(page, nodes, refMap);
 
-  for (const root of parsedRoots) {
-    traverseNode(root, []);
-  }
-
-  await enrichNodesWithDOMContext(page, trimmedNodes, refMap);
-
-  const collapsedNodes = collapseIdenticalRuns(trimmedNodes);
-
-  return { nodes: collapsedNodes, refMap };
+    return {
+      nodes: collapseIdenticalRuns(nodes),
+      refMap,
+    };
+  });
 }
 
 const GENERIC_NAME_MAX_LENGTH = 20;
@@ -334,7 +810,10 @@ async function enrichNodesWithDOMContext(
   refMap: Map<string, string>,
 ): Promise<void> {
   const candidates = nodes.filter(
-    (node) => !node.name || node.name.length <= GENERIC_NAME_MAX_LENGTH,
+    (node) =>
+      node.role === 'generic' ||
+      !node.name ||
+      node.name.length <= GENERIC_NAME_MAX_LENGTH,
   );
 
   if (candidates.length === 0) {
