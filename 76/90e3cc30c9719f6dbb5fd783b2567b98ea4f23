@@ -1,0 +1,41 @@
+src/tools/clipboard.ts
+  df57433d60760f0a 2,27,35,51,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "7690e3cc30c9719f6dbb5fd783b2567b98ea4f23",
+  "prompts": {
+    "df57433d60760f0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_206efd8a7ffejZGGCHYg0wiT1B-5c2e7135-2e27-456d-87ce-8a50aa98c2c5",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1383,
+      "overriden_lines": 0
+    },
+    "e7ec40d5b7f5db35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_206efd8a7ffejZGGCHYg0wiT1B-aaf11630-6987-4a05-83d0-1c3e406ce50d",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 642,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_bf2df3051e8d1a": {
+      "author": "cryptotavares"
+    }
+  }
+}
