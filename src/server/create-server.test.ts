@@ -1728,3 +1728,163 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations).toBeUndefined();
   });
 });
+
+describe('ToolHooks', () => {
+  let server: ServerInstance;
+  let state: DaemonState;
+  let hooks: {
+    onToolStart: ReturnType<typeof vi.fn>;
+    onToolEnd: ReturnType<typeof vi.fn>;
+    onToolError: ReturnType<typeof vi.fn>;
+    onSessionStart: ReturnType<typeof vi.fn>;
+    onSessionEnd: ReturnType<typeof vi.fn>;
+    onServerStart: ReturnType<typeof vi.fn>;
+    onServerStop: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(async () => {
+    await fs.mkdir(tmpDir, { recursive: true });
+    hooks = {
+      onToolStart: vi.fn(),
+      onToolEnd: vi.fn(),
+      onToolError: vi.fn(),
+      onSessionStart: vi.fn(),
+      onSessionEnd: vi.fn(),
+      onServerStart: vi.fn(),
+      onServerStop: vi.fn(),
+    };
+    server = createServer(buildConfig({ hooks }));
+    state = await server.start();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('calls onServerStart after daemon starts', () => {
+    expect(hooks.onServerStart).toHaveBeenCalledWith(
+      expect.objectContaining({ port: state.port, pid: process.pid }),
+    );
+  });
+
+  it('calls onServerStop during shutdown', async () => {
+    await server.stop();
+    expect(hooks.onServerStop).toHaveBeenCalled();
+  });
+
+  it('calls onToolStart and onToolEnd for a successful tool call', async () => {
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/get_context`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(hooks.onToolStart).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: 'get_context' }),
+    );
+    expect(hooks.onToolEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'get_context',
+        ok: true,
+        durationMs: expect.any(Number),
+      }),
+    );
+  });
+
+  it('calls onToolEnd with ok=false when a tool returns an error', async () => {
+    const failingManager = createMockSessionManager();
+    failingManager.hasActiveSession.mockReturnValue(true);
+    failingManager.cleanup.mockResolvedValue(false);
+
+    const failServer = createServer(
+      buildConfig({
+        hooks,
+        sessionManager:
+          failingManager as unknown as ServerConfig['sessionManager'],
+      }),
+    );
+    const failState = await failServer.start();
+
+    failingManager.launch.mockRejectedValue(new Error('launch exploded'));
+    await httpRequest(`http://127.0.0.1:${failState.port}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: true }),
+    });
+
+    expect(hooks.onToolEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'launch',
+        ok: false,
+      }),
+    );
+
+    await failServer.stop();
+  });
+
+  it('calls onSessionStart after a successful launch', async () => {
+    await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(hooks.onSessionStart).toHaveBeenCalledWith(
+      'test-session',
+      expect.any(Object),
+    );
+  });
+
+  it('calls onSessionEnd after cleanup', async () => {
+    await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(hooks.onSessionEnd).toHaveBeenCalledWith('test-session');
+  });
+
+  it('does not break tool execution when a hook throws', async () => {
+    hooks.onToolStart.mockImplementation(() => {
+      throw new Error('hook exploded');
+    });
+    hooks.onToolEnd.mockImplementation(() => {
+      throw new Error('hook exploded');
+    });
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/get_context`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as { ok: boolean };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+  });
+
+  it('works identically when hooks is undefined', async () => {
+    const noHookServer = createServer(buildConfig());
+    const noHookState = await noHookServer.start();
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${noHookState.port}/tool/get_context`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as { ok: boolean };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+
+    await noHookServer.stop();
+  });
+});
