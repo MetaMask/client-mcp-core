@@ -1,0 +1,14 @@
+CHANGELOG.md
+  h_d6a04d82b61d5e 12,15-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "ace93ba29484e7ced1dba85a9fddea45ff27b916",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
