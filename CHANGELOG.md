@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Uncategorized
+
+- feat: replace playwright area snapshot with cdp ax tree ([#24](https://github.com/MetaMask/client-mcp-core/pull/24))
+- feat: add `mm stop` command and extract `daemonFetch` transport helper ([#23](https://github.com/MetaMask/client-mcp-core/pull/23))
+
 ## [0.2.0]
 
 ### Changed
@@ -25,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/MetaMask/client-mcp-core/releases/tag/v0.1.0
