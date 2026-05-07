@@ -1,4 +1,5 @@
 import type { ClipboardInput, ClipboardResult } from './types';
+import { withCdpSession } from './utils/cdp.js';
 import {
   createToolError,
   createToolSuccess,
@@ -23,9 +24,7 @@ export async function clipboardTool(
   }
 
   try {
-    const cdpSession = await context.page.context().newCDPSession(context.page);
-
-    try {
+    return await withCdpSession(context.page, async (cdpSession) => {
       if (input.action === 'write') {
         await cdpSession.send('Runtime.evaluate', {
           expression: `navigator.clipboard.writeText(${JSON.stringify(input.text)})`,
@@ -33,7 +32,7 @@ export async function clipboardTool(
           userGesture: true,
         });
 
-        return createToolSuccess({
+        return createToolSuccess<ClipboardResult>({
           action: 'write',
           success: true,
           text: input.text,
@@ -49,14 +48,12 @@ export async function clipboardTool(
       const clipboardText =
         result.result?.value ?? result.result?.description ?? '';
 
-      return createToolSuccess({
+      return createToolSuccess<ClipboardResult>({
         action: 'read',
         success: true,
         text: clipboardText as string,
       });
-    } finally {
-      await cdpSession.detach().catch(() => undefined);
-    }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 

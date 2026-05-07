@@ -400,7 +400,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 
 ### Accessibility References
 
-The core uses Playwright's `ariaSnapshot()` to build a deterministic reference map of interactive elements. Each element gets a short ref like `e1`, `e2`, etc., mapped to an ARIA selector.
+The core uses Chrome DevTools Protocol accessibility APIs to build a deterministic reference map of interactive and meaningful accessibility nodes. Each element gets a short ref like `e1`, `e2`, etc., mapped to a Playwright-compatible selector.
 
 Agents call `describe_screen` to get the current reference map, then use refs for interaction:
 

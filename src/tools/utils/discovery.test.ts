@@ -11,6 +11,7 @@
 import type { Page, Locator } from '@playwright/test';
 import { describe, it, expect, vi } from 'vitest';
 
+import type { RawA11yNode } from '../types';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
@@ -19,13 +20,268 @@ import {
   waitForTarget,
 } from './discovery.js';
 
+type MockAXProperty = {
+  name: string;
+  value: {
+    type: string;
+    value?: unknown;
+  };
+};
+
+type MockAXNode = {
+  nodeId: string;
+  ignored: boolean;
+  role?: { type: string; value: string };
+  name?: { type: string; value: string };
+  properties?: MockAXProperty[];
+  parentId?: string;
+  childIds?: string[];
+  backendDOMNodeId?: number;
+};
+
+type MockDomNode = {
+  nodeId: number;
+  backendNodeId: number;
+  nodeType: number;
+  nodeName: string;
+  localName: string;
+  nodeValue: string;
+  children?: MockDomNode[];
+};
+
+type MockPageWithCdpSession = Page & {
+  mockCdpSession: {
+    send: ReturnType<typeof vi.fn>;
+    detach: ReturnType<typeof vi.fn>;
+  };
+};
+
+function buildAxProperties(node: RawA11yNode): MockAXProperty[] | undefined {
+  const properties: MockAXProperty[] = [];
+
+  if (node.disabled !== undefined) {
+    properties.push({
+      name: 'disabled',
+      value: { type: 'boolean', value: node.disabled },
+    });
+  }
+
+  if (node.checked !== undefined) {
+    properties.push({
+      name: 'checked',
+      value: {
+        type: node.checked === 'mixed' ? 'tristate' : 'boolean',
+        value: node.checked,
+      },
+    });
+  }
+
+  if (node.expanded !== undefined) {
+    properties.push({
+      name: 'expanded',
+      value: { type: 'boolean', value: node.expanded },
+    });
+  }
+
+  return properties.length > 0 ? properties : undefined;
+}
+
+function rawNodesToAxNodes(rawNodes: RawA11yNode[]): MockAXNode[] {
+  const axNodes: MockAXNode[] = [];
+  let nodeIdCounter = 1;
+  let backendNodeIdCounter = 100;
+
+  const visit = (node: RawA11yNode, parentId?: string): string => {
+    const nodeId = `n${nodeIdCounter}`;
+    nodeIdCounter += 1;
+
+    const axNode: MockAXNode = {
+      nodeId,
+      ignored: false,
+      role: node.role ? { type: 'role', value: node.role } : undefined,
+      name:
+        node.name === undefined
+          ? undefined
+          : { type: 'string', value: node.name },
+      properties: buildAxProperties(node),
+      parentId,
+      backendDOMNodeId: backendNodeIdCounter,
+    };
+    backendNodeIdCounter += 1;
+    axNodes.push(axNode);
+
+    const childIds = (node.children ?? []).map((child) => visit(child, nodeId));
+    if (childIds.length > 0) {
+      axNode.childIds = childIds;
+    }
+
+    return nodeId;
+  };
+
+  for (const rawNode of rawNodes) {
+    visit(rawNode);
+  }
+
+  return axNodes;
+}
+
+function createDomNode(
+  nodeId: number,
+  backendNodeId: number,
+  children?: MockDomNode[],
+): MockDomNode {
+  return {
+    nodeId,
+    backendNodeId,
+    nodeType: 1,
+    nodeName: 'DIV',
+    localName: 'div',
+    nodeValue: '',
+    children,
+  };
+}
+
 function createMockPage(
   options: {
     testIds?: { testId: string; visible: boolean; text?: string }[];
     a11ySnapshot?: string | null;
+    axNodes?: MockAXNode[];
+    partialAxNodes?: MockAXNode[];
+    queryAxTreeNodes?: MockAXNode[];
+    fullAxTreeError?: Error;
+    partialAxTreeError?: Error;
+    queryAxTreeError?: Error;
+    selectorNodes?: Record<
+      string,
+      {
+        nodeId: number;
+        backendNodeId: number;
+        subtree?: MockDomNode;
+      }
+    >;
+    domSelectorsByBackendId?: Record<number, string>;
+    resolveNodeErrorIds?: Set<number>;
+    testIdBySelector?: Record<string, string | null>;
+    textBySelector?: Record<string, string | null>;
   } = {},
 ): Page {
-  const { testIds = [], a11ySnapshot = null } = options;
+  const {
+    testIds = [],
+    a11ySnapshot = null,
+    axNodes,
+    partialAxNodes,
+    queryAxTreeNodes,
+    fullAxTreeError,
+    partialAxTreeError,
+    queryAxTreeError,
+    selectorNodes = {},
+    domSelectorsByBackendId = {},
+    resolveNodeErrorIds = new Set<number>(),
+    testIdBySelector = {},
+    textBySelector = {},
+  } = options;
+
+  const resolvedAxNodes =
+    axNodes ??
+    (a11ySnapshot
+      ? rawNodesToAxNodes(parseAriaSnapshotYaml(a11ySnapshot))
+      : []);
+
+  const mockCdpSession = {
+    send: vi
+      .fn()
+      .mockImplementation(
+        async (method: string, params?: Record<string, unknown>) => {
+          switch (method) {
+            case 'Accessibility.enable':
+            case 'Accessibility.disable':
+            case 'Runtime.releaseObjectGroup':
+              return {};
+            case 'Accessibility.getFullAXTree':
+              if (fullAxTreeError) {
+                throw fullAxTreeError;
+              }
+              return { nodes: resolvedAxNodes };
+            case 'Accessibility.getPartialAXTree':
+              if (partialAxTreeError) {
+                throw partialAxTreeError;
+              }
+              return { nodes: partialAxNodes ?? resolvedAxNodes };
+            case 'Accessibility.queryAXTree':
+              if (queryAxTreeError) {
+                throw queryAxTreeError;
+              }
+              return { nodes: queryAxTreeNodes ?? resolvedAxNodes };
+            case 'DOM.getDocument':
+              return { root: { nodeId: 1 } };
+            case 'DOM.querySelector': {
+              const selector = params?.selector;
+              if (typeof selector !== 'string') {
+                return { nodeId: 0 };
+              }
+              return { nodeId: selectorNodes[selector]?.nodeId ?? 0 };
+            }
+            case 'DOM.describeNode': {
+              const nodeId =
+                typeof params?.nodeId === 'number' ? params.nodeId : undefined;
+              const backendNodeId =
+                typeof params?.backendNodeId === 'number'
+                  ? params.backendNodeId
+                  : undefined;
+
+              if (nodeId !== undefined) {
+                const selectorNode = Object.values(selectorNodes).find(
+                  (candidate) => candidate.nodeId === nodeId,
+                );
+
+                if (selectorNode) {
+                  return {
+                    node:
+                      params?.depth === -1 && selectorNode.subtree
+                        ? selectorNode.subtree
+                        : createDomNode(nodeId, selectorNode.backendNodeId),
+                  };
+                }
+              }
+
+              if (backendNodeId !== undefined) {
+                return {
+                  node: createDomNode(backendNodeId, backendNodeId),
+                };
+              }
+
+              return { node: createDomNode(1, 1) };
+            }
+            case 'DOM.resolveNode': {
+              const backendNodeId =
+                typeof params?.backendNodeId === 'number'
+                  ? params.backendNodeId
+                  : 0;
+              if (resolveNodeErrorIds.has(backendNodeId)) {
+                throw new Error(
+                  `Could not find node with given id (${backendNodeId})`,
+                );
+              }
+              return { object: { objectId: `obj-${backendNodeId}` } };
+            }
+            case 'Runtime.callFunctionOn': {
+              const objectId = params?.objectId;
+              const backendNodeId = Number(
+                String(objectId).replace('obj-', ''),
+              );
+              return {
+                result: {
+                  value: domSelectorsByBackendId[backendNodeId] ?? null,
+                },
+              };
+            }
+            default:
+              return {};
+          }
+        },
+      ),
+    detach: vi.fn().mockResolvedValue(undefined),
+  };
 
   const mockLocators = testIds.map((item) => ({
     getAttribute: vi.fn().mockResolvedValue(item.testId),
@@ -33,35 +289,59 @@ function createMockPage(
     textContent: vi.fn().mockResolvedValue(item.text ?? ''),
   }));
 
-  const mockBodyLocator = {
-    ariaSnapshot: vi.fn().mockResolvedValue(a11ySnapshot),
-  };
-
   return {
+    mockCdpSession,
     waitForLoadState: vi.fn().mockResolvedValue(undefined),
+    context: vi.fn().mockReturnValue({
+      newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
+    }),
     locator: vi.fn((selector: string) => {
       if (selector === '[data-testid]') {
         return {
           all: vi.fn().mockResolvedValue(mockLocators),
         };
       }
-      if (selector === 'body') {
-        return {
-          first: vi.fn().mockReturnValue(mockBodyLocator),
-        };
-      }
       if (selector.startsWith('[data-testid="')) {
         const testId = selector.match(/data-testid="([^"]+)"/u)?.[1];
-        return { testId };
+        return {
+          testId,
+          first: vi.fn().mockReturnValue({
+            getAttribute: vi
+              .fn()
+              .mockResolvedValue(testIdBySelector[selector] ?? testId ?? null),
+            textContent: vi
+              .fn()
+              .mockResolvedValue(textBySelector[selector] ?? null),
+          }),
+        };
       }
       if (selector.startsWith('role=')) {
-        return { selector };
+        return {
+          selector,
+          first: vi.fn().mockReturnValue({
+            getAttribute: vi
+              .fn()
+              .mockResolvedValue(testIdBySelector[selector] ?? null),
+            textContent: vi
+              .fn()
+              .mockResolvedValue(textBySelector[selector] ?? null),
+          }),
+        };
       }
       return {
-        first: vi.fn().mockReturnValue(mockBodyLocator),
+        first: vi.fn().mockReturnValue({
+          waitFor: vi.fn().mockResolvedValue(undefined),
+          evaluate: vi.fn().mockResolvedValue(undefined),
+          getAttribute: vi
+            .fn()
+            .mockResolvedValue(testIdBySelector[selector] ?? null),
+          textContent: vi
+            .fn()
+            .mockResolvedValue(textBySelector[selector] ?? null),
+        }),
       };
     }),
-  } as unknown as Page;
+  } as unknown as MockPageWithCdpSession;
 }
 
 function createMockLocator(
@@ -260,9 +540,13 @@ describe('collectTrimmedA11ySnapshot', () => {
     const a11yTree = `- main:\n  - button "Submit"\n  - button "Cancel"`;
 
     const page = createMockPage({ a11ySnapshot: a11yTree });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
 
     const result = await collectTrimmedA11ySnapshot(page);
 
+    expect(mockCdpSession.send).toHaveBeenCalledWith(
+      'Accessibility.getFullAXTree',
+    );
     expect(result.nodes).toHaveLength(2);
     expect(result.nodes[0]).toStrictEqual({
       ref: 'e1',
@@ -278,6 +562,25 @@ describe('collectTrimmedA11ySnapshot', () => {
     });
     expect(result.refMap.get('e1')).toBe('role=button[name="Submit"]');
     expect(result.refMap.get('e2')).toBe('role=button[name="Cancel"]');
+  });
+
+  it('detaches CDP session on success', async () => {
+    const page = createMockPage({ a11ySnapshot: '- button "Submit"' });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+
+    await collectTrimmedA11ySnapshot(page);
+
+    expect(mockCdpSession.detach).toHaveBeenCalled();
+  });
+
+  it('detaches CDP session on failure', async () => {
+    const page = createMockPage({ fullAxTreeError: new Error('CDP failed') });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+
+    await expect(collectTrimmedA11ySnapshot(page)).rejects.toThrowError(
+      'CDP failed',
+    );
+    expect(mockCdpSession.detach).toHaveBeenCalled();
   });
 
   it('filters roles to included set', async () => {
@@ -364,22 +667,115 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 
   it('uses root selector when provided', async () => {
-    const a11yTree = `- dialog:\n  - button "Close"`;
-
-    const mockLocator = {
-      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
-    };
-
-    const page = {
-      locator: vi.fn().mockReturnValue({
-        first: vi.fn().mockReturnValue(mockLocator),
-      }),
-    } as unknown as Page;
+    const page = createMockPage({
+      queryAxTreeNodes: rawNodesToAxNodes(
+        parseAriaSnapshotYaml(`- dialog:\n  - button "Close"`),
+      ),
+      selectorNodes: {
+        '.modal': {
+          nodeId: 7,
+          backendNodeId: 70,
+        },
+      },
+    });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
 
     const result = await collectTrimmedA11ySnapshot(page, '.modal');
 
     expect(page.locator).toHaveBeenCalledWith('.modal');
+    expect(mockCdpSession.send).toHaveBeenCalledWith('DOM.querySelector', {
+      nodeId: 1,
+      selector: '.modal',
+    });
+    expect(mockCdpSession.send).toHaveBeenCalledWith(
+      'Accessibility.queryAXTree',
+      { backendNodeId: 70 },
+    );
     expect(result.nodes).toHaveLength(2);
+  });
+
+  it('falls back to getPartialAXTree when queryAXTree fails', async () => {
+    const subtreeNodes: MockAXNode[] = [
+      {
+        nodeId: 'dialog',
+        ignored: false,
+        role: { type: 'role', value: 'dialog' },
+        name: { type: 'string', value: 'Modal' },
+        childIds: ['button'],
+        backendDOMNodeId: 70,
+      },
+      {
+        nodeId: 'button',
+        ignored: false,
+        role: { type: 'role', value: 'button' },
+        name: { type: 'string', value: 'Close' },
+        parentId: 'dialog',
+        backendDOMNodeId: 80,
+      },
+    ];
+
+    const page = createMockPage({
+      partialAxNodes: subtreeNodes,
+      queryAxTreeError: new Error('queryAXTree unavailable'),
+      selectorNodes: {
+        '.modal': {
+          nodeId: 7,
+          backendNodeId: 70,
+        },
+      },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page, '.modal');
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.nodes[0].name).toBe('Modal');
+    expect(result.nodes[1].name).toBe('Close');
+  });
+
+  it('does not leak ancestor nodes in scoped queryAXTree snapshots', async () => {
+    const subtreeNodes: MockAXNode[] = [
+      {
+        nodeId: 'scoped-root',
+        ignored: false,
+        role: { type: 'role', value: 'generic' },
+        childIds: ['submit', 'cancel'],
+        backendDOMNodeId: 200,
+      },
+      {
+        nodeId: 'submit',
+        ignored: false,
+        role: { type: 'role', value: 'button' },
+        name: { type: 'string', value: 'Submit' },
+        parentId: 'scoped-root',
+        backendDOMNodeId: 201,
+      },
+      {
+        nodeId: 'cancel',
+        ignored: false,
+        role: { type: 'role', value: 'button' },
+        name: { type: 'string', value: 'Cancel' },
+        parentId: 'scoped-root',
+        backendDOMNodeId: 202,
+      },
+    ];
+
+    const page = createMockPage({
+      queryAxTreeNodes: subtreeNodes,
+      selectorNodes: {
+        '.scoped': {
+          nodeId: 10,
+          backendNodeId: 200,
+        },
+      },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page, '.scoped');
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.nodes[0]).toMatchObject({ role: 'button', name: 'Submit' });
+    expect(result.nodes[1]).toMatchObject({ role: 'button', name: 'Cancel' });
+    expect(result.nodes.every((n) => n.role !== 'dialog')).toBe(true);
+    expect(result.nodes.every((n) => n.role !== 'main')).toBe(true);
   });
 
   it('handles nested children recursively', async () => {
@@ -472,26 +868,15 @@ describe('collectTrimmedA11ySnapshot', () => {
 
   it('enriches nodes with short names using testId from DOM', async () => {
     const a11yTree = `- main:\n  - button "x"`;
-    const mockGetAttribute = vi.fn().mockResolvedValue('action-button');
-    const mockTextContent = vi.fn().mockResolvedValue('Click me');
-    const mockBodyLocator = {
-      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
-    };
-
-    const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      locator: vi.fn((selector: string) => {
-        if (selector === 'body') {
-          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
-        }
-        return {
-          first: vi.fn().mockReturnValue({
-            getAttribute: mockGetAttribute,
-            textContent: mockTextContent,
-          }),
-        };
-      }),
-    } as unknown as Page;
+    const page = createMockPage({
+      a11ySnapshot: a11yTree,
+      testIdBySelector: {
+        'role=button[name="x"]': 'action-button',
+      },
+      textBySelector: {
+        'role=button[name="x"]': 'Click me',
+      },
+    });
 
     const result = await collectTrimmedA11ySnapshot(page);
 
@@ -502,24 +887,12 @@ describe('collectTrimmedA11ySnapshot', () => {
 
   it('skips textContent enrichment when text matches the node name', async () => {
     const a11yTree = `- main:\n  - button "maskicon"`;
-    const mockBodyLocator = {
-      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
-    };
-
-    const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      locator: vi.fn((selector: string) => {
-        if (selector === 'body') {
-          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
-        }
-        return {
-          first: vi.fn().mockReturnValue({
-            getAttribute: vi.fn().mockResolvedValue(null),
-            textContent: vi.fn().mockResolvedValue('maskicon'),
-          }),
-        };
-      }),
-    } as unknown as Page;
+    const page = createMockPage({
+      a11ySnapshot: a11yTree,
+      textBySelector: {
+        'role=button[name="maskicon"]': 'maskicon',
+      },
+    });
 
     const result = await collectTrimmedA11ySnapshot(page);
 
@@ -540,16 +913,13 @@ describe('collectTrimmedA11ySnapshot', () => {
 
   it('handles enrichment errors when getAttribute/textContent reject', async () => {
     const a11yTree = `- main:\n  - button "x"`;
-    const mockBodyLocator = {
-      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
-    };
-
     const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      ...createMockPage({ a11ySnapshot: a11yTree }),
       locator: vi.fn((selector: string) => {
-        if (selector === 'body') {
-          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        if (selector === '[data-testid]') {
+          return { all: vi.fn().mockResolvedValue([]) };
         }
+
         return {
           first: vi.fn().mockReturnValue({
             getAttribute: vi.fn().mockRejectedValue(new Error('detached')),
@@ -568,16 +938,13 @@ describe('collectTrimmedA11ySnapshot', () => {
 
   it('handles enrichment errors when locator.first() throws', async () => {
     const a11yTree = `- main:\n  - button "y"`;
-    const mockBodyLocator = {
-      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
-    };
-
     const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      ...createMockPage({ a11ySnapshot: a11yTree }),
       locator: vi.fn((selector: string) => {
-        if (selector === 'body') {
-          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        if (selector === '[data-testid]') {
+          return { all: vi.fn().mockResolvedValue([]) };
         }
+
         return {
           first: vi.fn().mockImplementation(() => {
             throw new Error('locator disposed');
@@ -604,15 +971,11 @@ describe('collectTrimmedA11ySnapshot', () => {
 
     const textValues = ['Rename', 'Account details', 'Hide', 'Remove'];
     let callIdx = 0;
-    const mockBodyLocator = {
-      ariaSnapshot: vi.fn().mockResolvedValue(a11yTree),
-    };
-
     const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+      ...createMockPage({ a11ySnapshot: a11yTree }),
       locator: vi.fn((selector: string) => {
-        if (selector === 'body') {
-          return { first: vi.fn().mockReturnValue(mockBodyLocator) };
+        if (selector === '[data-testid]') {
+          return { all: vi.fn().mockResolvedValue([]) };
         }
         const idx = callIdx;
         callIdx += 1;
@@ -632,6 +995,389 @@ describe('collectTrimmedA11ySnapshot', () => {
     expect(result.nodes).toHaveLength(4);
     expect(result.nodes[0].textContent).toBe('Rename');
     expect(result.nodes[1].textContent).toBe('Account details');
+  });
+
+  it('includes named generic popover items exposed only by the AX tree', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['popover'],
+        },
+        {
+          nodeId: 'popover',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          parentId: 'root',
+          childIds: ['item-1', 'item-2'],
+          backendDOMNodeId: 500,
+        },
+        {
+          nodeId: 'item-1',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Rename account' },
+          parentId: 'popover',
+          backendDOMNodeId: 501,
+        },
+        {
+          nodeId: 'item-2',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Account details' },
+          parentId: 'popover',
+          backendDOMNodeId: 502,
+        },
+      ],
+      domSelectorsByBackendId: {
+        501: '[data-testid="rename-account"]',
+        502: '[data-testid="account-details"]',
+      },
+      textBySelector: {
+        '[data-testid="rename-account"]': 'Rename account',
+        '[data-testid="account-details"]': 'Account details',
+      },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.nodes[0]).toMatchObject({
+      ref: 'e1',
+      role: 'generic',
+      name: 'Rename account',
+    });
+    expect(result.nodes[1]).toMatchObject({
+      ref: 'e2',
+      role: 'generic',
+      name: 'Account details',
+    });
+    expect(result.refMap.get('e1')).toBe('[data-testid="rename-account"]');
+    expect(result.refMap.get('e2')).toBe('[data-testid="account-details"]');
+  });
+
+  it('uses ancestor-path selector when data-testid is not unique', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['item-1', 'item-2'],
+        },
+        {
+          nodeId: 'item-1',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Account A' },
+          parentId: 'root',
+          backendDOMNodeId: 510,
+        },
+        {
+          nodeId: 'item-2',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Account B' },
+          parentId: 'root',
+          backendDOMNodeId: 511,
+        },
+      ],
+      domSelectorsByBackendId: {
+        510: 'div > div:nth-of-type(1) > span',
+        511: 'div > div:nth-of-type(2) > span',
+      },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.refMap.get('e1')).toBe('div > div:nth-of-type(1) > span');
+    expect(result.refMap.get('e2')).toBe('div > div:nth-of-type(2) > span');
+  });
+
+  it('falls back to text selector when selector resolution returns null for a generic node', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['orphan-generic'],
+        },
+        {
+          nodeId: 'orphan-generic',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Unresolvable item' },
+          parentId: 'root',
+          backendDOMNodeId: 520,
+        },
+      ],
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({
+      role: 'generic',
+      name: 'Unresolvable item',
+    });
+    expect(result.refMap.get('e1')).toBe('text="Unresolvable item"');
+  });
+
+  it('excludes unnamed generic wrappers while still traversing their children', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['wrapper'],
+        },
+        {
+          nodeId: 'wrapper',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          parentId: 'root',
+          childIds: ['child-button'],
+          backendDOMNodeId: 600,
+        },
+        {
+          nodeId: 'child-button',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'Continue' },
+          parentId: 'wrapper',
+          backendDOMNodeId: 601,
+        },
+      ],
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({ role: 'button', name: 'Continue' });
+  });
+
+  it('excludes nodes marked as ignored by the browser', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['hidden-btn'],
+        },
+        {
+          nodeId: 'hidden-btn',
+          ignored: true,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'Hidden' },
+          parentId: 'root',
+          backendDOMNodeId: 700,
+        },
+      ],
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(0);
+    expect(result.refMap.size).toBe(0);
+  });
+
+  it('falls back to text selector when DOM.resolveNode fails for a generic node', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['stale-generic'],
+        },
+        {
+          nodeId: 'stale-generic',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Stale item' },
+          parentId: 'root',
+          backendDOMNodeId: 900,
+        },
+      ],
+      resolveNodeErrorIds: new Set([900]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({
+      ref: 'e1',
+      role: 'generic',
+      name: 'Stale item',
+    });
+    expect(result.refMap.get('e1')).toBe('text="Stale item"');
+  });
+
+  it('drops a generic node entirely when DOM resolution fails and no name exists', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['stale-unnamed'],
+        },
+        {
+          nodeId: 'stale-unnamed',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          parentId: 'root',
+          backendDOMNodeId: 910,
+          properties: [
+            { name: 'expanded', value: { type: 'boolean', value: true } },
+          ],
+        },
+      ],
+      resolveNodeErrorIds: new Set([910]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(0);
+    expect(result.refMap.size).toBe(0);
+  });
+
+  it('does not call DOM.resolveNode for included-role nodes', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['btn', 'link', 'heading'],
+        },
+        {
+          nodeId: 'btn',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'Submit' },
+          parentId: 'root',
+          backendDOMNodeId: 920,
+        },
+        {
+          nodeId: 'link',
+          ignored: false,
+          role: { type: 'role', value: 'link' },
+          name: { type: 'string', value: 'Home' },
+          parentId: 'root',
+          backendDOMNodeId: 921,
+        },
+        {
+          nodeId: 'heading',
+          ignored: false,
+          role: { type: 'role', value: 'heading' },
+          name: { type: 'string', value: 'Title' },
+          parentId: 'root',
+          backendDOMNodeId: 922,
+        },
+      ],
+    });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(3);
+    expect(result.refMap.get('e1')).toBe('role=button[name="Submit"]');
+    expect(result.refMap.get('e2')).toBe('role=link[name="Home"]');
+    expect(result.refMap.get('e3')).toBe('role=heading[name="Title"]');
+
+    const resolveNodeCalls = mockCdpSession.send.mock.calls.filter(
+      (call) => call[0] === 'DOM.resolveNode',
+    );
+    expect(resolveNodeCalls).toHaveLength(0);
+  });
+
+  it('still resolves DOM selectors for generic nodes alongside included-role nodes', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['btn', 'generic-item'],
+        },
+        {
+          nodeId: 'btn',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'OK' },
+          parentId: 'root',
+          backendDOMNodeId: 930,
+        },
+        {
+          nodeId: 'generic-item',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          name: { type: 'string', value: 'Menu action' },
+          parentId: 'root',
+          backendDOMNodeId: 931,
+        },
+      ],
+      domSelectorsByBackendId: {
+        931: '[data-testid="menu-action"]',
+      },
+    });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.refMap.get('e1')).toBe('role=button[name="OK"]');
+    expect(result.refMap.get('e2')).toBe('[data-testid="menu-action"]');
+
+    const resolveNodeCalls = mockCdpSession.send.mock.calls.filter(
+      (call) => call[0] === 'DOM.resolveNode',
+    );
+    expect(resolveNodeCalls).toHaveLength(1);
+    expect(resolveNodeCalls[0][1]).toMatchObject({ backendNodeId: 931 });
+  });
+
+  it('includes non-ignored children inside an ignored generic wrapper', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['ignored-wrapper'],
+        },
+        {
+          nodeId: 'ignored-wrapper',
+          ignored: true,
+          role: { type: 'role', value: 'generic' },
+          parentId: 'root',
+          childIds: ['visible-btn'],
+          backendDOMNodeId: 800,
+        },
+        {
+          nodeId: 'visible-btn',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'Visible' },
+          parentId: 'ignored-wrapper',
+          backendDOMNodeId: 801,
+        },
+      ],
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({
+      role: 'button',
+      name: 'Visible',
+    });
   });
 });
 
