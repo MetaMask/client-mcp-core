@@ -281,6 +281,10 @@ export function createServer(config: ServerConfig): ServerInstance {
         uptime: process.uptime(),
         startedAt,
       },
+      session: {
+        active: config.sessionManager.hasActiveSession(),
+        id: config.sessionManager.getSessionId() ?? null,
+      },
       ports: subPorts,
     });
   });
@@ -424,8 +428,11 @@ export function createServer(config: ServerConfig): ServerInstance {
 
     const startTime = Date.now();
     const currentWorkflowContext = workflowContext;
-
     const category = getToolCategory(toolName);
+    const sessionId = config.sessionManager.getSessionId();
+    const hookCtx = { toolName, input: validatedInput, sessionId, category };
+
+    try { config.hooks?.onToolStart?.(hookCtx); } catch { /* fire-and-forget */ }
 
     try {
       const { toolResult, observations } = await queue.enqueue(async () => {
@@ -499,6 +506,8 @@ export function createServer(config: ServerConfig): ServerInstance {
         return { toolResult: result, observations: obs };
       });
 
+      const durationMs = Date.now() - startTime;
+
       await recordToolStep(
         toolName,
         validatedInput,
@@ -507,6 +516,31 @@ export function createServer(config: ServerConfig): ServerInstance {
         toolResult,
         startTime,
       );
+
+      try {
+        config.hooks?.onToolEnd?.({
+          ...hookCtx,
+          result: toolResult,
+          durationMs,
+          ok: Boolean((toolResult as { ok?: boolean }).ok),
+        });
+      } catch { /* fire-and-forget */ }
+
+      if (toolName === 'launch' && (toolResult as { ok?: boolean }).ok) {
+        const launchSessionId = config.sessionManager.getSessionId();
+        if (launchSessionId) {
+          try {
+            config.hooks?.onSessionStart?.(
+              launchSessionId,
+              validatedInput as Record<string, unknown>,
+            );
+          } catch { /* fire-and-forget */ }
+        }
+      }
+
+      if (toolName === 'cleanup' && sessionId) {
+        try { config.hooks?.onSessionEnd?.(sessionId); } catch { /* fire-and-forget */ }
+      }
 
       const includeInResponse = shouldIncludeObservationsInResponse(
         category,
@@ -529,6 +563,9 @@ export function createServer(config: ServerConfig): ServerInstance {
         lastObservation = observations;
       }
     } catch (error) {
+      const errorDurationMs = Date.now() - startTime;
+      const errorMessage = extractErrorMessage(error);
+
       await recordToolStep(
         toolName,
         validatedInput,
@@ -536,7 +573,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           ok: false,
           error: {
             code: 'TOOL_EXECUTION_FAILED',
-            message: extractErrorMessage(error),
+            message: errorMessage,
           },
         },
         undefined,
@@ -544,11 +581,19 @@ export function createServer(config: ServerConfig): ServerInstance {
         startTime,
       );
 
+      try {
+        config.hooks?.onToolError?.({
+          ...hookCtx,
+          error: errorMessage,
+          durationMs: errorDurationMs,
+        });
+      } catch { /* fire-and-forget */ }
+
       res.status(500).json({
         ok: false,
         error: {
           code: 'TOOL_EXECUTION_FAILED',
-          message: extractErrorMessage(error),
+          message: errorMessage,
         },
       });
     }
@@ -701,6 +746,8 @@ export function createServer(config: ServerConfig): ServerInstance {
           idleCheckInterval.unref();
         }
 
+        try { config.hooks?.onServerStart?.(state); } catch { /* fire-and-forget */ }
+
         return state;
       } catch (startupError) {
         // Best-effort rollback: close the HTTP server if it was created,
@@ -733,6 +780,8 @@ export function createServer(config: ServerConfig): ServerInstance {
       shuttingDown = true;
 
       appendLog(config.logFilePath, '[INFO] Daemon shutting down');
+
+      try { config.hooks?.onServerStop?.(); } catch { /* fire-and-forget */ }
 
       // 1. Remove signal handlers
       if (shutdownHandler) {

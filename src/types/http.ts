@@ -54,6 +54,43 @@ export type ToolFunction<TParams = unknown, TResult = unknown> = (
   context: ToolContext,
 ) => Promise<ToolResponse<TResult>>;
 
+export type ToolHookContext = {
+  toolName: string;
+  input: unknown;
+  sessionId: string | undefined;
+  category: string;
+};
+
+/**
+ * Lifecycle hooks for observability and tracing.
+ *
+ * All hooks are fire-and-forget — errors are silently caught and never
+ * block tool execution or HTTP responses.
+ */
+export type ToolHooks = {
+  onToolStart?: (ctx: ToolHookContext) => void | Promise<void>;
+  onToolEnd?: (
+    ctx: ToolHookContext & {
+      result: unknown;
+      durationMs: number;
+      ok: boolean;
+    },
+  ) => void | Promise<void>;
+  onToolError?: (
+    ctx: ToolHookContext & {
+      error: string;
+      durationMs: number;
+    },
+  ) => void | Promise<void>;
+  onSessionStart?: (
+    sessionId: string,
+    metadata: Record<string, unknown>,
+  ) => void | Promise<void>;
+  onSessionEnd?: (sessionId: string) => void | Promise<void>;
+  onServerStart?: (state: DaemonState) => void | Promise<void>;
+  onServerStop?: () => void | Promise<void>;
+};
+
 /**
  * Configuration for createServer().
  *
@@ -73,6 +110,8 @@ export type ServerConfig = {
   requestTimeoutMs?: number;
   /** Path to log file (optional) */
   logFilePath?: string;
+  /** Optional lifecycle hooks for observability (e.g. Langfuse, OpenTelemetry) */
+  hooks?: ToolHooks;
 };
 
 /**
