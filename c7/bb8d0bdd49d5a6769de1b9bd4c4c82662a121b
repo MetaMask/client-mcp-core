@@ -1,0 +1,33 @@
+src/tools/registry.ts
+  s_ccc4668afe5dde::t_d5393c5c9bb64a 80
+  s_ccc4668afe5dde::t_63fbeec478f2b8 95
+  s_4e894afcced66e::t_5e102b76793199 3
+  s_4e894afcced66e::t_fe698cfbabe1bb 94
+  s_4e894afcced66e::t_ae0e02ff55d256 74
+src/tools/registry.test.ts
+  s_4e894afcced66e::t_e09e13f0e03599 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "c7bb8d0bdd49d5a6769de1b9bd4c4c82662a121b",
+  "prompts": {},
+  "sessions": {
+    "s_4e894afcced66e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c577ea96ffeBB1HsBLB9T11WD",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_ccc4668afe5dde": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c484cd53ffe0bv9g1FBrv3oun",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
