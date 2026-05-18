@@ -149,6 +149,11 @@ export type ClipboardResult = {
   text?: string;
 };
 
+export type CdpResult = {
+  method: string;
+  result: unknown;
+};
+
 export type SetContextResult = {
   previousContext: 'e2e' | 'prod';
   newContext: 'e2e' | 'prod';

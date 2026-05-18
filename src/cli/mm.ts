@@ -19,6 +19,7 @@ import type { DaemonState } from '../types/http.js';
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
   cleanup: 30_000,
+  cdp: 35_000,
   default: 30_000,
 };
 
@@ -582,6 +583,48 @@ export async function routeCommand(
         throw error;
       }
       break;
+    case 'cdp': {
+      const cdpMethod = args[0];
+      if (!cdpMethod) {
+        process.stderr.write(
+          'Usage: mm cdp <method> [params-json] [--timeout <ms>]\n' +
+            '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\'\n' +
+            '  mm cdp Network.enable\n' +
+            '  mm cdp DOM.getDocument \'{"depth":2}\' --timeout 60000\n',
+        );
+        process.exit(1);
+      }
+      const cdpTimeout = parseIntFlag(args, '--timeout');
+      const cdpParamsRaw =
+        args[1] !== undefined && !args[1].startsWith('--')
+          ? args[1]
+          : undefined;
+      let cdpParams: Record<string, unknown> | undefined;
+      if (cdpParamsRaw) {
+        try {
+          const parsed: unknown = JSON.parse(cdpParamsRaw);
+          if (
+            typeof parsed !== 'object' ||
+            parsed === null ||
+            Array.isArray(parsed)
+          ) {
+            throw new TypeError('params must be a plain object');
+          }
+          cdpParams = parsed as Record<string, unknown>;
+        } catch {
+          process.stderr.write(
+            `Error: invalid JSON params — expected a JSON object\n`,
+          );
+          process.exit(1);
+        }
+      }
+      await sendRequest(port, 'POST', '/tool/cdp', {
+        method: cdpMethod,
+        ...(cdpParams ? { params: cdpParams } : {}),
+        ...(cdpTimeout === undefined ? {} : { timeoutMs: cdpTimeout }),
+      });
+      break;
+    }
     default:
       process.stderr.write(
         `Error: unknown command '${command}'. Run 'mm --help' for usage.\n`,
@@ -1206,6 +1249,9 @@ Contracts (E2E only):
 
 Batching:
   mm run-steps <json>
+
+Advanced:
+  mm cdp <method> [params-json] [--timeout <ms>]
 
 Examples:
   mm launch                                          (from inside project)

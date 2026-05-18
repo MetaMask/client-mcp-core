@@ -1,5 +1,6 @@
 import { runStepsTool } from './batch.js';
 import { buildTool } from './build.js';
+import { cdpTool } from './cdp.js';
 import { cleanupTool } from './cleanup.js';
 import { clipboardTool } from './clipboard.js';
 import { getContextTool, setContextTool } from './context.js';
@@ -70,12 +71,13 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['set_context', setContextTool],
   ['get_context', getContextTool],
   ['clipboard', clipboardTool],
+  ['cdp', cdpTool],
 ]);
 
 export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (13)
+  // MUTATING (14)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
@@ -89,7 +91,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   wait_for_notification: 'mutating',
   seed_contract: 'mutating',
   seed_contracts: 'mutating',
-  // READONLY (9)
+  cdp: 'mutating',
+  // READONLY (10)
   knowledge_last: 'readonly',
   knowledge_search: 'readonly',
   knowledge_summarize: 'readonly',

@@ -27,7 +27,7 @@ Tool responses include different data based on the tool's category:
 
 | Category      | Examples                                                          | Observations in response?                      |
 | ------------- | ----------------------------------------------------------------- | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard          | Yes — `state` + `a11y` (compacted) + `testIds` |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp     | Yes — `state` + `a11y` (compacted) + `testIds` |
 | **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context      | No — faster response                           |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot | Data is already in `result`                    |
 | **Batch**     | run_steps                                                         | Controlled by `includeObservations` param      |
@@ -388,6 +388,28 @@ Supports `stopOnError` (halt on first failure) and returns per-step results with
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
+### Advanced
+
+#### `mm cdp <method> [params-json] [--timeout <ms>]`
+
+Sends a raw Chrome DevTools Protocol command against the active page. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree directly.
+
+```bash
+mm cdp Runtime.evaluate '{"expression":"document.title"}'
+mm cdp Network.enable
+mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
+```
+
+| Argument        | Description                                                   |
+| --------------- | ------------------------------------------------------------- |
+| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument`) |
+| `[params-json]` | Optional JSON object with method-specific parameters          |
+| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)      |
+
+**Blocked methods** (would destroy the browser session): `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`. Attempting a blocked method returns `MM_CDP_BLOCKED`.
+
+The tool is categorized as **mutating** — run `describe-screen` afterward to re-sync if the CDP call changed page state.
+
 ## Element Targeting
 
 Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a target. You must provide exactly ONE of:
@@ -430,6 +452,8 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_CONTEXT_SWITCH_BLOCKED`   | Can't switch context with active session     | Run `mm cleanup` first                                    |
 | `MM_INVALID_INPUT`            | Bad parameters                               | Fix input and retry                                       |
 | `MM_BATCH_TIMEOUT`            | `batchTimeoutMs` deadline exceeded           | Remaining steps were skipped; check partial results       |
+| `MM_CDP_BLOCKED`              | CDP method is blocked (destructive)          | Use a different CDP method; see blocked list              |
+| `MM_CDP_FAILED`               | CDP command failed or timed out              | Check method name/params; retry or increase timeout       |
 | `MM_CONTRACT_NOT_FOUND`       | Unknown contract name for seeding            | See available contracts below                             |
 
 ## Available Contracts (E2E only)

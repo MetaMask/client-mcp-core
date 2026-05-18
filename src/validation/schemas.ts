@@ -545,9 +545,33 @@ export const clipboardInputSchema = z
     },
   );
 
+export const cdpInputSchema = z.object({
+  method: z
+    .string()
+    .min(1)
+    .describe(
+      'CDP method name (e.g., "Runtime.evaluate", "DOM.getDocument", "Network.enable")',
+    ),
+  params: z
+    .record(z.string(), z.unknown())
+    .describe('CDP method parameters (method-specific)')
+    .optional(),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000)
+    .max(30_000)
+    .default(30_000)
+    .describe(
+      'Per-command timeout in milliseconds. ' +
+        'Capped at 30 000 to stay within the server request-queue ceiling.',
+    ),
+});
+
 export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
+export type CdpInputZ = z.infer<typeof cdpInputSchema>;
 
 export const toolSchemas = {
   build: buildInputSchema,
@@ -578,6 +602,7 @@ export const toolSchemas = {
   set_context: setContextInputSchema,
   get_context: getContextInputSchema,
   clipboard: clipboardInputSchema,
+  cdp: cdpInputSchema,
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;
