@@ -120,16 +120,16 @@ Starts the daemon (if not running) and launches a headed Chrome session with the
 mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--tags <tags>]
 ```
 
-| Flag                      | Description                                                                |
-| ------------------------- | -------------------------------------------------------------------------- |
-| `--context e2e\|prod`     | Set the environment context before launching                               |
-| `--state default`         | Pre-onboarded wallet with 25 ETH on local Anvil chain (default)            |
-| `--state onboarding`      | Fresh wallet requiring manual onboarding setup                             |
-| `--state custom`          | Use a custom fixture for wallet state                                      |
-| `--extension-path <path>` | Override the extension build directory                                     |
-| `--goal <text>`           | **Required for knowledge.** Describe what this session is doing            |
-| `--force`                 | Replace an existing active session                                         |
-| `--flow-tags <tags>`      | **Required for knowledge.** Comma-separated flow tags (see table below)    |
+| Flag                      | Description                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `--context e2e\|prod`     | Set the environment context before launching                                   |
+| `--state default`         | Pre-onboarded wallet with 25 ETH on local Anvil chain (default)                |
+| `--state onboarding`      | Fresh wallet requiring manual onboarding setup                                 |
+| `--state custom`          | Use a custom fixture for wallet state                                          |
+| `--extension-path <path>` | Override the extension build directory                                         |
+| `--goal <text>`           | **Required for knowledge.** Describe what this session is doing                |
+| `--force`                 | Replace an existing active session                                             |
+| `--flow-tags <tags>`      | **Required for knowledge.** Comma-separated flow tags (see table below)        |
 | `--tags <tags>`           | Comma-separated free-form tags for ad-hoc filtering (e.g., `smoke,regression`) |
 
 **⚠ Always provide `--goal` and `--flow-tags` on every launch.** Without them, the knowledge store cannot index the session for cross-session learning, prior knowledge, or search. Sessions launched without tags are invisible to future sessions.
