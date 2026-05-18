@@ -25,8 +25,8 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
   │                                                                   │
   │  ┌──────────┐  ┌──────────────┐  ┌────────────┐  ┌────────────┐ │
   │  │  Routes   │  │ RequestQueue │  │   Tool     │  │ Knowledge  │ │
-  │  │ /health   │  │ (async mutex)│  │  Registry  │  │   Store    │ │
-  │  │ /status   │  │              │  │  25+ tools │  │            │ │
+  │  │ /health   │  │ (async mutex)  │  │  Registry  │  │   Store    │ │
+  │  │ /status   │  │              │  │  29 tools  │  │            │ │
   │  │ /launch   │  └──────────────┘  └─────┬──────┘  └────────────┘ │
   │  │ /cleanup  │                          │                         │
   │  │ /tool/:n  │                          ▼                         │
@@ -397,6 +397,8 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 | `list_contracts`         | Lists all contracts deployed in the current session with addresses and deployment timestamps.                                                                                                                                                                                                                                                                                     |
 | **Batching**             |                                                                                                                                                                                                                                                                                                                                                                                   |
 | `run_steps`              | Executes a batch of tool invocations sequentially. Supports `stopOnError` to halt on first failure, `includeObservations` (`'all'`, `'none'`, `'failures'`) to control observations, and `batchTimeoutMs` to set an overall deadline (remaining steps are skipped on timeout). Accepts tool aliases like `navigate_home` / `navigate-home`. Returns per-step results with timing. |
+| **Advanced**             |                                                                                                                                                                                                                                                                                                                                                                                   |
+| `cdp`                    | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for cases where structured tools are insufficient (e.g., `Runtime.evaluate`, `Network.enable`). A small set of destructive methods (`Browser.close`, `Target.closeTarget`, etc.) are blocked to protect session state. Categorized as mutating — run `describe_screen` afterward to re-sync.   |
 
 ### Accessibility References
 
@@ -594,6 +596,22 @@ mm describe-screen
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `mm run-steps <json>` | Executes a batch of tool invocations sequentially from a JSON definition. Each step specifies a tool name and arguments. |
 
+### Advanced
+
+| Command                                          | Description                                                                                                                                                                             |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm cdp <method> [params-json] [--timeout <ms>]` | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for when structured tools are insufficient. Destructive methods (`Browser.close`, etc.) are blocked. |
+
+```bash
+mm cdp Runtime.evaluate '{"expression":"document.title"}'
+mm cdp Network.enable
+mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
+```
+
+The `params-json` argument must be a valid JSON object. The `--timeout` flag sets a per-command timeout (default: 30 000 ms, max: 30 000 ms). The tool is categorized as **mutating** — run `mm describe-screen` afterward to re-sync session state.
+
+**Blocked methods** (would destroy the browser session): `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`.
+
 For the full agent-facing reference and workflow guidelines, see [SKILL.md](./SKILL.md).
 
 ## Error Classification
@@ -616,6 +634,8 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_CONTRACT_NOT_FOUND`     | Unknown contract name                           |
 | `MM_SEED_FAILED`            | Contract deployment failure                     |
 | `MM_CONTEXT_SWITCH_BLOCKED` | Context switch while session is active          |
+| `MM_CDP_BLOCKED`            | CDP method is blocked (destructive to session)  |
+| `MM_CDP_FAILED`             | CDP command execution failed or timed out       |
 
 ## Development
 
