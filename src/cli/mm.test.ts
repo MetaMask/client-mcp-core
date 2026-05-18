@@ -1573,6 +1573,69 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes cdp with method and params', async () => {
+    await routeCommand(
+      'cdp',
+      ['Runtime.evaluate', '{"expression":"1+1"}'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          params: { expression: '1+1' },
+        }),
+      }),
+    );
+  });
+
+  it('routes cdp with method only', async () => {
+    await routeCommand('cdp', ['Network.enable'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({ method: 'Network.enable' }),
+      }),
+    );
+  });
+
+  it('routes cdp with --timeout', async () => {
+    await routeCommand(
+      'cdp',
+      ['DOM.getDocument', '{"depth":2}', '--timeout', '60000'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'DOM.getDocument',
+          params: { depth: 2 },
+          timeoutMs: 60000,
+        }),
+      }),
+    );
+  });
+
+  it('exits when cdp has no method', async () => {
+    await expect(routeCommand('cdp', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm cdp'),
+    );
+  });
+
+  it('exits when cdp has invalid JSON params', async () => {
+    await expect(
+      routeCommand('cdp', ['Runtime.evaluate', '{bad json}'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('invalid JSON'),
+    );
+  });
+
   it('exits for unknown command', async () => {
     await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
       'process.exit',
