@@ -1,0 +1,26 @@
+SKILL.md
+  s_81ee0c665f1e54::t_246566356de48a 391-412
+  s_81ee0c665f1e54::t_6ea1dff075f6dc 30
+  s_81ee0c665f1e54::t_9668d9a3f9c561 455-456
+README.md
+  s_81ee0c665f1e54::t_54d34da8f0017e 28-29
+  s_81ee0c665f1e54::t_d63b53db07b60e 400-401
+  s_81ee0c665f1e54::t_98111c29257111 637-638
+  s_81ee0c665f1e54::t_e986d0d3297666 599-614
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "0d83d19dcf7984967ee8d8af9b8ddc49667872f2",
+  "prompts": {},
+  "sessions": {
+    "s_81ee0c665f1e54": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c4783901ffeyWL1ZXdhMz7Wam",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
