@@ -1,0 +1,64 @@
+src/tools/cdp.test.ts
+  s_0083da6c44ba8a::t_cdfff8d03695d5 260
+  s_b071f7a0f6b45e::t_61393708fa1e6b 1
+  s_2000d23f0a0d2f::t_6f1e7efa145b44 63
+  s_0083da6c44ba8a::t_e0b55b09b3963d 175
+  s_4e894afcced66e::t_e6901a29c5e4bc 2-38,41-54,56-62,64-79,84-87,89-100,106-128,133-151,157-174,176-193,198-208,213-222,231-232,234-237,240-241,246-259,261-270
+  s_2000d23f0a0d2f::t_f06ccc0c4774a2 80-83,101-105,129-132,152-156,194-197,209-212
+  s_b071f7a0f6b45e::t_0dce0b5abdb839 223-230,233,238-239,242-245
+  s_2000d23f0a0d2f::t_2d2f9ebf6b8d7b 88
+  s_0083da6c44ba8a::t_a5a89b4da2f833 39-40,55
+src/tools/cdp.ts
+  s_4e894afcced66e::t_cecb0c5201e03e 23-27
+  s_4e894afcced66e::t_45ac246f927a96 54-59
+  s_4e894afcced66e::t_1962608dce7075 1-22,32-51,53,76,84-93
+  h_d6a04d82b61d5e 52,69-70
+  s_2000d23f0a0d2f::t_f06ccc0c4774a2 28
+  s_2000d23f0a0d2f::t_d03eebb4db2866 29-31
+  s_0083da6c44ba8a::t_eb574803bc904b 60-68,71-75,77-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "a2927fe0ce9c1cffd5d13847f459b7d085258a7d",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_0083da6c44ba8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c521b748ffeU1R7jMtQ4qEu6u",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_2000d23f0a0d2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c47ba7f9ffeAYVyUm6I2FlRH6",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_4e894afcced66e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c577ea96ffeBB1HsBLB9T11WD",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_b071f7a0f6b45e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c492acb7ffeZB0E1okbJd5bc3",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
