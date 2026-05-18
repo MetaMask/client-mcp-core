@@ -155,6 +155,13 @@ export type ClipboardInput = {
   text?: string;
 };
 
+export type CdpInput = {
+  method: string;
+  params?: Record<string, unknown>;
+  /** Always populated after Zod validation (schema default: 30 000). */
+  timeoutMs: number;
+};
+
 export type SetContextInput = {
   context: 'e2e' | 'prod';
   options?: Record<string, unknown>;
