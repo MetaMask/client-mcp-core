@@ -1,0 +1,14 @@
+vitest.config.mts
+  h_d6a04d82b61d5e 38-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "839855797c6f90c7366069b26682a8eb628c6fbc",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
