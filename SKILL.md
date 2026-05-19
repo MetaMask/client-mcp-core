@@ -229,8 +229,12 @@ Use the `ref` value (`e3`) for click/type/get-text/wait-for commands.
 Lists all visible `data-testid` attributes on the current page with text previews.
 
 ```
-mm list-testids
+mm list-testids [--limit <n>]
 ```
+
+| Flag           | Description                          |
+| -------------- | ------------------------------------ |
+| `--limit <n>` | Maximum number of test IDs to return |
 
 Useful when you know a `testId` value and want to verify it exists. Prefer `describe-screen` for general observation.
 
@@ -547,6 +551,9 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_GETTEXT_FAILED`           | getText operational failure (non-timeout)          | Element may be detached; run `mm describe-screen` and re-target                                     |
 | `MM_TYPE_FAILED`              | Type failed after finding element                  | Element may not be an input; verify with describe-screen                                            |
 | `MM_PAGE_CLOSED`              | Page was closed unexpectedly                       | Normal after some confirmations; run describe-screen                                                |
+| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser          | Check browser permissions; try CDP approach                                                         |
+| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy            | Extension security policy blocks clipboard; use alternative input method                            |
+| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                      | Retry; check if page is still active                                                                |
 | `MM_NAVIGATION_FAILED`        | Navigation error or network failure                | Check URL validity; retry once                                                                      |
 | `MM_NOTIFICATION_TIMEOUT`     | Extension notification popup didn't appear         | Action may not have triggered a notification; check state                                           |
 | `MM_TAB_NOT_FOUND`            | Tab role/URL not found                             | Run `mm get-state` to see available tabs                                                            |
@@ -586,7 +593,6 @@ When a timeout error occurs (`MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_WAIT_TIM
 - `element-not-found` — element is not in the DOM. Solution: verify you're on the right screen and check the selector/testId with `mm describe-screen`.
 - `element-offscreen` — element is in the DOM and visible but outside the viewport. Solution: scroll into view before clicking.
 - `element-not-actionable` — element is visible but disabled. Solution: wait for it to become enabled.
-- `navigation-or-context-change` — page navigated or new page opened during the action. Check current state.
 - `page-closed` — the browser page was closed during the operation.
 - `unknown` — cause could not be determined.
 

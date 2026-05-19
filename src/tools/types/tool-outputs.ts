@@ -195,7 +195,6 @@ export type InteractionDiagnostics = {
   /** Heuristic: what likely caused the hang */
   suspectedCause?:
     | 'page-closed'
-    | 'navigation-or-context-change'
     | 'element-not-found'
     | 'element-not-actionable'
     | 'element-offscreen'

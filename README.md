@@ -179,6 +179,8 @@ type ISessionManager = {
   // Session Lifecycle
   hasActiveSession(): boolean;
   getSessionId(): string | undefined;
+  getSessionState(): SessionState | undefined;
+  getSessionMetadata(): SessionMetadata | undefined;
   launch(input: SessionLaunchInput): Promise<SessionLaunchResult>;
   cleanup(): Promise<boolean>;
 
@@ -195,6 +197,7 @@ type ISessionManager = {
   // A11y Reference Map
   setRefMap(map: Map<string, string>): void;
   getRefMap(): Map<string, string>;
+  clearRefMap(): void;
   resolveA11yRef(ref: string): string | undefined;
 
   // Navigation
@@ -215,6 +218,7 @@ type ISessionManager = {
   getStateSnapshotCapability(): StateSnapshotCapability | undefined;
 
   // Environment
+  setWorkflowContext(context: WorkflowContext): void;
   getEnvironmentMode(): EnvironmentMode;
   setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void;
   getContextInfo(): { currentContext: 'e2e' | 'prod'; ... };
@@ -640,6 +644,10 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_TYPE_TIMEOUT`             | Fill action timed out                              |
 | `MM_GETTEXT_FAILED`           | getText operation failed                           |
 | `MM_GETTEXT_TIMEOUT`          | textContent action timed out                       |
+| **Clipboard**                 |                                                    |
+| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser          |
+| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy            |
+| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                      |
 | **Navigation & Tabs**         |                                                    |
 | `MM_NAVIGATION_FAILED`        | Navigation error or network failure                |
 | `MM_NOTIFICATION_TIMEOUT`     | Notification popup did not appear                  |
@@ -704,7 +712,6 @@ The `suspectedCause` field provides a heuristic diagnosis:
 | `element-not-found`            | Element is not in the DOM                           | Verify screen state; check selector/testId       |
 | `element-offscreen`            | Element is in the DOM but outside the viewport      | Scroll into view before interacting              |
 | `element-not-actionable`       | Element is visible but disabled                     | Wait for it to become enabled                    |
-| `navigation-or-context-change` | Page navigated or new page opened during the action | Check current state                              |
 | `page-closed`                  | The browser page was closed during the operation    | Normal after some confirmations; describe-screen |
 | `unknown`                      | Cause could not be determined                       | Run describe-screen and retry                    |
 
