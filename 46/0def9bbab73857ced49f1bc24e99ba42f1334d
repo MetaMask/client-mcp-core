@@ -1,0 +1,30 @@
+src/server/create-server.ts
+  s_eeb132e3452f78::t_3019176b488ca7 462
+  s_eeb132e3452f78::t_62df3af8c851e3 29
+  s_eeb132e3452f78::t_27fc13ecde5c03 461,463-508,510-522
+src/tools/utils/constants.ts
+  s_eeb132e3452f78::t_f585d3b9774977 25-27
+src/server/request-queue.ts
+  s_eeb132e3452f78::t_085f2779d93f15 60-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "460def9bbab73857ced49f1bc24e99ba42f1334d",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_eeb132e3452f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bd7e4ee3ffeIAmiXmXjOkrqf9",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
