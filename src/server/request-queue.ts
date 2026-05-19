@@ -57,13 +57,17 @@ export class RequestQueue {
       if (timer !== undefined) {
         clearTimeout(timer);
       }
-      // Wait for the task to actually settle before releasing the mutex,
-      // even after a timeout rejection. This preserves the serialization
-      // guarantee — the next task cannot start while a timed-out task
-      // is still running and potentially mutating shared state.
-      await fnPromise.catch((error) => {
-        debugWarn('request-queue.enqueue', error);
-      });
+      // Wait briefly for the task to settle before releasing the mutex.
+      // A bounded wait preserves serialization for the common case (task
+      // settles within seconds) while preventing permanent deadlock when
+      // a Playwright/CDP operation hangs forever.
+      const SETTLE_TIMEOUT_MS = 5_000;
+      await Promise.race([
+        fnPromise.catch((error) => {
+          debugWarn('request-queue.enqueue', error);
+        }),
+        new Promise<void>((resolve) => setTimeout(resolve, SETTLE_TIMEOUT_MS)),
+      ]);
       release();
     }
   }

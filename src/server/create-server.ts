@@ -26,6 +26,7 @@ import {
   GRACEFUL_SHUTDOWN_TIMEOUT_MS,
   MAX_IDLE_CHECK_INTERVAL_MS,
   OBSERVATION_TESTID_LIMIT,
+  OBSERVATION_TIMEOUT_MS,
   QUEUE_OVERHEAD_BUFFER_MS,
 } from '../tools/utils/constants.js';
 import {
@@ -457,59 +458,68 @@ export function createServer(config: ServerConfig): ServerInstance {
             config.sessionManager.hasActiveSession()
           ) {
             try {
-              const page = config.sessionManager.getPage();
+              obs = await Promise.race([
+                (async (): Promise<StepRecordObservation> => {
+                  const page = config.sessionManager.getPage();
 
-              if (category === 'mutating') {
-                await page
-                  .waitForLoadState('domcontentloaded')
-                  .catch(() => undefined);
-                await page
-                  .waitForFunction(
-                    async () =>
-                      new Promise<boolean>((resolve) => {
-                        requestAnimationFrame(() => {
-                          const allSettled = document
-                            .getAnimations()
-                            .every((a: Animation) => a.playState !== 'running');
-                          resolve(allSettled);
-                        });
-                      }),
-                    { timeout: ANIMATION_SETTLE_TIMEOUT_MS },
-                  )
-                  .catch(() => undefined);
-              }
-              let state = await config.sessionManager.getExtensionState();
-
-              // Post-mutation recheck: if currentScreen is 'unknown' after a mutation,
-              // the extension's internal router may not have updated yet. Poll briefly.
-              if (
-                category === 'mutating' &&
-                state.currentScreen === 'unknown'
-              ) {
-                const RECHECK_DEADLINE_MS = 500;
-                const RECHECK_INTERVAL_MS = 100;
-                const deadline = Date.now() + RECHECK_DEADLINE_MS;
-
-                while (Date.now() < deadline) {
-                  await new Promise<void>((resolve) =>
-                    setTimeout(resolve, RECHECK_INTERVAL_MS),
-                  );
-                  const rechecked =
-                    await config.sessionManager.getExtensionState();
-                  if (rechecked.currentScreen !== 'unknown') {
-                    state = rechecked;
-                    break;
+                  if (category === 'mutating') {
+                    await page
+                      .waitForLoadState('domcontentloaded')
+                      .catch(() => undefined);
+                    await page
+                      .waitForFunction(
+                        async () =>
+                          new Promise<boolean>((resolve) => {
+                            requestAnimationFrame(() => {
+                              const allSettled = document
+                                .getAnimations()
+                                .every(
+                                  (a: Animation) => a.playState !== 'running',
+                                );
+                              resolve(allSettled);
+                            });
+                          }),
+                        { timeout: ANIMATION_SETTLE_TIMEOUT_MS },
+                      )
+                      .catch(() => undefined);
                   }
-                }
-              }
-              const testIds = await collectTestIds(
-                page,
-                OBSERVATION_TESTID_LIMIT,
-              );
-              const { nodes, refMap: newRefMap } =
-                await collectTrimmedA11ySnapshot(page);
-              config.sessionManager.setRefMap(newRefMap);
-              obs = createDefaultObservation(state, testIds, nodes);
+                  let state = await config.sessionManager.getExtensionState();
+
+                  // Post-mutation recheck: if currentScreen is 'unknown' after a mutation,
+                  // the extension's internal router may not have updated yet. Poll briefly.
+                  if (
+                    category === 'mutating' &&
+                    state.currentScreen === 'unknown'
+                  ) {
+                    const RECHECK_DEADLINE_MS = 500;
+                    const RECHECK_INTERVAL_MS = 100;
+                    const deadline = Date.now() + RECHECK_DEADLINE_MS;
+
+                    while (Date.now() < deadline) {
+                      await new Promise<void>((resolve) =>
+                        setTimeout(resolve, RECHECK_INTERVAL_MS),
+                      );
+                      const rechecked =
+                        await config.sessionManager.getExtensionState();
+                      if (rechecked.currentScreen !== 'unknown') {
+                        state = rechecked;
+                        break;
+                      }
+                    }
+                  }
+                  const testIds = await collectTestIds(
+                    page,
+                    OBSERVATION_TESTID_LIMIT,
+                  );
+                  const { nodes, refMap: newRefMap } =
+                    await collectTrimmedA11ySnapshot(page);
+                  config.sessionManager.setRefMap(newRefMap);
+                  return createDefaultObservation(state, testIds, nodes);
+                })(),
+                new Promise<undefined>((resolve) =>
+                  setTimeout(() => resolve(undefined), OBSERVATION_TIMEOUT_MS),
+                ),
+              ]);
             } catch {
               // non-fatal: observation failure must not block the tool response
             }
