@@ -379,6 +379,7 @@ export function createServer(config: ServerConfig): ServerInstance {
   ): Promise<void> {
     const tool = toolRegistry.get(toolName);
     if (!tool) {
+      appendLog(config.logFilePath, `[WARN] Tool not found: ${toolName}`);
       res.status(404).json({
         ok: false,
         error: { code: 'TOOL_NOT_FOUND', message: `Unknown tool: ${toolName}` },
@@ -387,6 +388,10 @@ export function createServer(config: ServerConfig): ServerInstance {
     }
 
     if (!workflowContext) {
+      appendLog(
+        config.logFilePath,
+        `[WARN] Tool ${toolName} rejected: server not started`,
+      );
       res.status(503).json({
         ok: false,
         error: {
@@ -404,17 +409,20 @@ export function createServer(config: ServerConfig): ServerInstance {
     if (schema) {
       const parsed = schema.safeParse(rawInput);
       if (!parsed.success) {
+        const validationMessage = parsed.error.issues
+          .map((i) =>
+            i.path.length > 0 ? `${i.path.join('.')}: ${i.message}` : i.message,
+          )
+          .join('; ');
+        appendLog(
+          config.logFilePath,
+          `[WARN] Tool ${toolName} validation failed: ${validationMessage}`,
+        );
         res.status(400).json({
           ok: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: parsed.error.issues
-              .map((i) =>
-                i.path.length > 0
-                  ? `${i.path.join('.')}: ${i.message}`
-                  : i.message,
-              )
-              .join('; '),
+            message: validationMessage,
           },
         });
         return;
@@ -426,6 +434,28 @@ export function createServer(config: ServerConfig): ServerInstance {
     const currentWorkflowContext = workflowContext;
 
     const category = getToolCategory(toolName);
+
+    if (toolName === 'launch') {
+      const inp = validatedInput as Record<string, unknown>;
+      const parts = [
+        typeof inp.stateMode === 'string' && `stateMode=${inp.stateMode}`,
+        typeof inp.context === 'string' && `context=${inp.context}`,
+        inp.force && 'force=true',
+        typeof inp.goal === 'string' && `goal="${inp.goal}"`,
+        typeof inp.extensionPath === 'string' && 'customExtension=true',
+        Array.isArray(inp.seedContracts) &&
+          inp.seedContracts.length > 0 &&
+          `seedContracts=${String(inp.seedContracts.length)}`,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      appendLog(
+        config.logFilePath,
+        `[INFO] Tool launch executing (${parts || 'defaults'})`,
+      );
+    } else if (toolName === 'cleanup') {
+      appendLog(config.logFilePath, '[INFO] Tool cleanup executing');
+    }
 
     try {
       const { toolResult, observations } = await queue.enqueue(async () => {
@@ -519,6 +549,38 @@ export function createServer(config: ServerConfig): ServerInstance {
           : undefined;
       res.json(buildResponseBody(toolResult, responseObservations));
 
+      const durationMs = Date.now() - startTime;
+      const outcome = extractToolOutcome(toolResult);
+      if (toolName === 'launch') {
+        if (outcome.ok) {
+          const lr = (toolResult as Record<string, unknown>).result as
+            | Record<string, unknown>
+            | undefined;
+          appendLog(
+            config.logFilePath,
+            `[INFO] Tool launch completed: sessionId=${typeof lr?.sessionId === 'string' ? lr.sessionId : 'unknown'} (${String(durationMs)}ms)`,
+          );
+        } else {
+          appendLog(
+            config.logFilePath,
+            `[ERROR] Tool launch failed: ${outcome.error?.message ?? 'unknown error'} (${String(durationMs)}ms)`,
+          );
+        }
+      } else if (toolName === 'cleanup') {
+        const cr = (toolResult as Record<string, unknown>).result as
+          | Record<string, unknown>
+          | undefined;
+        appendLog(
+          config.logFilePath,
+          `[INFO] Tool cleanup completed: cleanedUp=${typeof cr?.cleanedUp === 'boolean' ? String(cr.cleanedUp) : 'unknown'} (${String(durationMs)}ms)`,
+        );
+      } else if (!outcome.ok) {
+        appendLog(
+          config.logFilePath,
+          `[WARN] Tool ${toolName} failed: ${outcome.error?.message ?? 'unknown error'} (${String(durationMs)}ms)`,
+        );
+      }
+
       if (
         toolName === 'describe_screen' ||
         toolName === 'launch' ||
@@ -529,6 +591,10 @@ export function createServer(config: ServerConfig): ServerInstance {
         lastObservation = observations;
       }
     } catch (error) {
+      appendLog(
+        config.logFilePath,
+        `[ERROR] Tool ${toolName} threw: ${extractErrorMessage(error)} (${String(Date.now() - startTime)}ms)`,
+      );
       await recordToolStep(
         toolName,
         validatedInput,
@@ -594,10 +660,17 @@ export function createServer(config: ServerConfig): ServerInstance {
       })
         .toString()
         .trim();
+      appendLog(config.logFilePath, `[INFO] Worktree root: ${worktreeRoot}`);
 
+      appendLog(config.logFilePath, '[INFO] Initializing workflow context...');
       try {
         workflowContext = await config.contextFactory();
       } catch (error) {
+        appendLog(
+          config.logFilePath,
+          `[ERROR] contextFactory failed: ${error instanceof Error ? error.message : String(error)}`,
+          true,
+        );
         throw new Error(
           `contextFactory failed during server startup: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
@@ -632,6 +705,11 @@ export function createServer(config: ServerConfig): ServerInstance {
       subPorts = workflowContext.allocatedPorts ?? {};
       config.sessionManager.setWorkflowContext(workflowContext);
       startedAt = new Date().toISOString();
+
+      appendLog(
+        config.logFilePath,
+        `[INFO] Workflow context ready (environment=${workflowContext.config.environment}, ports=${JSON.stringify(subPorts)})`,
+      );
 
       // Everything after setWorkflowContext may have side-effects the
       // consumer expects to be cleaned up.  Wrap in try/catch so a
@@ -703,6 +781,11 @@ export function createServer(config: ServerConfig): ServerInstance {
 
         return state;
       } catch (startupError) {
+        appendLog(
+          config.logFilePath,
+          `[ERROR] Server startup failed: ${extractErrorMessage(startupError)}`,
+          true,
+        );
         // Best-effort rollback: close the HTTP server if it was created,
         // then let the session manager clean up any resources the
         // contextFactory may have started.
@@ -721,7 +804,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           // Swallow — we're already propagating startupError.
         }
         workflowContext = null; // eslint-disable-line require-atomic-updates
-        subPorts = {};
+        subPorts = {}; // eslint-disable-line require-atomic-updates
         throw startupError;
       }
     },
@@ -740,6 +823,7 @@ export function createServer(config: ServerConfig): ServerInstance {
         process.removeListener('SIGINT', shutdownHandler);
         shutdownHandler = null;
       }
+      appendLog(config.logFilePath, '[INFO] Signal handlers removed');
 
       // 2. Clear idle check interval
       if (idleCheckInterval) {
@@ -748,6 +832,10 @@ export function createServer(config: ServerConfig): ServerInstance {
       }
 
       // 3. Stop accepting new connections, wait for in-flight (max 10s)
+      appendLog(
+        config.logFilePath,
+        '[INFO] Closing HTTP server (waiting up to 10s for in-flight requests)',
+      );
       await new Promise<void>((resolve) => {
         if (!httpServer) {
           resolve();
@@ -755,6 +843,10 @@ export function createServer(config: ServerConfig): ServerInstance {
         }
 
         const forceClose = setTimeout(() => {
+          appendLog(
+            config.logFilePath,
+            '[WARN] Force-closing HTTP connections after 10s timeout',
+          );
           httpServer?.closeAllConnections();
           resolve();
         }, 10_000);
@@ -765,10 +857,13 @@ export function createServer(config: ServerConfig): ServerInstance {
           resolve();
         });
       });
+      appendLog(config.logFilePath, '[INFO] HTTP server closed');
 
       // 4. Clean up session
+      appendLog(config.logFilePath, '[INFO] Cleaning up session...');
       try {
         await config.sessionManager.cleanup();
+        appendLog(config.logFilePath, '[INFO] Session cleanup completed');
       } catch (error) {
         appendLog(
           config.logFilePath,
@@ -780,6 +875,7 @@ export function createServer(config: ServerConfig): ServerInstance {
       // 5. Remove .mm-server file
       if (worktreeRoot) {
         await removeDaemonState(worktreeRoot);
+        appendLog(config.logFilePath, '[INFO] Daemon state file removed');
       }
 
       appendLog(config.logFilePath, '[INFO] Daemon stopped');
