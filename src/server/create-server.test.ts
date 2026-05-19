@@ -37,6 +37,7 @@ vi.mock('../tools/utils/discovery.js', () => ({
     fill: vi.fn().mockResolvedValue(undefined),
     textContent: vi.fn().mockResolvedValue(''),
   }),
+  isVisibilityPhaseError: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../knowledge-store/knowledge-store.js', () => {
@@ -82,6 +83,16 @@ function createMockSessionManager() {
     getPage: vi.fn(() => ({
       waitForLoadState: vi.fn(async () => undefined),
       waitForFunction: vi.fn(async () => undefined),
+      isClosed: vi.fn(() => false),
+      viewportSize: vi.fn(() => ({ width: 800, height: 600 })),
+      locator: vi.fn(() => ({
+        count: vi.fn(async () => 0),
+        first: () => ({
+          isVisible: vi.fn(async () => false),
+          isEnabled: vi.fn(async () => false),
+          boundingBox: vi.fn(async () => null),
+        }),
+      })),
     })),
     setActivePage: vi.fn(),
     getTrackedPages: vi.fn(() => []),
@@ -89,6 +100,9 @@ function createMockSessionManager() {
     getContext: vi.fn(() => ({})),
     getExtensionId: vi.fn(() => 'test-ext'),
     getExtensionState: vi.fn(async () => ({})),
+    waitForNotificationPage: vi.fn(async () => ({
+      url: () => 'chrome-extension://test/notification.html',
+    })),
     takeScreenshot: vi.fn(async () => ({ path: '', base64: '' })),
     getRefMap: vi.fn(() => new Map()),
     setRefMap: vi.fn(),
@@ -1023,6 +1037,54 @@ describe('createServer with active session', () => {
     expect(body.observations?.a11y).toBeDefined();
   });
 
+  it('extends queue timeout for tool-specific timeoutMs values', async () => {
+    const timedServer = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        requestTimeoutMs: 50,
+      }),
+    );
+
+    mockSM.waitForNotificationPage.mockImplementation(
+      async () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                url: () => 'chrome-extension://test/notification.html',
+              }),
+            75,
+          );
+        }),
+    );
+
+    const timedState = await timedServer.start();
+
+    try {
+      const res = await httpRequest(
+        `http://127.0.0.1:${timedState.port}/tool/wait_for_notification`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeoutMs: 1000 }),
+        },
+      );
+      const body = (await res.json()) as {
+        ok: boolean;
+        result?: { found: boolean; pageUrl: string };
+      };
+
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.result).toStrictEqual({
+        found: true,
+        pageUrl: 'chrome-extension://test/notification.html',
+      });
+    } finally {
+      await timedServer.stop();
+    }
+  });
+
   it('playwright helpers called for read-only tools (knowledge store)', async () => {
     const { collectTestIds, collectTrimmedA11ySnapshot } =
       await import('../tools/utils/discovery.js');
@@ -1059,6 +1121,40 @@ describe('createServer with active session', () => {
 
     expect(collectTestIdsSpy).toHaveBeenCalled();
     expect(collectA11ySpy).toHaveBeenCalled();
+  });
+
+  it('skips observation collection when tool error includes diagnostics', async () => {
+    const { waitForTarget, collectTestIds, collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
+    const waitForTargetSpy = vi.mocked(waitForTarget);
+    const collectTestIdsSpy = vi.mocked(collectTestIds);
+    const collectA11ySpy = vi.mocked(collectTrimmedA11ySnapshot);
+
+    waitForTargetSpy.mockRejectedValueOnce(
+      new Error('Timeout 1000ms exceeded'),
+    );
+    collectTestIdsSpy.mockClear();
+    collectA11ySpy.mockClear();
+    mockSM.getExtensionState.mockClear();
+
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      error?: { diagnostics?: unknown };
+      observations?: unknown;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.error?.diagnostics).toBeDefined();
+    expect(body.observations).toBeUndefined();
+    expect(mockSM.getExtensionState).not.toHaveBeenCalled();
+    expect(collectTestIdsSpy).not.toHaveBeenCalled();
+    expect(collectA11ySpy).not.toHaveBeenCalled();
   });
 
   it('recordStep is called for mutating tool routes', async () => {

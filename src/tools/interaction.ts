@@ -1,5 +1,8 @@
+import type { Locator } from '@playwright/test';
+
 import {
   classifyClickError,
+  classifyGetTextError,
   classifyTypeError,
   classifyWaitError,
   isPageClosedError,
@@ -17,8 +20,9 @@ import type {
 } from './types';
 import { ErrorCodes } from './types';
 import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
-import { waitForTarget } from './utils/discovery.js';
-import type { WithinScope } from './utils/discovery.js';
+import { collectInteractionDiagnostics } from './utils/diagnostics.js';
+import { isVisibilityPhaseError, waitForTarget } from './utils/discovery.js';
+import type { TargetType, WithinScope } from './utils/discovery.js';
 import { validateTargetSelection } from './utils/targets.js';
 import {
   isInvalidTargetSelection,
@@ -26,10 +30,227 @@ import {
 } from './utils/type-guards.js';
 import {
   createToolError,
+  createToolErrorWithDiagnostics,
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
+
+/**
+ * Checks whether the given error is a Playwright timeout error.
+ *
+ * @param error - The error to inspect.
+ * @returns True if the error represents an action timeout.
+ */
+function isActionTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'TimeoutError';
+}
+
+type ValidatedTarget = {
+  targetType: TargetType;
+  targetValue: string;
+};
+
+/**
+ * Validates session and target selection for interaction tools.
+ * Returns an error response if validation fails, or the resolved target.
+ *
+ * @param input - The tool input with target selection fields.
+ * @param context - The tool execution context.
+ * @returns Either an error response or the validated target.
+ */
+function validateInteraction<TResult>(
+  input: ClickInput | TypeInput | WaitForInput | GetTextInput,
+  context: ToolContext,
+): { error: ToolResponse<TResult> } | { target: ValidatedTarget } {
+  const missingSession = requireActiveSession<TResult>(context);
+  if (missingSession) {
+    return { error: missingSession };
+  }
+
+  const validation = validateTargetSelection(input);
+
+  if (isInvalidTargetSelection(validation)) {
+    return {
+      error: createToolError(ErrorCodes.MM_INVALID_INPUT, validation.error),
+    };
+  }
+
+  if (!isValidTargetSelection(validation)) {
+    return {
+      error: createToolError(
+        ErrorCodes.MM_INVALID_INPUT,
+        'Invalid target selection',
+      ),
+    };
+  }
+
+  return {
+    target: {
+      targetType: validation.type,
+      targetValue: validation.value,
+    },
+  };
+}
+
+type InteractionErrorInfo = {
+  code: string;
+  message: string;
+};
+
+type RunInteractionWithTimeoutOptions<TResult> = {
+  context: ToolContext;
+  timeoutMs: number;
+  within?: WithinTarget;
+  targetType: TargetType;
+  targetValue: string;
+  timeoutErrorCode: string;
+  classifyError: (error: unknown) => InteractionErrorInfo;
+  action: (locator: Locator, timeout: number) => Promise<TResult>;
+  createSuccessResult: (result: TResult) => ToolResponse<TResult>;
+  formatTimeoutMessage: (
+    phase: 'deadline' | 'action',
+    elapsedMs: number,
+  ) => string;
+  handleActionError?: (
+    error: unknown,
+    locator: Locator,
+  ) => ToolResponse<TResult> | undefined;
+};
+
+/**
+ * Runs an element interaction within a timeout, collecting diagnostics on failure.
+ *
+ * @param options - The interaction configuration object.
+ * @param options.context - The tool execution context with session and page.
+ * @param options.timeoutMs - Maximum time in milliseconds for the interaction.
+ * @param options.within - Optional parent scope to restrict element search.
+ * @param options.targetType - The type of target identifier (a11yRef, testId, selector).
+ * @param options.targetValue - The target value used for element lookup.
+ * @param options.timeoutErrorCode - The error code to use when the interaction times out.
+ * @param options.classifyError - Classifies a caught error into a code and message.
+ * @param options.action - The interaction to perform on the resolved locator.
+ * @param options.createSuccessResult - Creates the tool response from a successful result.
+ * @param options.formatTimeoutMessage - Formats the timeout error message for a given phase.
+ * @param options.handleActionError - Optional handler for action errors before fallback.
+ * @returns The tool response for the interaction outcome.
+ */
+async function runInteractionWithTimeout<TResult>({
+  context,
+  timeoutMs,
+  within,
+  targetType,
+  targetValue,
+  timeoutErrorCode,
+  classifyError,
+  action,
+  createSuccessResult,
+  formatTimeoutMessage,
+  handleActionError,
+}: RunInteractionWithTimeoutOptions<TResult>): Promise<ToolResponse<TResult>> {
+  const startTime = Date.now();
+  const deadline = startTime + timeoutMs;
+  const withinScope = resolveWithinScope(within);
+  let locator: Locator | undefined;
+
+  try {
+    locator = await waitForTarget(
+      context.page,
+      targetType,
+      targetValue,
+      context.refMap,
+      timeoutMs,
+      withinScope,
+    );
+  } catch (error) {
+    const elapsedMs = Date.now() - startTime;
+    const errorInfo = classifyError(error);
+
+    if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
+      const phase = isVisibilityPhaseError(error, 'parent')
+        ? 'visibility-parent'
+        : 'visibility-target';
+      const diagnostics = await collectInteractionDiagnostics(
+        context.page,
+        undefined,
+        targetType,
+        targetValue,
+        timeoutMs,
+        elapsedMs,
+        phase,
+        withinScope,
+      );
+      return createToolErrorWithDiagnostics(
+        timeoutErrorCode,
+        errorInfo.message,
+        diagnostics,
+      );
+    }
+
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+
+  const remaining = deadline - Date.now();
+
+  if (remaining <= 0) {
+    const elapsedMs = Date.now() - startTime;
+    const diagnostics = await collectInteractionDiagnostics(
+      context.page,
+      locator,
+      targetType,
+      targetValue,
+      timeoutMs,
+      elapsedMs,
+      'action',
+      withinScope,
+    );
+    return createToolErrorWithDiagnostics(
+      timeoutErrorCode,
+      formatTimeoutMessage('deadline', elapsedMs),
+      diagnostics,
+    );
+  }
+
+  try {
+    const result = await action(locator, remaining);
+    return createSuccessResult(result);
+  } catch (actionError) {
+    const handledError = handleActionError?.(actionError, locator);
+    if (handledError) {
+      return handledError;
+    }
+
+    // Page-closed errors can surface with name='TimeoutError' due to
+    // Playwright race conditions.  Classify them before the timeout
+    // check so they are never misreported as action timeouts.
+    if (isPageClosedError(actionError)) {
+      const errorInfo = classifyError(actionError);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+
+    if (isActionTimeoutError(actionError)) {
+      const elapsedMs = Date.now() - startTime;
+      const diagnostics = await collectInteractionDiagnostics(
+        context.page,
+        locator,
+        targetType,
+        targetValue,
+        timeoutMs,
+        elapsedMs,
+        'action',
+        withinScope,
+      );
+      return createToolErrorWithDiagnostics(
+        timeoutErrorCode,
+        formatTimeoutMessage('action', elapsedMs),
+        diagnostics,
+      );
+    }
+
+    const errorInfo = classifyError(actionError);
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+}
 
 /**
  * Converts a WithinTarget input to the WithinScope format expected by waitForTarget.
@@ -66,58 +287,45 @@ export async function clickTool(
   input: ClickInput,
   context: ToolContext,
 ): Promise<ToolResponse<ClickResult>> {
-  const missingSession = requireActiveSession<ClickResult>(context);
-  if (missingSession) {
-    return missingSession;
+  const validated = validateInteraction<ClickResult>(input, context);
+  if ('error' in validated) {
+    return validated.error;
   }
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
-  const validation = validateTargetSelection(input);
+  const { targetType, targetValue } = validated.target;
+  return runInteractionWithTimeout({
+    context,
+    timeoutMs,
+    within: input.within,
+    targetType,
+    targetValue,
+    timeoutErrorCode: ErrorCodes.MM_CLICK_TIMEOUT,
+    classifyError: classifyClickError,
+    action: async (locator, timeout) => {
+      await locator.click({ timeout });
+      return {
+        clicked: true,
+        target: `${targetType}:${targetValue}`,
+      };
+    },
+    createSuccessResult: createToolSuccess,
+    formatTimeoutMessage: (phase, elapsedMs) =>
+      phase === 'deadline'
+        ? `Click timed out after ${elapsedMs}ms. Note: the click action may have completed in the background after this timeout. Run describe-screen to verify current page state before retrying.`
+        : `Click action timed out after ${elapsedMs}ms. Note: the click action may have completed in the background after this timeout. Run describe-screen to verify current page state before retrying.`,
+    handleActionError: (error) => {
+      if (!isPageClosedError(error)) {
+        return undefined;
+      }
 
-  if (isInvalidTargetSelection(validation)) {
-    return createToolError(ErrorCodes.MM_INVALID_INPUT, validation.error);
-  }
-
-  if (!isValidTargetSelection(validation)) {
-    return createToolError(
-      ErrorCodes.MM_INVALID_INPUT,
-      'Invalid target selection',
-    );
-  }
-
-  const { type: targetType, value: targetValue } = validation;
-
-  try {
-    const locator = await waitForTarget(
-      context.page,
-      targetType,
-      targetValue,
-      context.refMap,
-      timeoutMs,
-      resolveWithinScope(input.within),
-    );
-
-    try {
-      await locator.click();
       return createToolSuccess({
         clicked: true,
         target: `${targetType}:${targetValue}`,
+        pageClosedAfterClick: true,
       });
-    } catch (clickError) {
-      if (isPageClosedError(clickError)) {
-        return createToolSuccess({
-          clicked: true,
-          target: `${targetType}:${targetValue}`,
-          pageClosedAfterClick: true,
-        });
-      }
-
-      throw clickError;
-    }
-  } catch (error) {
-    const errorInfo = classifyClickError(error);
-    return createToolError(errorInfo.code, errorInfo.message);
-  }
+    },
+  });
 }
 
 /**
@@ -131,48 +339,35 @@ export async function typeTool(
   input: TypeInput,
   context: ToolContext,
 ): Promise<ToolResponse<TypeResult>> {
-  const missingSession = requireActiveSession<TypeResult>(context);
-  if (missingSession) {
-    return missingSession;
+  const validated = validateInteraction<TypeResult>(input, context);
+  if ('error' in validated) {
+    return validated.error;
   }
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
-  const validation = validateTargetSelection(input);
-
-  if (isInvalidTargetSelection(validation)) {
-    return createToolError(ErrorCodes.MM_INVALID_INPUT, validation.error);
-  }
-
-  if (!isValidTargetSelection(validation)) {
-    return createToolError(
-      ErrorCodes.MM_INVALID_INPUT,
-      'Invalid target selection',
-    );
-  }
-
-  const { type: targetType, value: targetValue } = validation;
-
-  try {
-    const locator = await waitForTarget(
-      context.page,
-      targetType,
-      targetValue,
-      context.refMap,
-      timeoutMs,
-      resolveWithinScope(input.within),
-    );
-
-    await locator.fill(input.text);
-
-    return createToolSuccess({
-      typed: true,
-      target: `${targetType}:${targetValue}`,
-      textLength: input.text.length,
-    });
-  } catch (error) {
-    const errorInfo = classifyTypeError(error);
-    return createToolError(errorInfo.code, errorInfo.message);
-  }
+  const { targetType, targetValue } = validated.target;
+  return runInteractionWithTimeout({
+    context,
+    timeoutMs,
+    within: input.within,
+    targetType,
+    targetValue,
+    timeoutErrorCode: ErrorCodes.MM_TYPE_TIMEOUT,
+    classifyError: classifyTypeError,
+    action: async (locator, timeout) => {
+      await locator.fill(input.text, { timeout });
+      return {
+        typed: true,
+        target: `${targetType}:${targetValue}`,
+        textLength: input.text.length,
+      };
+    },
+    createSuccessResult: createToolSuccess,
+    formatTimeoutMessage: (phase, elapsedMs) =>
+      phase === 'deadline'
+        ? `Type timed out after ${elapsedMs}ms.`
+        : `Type action timed out after ${elapsedMs}ms.`,
+  });
 }
 
 /**
@@ -186,26 +381,15 @@ export async function waitForTool(
   input: WaitForInput,
   context: ToolContext,
 ): Promise<ToolResponse<WaitForResult>> {
-  const missingSession = requireActiveSession<WaitForResult>(context);
-  if (missingSession) {
-    return missingSession;
+  const validated = validateInteraction<WaitForResult>(input, context);
+  if ('error' in validated) {
+    return validated.error;
   }
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
-  const validation = validateTargetSelection(input);
-
-  if (isInvalidTargetSelection(validation)) {
-    return createToolError(ErrorCodes.MM_INVALID_INPUT, validation.error);
-  }
-
-  if (!isValidTargetSelection(validation)) {
-    return createToolError(
-      ErrorCodes.MM_INVALID_INPUT,
-      'Invalid target selection',
-    );
-  }
-
-  const { type: targetType, value: targetValue } = validation;
+  const { targetType, targetValue } = validated.target;
+  const withinScope = resolveWithinScope(input.within);
+  const startTime = Date.now();
 
   try {
     await waitForTarget(
@@ -214,7 +398,7 @@ export async function waitForTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      withinScope,
     );
 
     return createToolSuccess({
@@ -222,8 +406,32 @@ export async function waitForTool(
       target: `${targetType}:${targetValue}`,
     });
   } catch (error) {
+    const elapsedMs = Date.now() - startTime;
     const errorInfo = classifyWaitError(error);
-    return createToolError(errorInfo.code, errorInfo.message);
+
+    if (errorInfo.code !== ErrorCodes.MM_WAIT_TIMEOUT) {
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+
+    const phase = isVisibilityPhaseError(error, 'parent')
+      ? 'visibility-parent'
+      : 'visibility-target';
+    const diagnostics = await collectInteractionDiagnostics(
+      context.page,
+      undefined,
+      targetType,
+      targetValue,
+      timeoutMs,
+      elapsedMs,
+      phase,
+      withinScope,
+    );
+
+    return createToolErrorWithDiagnostics(
+      errorInfo.code,
+      errorInfo.message,
+      diagnostics,
+    );
   }
 }
 
@@ -238,46 +446,33 @@ export async function getTextTool(
   input: GetTextInput,
   context: ToolContext,
 ): Promise<ToolResponse<GetTextResult>> {
-  const missingSession = requireActiveSession<GetTextResult>(context);
-  if (missingSession) {
-    return missingSession;
+  const validated = validateInteraction<GetTextResult>(input, context);
+  if ('error' in validated) {
+    return validated.error;
   }
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
-  const validation = validateTargetSelection(input);
-
-  if (isInvalidTargetSelection(validation)) {
-    return createToolError(ErrorCodes.MM_INVALID_INPUT, validation.error);
-  }
-
-  if (!isValidTargetSelection(validation)) {
-    return createToolError(
-      ErrorCodes.MM_INVALID_INPUT,
-      'Invalid target selection',
-    );
-  }
-
-  const { type: targetType, value: targetValue } = validation;
-
-  try {
-    const locator = await waitForTarget(
-      context.page,
-      targetType,
-      targetValue,
-      context.refMap,
-      timeoutMs,
-      resolveWithinScope(input.within),
-    );
-
-    const text = (await locator.textContent()) ?? '';
-
-    return createToolSuccess({
-      text,
-      target: `${targetType}:${targetValue}`,
-      length: text.length,
-    });
-  } catch (error) {
-    const errorInfo = classifyWaitError(error);
-    return createToolError(errorInfo.code, errorInfo.message);
-  }
+  const { targetType, targetValue } = validated.target;
+  return runInteractionWithTimeout({
+    context,
+    timeoutMs,
+    within: input.within,
+    targetType,
+    targetValue,
+    timeoutErrorCode: ErrorCodes.MM_GETTEXT_TIMEOUT,
+    classifyError: classifyGetTextError,
+    action: async (locator, timeout) => {
+      const text = (await locator.textContent({ timeout })) ?? '';
+      return {
+        text,
+        target: `${targetType}:${targetValue}`,
+        length: text.length,
+      };
+    },
+    createSuccessResult: createToolSuccess,
+    formatTimeoutMessage: (phase, elapsedMs) =>
+      phase === 'deadline'
+        ? `GetText timed out after ${elapsedMs}ms.`
+        : `GetText action timed out after ${elapsedMs}ms.`,
+  });
 }

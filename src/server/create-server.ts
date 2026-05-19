@@ -21,7 +21,13 @@ import type {
   StepRecordOutcome,
   StepRecordTool,
 } from '../tools/types/step-record.js';
-import { OBSERVATION_TESTID_LIMIT } from '../tools/utils/constants.js';
+import {
+  ANIMATION_SETTLE_TIMEOUT_MS,
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+  MAX_IDLE_CHECK_INTERVAL_MS,
+  OBSERVATION_TESTID_LIMIT,
+  QUEUE_OVERHEAD_BUFFER_MS,
+} from '../tools/utils/constants.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
@@ -426,78 +432,93 @@ export function createServer(config: ServerConfig): ServerInstance {
     const currentWorkflowContext = workflowContext;
 
     const category = getToolCategory(toolName);
+    const inputRecord = validatedInput as Record<string, unknown>;
+    const toolTimeoutMs = inputRecord?.timeoutMs;
+    const queueTimeoutMs =
+      typeof toolTimeoutMs === 'number' && toolTimeoutMs > 0
+        ? toolTimeoutMs + QUEUE_OVERHEAD_BUFFER_MS
+        : undefined;
 
     try {
-      const { toolResult, observations } = await queue.enqueue(async () => {
-        const context = buildToolContext(currentWorkflowContext);
-        const result = await tool(validatedInput, context);
+      const { toolResult, observations } = await queue.enqueue(
+        async () => {
+          const context = buildToolContext(currentWorkflowContext);
+          const result = await tool(validatedInput, context);
+          const hasTimeoutDiagnostics =
+            !result.ok && result.error?.diagnostics !== undefined;
 
-        let obs: StepRecordObservation | undefined;
-        if (
-          shouldCollectObservations(
-            category,
-            validatedInput as Record<string, unknown>,
-          ) &&
-          config.sessionManager.hasActiveSession()
-        ) {
-          try {
-            const page = config.sessionManager.getPage();
+          let obs: StepRecordObservation | undefined;
+          if (
+            !hasTimeoutDiagnostics &&
+            shouldCollectObservations(
+              category,
+              validatedInput as Record<string, unknown>,
+            ) &&
+            config.sessionManager.hasActiveSession()
+          ) {
+            try {
+              const page = config.sessionManager.getPage();
 
-            if (category === 'mutating') {
-              await page
-                .waitForLoadState('domcontentloaded')
-                .catch(() => undefined);
-              await page
-                .waitForFunction(
-                  async () =>
-                    new Promise<boolean>((resolve) => {
-                      requestAnimationFrame(() => {
-                        const allSettled = document
-                          .getAnimations()
-                          .every((a: Animation) => a.playState !== 'running');
-                        resolve(allSettled);
-                      });
-                    }),
-                  { timeout: 3000 },
-                )
-                .catch(() => undefined);
-            }
-            let state = await config.sessionManager.getExtensionState();
+              if (category === 'mutating') {
+                await page
+                  .waitForLoadState('domcontentloaded')
+                  .catch(() => undefined);
+                await page
+                  .waitForFunction(
+                    async () =>
+                      new Promise<boolean>((resolve) => {
+                        requestAnimationFrame(() => {
+                          const allSettled = document
+                            .getAnimations()
+                            .every((a: Animation) => a.playState !== 'running');
+                          resolve(allSettled);
+                        });
+                      }),
+                    { timeout: ANIMATION_SETTLE_TIMEOUT_MS },
+                  )
+                  .catch(() => undefined);
+              }
+              let state = await config.sessionManager.getExtensionState();
 
-            // Post-mutation recheck: if currentScreen is 'unknown' after a mutation,
-            // the extension's internal router may not have updated yet. Poll briefly.
-            if (category === 'mutating' && state.currentScreen === 'unknown') {
-              const RECHECK_DEADLINE_MS = 500;
-              const RECHECK_INTERVAL_MS = 100;
-              const deadline = Date.now() + RECHECK_DEADLINE_MS;
+              // Post-mutation recheck: if currentScreen is 'unknown' after a mutation,
+              // the extension's internal router may not have updated yet. Poll briefly.
+              if (
+                category === 'mutating' &&
+                state.currentScreen === 'unknown'
+              ) {
+                const RECHECK_DEADLINE_MS = 500;
+                const RECHECK_INTERVAL_MS = 100;
+                const deadline = Date.now() + RECHECK_DEADLINE_MS;
 
-              while (Date.now() < deadline) {
-                await new Promise<void>((resolve) =>
-                  setTimeout(resolve, RECHECK_INTERVAL_MS),
-                );
-                const rechecked =
-                  await config.sessionManager.getExtensionState();
-                if (rechecked.currentScreen !== 'unknown') {
-                  state = rechecked;
-                  break;
+                while (Date.now() < deadline) {
+                  await new Promise<void>((resolve) =>
+                    setTimeout(resolve, RECHECK_INTERVAL_MS),
+                  );
+                  const rechecked =
+                    await config.sessionManager.getExtensionState();
+                  if (rechecked.currentScreen !== 'unknown') {
+                    state = rechecked;
+                    break;
+                  }
                 }
               }
+              const testIds = await collectTestIds(
+                page,
+                OBSERVATION_TESTID_LIMIT,
+              );
+              const { nodes, refMap: newRefMap } =
+                await collectTrimmedA11ySnapshot(page);
+              config.sessionManager.setRefMap(newRefMap);
+              obs = createDefaultObservation(state, testIds, nodes);
+            } catch {
+              // non-fatal: observation failure must not block the tool response
             }
-            const testIds = await collectTestIds(
-              page,
-              OBSERVATION_TESTID_LIMIT,
-            );
-            const { nodes, refMap: newRefMap } =
-              await collectTrimmedA11ySnapshot(page);
-            config.sessionManager.setRefMap(newRefMap);
-            obs = createDefaultObservation(state, testIds, nodes);
-          } catch {
-            // non-fatal: observation failure must not block the tool response
           }
-        }
 
-        return { toolResult: result, observations: obs };
-      });
+          return { toolResult: result, observations: obs };
+        },
+        queueTimeoutMs ? { timeoutMs: queueTimeoutMs } : undefined,
+      );
 
       await recordToolStep(
         toolName,
@@ -684,7 +705,10 @@ export function createServer(config: ServerConfig): ServerInstance {
 
         const { idleShutdownMs } = config;
         if (idleShutdownMs && idleShutdownMs > 0) {
-          const checkMs = Math.min(idleShutdownMs / 10, 60_000);
+          const checkMs = Math.min(
+            idleShutdownMs / 10,
+            MAX_IDLE_CHECK_INTERVAL_MS,
+          );
           idleCheckInterval = setInterval(() => {
             if (Date.now() - lastRequestTime > idleShutdownMs) {
               appendLog(
@@ -757,7 +781,7 @@ export function createServer(config: ServerConfig): ServerInstance {
         const forceClose = setTimeout(() => {
           httpServer?.closeAllConnections();
           resolve();
-        }, 10_000);
+        }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
 
         httpServer.close(() => {
           clearTimeout(forceClose);

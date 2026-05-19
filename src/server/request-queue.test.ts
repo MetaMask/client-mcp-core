@@ -56,6 +56,14 @@ describe('RequestQueue', () => {
     ).rejects.toThrowError('timed out');
   });
 
+  it('uses a per-request timeout override when provided', async () => {
+    const queue = new RequestQueue(500);
+
+    await expect(
+      queue.enqueue(async () => sleep(50), { timeoutMs: 10 }),
+    ).rejects.toThrowError('Tool execution timed out after 10ms');
+  });
+
   it('remains functional after a timeout rejection', async () => {
     const queue = new RequestQueue(50);
 
@@ -88,5 +96,47 @@ describe('RequestQueue', () => {
 
     const result = await queue.enqueue(async () => 'after-error');
     expect(result).toBe('after-error');
+  });
+
+  describe('per-request timeout override', () => {
+    it('uses options.timeoutMs when provided instead of default', async () => {
+      const queue = new RequestQueue(30_000);
+
+      await expect(
+        queue.enqueue(async () => sleep(100).then(() => 'done'), {
+          timeoutMs: 50,
+        }),
+      ).rejects.toThrowError('timed out after 50ms');
+    }, 1000);
+
+    it('uses default timeout when options is omitted', async () => {
+      const queue = new RequestQueue(50);
+
+      await expect(
+        queue.enqueue(async () => sleep(100).then(() => 'done')),
+      ).rejects.toThrowError('timed out after 50ms');
+    }, 1000);
+
+    it('preserves serialization guarantee with different timeouts', async () => {
+      const queue = new RequestQueue(5_000);
+      const order: number[] = [];
+
+      const task1 = queue.enqueue(
+        async () => {
+          order.push(1);
+          return 'first';
+        },
+        { timeoutMs: 1_000 },
+      );
+
+      const task2 = queue.enqueue(async () => {
+        order.push(2);
+        return 'second';
+      });
+
+      await Promise.all([task1, task2]);
+
+      expect(order).toStrictEqual([1, 2]);
+    });
   });
 });

@@ -20,9 +20,14 @@ export class RequestQueue {
    * Enqueues an async task for serial execution with a timeout.
    *
    * @param fn - The async function to execute.
+   * @param options - Optional configuration for the enqueued task.
+   * @param options.timeoutMs - Override timeout in milliseconds for this task.
    * @returns The resolved value of the provided function.
    */
-  async enqueue<Result>(fn: () => Promise<Result>): Promise<Result> {
+  async enqueue<Result>(
+    fn: () => Promise<Result>,
+    options?: { timeoutMs?: number },
+  ): Promise<Result> {
     let release!: () => void;
     const next = new Promise<void>((resolve) => {
       release = resolve;
@@ -30,6 +35,7 @@ export class RequestQueue {
     const prev = this.#queue;
     this.#queue = next;
     await prev;
+    const effectiveTimeout = options?.timeoutMs ?? this.#timeoutMs;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fnPromise = fn();
     try {
@@ -40,10 +46,10 @@ export class RequestQueue {
             () =>
               reject(
                 new Error(
-                  `Tool execution timed out after ${this.#timeoutMs}ms`,
+                  `Tool execution timed out after ${effectiveTimeout}ms`,
                 ),
               ),
-            this.#timeoutMs,
+            effectiveTimeout,
           );
         }),
       ]);

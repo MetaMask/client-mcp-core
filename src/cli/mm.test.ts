@@ -14,6 +14,7 @@ import {
   resolveTargetFromArgs,
   resolveWithinFromArgs,
   getPositionalTarget,
+  getPositionalArgs,
   isTransientError,
   parseIntFlag,
   parseStringFlag,
@@ -217,6 +218,18 @@ describe('resolveTargetFromArgs', () => {
       'Error: element target is required\n',
     );
   });
+
+  it('skips flag-value pairs and finds positional target', () => {
+    expect(resolveTargetFromArgs(['--timeout', '5000', 'e1'])).toStrictEqual({
+      a11yRef: 'e1',
+    });
+  });
+
+  it('skips --within flag-value pair and finds positional target', () => {
+    expect(resolveTargetFromArgs(['--within', 'e1', 'e3'])).toStrictEqual({
+      a11yRef: 'e3',
+    });
+  });
 });
 
 describe('resolveWithinFromArgs', () => {
@@ -288,6 +301,30 @@ describe('getPositionalTarget', () => {
 
   it('returns undefined when only flags present', () => {
     expect(getPositionalTarget(['--timeout', '5000'])).toBeUndefined();
+  });
+
+  it('treats unknown --tokens as positional arguments', () => {
+    expect(getPositionalTarget(['--seed'])).toBe('--seed');
+  });
+});
+
+describe('getPositionalArgs', () => {
+  it('returns all non-flag arguments in order', () => {
+    expect(getPositionalArgs(['e1', 'hello'])).toStrictEqual(['e1', 'hello']);
+  });
+
+  it('skips known flag-value pairs', () => {
+    expect(
+      getPositionalArgs(['e1', '--timeout', '5000', 'hello']),
+    ).toStrictEqual(['e1', 'hello']);
+  });
+
+  it('treats unknown --tokens as positional arguments', () => {
+    expect(getPositionalArgs(['e1', '--seed'])).toStrictEqual(['e1', '--seed']);
+  });
+
+  it('returns empty array when only known flags present', () => {
+    expect(getPositionalArgs(['--timeout', '5000'])).toStrictEqual([]);
   });
 });
 
@@ -884,6 +921,59 @@ describe('sendRequest', () => {
     );
   });
 
+  it('prints JSON error with diagnostics when error has diagnostics field', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        ok: false,
+        error: {
+          code: 'MM_CLICK_TIMEOUT',
+          message: 'Click timed out',
+          diagnostics: {
+            phase: 'action',
+            targetType: 'testId',
+            targetValue: 'btn',
+            timeoutMs: 500,
+            elapsedMs: 501,
+            suspectedCause: 'unknown',
+          },
+        },
+      }),
+    } as Response);
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', { testId: 'btn' }),
+    ).rejects.toThrowError('process.exit');
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"MM_CLICK_TIMEOUT"'),
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"diagnostics"'),
+    );
+  });
+
+  it('prints plain message when error has no diagnostics', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        ok: false,
+        error: {
+          code: 'MM_TARGET_NOT_FOUND',
+          message: 'Element not found',
+        },
+      }),
+    } as Response);
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', { testId: 'btn' }),
+    ).rejects.toThrowError('process.exit');
+
+    expect(stderrSpy).toHaveBeenCalledWith('Error: Element not found\n');
+  });
+
   it('falls back to data when no result key', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
@@ -1007,6 +1097,26 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes click with --timeout', async () => {
+    await routeCommand('click', ['e1', '--timeout', '5000'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1', timeoutMs: 5000 }),
+      }),
+    );
+  });
+
+  it('routes click with --timeout and uses buffered request timeout', async () => {
+    await routeCommand('click', ['e1', '--timeout', '60000'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1', timeoutMs: 60000 }),
+      }),
+    );
+  });
+
   it('exits when click has no target', async () => {
     await expect(routeCommand('click', [], 3000)).rejects.toThrowError(
       'process.exit',
@@ -1032,6 +1142,36 @@ describe('routeCommand', () => {
       'http://127.0.0.1:3000/tool/type',
       expect.objectContaining({
         body: JSON.stringify({ testId: 'input', text: 'text' }),
+      }),
+    );
+  });
+
+  it('routes type with --timeout', async () => {
+    await routeCommand('type', ['e1', 'hello', '--timeout', '5000'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/type',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1', text: 'hello', timeoutMs: 5000 }),
+      }),
+    );
+  });
+
+  it('routes type with --timeout before text', async () => {
+    await routeCommand('type', ['e1', '--timeout', '5000', 'hello'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/type',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1', text: 'hello', timeoutMs: 5000 }),
+      }),
+    );
+  });
+
+  it('routes type with text that starts with --', async () => {
+    await routeCommand('type', ['e1', '--seed'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/type',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1', text: '--seed' }),
       }),
     );
   });
@@ -1093,6 +1233,24 @@ describe('routeCommand', () => {
         body: JSON.stringify({ a11yRef: 'e5', timeoutMs: 10000 }),
       }),
     );
+  });
+
+  it('routes wait-for with --timeout and uses buffered request timeout', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    expect(
+      await routeCommand('wait-for', ['e5', '--timeout', '60000'], 3000),
+    ).toBeUndefined();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/wait_for',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e5', timeoutMs: 60000 }),
+      }),
+    );
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 67000);
+
+    setTimeoutSpy.mockRestore();
   });
 
   it('exits when wait-for has no target', async () => {
@@ -1266,6 +1424,16 @@ describe('routeCommand', () => {
       'http://127.0.0.1:3000/tool/get_text',
       expect.objectContaining({
         body: JSON.stringify({ a11yRef: 'e1' }),
+      }),
+    );
+  });
+
+  it('routes get-text with --timeout', async () => {
+    await routeCommand('get-text', ['e5', '--timeout', '3000'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_text',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e5', timeoutMs: 3000 }),
       }),
     );
   });

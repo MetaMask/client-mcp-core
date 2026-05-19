@@ -155,6 +155,30 @@ Shows daemon status: PID, port, uptime, allocated sub-ports.
 mm status
 ```
 
+#### `mm stop`
+
+Stops the daemon process (symmetric to `mm serve`). Sends a best-effort cleanup before shutdown.
+
+```
+mm stop [--force]
+```
+
+| Flag      | Description                                          |
+| --------- | ---------------------------------------------------- |
+| `--force` | Remove stale `.mm-server` state from crashed daemons |
+
+#### `mm build`
+
+Triggers an extension build using the configured `BuildCapability`. The daemon must be running.
+
+```
+mm build [--force]
+```
+
+| Flag      | Description                                            |
+| --------- | ------------------------------------------------------ |
+| `--force` | Force a rebuild even if the extension is already built |
+
 #### `mm serve`
 
 Manually starts the daemon without launching a browser. Useful for debugging.
@@ -200,6 +224,28 @@ When 3+ consecutive identical nodes appear (same role, name, and path), they are
 
 Use the `ref` value (`e3`) for click/type/get-text/wait-for commands.
 
+#### `mm list-testids`
+
+Lists all visible `data-testid` attributes on the current page with text previews.
+
+```
+mm list-testids
+```
+
+Useful when you know a `testId` value and want to verify it exists. Prefer `describe-screen` for general observation.
+
+#### `mm accessibility-snapshot`
+
+Captures just the trimmed accessibility tree with deterministic refs. Lighter than `describe-screen` (no state, no prior knowledge, no test IDs).
+
+```
+mm accessibility-snapshot [--root <selector>]
+```
+
+| Flag                | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `--root <selector>` | CSS selector to scope the snapshot to a subtree |
+
 #### `mm screenshot`
 
 Captures a screenshot of the current page.
@@ -216,33 +262,38 @@ All interaction commands accept an element reference from `describe-screen`.
 
 #### `mm click <ref>`
 
-Clicks an element. Waits up to 15s for it to become visible.
+Clicks an element. Waits for it to become visible, then clicks. The `--timeout` flag covers the **entire operation** (visibility wait + click action combined). Default: 15s.
 
 ```
 mm click e3
 mm click --testid end-accessory --within "testid:account-list-item/0"
+mm click --testid onboarding-complete-done --timeout 60000
 ```
 
 Use `--within` to scope the target inside a parent element. Values use the format `testid:<id>`, `selector:<css>`, or a bare a11y ref (`e5`).
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 
+**Timeout behavior:** If the click hangs (e.g., element found but click never resolves due to a side effect), `MM_CLICK_TIMEOUT` is returned with structured diagnostics. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
+
 #### `mm type <ref> <text>`
 
-Types text into an input field. **Clears the field first**, then sets the new value (uses Playwright's `fill()`). No `clearFirst` flag needed — clearing is always implicit.
+Types text into an input field. **Clears the field first**, then sets the new value (uses Playwright's `fill()`). No `clearFirst` flag needed — clearing is always implicit. Accepts `--timeout <ms>` to set the total time budget for the visibility wait + fill operation. Default: 15s.
 
 ```
 mm type e5 "0x1234abcd..."
+mm type e5 "0x1234abcd..." --timeout 10000
 ```
 
 #### `mm get-text <ref>`
 
-Reads the text content of an element. Returns the inner text, target descriptor, and character length. Useful for asserting visible values without screenshots. Categorized as read-only (no observations in response).
+Reads the text content of an element. Returns the inner text, target descriptor, and character length. Useful for asserting visible values without screenshots. Categorized as read-only (no observations in response). Accepts `--timeout <ms>` to set the total time budget. Default: 15s.
 
 ```
 mm get-text e5
 mm get-text --testid balance-amount
 mm get-text --testid amount --within "testid:tx-row"
+mm get-text --testid balance-amount --timeout 5000
 ```
 
 Returns: `text` (string content), `target` (descriptor like `testId:balance-amount`), `length` (character count).
@@ -374,6 +425,53 @@ Lists recent sessions with metadata (goal, flow tags, timestamps).
 mm knowledge-sessions
 ```
 
+#### `mm knowledge-summarize`
+
+Generates a recipe-style summary of a session's tool invocations, showing the step sequence with targets and outcomes.
+
+```
+mm knowledge-summarize [--session <id>]
+```
+
+### Contracts (E2E only)
+
+#### `mm seed-contract <name>`
+
+Deploys a single smart contract to the local Anvil chain by name. Requires `ContractSeedingCapability`.
+
+```
+mm seed-contract hst
+mm seed-contract piggybank --hardfork london
+```
+
+| Flag                | Description                        |
+| ------------------- | ---------------------------------- |
+| `--hardfork <fork>` | EVM hardfork to use for deployment |
+
+#### `mm seed-contracts <names...>`
+
+Deploys multiple smart contracts in sequence.
+
+```
+mm seed-contracts hst nfts piggybank
+```
+
+#### `mm get-contract-address <name>`
+
+Looks up the deployed address of a contract by name.
+
+```
+mm get-contract-address hst
+```
+
+#### `mm list-contracts`
+
+Lists all contracts deployed in the current session with addresses and timestamps.
+
+```
+mm list-contracts
+```
+
 ### Batch Execution
 
 #### `mm run-steps <json>`
@@ -436,25 +534,68 @@ Use prior knowledge to guide your actions, but always verify against the current
 
 When a command fails, the response includes `error.code`. Use this to decide what to do:
 
-| Code                          | Meaning                                      | Recovery                                                  |
-| ----------------------------- | -------------------------------------------- | --------------------------------------------------------- |
-| `MM_NO_ACTIVE_SESSION`        | No browser session running                   | Run `mm launch` first                                     |
-| `MM_SESSION_ALREADY_RUNNING`  | Session already exists                       | Run `mm cleanup` first, or use `--force`                  |
-| `MM_TARGET_NOT_FOUND`         | Element ref/testId/selector not found        | Run `mm describe-screen` to get fresh refs                |
-| `MM_WAIT_TIMEOUT`             | Element didn't appear in time                | Increase timeout or verify you're on the right screen     |
-| `MM_CLICK_FAILED`             | Click failed after finding element           | Element may be obscured; try waiting or scrolling         |
-| `MM_TYPE_FAILED`              | Type failed after finding element            | Element may not be an input; verify with describe-screen  |
-| `MM_PAGE_CLOSED`              | Page was closed unexpectedly                 | Normal after some confirmations; run describe-screen      |
-| `MM_NAVIGATION_FAILED`        | Navigation error or network failure          | Check URL validity; retry once                            |
-| `MM_NOTIFICATION_TIMEOUT`     | Extension notification popup didn't appear   | Action may not have triggered a notification; check state |
-| `MM_TAB_NOT_FOUND`            | Tab role/URL not found                       | Run `mm get-state` to see available tabs                  |
-| `MM_CAPABILITY_NOT_AVAILABLE` | Feature requires a capability not configured | Check environment mode (e2e vs prod)                      |
-| `MM_CONTEXT_SWITCH_BLOCKED`   | Can't switch context with active session     | Run `mm cleanup` first                                    |
-| `MM_INVALID_INPUT`            | Bad parameters                               | Fix input and retry                                       |
-| `MM_BATCH_TIMEOUT`            | `batchTimeoutMs` deadline exceeded           | Remaining steps were skipped; check partial results       |
-| `MM_CDP_BLOCKED`              | CDP method is blocked (destructive)          | Use a different CDP method; see blocked list              |
-| `MM_CDP_FAILED`               | CDP command failed or timed out              | Check method name/params; retry or increase timeout       |
-| `MM_CONTRACT_NOT_FOUND`       | Unknown contract name for seeding            | See available contracts below                             |
+| Code                          | Meaning                                            | Recovery                                                                                            |
+| ----------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `MM_NO_ACTIVE_SESSION`        | No browser session running                         | Run `mm launch` first                                                                               |
+| `MM_SESSION_ALREADY_RUNNING`  | Session already exists                             | Run `mm cleanup` first, or use `--force`                                                            |
+| `MM_TARGET_NOT_FOUND`         | Element ref/testId/selector not found              | Run `mm describe-screen` to get fresh refs                                                          |
+| `MM_WAIT_TIMEOUT`             | Element didn't appear in time                      | Increase timeout or verify you're on the right screen                                               |
+| `MM_CLICK_FAILED`             | Click failed after finding element                 | Element may be obscured; try waiting or scrolling                                                   |
+| `MM_CLICK_TIMEOUT`            | Click action timed out (element found, click hung) | Run `mm describe-screen` to verify if click completed; retry with `--timeout` or different approach |
+| `MM_TYPE_TIMEOUT`             | Fill action timed out                              | Run `mm describe-screen` to verify state; retry with `--timeout`                                    |
+| `MM_GETTEXT_TIMEOUT`          | textContent action timed out                       | Retry with `--timeout`                                                                              |
+| `MM_GETTEXT_FAILED`           | getText operational failure (non-timeout)          | Element may be detached; run `mm describe-screen` and re-target                                     |
+| `MM_TYPE_FAILED`              | Type failed after finding element                  | Element may not be an input; verify with describe-screen                                            |
+| `MM_PAGE_CLOSED`              | Page was closed unexpectedly                       | Normal after some confirmations; run describe-screen                                                |
+| `MM_NAVIGATION_FAILED`        | Navigation error or network failure                | Check URL validity; retry once                                                                      |
+| `MM_NOTIFICATION_TIMEOUT`     | Extension notification popup didn't appear         | Action may not have triggered a notification; check state                                           |
+| `MM_TAB_NOT_FOUND`            | Tab role/URL not found                             | Run `mm get-state` to see available tabs                                                            |
+| `MM_CAPABILITY_NOT_AVAILABLE` | Feature requires a capability not configured       | Check environment mode (e2e vs prod)                                                                |
+| `MM_CONTEXT_SWITCH_BLOCKED`   | Can't switch context with active session           | Run `mm cleanup` first                                                                              |
+| `MM_INVALID_INPUT`            | Bad parameters                                     | Fix input and retry                                                                                 |
+| `MM_BATCH_TIMEOUT`            | `batchTimeoutMs` deadline exceeded                 | Remaining steps were skipped; check partial results                                                 |
+| `MM_CDP_BLOCKED`              | CDP method is blocked (destructive)                | Use a different CDP method; see blocked list                                                        |
+| `MM_CDP_FAILED`               | CDP command failed or timed out                    | Check method name/params; retry or increase timeout                                                 |
+| `MM_CONTRACT_NOT_FOUND`       | Unknown contract name for seeding                  | See available contracts below                                                                       |
+
+## Interaction Timeout Diagnostics
+
+When a timeout error occurs (`MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_WAIT_TIMEOUT`, `MM_GETTEXT_TIMEOUT`), the error response includes a `diagnostics` object with details about what happened:
+
+```json
+{
+  "code": "MM_CLICK_TIMEOUT",
+  "message": "Click action timed out after 15000ms. Note: the click action may have completed in the background after this timeout. Run describe-screen to verify current page state before retrying.",
+  "diagnostics": {
+    "phase": "action",
+    "targetType": "testId",
+    "targetValue": "cancel-btn",
+    "timeoutMs": 15000,
+    "elapsedMs": 15001,
+    "elementFound": true,
+    "elementVisible": true,
+    "elementEnabled": true,
+    "boundingBox": { "x": -100, "y": 500, "width": 80, "height": 40 },
+    "suspectedCause": "element-offscreen"
+  }
+}
+```
+
+**`suspectedCause` values:**
+
+- `element-not-found` — element is not in the DOM. Solution: verify you're on the right screen and check the selector/testId with `mm describe-screen`.
+- `element-offscreen` — element is in the DOM and visible but outside the viewport. Solution: scroll into view before clicking.
+- `element-not-actionable` — element is visible but disabled. Solution: wait for it to become enabled.
+- `navigation-or-context-change` — page navigated or new page opened during the action. Check current state.
+- `page-closed` — the browser page was closed during the operation.
+- `unknown` — cause could not be determined.
+
+**Recovery pattern after any timeout:**
+
+1. Always run `mm describe-screen` first — the action may have completed in the background.
+2. Use `suspectedCause` to choose a recovery strategy.
+3. For `element-offscreen`: try scrolling or using a different selector.
+4. For visibility timeouts: use `mm wait-for --timeout <ms>` before the interaction.
 
 ## Available Contracts (E2E only)
 

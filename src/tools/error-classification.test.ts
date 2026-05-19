@@ -224,6 +224,32 @@ describe('error-classification', () => {
       });
     });
 
+    describe('when error indicates page closed', () => {
+      it('returns PAGE_CLOSED for "Target page, context or browser has been closed"', () => {
+        const error = new Error(
+          'Target page, context or browser has been closed',
+        );
+
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
+
+        expect(result.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+      });
+
+      it('returns PAGE_CLOSED for "Target closed"', () => {
+        const error = new Error('Target closed');
+
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
+
+        expect(result.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+      });
+    });
+
     describe('when error does not match any pattern', () => {
       it('returns fallback code with formatted message', () => {
         // Arrange
@@ -325,27 +351,40 @@ describe('error-classification', () => {
   });
 
   describe('classifyWaitError', () => {
-    it('always returns WAIT_TIMEOUT code', () => {
-      // Arrange
-      const error = new Error('Element did not appear');
+    it('returns WAIT_TIMEOUT for timeout errors', () => {
+      const error = new Error('Timeout 5000ms exceeded');
 
-      // Act
       const result = classifyWaitError(error);
 
-      // Assert
       expect(result.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
-      expect(result.message).toContain('Wait timed out');
+      expect(result.message).toContain('Timeout');
     });
 
-    it('includes original error message', () => {
-      // Arrange
-      const error = new Error('Specific timeout reason');
+    it('returns PAGE_CLOSED for page-closed errors', () => {
+      const error = new Error(
+        'Target page, context or browser has been closed',
+      );
 
-      // Act
       const result = classifyWaitError(error);
 
-      // Assert
-      expect(result.message).toContain('Specific timeout reason');
+      expect(result.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+    });
+
+    it('returns TARGET_NOT_FOUND for unknown ref errors', () => {
+      const error = new Error('Unknown a11yRef: e99');
+
+      const result = classifyWaitError(error);
+
+      expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+    });
+
+    it('returns WAIT_TIMEOUT as fallback for unrecognized errors', () => {
+      const error = new Error('Something unexpected happened');
+
+      const result = classifyWaitError(error);
+
+      expect(result.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+      expect(result.message).toContain('Operation failed');
     });
   });
 
