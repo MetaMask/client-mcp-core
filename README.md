@@ -625,55 +625,55 @@ For the full agent-facing reference and workflow guidelines, see [SKILL.md](./SK
 
 Tool errors are classified into specific error codes for structured handling:
 
-| Code                          | Meaning                                            |
-| ----------------------------- | -------------------------------------------------- |
-| **Session & Lifecycle**       |                                                    |
-| `MM_NO_ACTIVE_SESSION`        | No browser session running                         |
-| `MM_SESSION_ALREADY_RUNNING`  | Session already exists                             |
-| `MM_LAUNCH_FAILED`            | Browser session launch failed                      |
-| `MM_PAGE_CLOSED`              | Browser page was closed unexpectedly               |
-| **Build**                     |                                                    |
-| `MM_BUILD_FAILED`             | Extension build failed                             |
-| `MM_DEPENDENCIES_MISSING`     | Required build dependencies not installed          |
-| **Interaction**               |                                                    |
-| `MM_TARGET_NOT_FOUND`         | Element not found by ref, testId, or selector      |
-| `MM_WAIT_TIMEOUT`             | Timeout waiting for element visibility             |
-| `MM_CLICK_FAILED`             | Click operation failed                             |
-| `MM_CLICK_TIMEOUT`            | Click action timed out (element found, click hung) |
-| `MM_TYPE_FAILED`              | Type operation failed                              |
-| `MM_TYPE_TIMEOUT`             | Fill action timed out                              |
-| `MM_GETTEXT_FAILED`           | getText operation failed                           |
-| `MM_GETTEXT_TIMEOUT`          | textContent action timed out                       |
-| **Clipboard**                 |                                                    |
-| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser          |
-| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy            |
-| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                      |
-| **Navigation & Tabs**         |                                                    |
-| `MM_NAVIGATION_FAILED`        | Navigation error or network failure                |
-| `MM_NOTIFICATION_TIMEOUT`     | Notification popup did not appear                  |
-| `MM_TAB_NOT_FOUND`            | Tab not found by role or URL                       |
-| **Discovery & State**         |                                                    |
-| `MM_DISCOVERY_FAILED`         | Discovery tool failure                             |
-| `MM_SCREENSHOT_FAILED`        | Screenshot capture failure                         |
-| `MM_STATE_FAILED`             | State retrieval failed                             |
-| **Knowledge**                 |                                                    |
-| `MM_KNOWLEDGE_ERROR`          | Knowledge store operation failed                   |
-| **Contracts**                 |                                                    |
-| `MM_CONTRACT_NOT_FOUND`       | Unknown contract name                              |
-| `MM_SEED_FAILED`              | Contract deployment failure                        |
-| **Context & Config**          |                                                    |
-| `MM_CONTEXT_SWITCH_BLOCKED`   | Context switch while session is active             |
-| `MM_SET_CONTEXT_FAILED`       | Context switch operation failed                    |
-| `MM_CAPABILITY_NOT_AVAILABLE` | Feature requires a capability not configured       |
-| `MM_INVALID_INPUT`            | Bad parameters                                     |
-| `MM_INVALID_CONFIG`           | Invalid configuration                              |
-| `MM_PORT_IN_USE`              | Port already in use                                |
-| **System**                    |                                                    |
-| `MM_UNKNOWN_TOOL`             | Unknown tool name                                  |
-| `MM_INTERNAL_ERROR`           | Internal server error                              |
-| `MM_BATCH_TIMEOUT`            | `batchTimeoutMs` deadline exceeded in run_steps    |
-| `MM_CDP_BLOCKED`              | CDP method is blocked (destructive to session)     |
-| `MM_CDP_FAILED`               | CDP command execution failed or timed out          |
+| Code                             | Meaning                                            |
+| -------------------------------- | -------------------------------------------------- |
+| **Session & Lifecycle**          |                                                    |
+| `MM_NO_ACTIVE_SESSION`           | No browser session running                         |
+| `MM_SESSION_ALREADY_RUNNING`     | Session already exists                             |
+| `MM_LAUNCH_FAILED`               | Browser session launch failed                      |
+| `MM_PAGE_CLOSED`                 | Browser page was closed unexpectedly               |
+| **Build**                        |                                                    |
+| `MM_BUILD_FAILED`                | Extension build failed                             |
+| `MM_DEPENDENCIES_MISSING`        | Required build dependencies not installed          |
+| **Interaction**                  |                                                    |
+| `MM_TARGET_NOT_FOUND`            | Element not found by ref, testId, or selector      |
+| `MM_WAIT_TIMEOUT`                | Timeout waiting for element visibility             |
+| `MM_CLICK_FAILED`                | Click operation failed                             |
+| `MM_CLICK_TIMEOUT`               | Click action timed out (element found, click hung) |
+| `MM_TYPE_FAILED`                 | Type operation failed                              |
+| `MM_TYPE_TIMEOUT`                | Fill action timed out                              |
+| `MM_GETTEXT_FAILED`              | getText operation failed                           |
+| `MM_GETTEXT_TIMEOUT`             | textContent action timed out                       |
+| **Clipboard**                    |                                                    |
+| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser             |
+| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy               |
+| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                         |
+| **Navigation & Tabs**            |                                                    |
+| `MM_NAVIGATION_FAILED`           | Navigation error or network failure                |
+| `MM_NOTIFICATION_TIMEOUT`        | Notification popup did not appear                  |
+| `MM_TAB_NOT_FOUND`               | Tab not found by role or URL                       |
+| **Discovery & State**            |                                                    |
+| `MM_DISCOVERY_FAILED`            | Discovery tool failure                             |
+| `MM_SCREENSHOT_FAILED`           | Screenshot capture failure                         |
+| `MM_STATE_FAILED`                | State retrieval failed                             |
+| **Knowledge**                    |                                                    |
+| `MM_KNOWLEDGE_ERROR`             | Knowledge store operation failed                   |
+| **Contracts**                    |                                                    |
+| `MM_CONTRACT_NOT_FOUND`          | Unknown contract name                              |
+| `MM_SEED_FAILED`                 | Contract deployment failure                        |
+| **Context & Config**             |                                                    |
+| `MM_CONTEXT_SWITCH_BLOCKED`      | Context switch while session is active             |
+| `MM_SET_CONTEXT_FAILED`          | Context switch operation failed                    |
+| `MM_CAPABILITY_NOT_AVAILABLE`    | Feature requires a capability not configured       |
+| `MM_INVALID_INPUT`               | Bad parameters                                     |
+| `MM_INVALID_CONFIG`              | Invalid configuration                              |
+| `MM_PORT_IN_USE`                 | Port already in use                                |
+| **System**                       |                                                    |
+| `MM_UNKNOWN_TOOL`                | Unknown tool name                                  |
+| `MM_INTERNAL_ERROR`              | Internal server error                              |
+| `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded in run_steps    |
+| `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive to session)     |
+| `MM_CDP_FAILED`                  | CDP command execution failed or timed out          |
 
 ### Timeout Diagnostics
 
@@ -707,13 +707,13 @@ The `phase` field indicates which stage timed out:
 
 The `suspectedCause` field provides a heuristic diagnosis:
 
-| Cause                          | Meaning                                             | Recovery                                         |
-| ------------------------------ | --------------------------------------------------- | ------------------------------------------------ |
-| `element-not-found`            | Element is not in the DOM                           | Verify screen state; check selector/testId       |
-| `element-offscreen`            | Element is in the DOM but outside the viewport      | Scroll into view before interacting              |
-| `element-not-actionable`       | Element is visible but disabled                     | Wait for it to become enabled                    |
-| `page-closed`                  | The browser page was closed during the operation    | Normal after some confirmations; describe-screen |
-| `unknown`                      | Cause could not be determined                       | Run describe-screen and retry                    |
+| Cause                    | Meaning                                          | Recovery                                         |
+| ------------------------ | ------------------------------------------------ | ------------------------------------------------ |
+| `element-not-found`      | Element is not in the DOM                        | Verify screen state; check selector/testId       |
+| `element-offscreen`      | Element is in the DOM but outside the viewport   | Scroll into view before interacting              |
+| `element-not-actionable` | Element is visible but disabled                  | Wait for it to become enabled                    |
+| `page-closed`            | The browser page was closed during the operation | Normal after some confirmations; describe-screen |
+| `unknown`                | Cause could not be determined                    | Run describe-screen and retry                    |
 
 ## Development
 
