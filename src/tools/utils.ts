@@ -1,6 +1,5 @@
 import { ErrorCodes } from './types';
 import type { ToolContext, ToolResponse } from '../types/http.js';
-import type { InteractionDiagnostics } from './types/tool-outputs.js';
 
 /**
  * Wraps a result value in a successful tool response.
@@ -30,29 +29,6 @@ export function createToolError<TResult = never>(
     error: {
       code,
       message,
-    },
-  };
-}
-
-/**
- * Wraps an error with diagnostics in a failed tool response.
- *
- * @param code - The error code identifying the failure type.
- * @param message - A human-readable error description.
- * @param diagnostics - The interaction diagnostics to include.
- * @returns A failed tool response containing the error with diagnostics.
- */
-export function createToolErrorWithDiagnostics<TResult = never>(
-  code: string,
-  message: string,
-  diagnostics: InteractionDiagnostics,
-): ToolResponse<TResult> {
-  return {
-    ok: false,
-    error: {
-      code,
-      message,
-      diagnostics,
     },
   };
 }
