@@ -20,8 +20,7 @@ import type {
 } from './types';
 import { ErrorCodes } from './types';
 import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
-import { collectInteractionDiagnostics } from './utils/diagnostics.js';
-import { isVisibilityPhaseError, waitForTarget } from './utils/discovery.js';
+import { waitForTarget } from './utils/discovery.js';
 import type { TargetType, WithinScope } from './utils/discovery.js';
 import { validateTargetSelection } from './utils/targets.js';
 import {
@@ -30,7 +29,6 @@ import {
 } from './utils/type-guards.js';
 import {
   createToolError,
-  createToolErrorWithDiagnostics,
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
@@ -119,7 +117,7 @@ type RunInteractionWithTimeoutOptions<TResult> = {
 };
 
 /**
- * Runs an element interaction within a timeout, collecting diagnostics on failure.
+ * Runs an element interaction within a deadline-based timeout.
  *
  * @param options - The interaction configuration object.
  * @param options.context - The tool execution context with session and page.
@@ -163,30 +161,10 @@ async function runInteractionWithTimeout<TResult>({
       withinScope,
     );
   } catch (error) {
-    const elapsedMs = Date.now() - startTime;
     const errorInfo = classifyError(error);
-
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
-      const phase = isVisibilityPhaseError(error, 'parent')
-        ? 'visibility-parent'
-        : 'visibility-target';
-      const diagnostics = await collectInteractionDiagnostics(
-        context.page,
-        undefined,
-        targetType,
-        targetValue,
-        timeoutMs,
-        elapsedMs,
-        phase,
-        withinScope,
-      );
-      return createToolErrorWithDiagnostics(
-        timeoutErrorCode,
-        errorInfo.message,
-        diagnostics,
-      );
+      return createToolError(timeoutErrorCode, errorInfo.message);
     }
-
     return createToolError(errorInfo.code, errorInfo.message);
   }
 
@@ -194,20 +172,9 @@ async function runInteractionWithTimeout<TResult>({
 
   if (remaining <= 0) {
     const elapsedMs = Date.now() - startTime;
-    const diagnostics = await collectInteractionDiagnostics(
-      context.page,
-      locator,
-      targetType,
-      targetValue,
-      timeoutMs,
-      elapsedMs,
-      'action',
-      withinScope,
-    );
-    return createToolErrorWithDiagnostics(
+    return createToolError(
       timeoutErrorCode,
       formatTimeoutMessage('deadline', elapsedMs),
-      diagnostics,
     );
   }
 
@@ -230,20 +197,9 @@ async function runInteractionWithTimeout<TResult>({
 
     if (isActionTimeoutError(actionError)) {
       const elapsedMs = Date.now() - startTime;
-      const diagnostics = await collectInteractionDiagnostics(
-        context.page,
-        locator,
-        targetType,
-        targetValue,
-        timeoutMs,
-        elapsedMs,
-        'action',
-        withinScope,
-      );
-      return createToolErrorWithDiagnostics(
+      return createToolError(
         timeoutErrorCode,
         formatTimeoutMessage('action', elapsedMs),
-        diagnostics,
       );
     }
 
@@ -388,8 +344,6 @@ export async function waitForTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
-  const withinScope = resolveWithinScope(input.within);
-  const startTime = Date.now();
 
   try {
     await waitForTarget(
@@ -398,7 +352,7 @@ export async function waitForTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      withinScope,
+      resolveWithinScope(input.within),
     );
 
     return createToolSuccess({
@@ -406,32 +360,8 @@ export async function waitForTool(
       target: `${targetType}:${targetValue}`,
     });
   } catch (error) {
-    const elapsedMs = Date.now() - startTime;
     const errorInfo = classifyWaitError(error);
-
-    if (errorInfo.code !== ErrorCodes.MM_WAIT_TIMEOUT) {
-      return createToolError(errorInfo.code, errorInfo.message);
-    }
-
-    const phase = isVisibilityPhaseError(error, 'parent')
-      ? 'visibility-parent'
-      : 'visibility-target';
-    const diagnostics = await collectInteractionDiagnostics(
-      context.page,
-      undefined,
-      targetType,
-      targetValue,
-      timeoutMs,
-      elapsedMs,
-      phase,
-      withinScope,
-    );
-
-    return createToolErrorWithDiagnostics(
-      errorInfo.code,
-      errorInfo.message,
-      diagnostics,
-    );
+    return createToolError(errorInfo.code, errorInfo.message);
   }
 }
 

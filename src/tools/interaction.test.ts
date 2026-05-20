@@ -15,7 +15,6 @@ import {
 } from './interaction.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
-import * as diagnosticsModule from './utils/diagnostics.js';
 import * as discoveryModule from './utils/discovery.js';
 import * as targetsModule from './utils/targets.js';
 import type { ToolContext } from '../types/http.js';
@@ -53,17 +52,6 @@ function createMockContext(
     workflowContext: {},
     knowledgeStore: {},
   } as unknown as ToolContext;
-}
-
-function createMockDiagnostics() {
-  return {
-    phase: 'action',
-    targetType: 'testId',
-    targetValue: 'target',
-    timeoutMs: 5,
-    elapsedMs: 5,
-    suspectedCause: 'unknown' as const,
-  };
 }
 
 function createTimeoutError(message: string): Error {
@@ -351,18 +339,13 @@ describe('interaction', () => {
       }
     });
 
-    it('returns diagnostics when no action time remains after visibility wait', async () => {
+    it('returns timeout error when no action time remains after visibility wait', async () => {
       const locator = createMockLocator();
-      const diagnostics = createMockDiagnostics();
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(1000);
@@ -377,25 +360,11 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        locator,
-        'testId',
-        'slow-button',
-        5,
-        6,
-        'action',
-        undefined,
-      );
     });
 
-    it('returns diagnostics when click action times out', async () => {
+    it('returns timeout error when click action times out', async () => {
       const locator = createMockLocator();
-      const diagnostics = createMockDiagnostics();
       const context = createMockContext();
       locator.click.mockRejectedValue(
         createTimeoutError('Timeout 5ms exceeded during click'),
@@ -404,10 +373,6 @@ describe('interaction', () => {
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(1000);
       nowSpy.mockReturnValueOnce(1000);
@@ -421,22 +386,16 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
       expect(locator.click).toHaveBeenCalledWith({ timeout: 5 });
     });
 
-    it('returns diagnostics when click visibility wait times out', async () => {
-      const diagnostics = createMockDiagnostics();
+    it('returns timeout error when click visibility wait times out', async () => {
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
         new Error('Timeout 5ms exceeded during waitForTarget'),
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(1000);
@@ -450,99 +409,7 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'missing-button',
-        5,
-        5,
-        'visibility-target',
-        undefined,
-      );
-    });
-
-    it('forwards within scope to diagnostics on visibility timeout', async () => {
-      const diagnostics = createMockDiagnostics();
-      const context = createMockContext();
-
-      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
-        new Error('Timeout 5ms exceeded during waitForTarget'),
-      );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
-
-      const nowSpy = vi.spyOn(Date, 'now');
-      nowSpy.mockReturnValueOnce(1000);
-      nowSpy.mockReturnValueOnce(1005);
-
-      await clickTool(
-        {
-          testId: 'end-accessory',
-          timeoutMs: 5,
-          within: { testId: 'account-list-item/0' },
-        },
-        context,
-      );
-
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'end-accessory',
-        5,
-        5,
-        'visibility-target',
-        { type: 'testId', value: 'account-list-item/0' },
-      );
-    });
-
-    it('reports visibility-parent phase when parent scope times out', async () => {
-      const diagnostics = createMockDiagnostics();
-      const context = createMockContext();
-
-      const parentError = new Error('Timeout 5ms exceeded waiting for parent');
-      Object.assign(parentError, { visibilityPhase: 'parent' });
-
-      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(parentError);
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
-
-      const nowSpy = vi.spyOn(Date, 'now');
-      nowSpy.mockReturnValueOnce(1000);
-      nowSpy.mockReturnValueOnce(1005);
-
-      await clickTool(
-        {
-          testId: 'end-accessory',
-          timeoutMs: 5,
-          within: { testId: 'account-list-item/0' },
-        },
-        context,
-      );
-
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'end-accessory',
-        5,
-        5,
-        'visibility-parent',
-        { type: 'testId', value: 'account-list-item/0' },
-      );
     });
   });
 
@@ -791,18 +658,13 @@ describe('interaction', () => {
       }
     });
 
-    it('returns diagnostics when no type action time remains after visibility wait', async () => {
+    it('returns timeout error when no type action time remains after visibility wait', async () => {
       const locator = createMockLocator();
-      const diagnostics = createMockDiagnostics();
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(2000);
@@ -817,13 +679,11 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
     });
 
-    it('returns diagnostics when fill action times out', async () => {
+    it('returns timeout error when fill action times out', async () => {
       const locator = createMockLocator();
-      const diagnostics = createMockDiagnostics();
       const context = createMockContext();
       locator.fill.mockRejectedValue(
         createTimeoutError('Timeout 5ms exceeded during fill'),
@@ -832,10 +692,6 @@ describe('interaction', () => {
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(2000);
       nowSpy.mockReturnValueOnce(2000);
@@ -849,22 +705,16 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
       expect(locator.fill).toHaveBeenCalledWith('value', { timeout: 5 });
     });
 
-    it('returns diagnostics when type visibility wait times out', async () => {
-      const diagnostics = createMockDiagnostics();
+    it('returns timeout error when type visibility wait times out', async () => {
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
         new Error('Timeout 5ms exceeded during waitForTarget'),
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(2000);
@@ -878,20 +728,7 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'missing-input',
-        5,
-        5,
-        'visibility-target',
-        undefined,
-      );
     });
 
     it('classifies page-closed as type error even when error name is TimeoutError', async () => {
@@ -918,7 +755,6 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
-        expect(result.error.diagnostics).toBeUndefined();
       }
     });
   });
@@ -1134,17 +970,12 @@ describe('interaction', () => {
       }
     });
 
-    it('returns diagnostics when visibility wait times out', async () => {
-      const diagnostics = createMockDiagnostics();
+    it('returns timeout error when visibility wait times out', async () => {
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
         new Error('Timeout 5000ms exceeded'),
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const result = await waitForTool(
         { testId: 'missing', timeoutMs: 5 },
@@ -1154,60 +985,7 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'missing',
-        5,
-        expect.any(Number),
-        'visibility-target',
-        undefined,
-      );
-    });
-
-    it('reports visibility-parent phase when parent scope times out in waitFor', async () => {
-      const diagnostics = createMockDiagnostics();
-      const context = createMockContext();
-
-      const parentError = new Error('Timeout 5ms exceeded waiting for parent');
-      Object.assign(parentError, { visibilityPhase: 'parent' });
-
-      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(parentError);
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
-
-      const result = await waitForTool(
-        {
-          testId: 'child-elem',
-          timeoutMs: 5,
-          within: { testId: 'parent-row' },
-        },
-        context,
-      );
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
-      }
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'child-elem',
-        5,
-        expect.any(Number),
-        'visibility-parent',
-        { type: 'testId', value: 'parent-row' },
-      );
     });
   });
 
@@ -1352,18 +1130,13 @@ describe('interaction', () => {
       );
     });
 
-    it('returns diagnostics when no text action time remains after visibility wait', async () => {
+    it('returns timeout error when no text action time remains after visibility wait', async () => {
       const locator = createMockLocator();
-      const diagnostics = createMockDiagnostics();
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(3000);
@@ -1378,13 +1151,11 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
     });
 
-    it('returns diagnostics when textContent action times out', async () => {
+    it('returns timeout error when textContent action times out', async () => {
       const locator = createMockLocator();
-      const diagnostics = createMockDiagnostics();
       const context = createMockContext();
       locator.textContent.mockRejectedValue(
         createTimeoutError('Timeout 5ms exceeded during textContent'),
@@ -1393,10 +1164,6 @@ describe('interaction', () => {
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(3000);
       nowSpy.mockReturnValueOnce(3000);
@@ -1410,22 +1177,16 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
       expect(locator.textContent).toHaveBeenCalledWith({ timeout: 5 });
     });
 
-    it('returns diagnostics when getText visibility wait times out', async () => {
-      const diagnostics = createMockDiagnostics();
+    it('returns timeout error when getText visibility wait times out', async () => {
       const context = createMockContext();
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
         new Error('Timeout 5ms exceeded during waitForTarget'),
       );
-      vi.spyOn(
-        diagnosticsModule,
-        'collectInteractionDiagnostics',
-      ).mockResolvedValue(diagnostics);
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(3000);
@@ -1439,20 +1200,7 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
-        expect(result.error.diagnostics).toStrictEqual(diagnostics);
       }
-      expect(
-        diagnosticsModule.collectInteractionDiagnostics,
-      ).toHaveBeenCalledWith(
-        context.page,
-        undefined,
-        'testId',
-        'missing-text',
-        5,
-        5,
-        'visibility-target',
-        undefined,
-      );
     });
 
     it('classifies page-closed as getText error even when error name is TimeoutError', async () => {
@@ -1476,7 +1224,6 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
-        expect(result.error.diagnostics).toBeUndefined();
       }
     });
   });
