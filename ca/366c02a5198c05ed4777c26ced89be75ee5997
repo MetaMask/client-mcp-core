@@ -1,0 +1,40 @@
+src/tools/interaction.test.ts
+  s_d1983ddab97aea::t_d8ad926df7b6b7 661,685,712
+  s_d1983ddab97aea::t_fbae994d9b1abd 1133,1157,1184
+  s_d1983ddab97aea::t_580b7a44c17e60 342,366,393
+  s_d1983ddab97aea::t_31161ed5070246 973
+src/tools/interaction.ts
+  s_9343ddac4c23fb::t_cd13e2f898c025 355,364
+  s_9343ddac4c23fb::t_33545aa1f5865d 23
+  s_9343ddac4c23fb::t_aac8f5e695be98 166,175,200
+  s_9343ddac4c23fb::t_7fb83662a2aac7 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "ca366c02a5198c05ed4777c26ced89be75ee5997",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_9343ddac4c23fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb5bc158ffePO2uNUvmbtCJ3W",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_d1983ddab97aea": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1bb37bae8ffeuYTiYbZDO7Zx2G",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
