@@ -1,0 +1,25 @@
+src/tools/interaction.test.ts
+  s_79c5c6667ba487::t_c42f8bc31681df 421-423
+  s_79c5c6667ba487::t_c9b71a635d89cd 559-561
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "be570b767aba10c57b58d99a7bcc6f6afae3d675",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_79c5c6667ba487": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bab6e322ffeVNrbLMA4kauu90",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
