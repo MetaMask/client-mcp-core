@@ -1,3 +1,4 @@
+import { QUEUE_SETTLE_TIMEOUT_MS } from '../tools/utils/constants.js';
 import { debugWarn } from '../utils';
 
 /**
@@ -57,16 +58,13 @@ export class RequestQueue {
       if (timer !== undefined) {
         clearTimeout(timer);
       }
-      // Wait briefly for the task to settle before releasing the mutex.
-      // A bounded wait preserves serialization for the common case (task
-      // settles within seconds) while preventing permanent deadlock when
-      // a Playwright/CDP operation hangs forever.
-      const SETTLE_TIMEOUT_MS = 5_000;
       await Promise.race([
         fnPromise.catch((error) => {
           debugWarn('request-queue.enqueue', error);
         }),
-        new Promise<void>((resolve) => setTimeout(resolve, SETTLE_TIMEOUT_MS)),
+        new Promise<void>((resolve) =>
+          setTimeout(resolve, QUEUE_SETTLE_TIMEOUT_MS),
+        ),
       ]);
       release();
     }

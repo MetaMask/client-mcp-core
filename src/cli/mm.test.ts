@@ -1248,7 +1248,7 @@ describe('routeCommand', () => {
         body: JSON.stringify({ a11yRef: 'e5', timeoutMs: 60000 }),
       }),
     );
-    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 67000);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 77000);
 
     setTimeoutSpy.mockRestore();
   });

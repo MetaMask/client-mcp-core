@@ -27,7 +27,6 @@ import {
   MAX_IDLE_CHECK_INTERVAL_MS,
   OBSERVATION_TESTID_LIMIT,
   OBSERVATION_TIMEOUT_MS,
-  QUEUE_OVERHEAD_BUFFER_MS,
 } from '../tools/utils/constants.js';
 import {
   collectTestIds,
@@ -40,6 +39,7 @@ import type {
   ToolResponse,
 } from '../types/http.js';
 import { extractErrorMessage } from '../utils/errors.js';
+import { computeTimeoutBudget } from '../utils/timeout-budget.js';
 import type { ToolName } from '../validation/schemas.js';
 import { toolSchemas } from '../validation/schemas.js';
 
@@ -437,7 +437,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     const toolTimeoutMs = inputRecord?.timeoutMs;
     const queueTimeoutMs =
       typeof toolTimeoutMs === 'number' && toolTimeoutMs > 0
-        ? toolTimeoutMs + QUEUE_OVERHEAD_BUFFER_MS
+        ? computeTimeoutBudget(toolTimeoutMs).queue
         : undefined;
 
     try {

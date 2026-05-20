@@ -14,12 +14,9 @@ import {
   releaseStartupLock,
   removeDaemonState,
 } from '../server/daemon-state.js';
-import {
-  BEST_EFFORT_CLEANUP_TIMEOUT_MS,
-  DIAGNOSTICS_BUFFER_MS,
-  QUEUE_OVERHEAD_BUFFER_MS,
-} from '../tools/utils/constants.js';
+import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
+import { computeTimeoutBudget } from '../utils/timeout-budget.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
@@ -27,8 +24,6 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   cdp: 35_000,
   default: 30_000,
 };
-
-const CLI_TIMEOUT_BUFFER_MS = QUEUE_OVERHEAD_BUFFER_MS + DIAGNOSTICS_BUFFER_MS;
 
 const AUTO_START_COMMANDS = new Set(['launch', 'serve']);
 
@@ -343,7 +338,7 @@ async function sendInteractionRequest(
     body,
     timeoutMs === undefined
       ? undefined
-      : { requestTimeoutMs: timeoutMs + CLI_TIMEOUT_BUFFER_MS },
+      : { requestTimeoutMs: computeTimeoutBudget(timeoutMs).http },
   );
 }
 
