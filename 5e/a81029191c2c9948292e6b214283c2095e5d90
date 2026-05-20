@@ -1,0 +1,27 @@
+src/cli/mm.test.ts
+  s_9343ddac4c23fb::t_82cf849b7a8808 924
+src/cli/mm.ts
+  s_9343ddac4c23fb::t_04dca647832a54 829-830
+  s_9343ddac4c23fb::t_574c35b54c31c9 754,756
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "5ea81029191c2c9948292e6b214283c2095e5d90",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_9343ddac4c23fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb5bc158ffePO2uNUvmbtCJ3W",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
