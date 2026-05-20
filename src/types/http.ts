@@ -9,7 +9,6 @@ import type { Page } from '@playwright/test';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { KnowledgeStore } from '../knowledge-store/knowledge-store.js';
 import type { ISessionManager } from '../server/session-manager.js';
-import type { InteractionDiagnostics } from '../tools/types/tool-outputs.js';
 
 /**
  * Context passed to standalone tool functions.
@@ -40,14 +39,7 @@ export type ToolContext = {
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export type ToolResponse<T = unknown> =
   | { ok: true; result: T }
-  | {
-      ok: false;
-      error: {
-        code: string;
-        message: string;
-        diagnostics?: InteractionDiagnostics;
-      };
-    };
+  | { ok: false; error: { code: string; message: string } };
 
 /**
  * Standalone tool function signature.

@@ -108,7 +108,6 @@ export type StepResult = {
     code: string;
     message: string;
     details?: unknown;
-    diagnostics?: InteractionDiagnostics;
   };
   meta: {
     durationMs: number;
@@ -169,34 +168,4 @@ export type GetContextResult = {
     available: string[];
   };
   canSwitchContext: boolean;
-};
-
-export type InteractionDiagnostics = {
-  /** Which phase timed out: 'visibility-parent' | 'visibility-target' | 'action' */
-  phase: string;
-  /** Target type used (a11yRef, testId, selector) */
-  targetType: string;
-  /** Target value used */
-  targetValue: string;
-  /** Timeout budget in ms */
-  timeoutMs: number;
-  /** Time actually spent before timeout in ms */
-  elapsedMs: number;
-  /** How many elements matched the selector */
-  matchCount?: number;
-  /** Whether the target element was found in the DOM */
-  elementFound?: boolean;
-  /** Whether the target element was visible */
-  elementVisible?: boolean;
-  /** Whether the target element was enabled */
-  elementEnabled?: boolean;
-  /** Bounding box of the target element (null if not in viewport) */
-  boundingBox?: { x: number; y: number; width: number; height: number } | null;
-  /** Heuristic: what likely caused the hang */
-  suspectedCause?:
-    | 'page-closed'
-    | 'element-not-found'
-    | 'element-not-actionable'
-    | 'element-offscreen'
-    | 'unknown';
 };
