@@ -921,40 +921,7 @@ describe('sendRequest', () => {
     );
   });
 
-  it('prints JSON error with diagnostics when error has diagnostics field', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      json: async () => ({
-        ok: false,
-        error: {
-          code: 'MM_CLICK_TIMEOUT',
-          message: 'Click timed out',
-          diagnostics: {
-            phase: 'action',
-            targetType: 'testId',
-            targetValue: 'btn',
-            timeoutMs: 500,
-            elapsedMs: 501,
-            suspectedCause: 'unknown',
-          },
-        },
-      }),
-    } as Response);
-
-    await expect(
-      sendRequest(3000, 'POST', '/tool/click', { testId: 'btn' }),
-    ).rejects.toThrowError('process.exit');
-
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"MM_CLICK_TIMEOUT"'),
-    );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"diagnostics"'),
-    );
-  });
-
-  it('prints plain message when error has no diagnostics', async () => {
+  it('prints plain error message on tool failure', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 400,

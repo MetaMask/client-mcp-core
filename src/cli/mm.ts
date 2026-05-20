@@ -751,17 +751,9 @@ export async function daemonFetch(
 
     if (!response.ok || data.ok === false) {
       const errorData = data.error as
-        | { code?: string; message?: string; diagnostics?: unknown }
+        | { code?: string; message?: string }
         | undefined;
-      const requestError = new Error(errorData?.message ?? 'Request failed');
-      if (errorData?.diagnostics) {
-        (requestError as Error & { errorBody: unknown }).errorBody = {
-          code: errorData.code,
-          message: errorData.message,
-          diagnostics: errorData.diagnostics,
-        };
-      }
-      throw requestError;
+      throw new Error(errorData?.message ?? 'Request failed');
     }
 
     return data;
@@ -834,14 +826,8 @@ export async function sendRequest(
         continue;
       }
 
-      const { errorBody } = error as Error & { errorBody?: unknown };
-      if (errorBody) {
-        process.stderr.write(`${JSON.stringify(errorBody, null, 2)}\n`);
-      } else {
-        const errorText =
-          error instanceof Error ? error.message : String(error);
-        process.stderr.write(`Error: ${errorText}\n`);
-      }
+      const errorText = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Error: ${errorText}\n`);
       process.exit(1);
     }
   }
