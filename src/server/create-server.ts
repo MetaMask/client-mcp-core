@@ -445,12 +445,9 @@ export function createServer(config: ServerConfig): ServerInstance {
         async () => {
           const context = buildToolContext(currentWorkflowContext);
           const result = await tool(validatedInput, context);
-          const hasTimeoutDiagnostics =
-            !result.ok && result.error?.diagnostics !== undefined;
 
           let obs: StepRecordObservation | undefined;
           if (
-            !hasTimeoutDiagnostics &&
             shouldCollectObservations(
               category,
               validatedInput as Record<string, unknown>,

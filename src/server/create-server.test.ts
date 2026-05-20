@@ -37,7 +37,6 @@ vi.mock('../tools/utils/discovery.js', () => ({
     fill: vi.fn().mockResolvedValue(undefined),
     textContent: vi.fn().mockResolvedValue(''),
   }),
-  isVisibilityPhaseError: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../knowledge-store/knowledge-store.js', () => {
@@ -1121,40 +1120,6 @@ describe('createServer with active session', () => {
 
     expect(collectTestIdsSpy).toHaveBeenCalled();
     expect(collectA11ySpy).toHaveBeenCalled();
-  });
-
-  it('skips observation collection when tool error includes diagnostics', async () => {
-    const { waitForTarget, collectTestIds, collectTrimmedA11ySnapshot } =
-      await import('../tools/utils/discovery.js');
-    const waitForTargetSpy = vi.mocked(waitForTarget);
-    const collectTestIdsSpy = vi.mocked(collectTestIds);
-    const collectA11ySpy = vi.mocked(collectTrimmedA11ySnapshot);
-
-    waitForTargetSpy.mockRejectedValueOnce(
-      new Error('Timeout 1000ms exceeded'),
-    );
-    collectTestIdsSpy.mockClear();
-    collectA11ySpy.mockClear();
-    mockSM.getExtensionState.mockClear();
-
-    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ a11yRef: 'e1' }),
-    });
-    const body = (await res.json()) as {
-      ok: boolean;
-      error?: { diagnostics?: unknown };
-      observations?: unknown;
-    };
-
-    expect(res.status).toBe(200);
-    expect(body.ok).toBe(false);
-    expect(body.error?.diagnostics).toBeDefined();
-    expect(body.observations).toBeUndefined();
-    expect(mockSM.getExtensionState).not.toHaveBeenCalled();
-    expect(collectTestIdsSpy).not.toHaveBeenCalled();
-    expect(collectA11ySpy).not.toHaveBeenCalled();
   });
 
   it('recordStep is called for mutating tool routes', async () => {
