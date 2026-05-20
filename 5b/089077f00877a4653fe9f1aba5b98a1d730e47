@@ -1,0 +1,45 @@
+src/utils/timeout-budget.ts
+  s_cb91073a81b9ed::t_23481bae152f78 1-9,11-17,19-28,30-40,42-45
+  s_9343ddac4c23fb::t_563bd4e8286df9 10,18,29,41
+src/server/create-server.ts
+  s_cb91073a81b9ed::t_a2484a52076e71 440
+  s_9343ddac4c23fb::t_6cef551e0ee970 42
+src/tools/utils/constants.ts
+  s_cb91073a81b9ed::t_4b68a3952e2dc0 16-18
+src/server/request-queue.ts
+  s_cb91073a81b9ed::t_7d6f8b203dd696 65-67
+  s_cb91073a81b9ed::t_a6fbb842dd146e 1
+src/cli/mm.ts
+  s_cb91073a81b9ed::t_e2e799207f595d 341
+  s_cb91073a81b9ed::t_5056fb626470e7 17
+  s_9343ddac4c23fb::t_990b78110b79cf 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "5b089077f00877a4653fe9f1aba5b98a1d730e47",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_9343ddac4c23fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb5bc158ffePO2uNUvmbtCJ3W",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_cb91073a81b9ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb6f1d21ffeq4ZVe65znrAdOS",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
