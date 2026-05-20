@@ -1,0 +1,24 @@
+src/utils/timeout-budget.ts
+  s_9343ddac4c23fb::t_563bd4e8286df9 10,18,29,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "31dc337e7db0010623e8717337c9204a5ce5be55",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_9343ddac4c23fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb5bc158ffePO2uNUvmbtCJ3W",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
