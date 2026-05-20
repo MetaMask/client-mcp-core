@@ -1,0 +1,36 @@
+vitest.config.mts
+  s_6d98011988a8b2::t_f7fb72f56d519c 38-41
+README.md
+  s_9343ddac4c23fb::t_35e4c41cd3caf3 511
+SKILL.md
+  s_9343ddac4c23fb::t_a5b1ce091e9583 281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "279e033e668a81ac0c1c7a118dadb43ce05c4dd9",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_6d98011988a8b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb14b696ffeWPJ0FVjhZsi3cj",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_9343ddac4c23fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1bb5bc158ffePO2uNUvmbtCJ3W",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
