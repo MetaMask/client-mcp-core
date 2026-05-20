@@ -1041,24 +1041,12 @@ export async function waitForTarget(
     );
     const parentRemaining = deadline - Date.now();
     if (parentRemaining <= 0) {
-      throw tagVisibilityPhaseError(
-        new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`),
-        'parent',
-      );
+      throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
     }
-    try {
-      await parentLocator.first().waitFor({
-        state: 'visible',
-        timeout: parentRemaining,
-      });
-    } catch (error) {
-      throw tagVisibilityPhaseError(
-        error instanceof Error
-          ? error
-          : new Error(`Timeout ${parentRemaining}ms exceeded`),
-        'parent',
-      );
-    }
+    await parentLocator.first().waitFor({
+      state: 'visible',
+      timeout: parentRemaining,
+    });
     // Use .first() to guarantee the child search is scoped to exactly one
     // parent element.  Without this, Playwright chains the child locator
     // across ALL matching parents, producing phantom multi-matches
@@ -1075,39 +1063,4 @@ export async function waitForTarget(
     timeout: childRemaining,
   });
   return locator;
-}
-
-type VisibilityPhase = 'parent' | 'target';
-
-/**
- * Tags an error with a visibility phase identifier for downstream discrimination.
- *
- * @param error - The error to tag.
- * @param phase - The visibility phase ('parent' or 'target').
- * @returns The original error augmented with a `visibilityPhase` property.
- */
-function tagVisibilityPhaseError(
-  error: Error,
-  phase: VisibilityPhase,
-): Error & { visibilityPhase: VisibilityPhase } {
-  return Object.assign(error, { visibilityPhase: phase });
-}
-
-/**
- * Checks whether an error was tagged with a specific visibility phase.
- *
- * @param error - The error to inspect.
- * @param phase - The phase to check for ('parent' or 'target').
- * @returns True if the error was tagged with the given phase.
- */
-export function isVisibilityPhaseError(
-  error: unknown,
-  phase: VisibilityPhase,
-): boolean {
-  return (
-    error instanceof Error &&
-    'visibilityPhase' in error &&
-    (error as Error & { visibilityPhase: VisibilityPhase }).visibilityPhase ===
-      phase
-  );
 }
