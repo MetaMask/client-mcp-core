@@ -418,6 +418,9 @@ describe('interaction', () => {
       const page = {};
       const locator = createMockLocator();
       const context = createMockContext({ page });
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
@@ -553,6 +556,9 @@ describe('interaction', () => {
     it('types empty string and reports zero length', async () => {
       const locator = createMockLocator();
       const context = createMockContext();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
