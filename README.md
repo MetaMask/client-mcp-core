@@ -508,7 +508,7 @@ All responses follow a consistent shape:
 { ok: true, result: T, observations?: { state, testIds, a11y } }
 
 // Error
-{ ok: false, error: { code: string, message: string, diagnostics?: InteractionDiagnostics } }
+{ ok: false, error: { code: string, message: string } }
 ```
 
 The `observations` field is included for **mutating** tools (click, type, navigate, launch, cleanup, build, etc.) and for `run_steps` when its `includeObservations` parameter is `'all'` (default) or `'failures'`. **Read-only** and **discovery** tools omit observations from the response.
@@ -674,46 +674,6 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded in run_steps    |
 | `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive to session)     |
 | `MM_CDP_FAILED`                  | CDP command execution failed or timed out          |
-
-### Timeout Diagnostics
-
-When an interaction tool times out (`MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_WAIT_TIMEOUT`, `MM_GETTEXT_TIMEOUT`), the error response includes a `diagnostics` object with details about what happened:
-
-```json
-{
-  "code": "MM_CLICK_TIMEOUT",
-  "message": "Click action timed out after 15000ms...",
-  "diagnostics": {
-    "phase": "action",
-    "targetType": "testId",
-    "targetValue": "cancel-btn",
-    "timeoutMs": 15000,
-    "elapsedMs": 15001,
-    "matchCount": 1,
-    "elementFound": true,
-    "elementVisible": true,
-    "elementEnabled": true,
-    "boundingBox": { "x": -100, "y": 500, "width": 80, "height": 40 },
-    "suspectedCause": "element-offscreen"
-  }
-}
-```
-
-The `phase` field indicates which stage timed out:
-
-- `visibility-parent` — the `within` parent element never became visible
-- `visibility-target` — the target element never became visible
-- `action` — element was found and visible, but the action (click/type/getText) hung
-
-The `suspectedCause` field provides a heuristic diagnosis:
-
-| Cause                    | Meaning                                          | Recovery                                         |
-| ------------------------ | ------------------------------------------------ | ------------------------------------------------ |
-| `element-not-found`      | Element is not in the DOM                        | Verify screen state; check selector/testId       |
-| `element-offscreen`      | Element is in the DOM but outside the viewport   | Scroll into view before interacting              |
-| `element-not-actionable` | Element is visible but disabled                  | Wait for it to become enabled                    |
-| `page-closed`            | The browser page was closed during the operation | Normal after some confirmations; describe-screen |
-| `unknown`                | Cause could not be determined                    | Run describe-screen and retry                    |
 
 ## Development
 

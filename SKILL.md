@@ -278,7 +278,7 @@ Use `--within` to scope the target inside a parent element. Values use the forma
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 
-**Timeout behavior:** If the click hangs (e.g., element found but click never resolves due to a side effect), `MM_CLICK_TIMEOUT` is returned with structured diagnostics. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
+**Timeout behavior:** If the click hangs (e.g., element found but click never resolves due to a side effect), `MM_CLICK_TIMEOUT` is returned. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
 
 #### `mm type <ref> <text>`
 
@@ -564,44 +564,6 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive)                | Use a different CDP method; see blocked list                                                        |
 | `MM_CDP_FAILED`                  | CDP command failed or timed out                    | Check method name/params; retry or increase timeout                                                 |
 | `MM_CONTRACT_NOT_FOUND`          | Unknown contract name for seeding                  | See available contracts below                                                                       |
-
-## Interaction Timeout Diagnostics
-
-When a timeout error occurs (`MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_WAIT_TIMEOUT`, `MM_GETTEXT_TIMEOUT`), the error response includes a `diagnostics` object with details about what happened:
-
-```json
-{
-  "code": "MM_CLICK_TIMEOUT",
-  "message": "Click action timed out after 15000ms. Note: the click action may have completed in the background after this timeout. Run describe-screen to verify current page state before retrying.",
-  "diagnostics": {
-    "phase": "action",
-    "targetType": "testId",
-    "targetValue": "cancel-btn",
-    "timeoutMs": 15000,
-    "elapsedMs": 15001,
-    "elementFound": true,
-    "elementVisible": true,
-    "elementEnabled": true,
-    "boundingBox": { "x": -100, "y": 500, "width": 80, "height": 40 },
-    "suspectedCause": "element-offscreen"
-  }
-}
-```
-
-**`suspectedCause` values:**
-
-- `element-not-found` — element is not in the DOM. Solution: verify you're on the right screen and check the selector/testId with `mm describe-screen`.
-- `element-offscreen` — element is in the DOM and visible but outside the viewport. Solution: scroll into view before clicking.
-- `element-not-actionable` — element is visible but disabled. Solution: wait for it to become enabled.
-- `page-closed` — the browser page was closed during the operation.
-- `unknown` — cause could not be determined.
-
-**Recovery pattern after any timeout:**
-
-1. Always run `mm describe-screen` first — the action may have completed in the background.
-2. Use `suspectedCause` to choose a recovery strategy.
-3. For `element-offscreen`: try scrolling or using a different selector.
-4. For visibility timeouts: use `mm wait-for --timeout <ms>` before the interaction.
 
 ## Available Contracts (E2E only)
 
