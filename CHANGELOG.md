@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0]
 
-### Uncategorized
+### Added
+
+- feat: expose raw CDP command as escape-hatch tool ([#28](https://github.com/MetaMask/client-mcp-core/pull/28))
+
+### Fixed
 
 - feat: deadline-based timeout budgets ([#29](https://github.com/MetaMask/client-mcp-core/pull/29))
-- feat: expose raw CDP command as escape-hatch tool ([#28](https://github.com/MetaMask/client-mcp-core/pull/28))
 
 ## [0.3.0]
 
