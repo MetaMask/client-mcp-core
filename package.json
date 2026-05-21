@@ -1,6 +1,6 @@
 {
   "name": "@metamask/client-mcp-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "HTTP daemon and CLI for agent-driven browser extension testing with Playwright",
   "keywords": [
     "playwright",

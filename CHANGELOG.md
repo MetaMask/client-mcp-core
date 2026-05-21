@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Added
+
+- feat: expose raw CDP command as escape-hatch tool ([#28](https://github.com/MetaMask/client-mcp-core/pull/28))
+
+### Fixed
+
+- feat: deadline-based timeout budgets ([#29](https://github.com/MetaMask/client-mcp-core/pull/29))
+
 ## [0.3.0]
 
 ### Added
@@ -35,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.1.0...v0.1.1
