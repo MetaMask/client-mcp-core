@@ -14,7 +14,9 @@ import {
   releaseStartupLock,
   removeDaemonState,
 } from '../server/daemon-state.js';
+import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
+import { computeTimeoutBudget } from '../utils/timeout-budget.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
@@ -242,7 +244,7 @@ export function resolveTargetFromArgs(
     return { testId: val };
   }
 
-  const target = args[0];
+  const target = getPositionalTarget(args);
   if (!target) {
     process.stderr.write('Error: element target is required\n');
     process.exit(1);
@@ -250,22 +252,94 @@ export function resolveTargetFromArgs(
   return /^e[0-9]+$/u.test(target) ? { a11yRef: target } : { testId: target };
 }
 
+/** Interaction flags that consume the next token as their value. */
+const VALUE_FLAGS = new Set([
+  '--timeout',
+  '--selector',
+  '--testid',
+  '--within',
+]);
+
 /**
  * Returns the positional target argument from a CLI args list,
- * skipping any --flag/value pairs.
+ * skipping only known --flag/value pairs.  Unknown tokens that
+ * start with `--` are treated as positional arguments so that
+ * user-supplied text like `"--seed"` is not silently consumed.
  *
  * @param args - The CLI arguments to scan.
  * @returns The first non-flag argument, or undefined.
  */
 export function getPositionalTarget(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith('--')) {
+    if (VALUE_FLAGS.has(args[i])) {
       i += 1;
       continue;
     }
     return args[i];
   }
   return undefined;
+}
+
+/**
+ * Returns all positional arguments from a CLI args list,
+ * skipping only known --flag/value pairs.  Unknown tokens that
+ * start with `--` are treated as positional arguments so that
+ * user-supplied text like `"--seed"` is not silently consumed.
+ *
+ * @param args - The CLI arguments to scan.
+ * @returns The non-flag arguments, in order.
+ */
+export function getPositionalArgs(args: string[]): string[] {
+  const positionalArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    if (VALUE_FLAGS.has(args[i])) {
+      i += 1;
+      continue;
+    }
+    positionalArgs.push(args[i]);
+  }
+
+  return positionalArgs;
+}
+
+/**
+ * Sends an interaction tool request with optional timeout and within scope.
+ *
+ * @param port - The daemon HTTP server port.
+ * @param toolPath - The tool endpoint path (e.g. '/tool/click').
+ * @param args - The CLI arguments for flag parsing.
+ * @param extraBody - Additional body fields to merge into the request.
+ */
+async function sendInteractionRequest(
+  port: number,
+  toolPath: string,
+  args: string[],
+  extraBody?: Record<string, unknown>,
+): Promise<void> {
+  const timeoutMs = parseIntFlag(args, '--timeout');
+  const within = resolveWithinFromArgs(args);
+
+  const body: Record<string, unknown> = {
+    ...resolveTargetFromArgs(args),
+    ...extraBody,
+  };
+  if (timeoutMs !== undefined) {
+    body.timeoutMs = timeoutMs;
+  }
+  if (within) {
+    body.within = within;
+  }
+
+  await sendRequest(
+    port,
+    'POST',
+    toolPath,
+    body,
+    timeoutMs === undefined
+      ? undefined
+      : { requestTimeoutMs: computeTimeoutBudget(timeoutMs).http },
+  );
 }
 
 /**
@@ -292,46 +366,36 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm click <ref> [--selector <css>] [--testid <id>] [--within <scope>]\n',
+          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
         );
         process.exit(1);
       }
-      const clickWithin = resolveWithinFromArgs(args);
-      await sendRequest(port, 'POST', '/tool/click', {
-        ...resolveTargetFromArgs(args),
-        ...(clickWithin ? { within: clickWithin } : {}),
-      });
+      await sendInteractionRequest(port, '/tool/click', args);
       break;
     }
     case 'type': {
       const typeTarget = getPositionalTarget(args);
+      const typePositionals = getPositionalArgs(args);
+      const hasExplicitTypeTarget =
+        args.includes('--selector') || args.includes('--testid');
       if (
         !typeTarget &&
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm type <ref> <text> [--selector <css>] [--testid <id>] [--within <scope>]\n',
+          'Usage: mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
         );
         process.exit(1);
       }
-      let textArgIdx = 1;
-      if (args.includes('--selector')) {
-        textArgIdx = args.indexOf('--selector') + 2;
-      } else if (args.includes('--testid')) {
-        textArgIdx = args.indexOf('--testid') + 2;
-      }
-      const text = args[textArgIdx] ?? args[1];
+      const text = hasExplicitTypeTarget
+        ? typePositionals[0]
+        : typePositionals[1];
       if (text === undefined) {
         process.stderr.write('Usage: mm type <ref> <text>\n');
         process.exit(1);
       }
-      const typeWithin = resolveWithinFromArgs(args);
-      await sendRequest(port, 'POST', '/tool/type', {
-        ...resolveTargetFromArgs(args),
-        text,
-        ...(typeWithin ? { within: typeWithin } : {}),
-      });
+      await sendInteractionRequest(port, '/tool/type', args, { text });
       break;
     }
     case 'get-text': {
@@ -342,15 +406,11 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm get-text <ref> [--selector <css>] [--testid <id>] [--within <scope>]\n',
+          'Usage: mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
         );
         process.exit(1);
       }
-      const getTextWithin = resolveWithinFromArgs(args);
-      await sendRequest(port, 'POST', '/tool/get_text', {
-        ...resolveTargetFromArgs(args),
-        ...(getTextWithin ? { within: getTextWithin } : {}),
-      });
+      await sendInteractionRequest(port, '/tool/get_text', args);
       break;
     }
     case 'describe-screen':
@@ -374,13 +434,7 @@ export async function routeCommand(
         );
         process.exit(1);
       }
-      const timeoutMs = parseIntFlag(args, '--timeout');
-      const waitWithin = resolveWithinFromArgs(args);
-      await sendRequest(port, 'POST', '/tool/wait_for', {
-        ...resolveTargetFromArgs(args),
-        ...(timeoutMs === undefined ? {} : { timeoutMs }),
-        ...(waitWithin ? { within: waitWithin } : {}),
-      });
+      await sendInteractionRequest(port, '/tool/wait_for', args);
       break;
     }
     case 'navigate':
@@ -696,7 +750,9 @@ export async function daemonFetch(
     const data = (await response.json()) as Record<string, unknown>;
 
     if (!response.ok || data.ok === false) {
-      const errorData = data.error as { message?: string } | undefined;
+      const errorData = data.error as
+        | { code?: string; message?: string }
+        | undefined;
       throw new Error(errorData?.message ?? 'Request failed');
     }
 
@@ -715,16 +771,21 @@ export async function daemonFetch(
  * @param method - The HTTP method to use.
  * @param requestPath - The URL path for the request.
  * @param body - The request body payload, or null for no body.
+ * @param options - Optional request configuration.
+ * @param options.requestTimeoutMs - Timeout in milliseconds for the HTTP request.
  */
 export async function sendRequest(
   port: number,
   method: string,
   requestPath: string,
   body: unknown,
+  options?: { requestTimeoutMs?: number },
 ): Promise<void> {
   const commandName = requestPath.split('/').pop() ?? '';
   const timeout =
-    COMMAND_TIMEOUTS_MS[commandName] ?? COMMAND_TIMEOUTS_MS.default;
+    options?.requestTimeoutMs ??
+    COMMAND_TIMEOUTS_MS[commandName] ??
+    COMMAND_TIMEOUTS_MS.default;
 
   let lastError: unknown;
 
@@ -937,7 +998,13 @@ export async function handleStop(
 
   if (alive) {
     try {
-      await daemonFetch(state.port, 'POST', '/cleanup', {}, 5_000);
+      await daemonFetch(
+        state.port,
+        'POST',
+        '/cleanup',
+        {},
+        BEST_EFFORT_CLEANUP_TIMEOUT_MS,
+      );
     } catch {
       /* best-effort — daemon shutdown proceeds regardless */
     }
@@ -1210,9 +1277,9 @@ Lifecycle:
   mm build [--force]
 
 Interaction:
-  mm click <ref> [--selector <css>] [--testid <id>] [--within <scope>]
-  mm type <ref> <text> [--selector <css>] [--testid <id>] [--within <scope>]
-  mm get-text <ref> [--selector <css>] [--testid <id>] [--within <scope>]
+  mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
   mm describe-screen
   mm screenshot [--name <name>]
   mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]

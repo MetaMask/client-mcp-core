@@ -179,6 +179,8 @@ type ISessionManager = {
   // Session Lifecycle
   hasActiveSession(): boolean;
   getSessionId(): string | undefined;
+  getSessionState(): SessionState | undefined;
+  getSessionMetadata(): SessionMetadata | undefined;
   launch(input: SessionLaunchInput): Promise<SessionLaunchResult>;
   cleanup(): Promise<boolean>;
 
@@ -195,6 +197,7 @@ type ISessionManager = {
   // A11y Reference Map
   setRefMap(map: Map<string, string>): void;
   getRefMap(): Map<string, string>;
+  clearRefMap(): void;
   resolveA11yRef(ref: string): string | undefined;
 
   // Navigation
@@ -215,6 +218,7 @@ type ISessionManager = {
   getStateSnapshotCapability(): StateSnapshotCapability | undefined;
 
   // Environment
+  setWorkflowContext(context: WorkflowContext): void;
   getEnvironmentMode(): EnvironmentMode;
   setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void;
   getContextInfo(): { currentContext: 'e2e' | 'prod'; ... };
@@ -347,10 +351,11 @@ type ToolFunction<TParams, TResult> = (
 
 type ToolContext = {
   sessionManager: ISessionManager;
-  page: Page;
-  refMap: Map<string, string>;
+  get page(): Page; // lazy — throws if no session
+  get refMap(): Map<string, string>; // lazy — returns empty map if no session
   workflowContext: WorkflowContext;
   knowledgeStore: KnowledgeStore;
+  toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
 };
 ```
 
@@ -464,6 +469,8 @@ type ServerConfig = {
   sessionManager: ISessionManager;
   /** Factory function to create workflow context (may be sync or async) */
   contextFactory: () => WorkflowContext | Promise<WorkflowContext>;
+  /** Shared knowledge store instance (optional — a new instance is created if omitted) */
+  knowledgeStore?: KnowledgeStore;
   /** Idle timeout in milliseconds (optional, defaults to 1_800_000 = 30 min) */
   idleShutdownMs?: number;
   /** Per-request execution timeout in milliseconds (default: 30_000) */
@@ -552,16 +559,16 @@ mm describe-screen
 
 ### Interaction
 
-| Command                                                                                    | Description                                                                                                                                                                                                                                                                              |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mm click <ref> [--selector <css>] [--testid <id>] [--within <scope>]`                     | Clicks an element by its accessibility reference (e.g., `e3`). The ref comes from a prior `describe-screen` call. Waits for the element to be visible before clicking. Use `--within` to scope the target inside a parent element (`testid:<id>`, `selector:<css>`, or a bare a11y ref). |
-| `mm type <ref> <text> [--selector <css>] [--testid <id>] [--within <scope>]`               | Types text into an input element identified by its accessibility reference. Clears the field first, then sets the new value (uses Playwright's `fill()`). Use `--within` to scope the target inside a parent element.                                                                    |
-| `mm get-text <ref> [--selector <css>] [--testid <id>] [--within <scope>]`                  | Reads the text content of an element. Returns the inner text, target descriptor, and character length. Useful for asserting visible values without screenshots.                                                                                                                          |
-| `mm describe-screen`                                                                       | Captures the full screen state: extension info, visible test IDs, a trimmed accessibility tree with deterministic refs (`e1`, `e2`, ...), and prior knowledge from historical sessions. This is the primary command for understanding what's on screen before interacting.               |
-| `mm screenshot [--name <name>]`                                                            | Takes a full-page screenshot of the current page. Saves to the artifacts directory. Use `--name` to set a descriptive filename.                                                                                                                                                          |
-| `mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]` | Blocks until an element identified by its accessibility reference becomes visible, or the timeout expires. Default timeout is 15 seconds. Use `--within` to scope the target inside a parent element.                                                                                    |
-| `mm wait-for-notification [--timeout <ms>]`                                                | Waits for the extension notification popup to appear within a timeout. Returns the notification page URL.                                                                                                                                                                                |
-| `mm clipboard <read\|write> [text]`                                                        | Reads from or writes to the system clipboard via Chrome DevTools Protocol. Useful for pasting seed phrases or copying addresses.                                                                                                                                                         |
+| Command                                                                                       | Description                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]`       | Clicks an element by its accessibility reference (e.g., `e3`). The ref comes from a prior `describe-screen` call. Waits for the element to be visible before clicking. The `--timeout` covers the entire operation (visibility wait + click action). Default: 15s. Use `--within` to scope the target inside a parent element (`testid:<id>`, `selector:<css>`, or a bare a11y ref). |
+| `mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]` | Types text into an input element identified by its accessibility reference. Clears the field first, then sets the new value (uses Playwright's `fill()`). Accepts `--timeout` for the total time budget (default: 15s). Use `--within` to scope the target inside a parent element.                                                                                                  |
+| `mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]`    | Reads the text content of an element. Returns the inner text, target descriptor, and character length. Accepts `--timeout` for the total time budget (default: 15s). Useful for asserting visible values without screenshots.                                                                                                                                                        |
+| `mm describe-screen`                                                                          | Captures the full screen state: extension info, visible test IDs, a trimmed accessibility tree with deterministic refs (`e1`, `e2`, ...), and prior knowledge from historical sessions. This is the primary command for understanding what's on screen before interacting.                                                                                                           |
+| `mm screenshot [--name <name>]`                                                               | Takes a full-page screenshot of the current page. Saves to the artifacts directory. Use `--name` to set a descriptive filename.                                                                                                                                                                                                                                                      |
+| `mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]`    | Blocks until an element identified by its accessibility reference becomes visible, or the timeout expires. Default timeout is 15 seconds. Use `--within` to scope the target inside a parent element.                                                                                                                                                                                |
+| `mm wait-for-notification [--timeout <ms>]`                                                   | Waits for the extension notification popup to appear within a timeout. Returns the notification page URL.                                                                                                                                                                                                                                                                            |
+| `mm clipboard <read\|write> [text]`                                                           | Reads from or writes to the system clipboard via Chrome DevTools Protocol. Useful for pasting seed phrases or copying addresses.                                                                                                                                                                                                                                                     |
 
 ### Navigation
 
@@ -618,24 +625,55 @@ For the full agent-facing reference and workflow guidelines, see [SKILL.md](./SK
 
 Tool errors are classified into specific error codes for structured handling:
 
-| Code                        | Meaning                                         |
-| --------------------------- | ----------------------------------------------- |
-| `MM_TARGET_NOT_FOUND`       | Element not found by ref, testId, or selector   |
-| `MM_WAIT_TIMEOUT`           | Timeout waiting for element or condition        |
-| `MM_CLICK_FAILED`           | Click operation failed                          |
-| `MM_TYPE_FAILED`            | Type operation failed                           |
-| `MM_NAVIGATION_FAILED`      | Navigation error or network failure             |
-| `MM_PAGE_CLOSED`            | Browser page was closed unexpectedly            |
-| `MM_NOTIFICATION_TIMEOUT`   | Notification popup did not appear               |
-| `MM_TAB_NOT_FOUND`          | Tab not found by role or URL                    |
-| `MM_DISCOVERY_FAILED`       | Discovery tool failure                          |
-| `MM_SCREENSHOT_FAILED`      | Screenshot capture failure                      |
-| `MM_BATCH_TIMEOUT`          | `batchTimeoutMs` deadline exceeded in run_steps |
-| `MM_CONTRACT_NOT_FOUND`     | Unknown contract name                           |
-| `MM_SEED_FAILED`            | Contract deployment failure                     |
-| `MM_CONTEXT_SWITCH_BLOCKED` | Context switch while session is active          |
-| `MM_CDP_BLOCKED`            | CDP method is blocked (destructive to session)  |
-| `MM_CDP_FAILED`             | CDP command execution failed or timed out       |
+| Code                             | Meaning                                            |
+| -------------------------------- | -------------------------------------------------- |
+| **Session & Lifecycle**          |                                                    |
+| `MM_NO_ACTIVE_SESSION`           | No browser session running                         |
+| `MM_SESSION_ALREADY_RUNNING`     | Session already exists                             |
+| `MM_LAUNCH_FAILED`               | Browser session launch failed                      |
+| `MM_PAGE_CLOSED`                 | Browser page was closed unexpectedly               |
+| **Build**                        |                                                    |
+| `MM_BUILD_FAILED`                | Extension build failed                             |
+| `MM_DEPENDENCIES_MISSING`        | Required build dependencies not installed          |
+| **Interaction**                  |                                                    |
+| `MM_TARGET_NOT_FOUND`            | Element not found by ref, testId, or selector      |
+| `MM_WAIT_TIMEOUT`                | Timeout waiting for element visibility             |
+| `MM_CLICK_FAILED`                | Click operation failed                             |
+| `MM_CLICK_TIMEOUT`               | Click action timed out (element found, click hung) |
+| `MM_TYPE_FAILED`                 | Type operation failed                              |
+| `MM_TYPE_TIMEOUT`                | Fill action timed out                              |
+| `MM_GETTEXT_FAILED`              | getText operation failed                           |
+| `MM_GETTEXT_TIMEOUT`             | textContent action timed out                       |
+| **Clipboard**                    |                                                    |
+| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser             |
+| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy               |
+| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                         |
+| **Navigation & Tabs**            |                                                    |
+| `MM_NAVIGATION_FAILED`           | Navigation error or network failure                |
+| `MM_NOTIFICATION_TIMEOUT`        | Notification popup did not appear                  |
+| `MM_TAB_NOT_FOUND`               | Tab not found by role or URL                       |
+| **Discovery & State**            |                                                    |
+| `MM_DISCOVERY_FAILED`            | Discovery tool failure                             |
+| `MM_SCREENSHOT_FAILED`           | Screenshot capture failure                         |
+| `MM_STATE_FAILED`                | State retrieval failed                             |
+| **Knowledge**                    |                                                    |
+| `MM_KNOWLEDGE_ERROR`             | Knowledge store operation failed                   |
+| **Contracts**                    |                                                    |
+| `MM_CONTRACT_NOT_FOUND`          | Unknown contract name                              |
+| `MM_SEED_FAILED`                 | Contract deployment failure                        |
+| **Context & Config**             |                                                    |
+| `MM_CONTEXT_SWITCH_BLOCKED`      | Context switch while session is active             |
+| `MM_SET_CONTEXT_FAILED`          | Context switch operation failed                    |
+| `MM_CAPABILITY_NOT_AVAILABLE`    | Feature requires a capability not configured       |
+| `MM_INVALID_INPUT`               | Bad parameters                                     |
+| `MM_INVALID_CONFIG`              | Invalid configuration                              |
+| `MM_PORT_IN_USE`                 | Port already in use                                |
+| **System**                       |                                                    |
+| `MM_UNKNOWN_TOOL`                | Unknown tool name                                  |
+| `MM_INTERNAL_ERROR`              | Internal server error                              |
+| `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded in run_steps    |
+| `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive to session)     |
+| `MM_CDP_FAILED`                  | CDP command execution failed or timed out          |
 
 ## Development
 

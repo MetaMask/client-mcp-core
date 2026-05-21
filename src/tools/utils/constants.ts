@@ -10,6 +10,24 @@
 /** Default timeout for user interactions (click, type, wait_for) - 15 seconds */
 export const DEFAULT_INTERACTION_TIMEOUT_MS = 15000;
 
+/** Maximum time the RequestQueue finally block waits for a hung task to settle */
+export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
+
+/** Timeout for waiting for CSS/Web animations to settle after a mutation */
+export const ANIMATION_SETTLE_TIMEOUT_MS = 3_000;
+
+/** Maximum interval between idle-shutdown checks */
+export const MAX_IDLE_CHECK_INTERVAL_MS = 60_000;
+
+/** Hard timeout for post-tool observation collection (getExtensionState, testIds, a11y) */
+export const OBSERVATION_TIMEOUT_MS = 8_000;
+
+/** Timeout for graceful HTTP server close during daemon shutdown */
+export const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+/** Timeout for best-effort cleanup request when stopping a daemon */
+export const BEST_EFFORT_CLEANUP_TIMEOUT_MS = 5_000;
+
 // ============================================================================
 // Limits
 // ============================================================================

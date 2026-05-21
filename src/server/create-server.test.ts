@@ -82,6 +82,16 @@ function createMockSessionManager() {
     getPage: vi.fn(() => ({
       waitForLoadState: vi.fn(async () => undefined),
       waitForFunction: vi.fn(async () => undefined),
+      isClosed: vi.fn(() => false),
+      viewportSize: vi.fn(() => ({ width: 800, height: 600 })),
+      locator: vi.fn(() => ({
+        count: vi.fn(async () => 0),
+        first: () => ({
+          isVisible: vi.fn(async () => false),
+          isEnabled: vi.fn(async () => false),
+          boundingBox: vi.fn(async () => null),
+        }),
+      })),
     })),
     setActivePage: vi.fn(),
     getTrackedPages: vi.fn(() => []),
@@ -89,6 +99,9 @@ function createMockSessionManager() {
     getContext: vi.fn(() => ({})),
     getExtensionId: vi.fn(() => 'test-ext'),
     getExtensionState: vi.fn(async () => ({})),
+    waitForNotificationPage: vi.fn(async () => ({
+      url: () => 'chrome-extension://test/notification.html',
+    })),
     takeScreenshot: vi.fn(async () => ({ path: '', base64: '' })),
     getRefMap: vi.fn(() => new Map()),
     setRefMap: vi.fn(),
@@ -1021,6 +1034,54 @@ describe('createServer with active session', () => {
     expect(body.observations?.state).toBeDefined();
     expect(body.observations?.testIds).toBeDefined();
     expect(body.observations?.a11y).toBeDefined();
+  });
+
+  it('extends queue timeout for tool-specific timeoutMs values', async () => {
+    const timedServer = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        requestTimeoutMs: 50,
+      }),
+    );
+
+    mockSM.waitForNotificationPage.mockImplementation(
+      async () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                url: () => 'chrome-extension://test/notification.html',
+              }),
+            75,
+          );
+        }),
+    );
+
+    const timedState = await timedServer.start();
+
+    try {
+      const res = await httpRequest(
+        `http://127.0.0.1:${timedState.port}/tool/wait_for_notification`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeoutMs: 1000 }),
+        },
+      );
+      const body = (await res.json()) as {
+        ok: boolean;
+        result?: { found: boolean; pageUrl: string };
+      };
+
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.result).toStrictEqual({
+        found: true,
+        pageUrl: 'chrome-extension://test/notification.html',
+      });
+    } finally {
+      await timedServer.stop();
+    }
   });
 
   it('playwright helpers called for read-only tools (knowledge store)', async () => {

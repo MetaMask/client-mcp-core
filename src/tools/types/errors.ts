@@ -17,7 +17,11 @@ export const ErrorCodes = {
   MM_TARGET_NOT_FOUND: 'MM_TARGET_NOT_FOUND',
   MM_CLICK_FAILED: 'MM_CLICK_FAILED',
   MM_TYPE_FAILED: 'MM_TYPE_FAILED',
+  MM_GETTEXT_FAILED: 'MM_GETTEXT_FAILED',
   MM_WAIT_TIMEOUT: 'MM_WAIT_TIMEOUT',
+  MM_CLICK_TIMEOUT: 'MM_CLICK_TIMEOUT', // click action timed out (element found, click hung)
+  MM_TYPE_TIMEOUT: 'MM_TYPE_TIMEOUT', // fill action timed out
+  MM_GETTEXT_TIMEOUT: 'MM_GETTEXT_TIMEOUT', // textContent action timed out
 
   MM_SCREENSHOT_FAILED: 'MM_SCREENSHOT_FAILED',
 

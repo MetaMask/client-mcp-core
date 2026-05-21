@@ -28,6 +28,14 @@ function createMockLocator() {
   };
 }
 
+function createMockPage() {
+  return {
+    locator: vi.fn(() => createMockLocator()),
+    isClosed: vi.fn(() => false),
+    viewportSize: vi.fn(() => ({ width: 800, height: 600 })),
+  };
+}
+
 function createMockContext(
   options: {
     hasActive?: boolean;
@@ -39,11 +47,17 @@ function createMockContext(
     sessionManager: createMockSessionManager({
       hasActive: options.hasActive ?? true,
     }),
-    page: (options.page ?? {}) as ToolContext['page'],
+    page: (options.page ?? createMockPage()) as ToolContext['page'],
     refMap: options.refMap ?? new Map(),
     workflowContext: {},
     knowledgeStore: {},
   } as unknown as ToolContext;
+}
+
+function createTimeoutError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'TimeoutError';
+  return error;
 }
 
 describe('interaction', () => {
@@ -83,6 +97,9 @@ describe('interaction', () => {
       const page = {};
       const locator = createMockLocator();
       const context = createMockContext({ page });
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
@@ -98,6 +115,7 @@ describe('interaction', () => {
         5000,
         undefined,
       );
+      expect(locator.click).toHaveBeenCalledWith({ timeout: 5000 });
     });
 
     it('passes within scope to waitForTarget', async () => {
@@ -253,6 +271,30 @@ describe('interaction', () => {
       }
     });
 
+    it('recovers page-closed even when error name is TimeoutError', async () => {
+      const locator = createMockLocator();
+      const error = new Error(
+        'Target page, context or browser has been closed',
+      );
+      error.name = 'TimeoutError';
+      locator.click.mockRejectedValue(error);
+      const context = createMockContext();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await clickTool({ testId: 'close-btn' }, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.pageClosedAfterClick).toBe(true);
+      }
+    });
+
     it('returns error when click fails with non-closure error', async () => {
       const locator = createMockLocator();
       locator.click.mockRejectedValue(new Error('Element is not clickable'));
@@ -281,7 +323,7 @@ describe('interaction', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
       }
     });
 
@@ -296,6 +338,79 @@ describe('interaction', () => {
         expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
       }
     });
+
+    it('returns timeout error when no action time remains after visibility wait', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1006);
+      nowSpy.mockReturnValueOnce(1006);
+
+      const result = await clickTool(
+        { testId: 'slow-button', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+      }
+    });
+
+    it('returns timeout error when click action times out', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+      locator.click.mockRejectedValue(
+        createTimeoutError('Timeout 5ms exceeded during click'),
+      );
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1005);
+
+      const result = await clickTool(
+        { testId: 'hung-button', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+      }
+      expect(locator.click).toHaveBeenCalledWith({ timeout: 5 });
+    });
+
+    it('returns timeout error when click visibility wait times out', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Timeout 5ms exceeded during waitForTarget'),
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1005);
+
+      const result = await clickTool(
+        { testId: 'missing-button', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+      }
+    });
   });
 
   describe('typeTool', () => {
@@ -303,6 +418,9 @@ describe('interaction', () => {
       const page = {};
       const locator = createMockLocator();
       const context = createMockContext({ page });
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
@@ -327,13 +445,16 @@ describe('interaction', () => {
         15000,
         undefined,
       );
-      expect(locator.fill).toHaveBeenCalledWith('0.5');
+      expect(locator.fill).toHaveBeenCalledWith('0.5', { timeout: 15000 });
     });
 
     it('uses custom timeout when provided', async () => {
       const page = {};
       const locator = createMockLocator();
       const context = createMockContext({ page });
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
@@ -352,6 +473,7 @@ describe('interaction', () => {
         3000,
         undefined,
       );
+      expect(locator.fill).toHaveBeenCalledWith('test', { timeout: 3000 });
     });
 
     it('passes within scope to waitForTarget', async () => {
@@ -398,7 +520,9 @@ describe('interaction', () => {
         expect(result.result.target).toBe('selector:input[name="email"]');
         expect(result.result.textLength).toBe(16);
       }
-      expect(locator.fill).toHaveBeenCalledWith('test@example.com');
+      expect(locator.fill).toHaveBeenCalledWith('test@example.com', {
+        timeout: 15000,
+      });
     });
 
     it('types text into element by accessibility reference', async () => {
@@ -432,6 +556,9 @@ describe('interaction', () => {
     it('types empty string and reports zero length', async () => {
       const locator = createMockLocator();
       const context = createMockContext();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
@@ -444,7 +571,7 @@ describe('interaction', () => {
         expect(result.result.typed).toBe(true);
         expect(result.result.textLength).toBe(0);
       }
-      expect(locator.fill).toHaveBeenCalledWith('');
+      expect(locator.fill).toHaveBeenCalledWith('', { timeout: 15000 });
     });
 
     it('returns error when no target specified', async () => {
@@ -521,7 +648,7 @@ describe('interaction', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+        expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
       }
     });
 
@@ -534,6 +661,106 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+
+    it('returns timeout error when no type action time remains after visibility wait', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2006);
+      nowSpy.mockReturnValueOnce(2006);
+
+      const result = await typeTool(
+        { testId: 'slow-input', text: 'value', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
+      }
+    });
+
+    it('returns timeout error when fill action times out', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+      locator.fill.mockRejectedValue(
+        createTimeoutError('Timeout 5ms exceeded during fill'),
+      );
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2005);
+
+      const result = await typeTool(
+        { testId: 'hung-input', text: 'value', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
+      }
+      expect(locator.fill).toHaveBeenCalledWith('value', { timeout: 5 });
+    });
+
+    it('returns timeout error when type visibility wait times out', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Timeout 5ms exceeded during waitForTarget'),
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2005);
+
+      const result = await typeTool(
+        { testId: 'missing-input', text: 'value', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
+      }
+    });
+
+    it('classifies page-closed as type error even when error name is TimeoutError', async () => {
+      const locator = createMockLocator();
+      const error = new Error(
+        'Target page, context or browser has been closed',
+      );
+      error.name = 'TimeoutError';
+      locator.fill.mockRejectedValue(error);
+      const context = createMockContext();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2000);
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await typeTool(
+        { testId: 'input', text: 'value' },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
       }
     });
   });
@@ -733,7 +960,7 @@ describe('interaction', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+        expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
       }
     });
 
@@ -746,6 +973,24 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+
+    it('returns timeout error when visibility wait times out', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Timeout 5000ms exceeded'),
+      );
+
+      const result = await waitForTool(
+        { testId: 'missing', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
       }
     });
   });
@@ -889,6 +1134,103 @@ describe('interaction', () => {
         expect.any(Number),
         { type: 'testId', value: 'parent-container' },
       );
+    });
+
+    it('returns timeout error when no text action time remains after visibility wait', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(3000);
+      nowSpy.mockReturnValueOnce(3006);
+      nowSpy.mockReturnValueOnce(3006);
+
+      const result = await getTextTool(
+        { testId: 'slow-text', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
+      }
+    });
+
+    it('returns timeout error when textContent action times out', async () => {
+      const locator = createMockLocator();
+      const context = createMockContext();
+      locator.textContent.mockRejectedValue(
+        createTimeoutError('Timeout 5ms exceeded during textContent'),
+      );
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(3000);
+      nowSpy.mockReturnValueOnce(3000);
+      nowSpy.mockReturnValueOnce(3005);
+
+      const result = await getTextTool(
+        { testId: 'hung-text', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
+      }
+      expect(locator.textContent).toHaveBeenCalledWith({ timeout: 5 });
+    });
+
+    it('returns timeout error when getText visibility wait times out', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Timeout 5ms exceeded during waitForTarget'),
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(3000);
+      nowSpy.mockReturnValueOnce(3005);
+
+      const result = await getTextTool(
+        { testId: 'missing-text', timeoutMs: 5 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
+      }
+    });
+
+    it('classifies page-closed as getText error even when error name is TimeoutError', async () => {
+      const locator = createMockLocator();
+      const error = new Error(
+        'Target page, context or browser has been closed',
+      );
+      error.name = 'TimeoutError';
+      locator.textContent.mockRejectedValue(error);
+      const context = createMockContext();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(3000);
+      nowSpy.mockReturnValueOnce(3000);
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await getTextTool({ testId: 'label' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+      }
     });
   });
 });

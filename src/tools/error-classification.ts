@@ -54,6 +54,14 @@ export function classifyInteractionError(
 } {
   const message = extractErrorMessage(error);
 
+  // Page-closed takes priority — the browser/context is gone, so no other
+  // classification is meaningful.
+  for (const pattern of ERROR_PATTERNS.pageClosed) {
+    if (message.includes(pattern)) {
+      return { code: ErrorCodes.MM_PAGE_CLOSED, message };
+    }
+  }
+
   for (const pattern of ERROR_PATTERNS.targetNotFound) {
     if (message.includes(pattern)) {
       return { code: ErrorCodes.MM_TARGET_NOT_FOUND, message };
@@ -105,11 +113,20 @@ export function classifyWaitError(error: unknown): {
   code: string;
   message: string;
 } {
-  const message = extractErrorMessage(error);
-  return {
-    code: ErrorCodes.MM_WAIT_TIMEOUT,
-    message: `Wait timed out: ${message}`,
-  };
+  return classifyInteractionError(error, ErrorCodes.MM_WAIT_TIMEOUT);
+}
+
+/**
+ * Classify a get-text error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
+ */
+export function classifyGetTextError(error: unknown): {
+  code: string;
+  message: string;
+} {
+  return classifyInteractionError(error, ErrorCodes.MM_GETTEXT_FAILED);
 }
 
 /**

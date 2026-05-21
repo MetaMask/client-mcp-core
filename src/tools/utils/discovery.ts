@@ -1030,6 +1030,7 @@ export async function waitForTarget(
   timeoutMs: number,
   within?: WithinScope,
 ): Promise<Locator> {
+  const deadline = Date.now() + timeoutMs;
   let scope: Page | Locator = page;
   if (within) {
     const parentLocator = resolveTargetScoped(
@@ -1038,9 +1039,14 @@ export async function waitForTarget(
       within.value,
       refMap,
     );
-    await parentLocator
-      .first()
-      .waitFor({ state: 'visible', timeout: timeoutMs });
+    const parentRemaining = deadline - Date.now();
+    if (parentRemaining <= 0) {
+      throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
+    }
+    await parentLocator.first().waitFor({
+      state: 'visible',
+      timeout: parentRemaining,
+    });
     // Use .first() to guarantee the child search is scoped to exactly one
     // parent element.  Without this, Playwright chains the child locator
     // across ALL matching parents, producing phantom multi-matches
@@ -1048,6 +1054,13 @@ export async function waitForTarget(
     scope = parentLocator.first();
   }
   const locator = resolveTargetScoped(scope, targetType, targetValue, refMap);
-  await locator.waitFor({ state: 'visible', timeout: timeoutMs });
+  const childRemaining = deadline - Date.now();
+  if (childRemaining <= 0) {
+    throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
+  }
+  await locator.waitFor({
+    state: 'visible',
+    timeout: childRemaining,
+  });
   return locator;
 }
