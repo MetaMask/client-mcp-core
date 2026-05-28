@@ -1,41 +1,58 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
+  listTestIdsTool,
+  accessibilitySnapshotTool,
+} from './discovery-tools.js';
+import {
   clickTool,
   getTextTool,
   typeTool,
   waitForTool,
 } from './interaction.js';
-import {
-  listTestIdsTool,
-  accessibilitySnapshotTool,
-} from './discovery-tools.js';
 import { screenshotTool } from './screenshot.js';
 import { getStateTool } from './state.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import type { IPlatformDriver } from '../platform/types.js';
 import type { ToolContext } from '../types/http.js';
 
-function createMockDriver(overrides: Partial<IPlatformDriver> = {}): IPlatformDriver {
+function createMockDriver(
+  overrides: Partial<IPlatformDriver> = {},
+): IPlatformDriver {
   return {
     click: vi.fn().mockResolvedValue({ clicked: true, target: 'testId:btn' }),
-    type: vi.fn().mockResolvedValue({ typed: true, target: 'testId:input', textLength: 5 }),
+    type: vi.fn().mockResolvedValue({
+      typed: true,
+      target: 'testId:input',
+      textLength: 5,
+    }),
     waitForElement: vi.fn().mockResolvedValue(undefined),
-    getText: vi.fn().mockResolvedValue({ text: 'hello', target: 'testId:el', length: 5 }),
+    getText: vi
+      .fn()
+      .mockResolvedValue({ text: 'hello', target: 'testId:el', length: 5 }),
     getAccessibilityTree: vi.fn().mockResolvedValue({
       nodes: [{ ref: 'e1', role: 'button', name: 'OK', path: [] }],
       refMap: new Map([['e1', 'role=button[name="OK"]']]),
     }),
-    getTestIds: vi.fn().mockResolvedValue([
-      { testId: 'submit', tag: 'button', visible: true },
-    ]),
+    getTestIds: vi
+      .fn()
+      .mockResolvedValue([{ testId: 'submit', tag: 'button', visible: true }]),
     screenshot: vi.fn().mockResolvedValue({
-      path: '/tmp/shot.png', base64: 'abc', width: 400, height: 800,
+      path: '/tmp/shot.png',
+      base64: 'abc',
+      width: 400,
+      height: 800,
     }),
     getAppState: vi.fn().mockResolvedValue({
-      isLoaded: true, currentUrl: '', extensionId: 'test',
-      isUnlocked: true, currentScreen: 'home',
-      accountAddress: null, networkName: null, chainId: null, balance: null,
+      isLoaded: true,
+      currentUrl: '',
+      extensionId: 'test',
+      isUnlocked: true,
+      currentScreen: 'home',
+      accountAddress: null,
+      networkName: null,
+      chainId: null,
+      balance: null,
     }),
     isToolSupported: vi.fn().mockReturnValue(true),
     getCurrentUrl: vi.fn().mockReturnValue(''),
@@ -51,18 +68,18 @@ function createMockPage() {
   };
 }
 
-function createContextWithDriver(
-  driver: IPlatformDriver,
-): ToolContext {
+function createContextWithDriver(driver: IPlatformDriver): ToolContext {
   const page = createMockPage();
   const sessionManager = createMockSessionManager({ hasActive: true });
-  (sessionManager as any).getPage = vi.fn().mockReturnValue(page);
+  vi.spyOn(sessionManager as any, 'getPage').mockReturnValue(page);
   return {
     sessionManager,
     page: page as any,
     refMap: new Map(),
     workflowContext: {} as any,
-    knowledgeStore: { generatePriorKnowledge: vi.fn().mockResolvedValue(undefined) } as any,
+    knowledgeStore: {
+      generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
+    } as any,
     toolRegistry: new Map(),
     driver,
   } as unknown as ToolContext;
@@ -82,7 +99,11 @@ describe('tool delegation to context.driver', () => {
 
       expect(result.ok).toBe(true);
       expect(driver.click).toHaveBeenCalledWith(
-        'testId', 'btn', expect.any(Map), expect.any(Number), undefined,
+        'testId',
+        'btn',
+        expect.any(Map),
+        expect.any(Number),
+        undefined,
       );
     });
 
@@ -90,11 +111,19 @@ describe('tool delegation to context.driver', () => {
       const driver = createMockDriver();
       const context = createContextWithDriver(driver);
 
-      const result = await typeTool({ testId: 'input', text: 'hello' }, context);
+      const result = await typeTool(
+        { testId: 'input', text: 'hello' },
+        context,
+      );
 
       expect(result.ok).toBe(true);
       expect(driver.type).toHaveBeenCalledWith(
-        'testId', 'input', 'hello', expect.any(Map), expect.any(Number), undefined,
+        'testId',
+        'input',
+        'hello',
+        expect.any(Map),
+        expect.any(Number),
+        undefined,
       );
     });
 
@@ -120,7 +149,9 @@ describe('tool delegation to context.driver', () => {
 
     it('clickTool classifies driver errors', async () => {
       const driver = createMockDriver({
-        click: vi.fn().mockRejectedValue(new Error('Element not found: testId:missing')),
+        click: vi
+          .fn()
+          .mockRejectedValue(new Error('Element not found: testId:missing')),
       });
       const context = createContextWithDriver(driver);
 
@@ -161,9 +192,11 @@ describe('tool delegation to context.driver', () => {
       const result = await screenshotTool({ name: 'test' }, context);
 
       expect(result.ok).toBe(true);
-      expect(driver.screenshot).toHaveBeenCalledWith(expect.objectContaining({
-        name: 'test',
-      }));
+      expect(driver.screenshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'test',
+        }),
+      );
     });
   });
 

@@ -10,8 +10,8 @@ export type {
   TypeActionResult,
   GetTextActionResult,
   PlatformScreenshotOptions,
-} from './platform/index.js';
-export { PlaywrightPlatformDriver } from './platform/index.js';
+} from './platform';
+export { PlaywrightPlatformDriver } from './platform';
 
 // Session Manager Interface (transport-agnostic)
 export type {

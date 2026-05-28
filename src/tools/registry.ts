@@ -135,6 +135,12 @@ const BROWSER_ONLY_TOOLS = new Set([
   'cdp',
 ]);
 
+/**
+ * Checks if a tool is only available on the browser platform.
+ *
+ * @param toolName - The registered tool name to check.
+ * @returns True if the tool is browser-only, false if cross-platform.
+ */
 export function isBrowserOnlyTool(toolName: string): boolean {
   return BROWSER_ONLY_TOOLS.has(toolName);
 }

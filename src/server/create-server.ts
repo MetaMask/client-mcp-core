@@ -15,7 +15,11 @@ import {
   createDefaultObservation,
 } from '../knowledge-store/knowledge-store.js';
 import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
-import { toolRegistry, getToolCategory, isBrowserOnlyTool } from '../tools/registry.js';
+import {
+  toolRegistry,
+  getToolCategory,
+  isBrowserOnlyTool,
+} from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
 import type {
   StepRecordObservation,

@@ -58,9 +58,7 @@ describe('PlaywrightPlatformDriver', () => {
     it('returns the page URL', () => {
       const page = createMockPage();
       const driver = createDriver(page);
-      expect(driver.getCurrentUrl()).toBe(
-        'chrome-extension://abc/home.html',
-      );
+      expect(driver.getCurrentUrl()).toBe('chrome-extension://abc/home.html');
       expect(page.url).toHaveBeenCalledOnce();
     });
   });
@@ -87,19 +85,16 @@ describe('PlaywrightPlatformDriver', () => {
 
     it('returns pageClosedAfterClick when page closes during click', async () => {
       const locator = createMockLocator();
-      const pageClosedError = new Error('Target page, context or browser has been closed');
+      const pageClosedError = new Error(
+        'Target page, context or browser has been closed',
+      );
       locator.click.mockRejectedValue(pageClosedError);
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
       );
 
       const driver = createDriver();
-      const result = await driver.click(
-        'testId',
-        'close-btn',
-        new Map(),
-        5000,
-      );
+      const result = await driver.click('testId', 'close-btn', new Map(), 5000);
 
       expect(result.clicked).toBe(true);
       expect(result.pageClosedAfterClick).toBe(true);
@@ -115,7 +110,7 @@ describe('PlaywrightPlatformDriver', () => {
       const driver = createDriver();
       await expect(
         driver.click('testId', 'btn', new Map(), 5000),
-      ).rejects.toThrow('Element detached');
+      ).rejects.toThrowError('Element detached');
     });
   });
 
@@ -137,7 +132,10 @@ describe('PlaywrightPlatformDriver', () => {
 
       expect(result.typed).toBe(true);
       expect(result.textLength).toBe(13);
-      expect(locator.fill).toHaveBeenCalledWith('user@test.com', expect.any(Object));
+      expect(locator.fill).toHaveBeenCalledWith(
+        'user@test.com',
+        expect.any(Object),
+      );
     });
   });
 
@@ -164,15 +162,10 @@ describe('PlaywrightPlatformDriver', () => {
       );
 
       const driver = createDriver();
-      const result = await driver.getText(
-        'testId',
-        'balance',
-        new Map(),
-        5000,
-      );
+      const result = await driver.getText('testId', 'balance', new Map(), 5000);
 
       expect(result.text).toBe('Balance: $100');
-      expect(result.length).toBe(13);
+      expect(result).toHaveLength(13);
     });
 
     it('returns empty string when textContent is null', async () => {
@@ -183,21 +176,18 @@ describe('PlaywrightPlatformDriver', () => {
       );
 
       const driver = createDriver();
-      const result = await driver.getText(
-        'testId',
-        'empty',
-        new Map(),
-        5000,
-      );
+      const result = await driver.getText('testId', 'empty', new Map(), 5000);
 
       expect(result.text).toBe('');
-      expect(result.length).toBe(0);
+      expect(result).toHaveLength(0);
     });
   });
 
   describe('getAccessibilityTree', () => {
     it('delegates to collectTrimmedA11ySnapshot', async () => {
-      const mockNodes = [{ ref: 'e1', role: 'button', name: 'Submit', path: [] }];
+      const mockNodes = [
+        { ref: 'e1', role: 'button', name: 'Submit', path: [] },
+      ];
       const mockRefMap = new Map([['e1', 'role=button[name="Submit"]']]);
       vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
         { nodes: mockNodes, refMap: mockRefMap } as any,
@@ -206,7 +196,7 @@ describe('PlaywrightPlatformDriver', () => {
       const driver = createDriver();
       const { nodes, refMap } = await driver.getAccessibilityTree();
 
-      expect(nodes).toEqual(mockNodes);
+      expect(nodes).toStrictEqual(mockNodes);
       expect(refMap).toBe(mockRefMap);
     });
   });
@@ -221,7 +211,7 @@ describe('PlaywrightPlatformDriver', () => {
       const driver = createDriver();
       const items = await driver.getTestIds(50);
 
-      expect(items).toEqual(mockItems);
+      expect(items).toStrictEqual(mockItems);
       expect(discoveryModule.collectTestIds).toHaveBeenCalledWith(
         expect.anything(),
         50,
@@ -231,9 +221,14 @@ describe('PlaywrightPlatformDriver', () => {
 
   describe('screenshot', () => {
     it('delegates to sessionManager.screenshot', async () => {
-      const mockResult = { path: '/tmp/ss.png', base64: 'abc', width: 800, height: 600 };
+      const mockResult = {
+        path: '/tmp/ss.png',
+        base64: 'abc',
+        width: 800,
+        height: 600,
+      };
       const sessionManager = createMockSessionManager({ hasActive: true });
-      sessionManager.screenshot = vi.fn().mockResolvedValue(mockResult);
+      vi.spyOn(sessionManager, 'screenshot').mockResolvedValue(mockResult);
 
       const driver = new PlaywrightPlatformDriver(
         () => createMockPage() as any,
@@ -242,7 +237,7 @@ describe('PlaywrightPlatformDriver', () => {
 
       const result = await driver.screenshot({ name: 'test', fullPage: true });
 
-      expect(result).toEqual(mockResult);
+      expect(result).toStrictEqual(mockResult);
       expect(sessionManager.screenshot).toHaveBeenCalledWith({
         name: 'test',
         fullPage: true,
@@ -265,7 +260,9 @@ describe('PlaywrightPlatformDriver', () => {
         balance: null,
       };
       const sessionManager = createMockSessionManager({ hasActive: true });
-      sessionManager.getExtensionState = vi.fn().mockResolvedValue(mockState);
+      vi.spyOn(sessionManager, 'getExtensionState').mockResolvedValue(
+        mockState,
+      );
 
       const driver = new PlaywrightPlatformDriver(
         () => createMockPage() as any,
@@ -274,7 +271,7 @@ describe('PlaywrightPlatformDriver', () => {
 
       const state = await driver.getAppState();
 
-      expect(state).toEqual(mockState);
+      expect(state).toStrictEqual(mockState);
     });
   });
 });
