@@ -14,14 +14,6 @@ import type {
 import type { ISessionManager } from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
-/**
- * Retrieves the extension state using the snapshot capability or session manager.
- *
- * @param page - The active Playwright page.
- * @param sessionManager - The session manager instance.
- * @param stateSnapshotCapability - Optional capability for direct state snapshots.
- * @returns The current extension state.
- */
 async function getState(
   page: Page,
   sessionManager: ISessionManager,
@@ -38,13 +30,6 @@ async function getState(
   return sessionManager.getExtensionState();
 }
 
-/**
- * Retrieves the extension state and tracked tab information.
- *
- * @param _input - Unused input parameters.
- * @param context - The tool execution context.
- * @returns The extension state and tab details.
- */
 export async function getStateTool(
   _input: Record<string, never>,
   context: ToolContext,
@@ -55,12 +40,14 @@ export async function getStateTool(
   }
 
   try {
-    const state = await getState(
-      context.page,
-      context.sessionManager,
-      context.workflowContext.stateSnapshot ??
-        context.sessionManager.getStateSnapshotCapability(),
-    );
+    const state = context.driver
+      ? await context.driver.getAppState()
+      : await getState(
+          context.page,
+          context.sessionManager,
+          context.workflowContext.stateSnapshot ??
+            context.sessionManager.getStateSnapshotCapability(),
+        );
 
     const trackedPages = context.sessionManager.getTrackedPages();
     const activePage = context.sessionManager.getPage();

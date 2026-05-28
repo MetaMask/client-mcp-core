@@ -126,3 +126,15 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
 export function getToolCategory(toolName: string): ToolCategory {
   return TOOL_CATEGORIES[toolName] ?? 'mutating';
 }
+
+const BROWSER_ONLY_TOOLS = new Set([
+  'navigate',
+  'switch_to_tab',
+  'close_tab',
+  'wait_for_notification',
+  'cdp',
+]);
+
+export function isBrowserOnlyTool(toolName: string): boolean {
+  return BROWSER_ONLY_TOOLS.has(toolName);
+}

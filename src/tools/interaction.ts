@@ -32,14 +32,9 @@ import {
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
+import type { WithinScope as PlatformWithinScope } from '../platform/types.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
-/**
- * Checks whether the given error is a Playwright timeout error.
- *
- * @param error - The error to inspect.
- * @returns True if the error represents an action timeout.
- */
 function isActionTimeoutError(error: unknown): boolean {
   return error instanceof Error && error.name === 'TimeoutError';
 }
@@ -49,14 +44,6 @@ type ValidatedTarget = {
   targetValue: string;
 };
 
-/**
- * Validates session and target selection for interaction tools.
- * Returns an error response if validation fails, or the resolved target.
- *
- * @param input - The tool input with target selection fields.
- * @param context - The tool execution context.
- * @returns Either an error response or the validated target.
- */
 function validateInteraction<TResult>(
   input: ClickInput | TypeInput | WaitForInput | GetTextInput,
   context: ToolContext,
@@ -91,6 +78,42 @@ function validateInteraction<TResult>(
   };
 }
 
+function resolveWithinScope(
+  within: WithinTarget | undefined,
+): PlatformWithinScope | undefined {
+  if (!within) {
+    return undefined;
+  }
+  if (within.a11yRef) {
+    return { type: 'a11yRef', value: within.a11yRef };
+  }
+  if (within.testId) {
+    return { type: 'testId', value: within.testId };
+  }
+  if (within.selector) {
+    return { type: 'selector', value: within.selector };
+  }
+  return undefined;
+}
+
+function resolveWithinScopeForDiscovery(
+  within: WithinTarget | undefined,
+): WithinScope | undefined {
+  if (!within) {
+    return undefined;
+  }
+  if (within.a11yRef) {
+    return { type: 'a11yRef', value: within.a11yRef };
+  }
+  if (within.testId) {
+    return { type: 'testId', value: within.testId };
+  }
+  if (within.selector) {
+    return { type: 'selector', value: within.selector };
+  }
+  return undefined;
+}
+
 type InteractionErrorInfo = {
   code: string;
   message: string;
@@ -116,23 +139,6 @@ type RunInteractionWithTimeoutOptions<TResult> = {
   ) => ToolResponse<TResult> | undefined;
 };
 
-/**
- * Runs an element interaction within a deadline-based timeout.
- *
- * @param options - The interaction configuration object.
- * @param options.context - The tool execution context with session and page.
- * @param options.timeoutMs - Maximum time in milliseconds for the interaction.
- * @param options.within - Optional parent scope to restrict element search.
- * @param options.targetType - The type of target identifier (a11yRef, testId, selector).
- * @param options.targetValue - The target value used for element lookup.
- * @param options.timeoutErrorCode - The error code to use when the interaction times out.
- * @param options.classifyError - Classifies a caught error into a code and message.
- * @param options.action - The interaction to perform on the resolved locator.
- * @param options.createSuccessResult - Creates the tool response from a successful result.
- * @param options.formatTimeoutMessage - Formats the timeout error message for a given phase.
- * @param options.handleActionError - Optional handler for action errors before fallback.
- * @returns The tool response for the interaction outcome.
- */
 async function runInteractionWithTimeout<TResult>({
   context,
   timeoutMs,
@@ -148,7 +154,7 @@ async function runInteractionWithTimeout<TResult>({
 }: RunInteractionWithTimeoutOptions<TResult>): Promise<ToolResponse<TResult>> {
   const startTime = Date.now();
   const deadline = startTime + timeoutMs;
-  const withinScope = resolveWithinScope(within);
+  const withinScope = resolveWithinScopeForDiscovery(within);
   let locator: Locator | undefined;
 
   try {
@@ -187,9 +193,6 @@ async function runInteractionWithTimeout<TResult>({
       return handledError;
     }
 
-    // Page-closed errors can surface with name='TimeoutError' due to
-    // Playwright race conditions.  Classify them before the timeout
-    // check so they are never misreported as action timeouts.
     if (isPageClosedError(actionError)) {
       const errorInfo = classifyError(actionError);
       return createToolError(errorInfo.code, errorInfo.message);
@@ -208,37 +211,6 @@ async function runInteractionWithTimeout<TResult>({
   }
 }
 
-/**
- * Converts a WithinTarget input to the WithinScope format expected by waitForTarget.
- *
- * @param within - The optional within target from tool input.
- * @returns The resolved scope, or undefined if no within target is provided.
- */
-function resolveWithinScope(
-  within: WithinTarget | undefined,
-): WithinScope | undefined {
-  if (!within) {
-    return undefined;
-  }
-  if (within.a11yRef) {
-    return { type: 'a11yRef', value: within.a11yRef };
-  }
-  if (within.testId) {
-    return { type: 'testId', value: within.testId };
-  }
-  if (within.selector) {
-    return { type: 'selector', value: within.selector };
-  }
-  return undefined;
-}
-
-/**
- * Clicks an element identified by ref, test ID, or selector.
- *
- * @param input - The click target and timeout options.
- * @param context - The tool execution context.
- * @returns The click operation result.
- */
 export async function clickTool(
   input: ClickInput,
   context: ToolContext,
@@ -250,6 +222,23 @@ export async function clickTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
+
+  if (context.driver) {
+    try {
+      const result = await context.driver.click(
+        targetType,
+        targetValue,
+        context.refMap,
+        timeoutMs,
+        resolveWithinScope(input.within),
+      );
+      return createToolSuccess(result);
+    } catch (error) {
+      const errorInfo = classifyClickError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
+
   return runInteractionWithTimeout({
     context,
     timeoutMs,
@@ -284,13 +273,6 @@ export async function clickTool(
   });
 }
 
-/**
- * Types text into an element identified by ref, test ID, or selector.
- *
- * @param input - The type target, text content, and timeout options.
- * @param context - The tool execution context.
- * @returns The type operation result.
- */
 export async function typeTool(
   input: TypeInput,
   context: ToolContext,
@@ -302,6 +284,24 @@ export async function typeTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
+
+  if (context.driver) {
+    try {
+      const result = await context.driver.type(
+        targetType,
+        targetValue,
+        input.text,
+        context.refMap,
+        timeoutMs,
+        resolveWithinScope(input.within),
+      );
+      return createToolSuccess(result);
+    } catch (error) {
+      const errorInfo = classifyTypeError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
+
   return runInteractionWithTimeout({
     context,
     timeoutMs,
@@ -326,13 +326,6 @@ export async function typeTool(
   });
 }
 
-/**
- * Waits for an element to appear on the page within a timeout.
- *
- * @param input - The wait target and timeout options.
- * @param context - The tool execution context.
- * @returns The wait result indicating whether the element was found.
- */
 export async function waitForTool(
   input: WaitForInput,
   context: ToolContext,
@@ -345,6 +338,25 @@ export async function waitForTool(
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
 
+  if (context.driver) {
+    try {
+      await context.driver.waitForElement(
+        targetType,
+        targetValue,
+        context.refMap,
+        timeoutMs,
+        resolveWithinScope(input.within),
+      );
+      return createToolSuccess({
+        found: true,
+        target: `${targetType}:${targetValue}`,
+      });
+    } catch (error) {
+      const errorInfo = classifyWaitError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
+
   try {
     await waitForTarget(
       context.page,
@@ -352,7 +364,7 @@ export async function waitForTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      resolveWithinScopeForDiscovery(input.within),
     );
 
     return createToolSuccess({
@@ -365,13 +377,6 @@ export async function waitForTool(
   }
 }
 
-/**
- * Reads the text content of an element identified by ref, test ID, or selector.
- *
- * @param input - The target element and timeout options.
- * @param context - The tool execution context.
- * @returns The text content of the matched element.
- */
 export async function getTextTool(
   input: GetTextInput,
   context: ToolContext,
@@ -383,6 +388,23 @@ export async function getTextTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
+
+  if (context.driver) {
+    try {
+      const result = await context.driver.getText(
+        targetType,
+        targetValue,
+        context.refMap,
+        timeoutMs,
+        resolveWithinScope(input.within),
+      );
+      return createToolSuccess(result);
+    } catch (error) {
+      const errorInfo = classifyGetTextError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
+
   return runInteractionWithTimeout({
     context,
     timeoutMs,

@@ -23,6 +23,7 @@ import type {
   StateSnapshotCapability,
   ScreenshotResult,
 } from '../capabilities/types.js';
+import type { IPlatformDriver, PlatformType } from '../platform/types.js';
 import type { TabRole, SessionState, SessionMetadata } from '../tools/types';
 
 /**
@@ -63,6 +64,10 @@ export type SessionLaunchInput = {
   };
   /** Smart contracts to deploy on launch */
   seedContracts?: string[];
+  /** Target platform (defaults to 'browser') */
+  platform?: PlatformType;
+  /** Device ID for explicit mobile device targeting */
+  deviceId?: string;
 };
 
 /**
@@ -309,4 +314,12 @@ export type ISessionManager = {
     };
     canSwitchContext: boolean;
   };
+
+  // -----------------------------------------------------------------------------
+  // Platform Driver (Optional — consumers that support mobile implement these)
+  // -----------------------------------------------------------------------------
+
+  getPlatformDriver?(): IPlatformDriver | undefined;
+
+  setPlatformDriver?(driver: IPlatformDriver): void;
 };

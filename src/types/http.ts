@@ -8,8 +8,15 @@ import type { Page } from '@playwright/test';
 
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { KnowledgeStore } from '../knowledge-store/knowledge-store.js';
+import type { IPlatformDriver } from '../platform/types.js';
 import type { ISessionManager } from '../server/session-manager.js';
 
+/**
+ * Context passed to standalone tool functions.
+ *
+ * This context provides access to the session manager, current page,
+ * accessibility reference map, workflow capabilities, and knowledge store.
+ */
 /**
  * Context passed to standalone tool functions.
  *
@@ -29,6 +36,8 @@ export type ToolContext = {
   knowledgeStore: KnowledgeStore;
   /** Tool registry for batch execution (run_steps) */
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
+  /** Platform driver for cross-platform element interaction (browser, iOS, Android) */
+  driver?: IPlatformDriver;
 };
 
 /**
