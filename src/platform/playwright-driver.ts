@@ -71,7 +71,12 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       within,
     );
 
-    const remaining = Math.max(deadline - Date.now(), 0);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `Timeout ${timeoutMs}ms exceeded: visibility wait consumed entire budget for ${targetType}:${targetValue}`,
+      );
+    }
 
     try {
       await locator.click({ timeout: remaining });
@@ -123,7 +128,13 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       within,
     );
 
-    const remaining = Math.max(deadline - Date.now(), 0);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `Timeout ${timeoutMs}ms exceeded: visibility wait consumed entire budget for ${targetType}:${targetValue}`,
+      );
+    }
+
     await locator.fill(text, { timeout: remaining });
 
     return {
@@ -189,7 +200,13 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       within,
     );
 
-    const remaining = Math.max(deadline - Date.now(), 0);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `Timeout ${timeoutMs}ms exceeded: visibility wait consumed entire budget for ${targetType}:${targetValue}`,
+      );
+    }
+
     const text = (await locator.textContent({ timeout: remaining })) ?? '';
 
     return {

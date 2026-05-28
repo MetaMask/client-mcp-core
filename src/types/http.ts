@@ -17,12 +17,6 @@ import type { ISessionManager } from '../server/session-manager.js';
  * This context provides access to the session manager, current page,
  * accessibility reference map, workflow capabilities, and knowledge store.
  */
-/**
- * Context passed to standalone tool functions.
- *
- * This context provides access to the session manager, current page,
- * accessibility reference map, workflow capabilities, and knowledge store.
- */
 export type ToolContext = {
   /** Session manager for browser session control */
   sessionManager: ISessionManager;

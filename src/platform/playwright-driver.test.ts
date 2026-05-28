@@ -83,6 +83,39 @@ describe('PlaywrightPlatformDriver', () => {
       expect(locator.click).toHaveBeenCalledOnce();
     });
 
+    it('passes within scope to waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await driver.click('testId', 'btn', new Map(), 5000, {
+        type: 'testId',
+        value: 'parent-container',
+      });
+
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        expect.anything(),
+        'testId',
+        'btn',
+        expect.any(Map),
+        5000,
+        { type: 'testId', value: 'parent-container' },
+      );
+    });
+
+    it('throws timeout error when waitForTarget times out', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Timeout 5000ms exceeded waiting for element'),
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.click('testId', 'missing', new Map(), 5000),
+      ).rejects.toThrowError('Timeout 5000ms exceeded');
+    });
+
     it('returns pageClosedAfterClick when page closes during click', async () => {
       const locator = createMockLocator();
       const pageClosedError = new Error(
@@ -112,6 +145,23 @@ describe('PlaywrightPlatformDriver', () => {
         driver.click('testId', 'btn', new Map(), 5000),
       ).rejects.toThrowError('Element detached');
     });
+
+    it('throws when budget exhausted by waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(6000);
+
+      const driver = createDriver();
+      await expect(
+        driver.click('testId', 'btn', new Map(), 5),
+      ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(locator.click).not.toHaveBeenCalled();
+    });
   });
 
   describe('type', () => {
@@ -136,6 +186,45 @@ describe('PlaywrightPlatformDriver', () => {
         'user@test.com',
         expect.any(Object),
       );
+    });
+
+    it('passes within scope to waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await driver.type('testId', 'input', 'text', new Map(), 5000, {
+        type: 'a11yRef',
+        value: 'e5',
+      });
+
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        expect.anything(),
+        'testId',
+        'input',
+        expect.any(Map),
+        5000,
+        { type: 'a11yRef', value: 'e5' },
+      );
+    });
+
+    it('throws when budget exhausted by waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(6000);
+
+      const driver = createDriver();
+      await expect(
+        driver.type('testId', 'input', 'text', new Map(), 5),
+      ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(locator.fill).not.toHaveBeenCalled();
     });
   });
 
@@ -181,6 +270,23 @@ describe('PlaywrightPlatformDriver', () => {
       expect(result.text).toBe('');
       expect(result).toHaveLength(0);
     });
+
+    it('throws when budget exhausted by waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(6000);
+
+      const driver = createDriver();
+      await expect(
+        driver.getText('testId', 'el', new Map(), 5),
+      ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(locator.textContent).not.toHaveBeenCalled();
+    });
   });
 
   describe('getAccessibilityTree', () => {
@@ -198,6 +304,20 @@ describe('PlaywrightPlatformDriver', () => {
 
       expect(nodes).toStrictEqual(mockNodes);
       expect(refMap).toBe(mockRefMap);
+    });
+
+    it('passes rootSelector to collectTrimmedA11ySnapshot', async () => {
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        { nodes: [], refMap: new Map() } as any,
+      );
+
+      const driver = createDriver();
+      await driver.getAccessibilityTree('#main-content');
+
+      expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        '#main-content',
+      );
     });
   });
 

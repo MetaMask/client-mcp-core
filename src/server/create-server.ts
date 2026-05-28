@@ -448,20 +448,18 @@ export function createServer(config: ServerConfig): ServerInstance {
 
     const category = getToolCategory(toolName);
 
-    const context = buildToolContext(currentWorkflowContext);
-    if (
-      isBrowserOnlyTool(toolName) &&
-      context.driver &&
-      context.driver.getPlatform() !== 'browser'
-    ) {
-      res.json({
-        ok: false,
-        error: {
-          code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
-          message: `Tool "${toolName}" is not supported on ${context.driver.getPlatform()} platform`,
-        },
-      });
-      return;
+    if (isBrowserOnlyTool(toolName)) {
+      const platformDriver = config.sessionManager.getPlatformDriver?.();
+      if (platformDriver && platformDriver.getPlatform() !== 'browser') {
+        res.json({
+          ok: false,
+          error: {
+            code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+            message: `Tool "${toolName}" is not supported on ${platformDriver.getPlatform()} platform`,
+          },
+        });
+        return;
+      }
     }
 
     const inputRecord = validatedInput as Record<string, unknown>;
@@ -474,6 +472,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     try {
       const { toolResult, observations } = await queue.enqueue(
         async () => {
+          const context = buildToolContext(currentWorkflowContext);
           const result = await tool(validatedInput, context);
 
           let obs: StepRecordObservation | undefined;

@@ -346,7 +346,7 @@ describe('interaction', () => {
       }
     });
 
-    it('succeeds when element is actionable even with tight timeout budget', async () => {
+    it('returns timeout error when no action time remains after visibility wait', async () => {
       const locator = createMockLocator();
       const context = createMockContext();
 
@@ -354,12 +354,19 @@ describe('interaction', () => {
         locator as any,
       );
 
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1006);
+
       const result = await clickTool(
-        { testId: 'fast-button', timeoutMs: 5 },
+        { testId: 'slow-button', timeoutMs: 5 },
         context,
       );
 
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+      }
     });
 
     it('returns timeout error when click action times out', async () => {
@@ -663,7 +670,7 @@ describe('interaction', () => {
       }
     });
 
-    it('succeeds when element is actionable even with tight timeout budget', async () => {
+    it('returns timeout error when no type action time remains after visibility wait', async () => {
       const locator = createMockLocator();
       const context = createMockContext();
 
@@ -671,12 +678,19 @@ describe('interaction', () => {
         locator as any,
       );
 
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(2000);
+      nowSpy.mockReturnValueOnce(2006);
+
       const result = await typeTool(
-        { testId: 'fast-input', text: 'value', timeoutMs: 5 },
+        { testId: 'slow-input', text: 'value', timeoutMs: 5 },
         context,
       );
 
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
+      }
     });
 
     it('returns timeout error when fill action times out', async () => {
@@ -1127,7 +1141,7 @@ describe('interaction', () => {
       );
     });
 
-    it('succeeds when element is actionable even with tight timeout budget', async () => {
+    it('returns timeout error when no text action time remains after visibility wait', async () => {
       const locator = createMockLocator();
       const context = createMockContext();
 
@@ -1135,12 +1149,19 @@ describe('interaction', () => {
         locator as any,
       );
 
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(3000);
+      nowSpy.mockReturnValueOnce(3006);
+
       const result = await getTextTool(
-        { testId: 'fast-text', timeoutMs: 5 },
+        { testId: 'slow-text', timeoutMs: 5 },
         context,
       );
 
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
+      }
     });
 
     it('returns timeout error when textContent action times out', async () => {
