@@ -637,6 +637,10 @@ export async function routeCommand(
         throw error;
       }
       break;
+    case 'mock-network': {
+      await routeMockNetworkCommand(args, port);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -685,6 +689,60 @@ export async function routeCommand(
       );
       process.exit(1);
   }
+}
+
+/**
+ * Routes mock-network subcommands to the daemon.
+ *
+ * @param args - CLI arguments after `mock-network`.
+ * @param port - The daemon HTTP server port.
+ */
+export async function routeMockNetworkCommand(
+  args: string[],
+  port: number,
+): Promise<void> {
+  const action = args[0];
+
+  if (action === 'add') {
+    const rawRule = args[1];
+    if (!rawRule) {
+      process.stderr.write(
+        "Usage: mm mock-network add '<json-rule-or-config>'\n",
+      );
+      process.exit(1);
+    }
+
+    const parsed = parseJsonArgument(rawRule, 'mock-network add');
+    await sendRequest(port, 'POST', '/tool/mock_network', {
+      action: 'add',
+      ...normalizeMockNetworkAddPayload(parsed),
+    });
+    return;
+  }
+
+  if (action === 'clear') {
+    await sendRequest(port, 'POST', '/tool/mock_network', { action: 'clear' });
+    return;
+  }
+
+  if (action === 'list') {
+    await sendRequest(port, 'POST', '/tool/mock_network', { action: 'list' });
+    return;
+  }
+
+  if (action === 'requests') {
+    const limit = parseIntFlag(args, '--limit');
+    await sendRequest(port, 'POST', '/tool/mock_network', {
+      action: 'requests',
+      ...(limit === undefined ? {} : { limit }),
+    });
+    return;
+  }
+
+  process.stderr.write(
+    'Usage: mm mock-network <add|clear|list|requests> [options]\n',
+  );
+  process.exit(1);
 }
 
 /**
@@ -1186,6 +1244,44 @@ export function parseStringFlag(
 }
 
 /**
+ * Parses a JSON CLI argument and exits with a concise error when invalid.
+ *
+ * @param raw - Raw JSON string.
+ * @param label - Human-readable command label for error output.
+ * @returns The parsed JSON value.
+ */
+export function parseJsonArgument(raw: string, label: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Error: invalid JSON for ${label} — ${message}\n`);
+    process.exit(1);
+    throw error;
+  }
+}
+
+/**
+ * Normalizes a mock-network add payload.
+ *
+ * @param payload - Parsed JSON payload.
+ * @returns A payload accepted by the mock_network tool.
+ */
+export function normalizeMockNetworkAddPayload(
+  payload: unknown,
+): { rule: unknown } | { routes: unknown } {
+  if (typeof payload === 'object' && payload !== null && 'routes' in payload) {
+    return { routes: (payload as { routes: unknown }).routes };
+  }
+
+  if (Array.isArray(payload)) {
+    return { routes: payload };
+  }
+
+  return { rule: payload };
+}
+
+/**
  * Parses launch command arguments into a key-value object.
  *
  * @param args - The raw CLI arguments after the command name.
@@ -1318,6 +1414,10 @@ Batching:
   mm run-steps <json>
 
 Advanced:
+  mm mock-network add '<json-rule-or-config>'
+  mm mock-network clear
+  mm mock-network list
+  mm mock-network requests [--limit <n>]
   mm cdp <method> [params-json] [--timeout <ms>]
 
 Examples:

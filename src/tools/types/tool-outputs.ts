@@ -1,6 +1,11 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
 import type { PriorKnowledgeV1 } from './knowledge.js';
-import type { TabRole } from './tool-inputs.js';
+import type {
+  NetworkMockRequestRecord,
+  NetworkMockRouteRule,
+  NetworkMockSummary,
+  TabRole,
+} from './tool-inputs.js';
 import type { ExtensionState } from '../../capabilities/types.js';
 
 export type BuildToolResult = {
@@ -153,6 +158,29 @@ export type CdpResult = {
   method: string;
   result: unknown;
 };
+
+export type MockNetworkResult =
+  | {
+      action: 'add';
+      added: number;
+      rules: NetworkMockRouteRule[];
+      summary: NetworkMockSummary;
+    }
+  | {
+      action: 'clear';
+      cleared: boolean;
+      summary: NetworkMockSummary;
+    }
+  | {
+      action: 'list';
+      rules: NetworkMockRouteRule[];
+      summary: NetworkMockSummary;
+    }
+  | {
+      action: 'requests';
+      requests: NetworkMockRequestRecord[];
+      summary: NetworkMockSummary;
+    };
 
 export type SetContextResult = {
   previousContext: 'e2e' | 'prod';

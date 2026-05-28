@@ -7,6 +7,7 @@ export * from './discovery-tools.js';
 export * from './interaction.js';
 export * from './knowledge.js';
 export * from './launch.js';
+export * from './mock-network.js';
 export * from './navigation.js';
 export * from './registry.js';
 export * from './screenshot.js';

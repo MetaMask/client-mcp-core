@@ -26,7 +26,7 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
   │  ┌──────────┐  ┌──────────────┐  ┌────────────┐  ┌────────────┐ │
   │  │  Routes   │  │ RequestQueue │  │   Tool     │  │ Knowledge  │ │
   │  │ /health   │  │ (async mutex)  │  │  Registry  │  │   Store    │ │
-  │  │ /status   │  │              │  │  29 tools  │  │            │ │
+  │  │ /status   │  │              │  │  30 tools  │  │            │ │
   │  │ /launch   │  └──────────────┘  └─────┬──────┘  └────────────┘ │
   │  │ /cleanup  │                          │                         │
   │  │ /tool/:n  │                          ▼                         │
@@ -403,6 +403,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 | **Batching**             |                                                                                                                                                                                                                                                                                                                                                                                   |
 | `run_steps`              | Executes a batch of tool invocations sequentially. Supports `stopOnError` to halt on first failure, `includeObservations` (`'all'`, `'none'`, `'failures'`) to control observations, and `batchTimeoutMs` to set an overall deadline (remaining steps are skipped on timeout). Accepts tool aliases like `navigate_home` / `navigate-home`. Returns per-step results with timing. |
 | **Advanced**             |                                                                                                                                                                                                                                                                                                                                                                                   |
+| `mock_network`           | Adds, clears, lists, and inspects targeted Playwright network mocks on the active browser context. Unmatched same-origin requests are continued unchanged.                                                                                                                                                                                                                        |
 | `cdp`                    | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for cases where structured tools are insufficient (e.g., `Runtime.evaluate`, `Network.enable`). A small set of destructive methods (`Browser.close`, `Target.closeTarget`, etc.) are blocked to protect session state. Categorized as mutating — run `describe_screen` afterward to re-sync.   |
 
 ### Accessibility References
@@ -607,6 +608,10 @@ mm describe-screen
 
 | Command                                          | Description                                                                                                                                                                             |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm mock-network add '<json-rule-or-config>'`    | Adds targeted route mocks during an active session. Pass either a single rule, an array of rules, or an object with a `routes` array.                                                   |
+| `mm mock-network clear`                          | Clears route mocks and recorded requests.                                                                                                                                               |
+| `mm mock-network list`                           | Lists active route mocks.                                                                                                                                                               |
+| `mm mock-network requests [--limit <n>]`         | Shows recorded matched and missed requests.                                                                                                                                             |
 | `mm cdp <method> [params-json] [--timeout <ms>]` | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for when structured tools are insufficient. Destructive methods (`Browser.close`, etc.) are blocked. |
 
 ```bash
