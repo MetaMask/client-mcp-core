@@ -1,0 +1,85 @@
+src/tools/mock-network.test.ts
+  s_5205b4400f390f::t_16c71488515677 203-216,287-297,314-334,367-378,380-390,436-444
+  s_5205b4400f390f::t_c1f43ba8849864 1-2,10-14,16-24,36,47,50-55,57-58,66,68-82,85-94,96,101-103,106,108-110,115-117,119,121-130,142-148,154-165,179,181,202,475-476
+  s_5205b4400f390f::t_87490bfb6b78b4 3-9,15,25-35,37-46,48-49,56,59-65,67,83-84,95,97-100,104-105,107,111-114,118,120,131-141,149-153,166-178,180,182-201,298-313,335-366,379,391-435,445-474
+  s_e535dafb8b51de::t_54e2a55844e549 217-286
+src/cli/mm.test.ts
+  s_5205b4400f390f::t_6ba8ee5350ace2 1746-1831
+  s_5205b4400f390f::t_b0c6e7e54832ff 399-430
+  s_5205b4400f390f::t_d5d44120be1caf 26-28
+src/validation/schemas.ts
+  s_e535dafb8b51de::t_b8f5ce06243b32 94-101
+  s_5205b4400f390f::t_f638c9cfbc4953 77-93,102-131,615-622,650,682,718-719
+  s_5205b4400f390f::t_b444a97043a9ce 603-614
+README.md
+  s_5205b4400f390f::t_5ec4ee87b3a3e5 29,611-614
+  s_5205b4400f390f::t_33c629be134fb9 406
+SKILL.md
+  s_e535dafb8b51de::t_083a2f70aff806 513
+  s_71b0e810b5c472::t_9cc0195d59b549 602-605,610,613,620-625,628,630-633
+  s_71b0e810b5c472::t_6faad642016de1 495-505,507-512,514-548,550-551
+  s_71b0e810b5c472::t_962add826a36ac 30
+vitest.config.mts
+  s_e535dafb8b51de::t_1b9c505598aaf8 38-41
+src/tools/registry.ts
+  s_5205b4400f390f::t_355d87fffc725a 25,76,82,97
+src/tools/types/tool-inputs.ts
+  s_5205b4400f390f::t_98631728fd6001 196-205
+  s_5205b4400f390f::t_8e81c471690698 165-194
+src/tools/types/tool-outputs.ts
+  s_5205b4400f390f::t_fe789c39002bd6 7-8
+  s_5205b4400f390f::t_bbcfbe061a0614 3-6,162-183
+src/tools/mock-network.ts
+  s_e535dafb8b51de::t_39aa38d977fec4 441-445,448
+  s_5205b4400f390f::t_e9fff34db63d3d 14-15,30-47,49-51,53-56,59-62,64-67,69-74,77-81,84,474
+  s_e535dafb8b51de::t_db2ec306d22c61 217-237
+  s_5205b4400f390f::t_2ca455c9a4c941 1-13,16-29,48,52,57-58,63,68,75-76,82-83,85-124,128-132,136-216,238-318,336-440,446-447,449-473
+  s_e535dafb8b51de::t_950adcff230bd5 125-127,133-135
+  s_5205b4400f390f::t_f164d49d12a327 319-335
+src/tools/registry.test.ts
+  s_5205b4400f390f::t_72cf597b3779e6 17,35
+src/tools/index.ts
+  s_5205b4400f390f::t_9a5252e01fe266 10
+src/cli/mm.ts
+  s_5205b4400f390f::t_cc701c461b007c 695-747
+  s_5205b4400f390f::t_eca18757968357 640-643,1417-1420
+  s_5205b4400f390f::t_69bcc8d66e1954 1260
+  s_5205b4400f390f::t_8e04b4a5f28a3b 1247-1259,1261-1283
+src/validation/schemas.test.ts
+  s_5205b4400f390f::t_60950cdc274cac 17-18
+  s_5205b4400f390f::t_90ea4f9f74aaaa 356-364
+  s_5205b4400f390f::t_42749e6ddbda10 328-355,365-373,383-401
+  s_e535dafb8b51de::t_bf8dc95b76c452 374-382
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "91a26bcc34b93d50d34968be12ce4d1fa0038f8b",
+  "prompts": {},
+  "sessions": {
+    "s_5205b4400f390f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019e6f24-2261-7269-bf5e-b5dab55a0385",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_71b0e810b5c472": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_18facc5e3ffeTmHKLUBwY4AWv7",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_e535dafb8b51de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_18fa3f474ffeJM04DWGPPzgVfQ",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
