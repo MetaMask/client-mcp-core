@@ -262,7 +262,7 @@ describe('tool delegation to context.driver', () => {
       expect(driver.getText).toHaveBeenCalledOnce();
     });
 
-    it('clickTool maps timeout errors to MM_CLICK_TIMEOUT', async () => {
+    it('clickTool maps timeout errors to MM_CLICK_TIMEOUT with descriptive message', async () => {
       const driver = createMockDriver({
         click: vi
           .fn()
@@ -277,6 +277,8 @@ describe('tool delegation to context.driver', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toContain('Click timed out');
+        expect(result.error.message).toContain('describe-screen');
       }
     });
 
@@ -294,7 +296,7 @@ describe('tool delegation to context.driver', () => {
       }
     });
 
-    it('typeTool maps timeout errors to MM_TYPE_TIMEOUT', async () => {
+    it('typeTool maps timeout errors to MM_TYPE_TIMEOUT with descriptive message', async () => {
       const driver = createMockDriver({
         type: vi
           .fn()
@@ -312,6 +314,7 @@ describe('tool delegation to context.driver', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
+        expect(result.error.message).toContain('Type timed out');
       }
     });
 
@@ -350,7 +353,7 @@ describe('tool delegation to context.driver', () => {
       }
     });
 
-    it('getTextTool maps timeout errors to MM_GETTEXT_TIMEOUT', async () => {
+    it('getTextTool maps timeout errors to MM_GETTEXT_TIMEOUT with descriptive message', async () => {
       const driver = createMockDriver({
         getText: vi
           .fn()
@@ -365,6 +368,7 @@ describe('tool delegation to context.driver', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_GETTEXT_TIMEOUT);
+        expect(result.error.message).toContain('GetText timed out');
       }
     });
 
@@ -541,8 +545,8 @@ describe('tool delegation to context.driver', () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.result.tabs.active.role).toBe('other');
-        expect(result.result.tabs.active.url).toBe('');
+        expect(result.result.tabs?.active.role).toBe('other');
+        expect(result.result.tabs?.active.url).toBe('');
       }
     });
 

@@ -147,11 +147,16 @@ export async function clickTool(
     return createToolSuccess(result);
   } catch (error) {
     const errorInfo = classifyClickError(error);
-    const code =
-      errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT
-        ? ErrorCodes.MM_CLICK_TIMEOUT
-        : errorInfo.code;
-    return createToolError(code, errorInfo.message);
+    if (
+      errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT ||
+      errorInfo.message.includes('visibility wait consumed entire budget')
+    ) {
+      return createToolError(
+        ErrorCodes.MM_CLICK_TIMEOUT,
+        `Click timed out after ${timeoutMs}ms. Note: the click action may have completed in the background after this timeout. Run describe-screen to verify current page state before retrying.`,
+      );
+    }
+    return createToolError(errorInfo.code, errorInfo.message);
   }
 }
 
@@ -186,11 +191,16 @@ export async function typeTool(
     return createToolSuccess(result);
   } catch (error) {
     const errorInfo = classifyTypeError(error);
-    const code =
-      errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT
-        ? ErrorCodes.MM_TYPE_TIMEOUT
-        : errorInfo.code;
-    return createToolError(code, errorInfo.message);
+    if (
+      errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT ||
+      errorInfo.message.includes('visibility wait consumed entire budget')
+    ) {
+      return createToolError(
+        ErrorCodes.MM_TYPE_TIMEOUT,
+        `Type timed out after ${timeoutMs}ms.`,
+      );
+    }
+    return createToolError(errorInfo.code, errorInfo.message);
   }
 }
 
@@ -261,10 +271,15 @@ export async function getTextTool(
     return createToolSuccess(result);
   } catch (error) {
     const errorInfo = classifyGetTextError(error);
-    const code =
-      errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT
-        ? ErrorCodes.MM_GETTEXT_TIMEOUT
-        : errorInfo.code;
-    return createToolError(code, errorInfo.message);
+    if (
+      errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT ||
+      errorInfo.message.includes('visibility wait consumed entire budget')
+    ) {
+      return createToolError(
+        ErrorCodes.MM_GETTEXT_TIMEOUT,
+        `GetText timed out after ${timeoutMs}ms.`,
+      );
+    }
+    return createToolError(errorInfo.code, errorInfo.message);
   }
 }
