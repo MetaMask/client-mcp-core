@@ -25,12 +25,12 @@ mm cleanup --shutdown      # 5. Clean up when done
 
 Tool responses include different data based on the tool's category:
 
-| Category      | Examples                                                          | Observations in response?                      |
-| ------------- | ----------------------------------------------------------------- | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp     | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context      | No — faster response                           |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot | Data is already in `result`                    |
-| **Batch**     | run_steps                                                         | Controlled by `includeObservations` param      |
+| Category      | Examples                                                                    | Observations in response?                      |
+| ------------- | --------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network | Yes — `state` + `a11y` (compacted) + `testIds` |
+| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context                | No — faster response                           |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot           | Data is already in `result`                    |
+| **Batch**     | run_steps                                                                   | Controlled by `includeObservations` param      |
 
 **Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
 
@@ -492,6 +492,63 @@ Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigat
 
 ### Advanced
 
+#### `mm mock-network add '<json-rule-or-config>'`
+
+Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and a response body.
+
+```bash
+mm mock-network add '{"id":"mock-balance","method":"GET","url":"https://api.example.com/v1/balance","response":{"json":{"balance":"100"}}}'
+```
+
+A rule object requires:
+
+| Field              | Description                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                      |
+| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                             |
+| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                          |
+| `response.status`  | HTTP status code (default: 200)                                                                                        |
+| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                    |
+| `response.body`    | Text response body (mutually exclusive with `json`)                                                                    |
+| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`) |
+
+You can also pass an array of rules or an object with a `routes` array:
+
+```bash
+mm mock-network add '[{"id":"r1","method":"GET","url":"https://a.com/x","response":{"json":{}}},{"id":"r2","method":"POST","url":"https://a.com/y","response":{"json":{}}}]'
+mm mock-network add '{"routes":[...]}'
+```
+
+Unmatched same-origin requests are continued unchanged.
+
+#### `mm mock-network clear`
+
+Clears all route mocks and recorded requests.
+
+```bash
+mm mock-network clear
+```
+
+#### `mm mock-network list`
+
+Lists currently active route mocks.
+
+```bash
+mm mock-network list
+```
+
+#### `mm mock-network requests`
+
+Shows recorded matched and missed requests.
+
+```bash
+mm mock-network requests [--limit <n>]
+```
+
+| Flag          | Description                                |
+| ------------- | ------------------------------------------ |
+| `--limit <n>` | Maximum number of recent records to return |
+
 #### `mm cdp <method> [params-json] [--timeout <ms>]`
 
 Sends a raw Chrome DevTools Protocol command against the active page. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree directly.
@@ -542,28 +599,41 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | -------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `MM_NO_ACTIVE_SESSION`           | No browser session running                         | Run `mm launch` first                                                                               |
 | `MM_SESSION_ALREADY_RUNNING`     | Session already exists                             | Run `mm cleanup` first, or use `--force`                                                            |
+| `MM_LAUNCH_FAILED`               | Browser session launch failed                      | Check extension path and config; retry                                                              |
+| `MM_PAGE_CLOSED`                 | Page was closed unexpectedly                       | Normal after some confirmations; run describe-screen                                                |
+| `MM_BUILD_FAILED`                | Extension build failed                             | Check build logs; fix build errors and retry                                                        |
+| `MM_DEPENDENCIES_MISSING`        | Required build dependencies not installed          | Run dependency install (npm/yarn) and retry build                                                   |
 | `MM_TARGET_NOT_FOUND`            | Element ref/testId/selector not found              | Run `mm describe-screen` to get fresh refs                                                          |
 | `MM_WAIT_TIMEOUT`                | Element didn't appear in time                      | Increase timeout or verify you're on the right screen                                               |
 | `MM_CLICK_FAILED`                | Click failed after finding element                 | Element may be obscured; try waiting or scrolling                                                   |
 | `MM_CLICK_TIMEOUT`               | Click action timed out (element found, click hung) | Run `mm describe-screen` to verify if click completed; retry with `--timeout` or different approach |
-| `MM_TYPE_TIMEOUT`                | Fill action timed out                              | Run `mm describe-screen` to verify state; retry with `--timeout`                                    |
-| `MM_GETTEXT_TIMEOUT`             | textContent action timed out                       | Retry with `--timeout`                                                                              |
-| `MM_GETTEXT_FAILED`              | getText operational failure (non-timeout)          | Element may be detached; run `mm describe-screen` and re-target                                     |
 | `MM_TYPE_FAILED`                 | Type failed after finding element                  | Element may not be an input; verify with describe-screen                                            |
-| `MM_PAGE_CLOSED`                 | Page was closed unexpectedly                       | Normal after some confirmations; run describe-screen                                                |
+| `MM_TYPE_TIMEOUT`                | Fill action timed out                              | Run `mm describe-screen` to verify state; retry with `--timeout`                                    |
+| `MM_GETTEXT_FAILED`              | getText operational failure (non-timeout)          | Element may be detached; run `mm describe-screen` and re-target                                     |
+| `MM_GETTEXT_TIMEOUT`             | textContent action timed out                       | Retry with `--timeout`                                                                              |
 | `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser             | Check browser permissions; try CDP approach                                                         |
 | `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy               | Extension security policy blocks clipboard; use alternative input method                            |
 | `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                         | Retry; check if page is still active                                                                |
 | `MM_NAVIGATION_FAILED`           | Navigation error or network failure                | Check URL validity; retry once                                                                      |
 | `MM_NOTIFICATION_TIMEOUT`        | Extension notification popup didn't appear         | Action may not have triggered a notification; check state                                           |
 | `MM_TAB_NOT_FOUND`               | Tab role/URL not found                             | Run `mm get-state` to see available tabs                                                            |
+| `MM_DISCOVERY_FAILED`            | Discovery tool failure                             | Page may be loading; wait and retry                                                                 |
+| `MM_SCREENSHOT_FAILED`           | Screenshot capture failure                         | Page may be in unstable state; retry after describe-screen                                          |
+| `MM_STATE_FAILED`                | State retrieval failed                             | Session may be unstable; run `mm describe-screen`                                                   |
+| `MM_KNOWLEDGE_ERROR`             | Knowledge store operation failed                   | Retry; check that session exists                                                                    |
+| `MM_CONTRACT_NOT_FOUND`          | Unknown contract name for seeding                  | See available contracts below                                                                       |
+| `MM_SEED_FAILED`                 | Contract deployment failure                        | Check Anvil chain is running; verify contract name                                                  |
 | `MM_CAPABILITY_NOT_AVAILABLE`    | Feature requires a capability not configured       | Check environment mode (e2e vs prod)                                                                |
 | `MM_CONTEXT_SWITCH_BLOCKED`      | Can't switch context with active session           | Run `mm cleanup` first                                                                              |
+| `MM_SET_CONTEXT_FAILED`          | Context switch operation failed                    | Retry; check session state                                                                          |
 | `MM_INVALID_INPUT`               | Bad parameters                                     | Fix input and retry                                                                                 |
+| `MM_INVALID_CONFIG`              | Invalid configuration                              | Check config file format and required fields                                                        |
+| `MM_PORT_IN_USE`                 | Port already in use                                | Stop conflicting process or let the daemon auto-allocate                                            |
+| `MM_UNKNOWN_TOOL`                | Unknown tool name                                  | Check tool name spelling                                                                            |
+| `MM_INTERNAL_ERROR`              | Internal server error                              | Retry; if persistent, restart daemon with `mm stop && mm serve`                                     |
 | `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded                 | Remaining steps were skipped; check partial results                                                 |
 | `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive)                | Use a different CDP method; see blocked list                                                        |
 | `MM_CDP_FAILED`                  | CDP command failed or timed out                    | Check method name/params; retry or increase timeout                                                 |
-| `MM_CONTRACT_NOT_FOUND`          | Unknown contract name for seeding                  | See available contracts below                                                                       |
 
 ## Available Contracts (E2E only)
 

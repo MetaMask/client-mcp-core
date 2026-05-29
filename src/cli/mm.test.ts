@@ -23,6 +23,9 @@ import {
   resolveRuntime,
   sendRequest,
   routeCommand,
+  routeMockNetworkCommand,
+  parseJsonArgument,
+  normalizeMockNetworkAddPayload,
   resolveWorktreeRoot,
   readDaemonConfig,
   shutdownDaemon,
@@ -390,6 +393,38 @@ describe('parseStringFlag', () => {
 
   it('returns undefined when no value follows', () => {
     expect(parseStringFlag(['--role'], '--role')).toBeUndefined();
+  });
+});
+
+describe('parseJsonArgument', () => {
+  it('parses valid JSON', () => {
+    expect(parseJsonArgument('{"a":1}', 'test')).toStrictEqual({ a: 1 });
+  });
+
+  it('exits for invalid JSON', () => {
+    expect(() => parseJsonArgument('{bad}', 'test')).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('invalid JSON for test'),
+    );
+  });
+});
+
+describe('normalizeMockNetworkAddPayload', () => {
+  it('returns routes for config objects', () => {
+    expect(normalizeMockNetworkAddPayload({ routes: [1] })).toStrictEqual({
+      routes: [1],
+    });
+  });
+
+  it('returns routes for arrays', () => {
+    expect(normalizeMockNetworkAddPayload([1])).toStrictEqual({ routes: [1] });
+  });
+
+  it('returns rule for single rule objects', () => {
+    const rule = { id: 'rule' };
+    expect(normalizeMockNetworkAddPayload(rule)).toStrictEqual({ rule });
   });
 });
 
@@ -1753,6 +1788,92 @@ describe('routeCommand', () => {
     ).rejects.toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining('invalid JSON'),
+    );
+  });
+
+  it('routes mock-network add with a JSON rule', async () => {
+    const rule = {
+      id: 'accounts-supported-networks',
+      method: 'GET',
+      url: 'https://accounts.api.cx.metamask.io/v2/supportedNetworks',
+      response: { status: 200, json: { fullSupport: [1] } },
+    };
+
+    await routeCommand('mock-network', ['add', JSON.stringify(rule)], 3000);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'add', rule }),
+      }),
+    );
+  });
+
+  it('routes mock-network add with a JSON config', async () => {
+    const routes = [
+      {
+        id: 'accounts-balances',
+        method: 'GET',
+        url: 'https://accounts.api.cx.metamask.io/v5/multiaccount/balances**',
+        response: { status: 200, json: { balances: [] } },
+      },
+    ];
+
+    await routeMockNetworkCommand(['add', JSON.stringify({ routes })], 3000);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'add', routes }),
+      }),
+    );
+  });
+
+  it('routes mock-network clear', async () => {
+    await routeCommand('mock-network', ['clear'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'clear' }),
+      }),
+    );
+  });
+
+  it('routes mock-network list', async () => {
+    await routeCommand('mock-network', ['list'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'list' }),
+      }),
+    );
+  });
+
+  it('routes mock-network requests with limit', async () => {
+    await routeCommand('mock-network', ['requests', '--limit', '10'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'requests', limit: 10 }),
+      }),
+    );
+  });
+
+  it('exits when mock-network add has no payload', async () => {
+    await expect(
+      routeCommand('mock-network', ['add'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm mock-network add'),
+    );
+  });
+
+  it('exits when mock-network has an unknown action', async () => {
+    await expect(
+      routeCommand('mock-network', ['unknown'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm mock-network'),
     );
   });
 

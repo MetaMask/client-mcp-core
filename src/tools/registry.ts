@@ -22,6 +22,7 @@ import {
   knowledgeSummarizeTool,
 } from './knowledge.js';
 import { launchTool } from './launch.js';
+import { mockNetworkTool } from './mock-network.js';
 import {
   closeTabTool,
   navigateTool,
@@ -72,12 +73,13 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['get_context', getContextTool],
   ['clipboard', clipboardTool],
   ['cdp', cdpTool],
+  ['mock_network', mockNetworkTool],
 ]);
 
 export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (14)
+  // MUTATING (15)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
@@ -92,6 +94,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   seed_contract: 'mutating',
   seed_contracts: 'mutating',
   cdp: 'mutating',
+  mock_network: 'mutating',
   // READONLY (10)
   knowledge_last: 'readonly',
   knowledge_search: 'readonly',

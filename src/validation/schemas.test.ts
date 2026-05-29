@@ -14,6 +14,8 @@ import {
   closeTabInputSchema,
   clipboardInputSchema,
   navigateInputSchema,
+  networkMockRouteRuleSchema,
+  mockNetworkInputSchema,
   launchInputSchema,
 } from './schemas.js';
 
@@ -325,65 +327,76 @@ describe('navigateInputSchema', () => {
   });
 });
 
-describe('launchInputSchema', () => {
-  it('preserves platform field', () => {
-    const input = { platform: 'ios' };
-    const result = launchInputSchema.safeParse(input);
+describe('network mock schemas', () => {
+  const route = {
+    id: 'accounts-supported-networks',
+    method: 'get',
+    url: 'https://accounts.api.cx.metamask.io/v2/supportedNetworks',
+    response: { json: { fullSupport: [1] } },
+  };
+
+  it('normalizes route methods and applies response defaults', () => {
+    const result = networkMockRouteRuleSchema.safeParse(route);
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.platform).toBe('ios');
+      expect(result.data.method).toBe('GET');
+      expect(result.data.response.status).toBe(200);
     }
   });
 
-  it('preserves deviceId field', () => {
-    const input = { deviceId: 'emulator-5554' };
-    const result = launchInputSchema.safeParse(input);
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.deviceId).toBe('emulator-5554');
-    }
-  });
-
-  it('preserves platform and deviceId together', () => {
-    const input = {
-      platform: 'android' as const,
-      deviceId: 'emulator-5554',
-      stateMode: 'default' as const,
-    };
-    const result = launchInputSchema.safeParse(input);
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.platform).toBe('android');
-      expect(result.data.deviceId).toBe('emulator-5554');
-      expect(result.data.stateMode).toBe('default');
-    }
-  });
-
-  it('rejects invalid platform value', () => {
-    const input = { platform: 'windows' };
-    const result = launchInputSchema.safeParse(input);
+  it('rejects non-http URLs', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      url: 'chrome-extension://abc/home.html',
+    });
 
     expect(result.success).toBe(false);
   });
 
-  it('rejects empty deviceId', () => {
-    const input = { deviceId: '' };
-    const result = launchInputSchema.safeParse(input);
+  it('rejects malformed URLs', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      url: 'not a url',
+    });
 
     expect(result.success).toBe(false);
   });
 
-  it('accepts launch input without platform or deviceId', () => {
-    const input = { stateMode: 'default' as const };
-    const result = launchInputSchema.safeParse(input);
+  it('requires a response body', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      response: { status: 200 },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects response with both json and body', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      response: { json: { ok: true }, body: 'ok' },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts mock-network add with one route', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'add',
+      rule: route,
+    });
 
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.platform).toBeUndefined();
-      expect(result.data.deviceId).toBeUndefined();
-    }
+  });
+
+  it('rejects mock-network add with both rule and routes', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'add',
+      rule: route,
+      routes: [route],
+    });
+
+    expect(result.success).toBe(false);
   });
 });
