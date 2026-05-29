@@ -14,6 +14,8 @@ import {
   closeTabInputSchema,
   clipboardInputSchema,
   navigateInputSchema,
+  networkMockRouteRuleSchema,
+  mockNetworkInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -321,5 +323,79 @@ describe('navigateInputSchema', () => {
 
       expect(result.success).toBe(false);
     });
+  });
+});
+
+describe('network mock schemas', () => {
+  const route = {
+    id: 'accounts-supported-networks',
+    method: 'get',
+    url: 'https://accounts.api.cx.metamask.io/v2/supportedNetworks',
+    response: { json: { fullSupport: [1] } },
+  };
+
+  it('normalizes route methods and applies response defaults', () => {
+    const result = networkMockRouteRuleSchema.safeParse(route);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.method).toBe('GET');
+      expect(result.data.response.status).toBe(200);
+    }
+  });
+
+  it('rejects non-http URLs', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      url: 'chrome-extension://abc/home.html',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects malformed URLs', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      url: 'not a url',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('requires a response body', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      response: { status: 200 },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects response with both json and body', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      response: { json: { ok: true }, body: 'ok' },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts mock-network add with one route', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'add',
+      rule: route,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects mock-network add with both rule and routes', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'add',
+      rule: route,
+      routes: [route],
+    });
+
+    expect(result.success).toBe(false);
   });
 });

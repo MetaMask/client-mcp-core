@@ -14,6 +14,7 @@ describe('toolRegistry', () => {
       'screenshot',
       'describe_screen',
       'clipboard',
+      'mock_network',
       'run_steps',
     ];
 
@@ -31,7 +32,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(29);
+    expect(toolRegistry.size).toBe(30);
   });
 
   it('stores only functions as values', () => {

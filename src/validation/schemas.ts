@@ -74,6 +74,61 @@ export const knowledgeFiltersSchema = z
   })
   .optional();
 
+const networkMockResponseSchema = z
+  .object({
+    status: z
+      .number()
+      .int()
+      .min(100)
+      .max(599)
+      .default(200)
+      .describe('HTTP status code for the mocked response'),
+    headers: z
+      .record(z.string(), z.string())
+      .default({})
+      .describe('Additional response headers')
+      .optional(),
+    json: z.unknown().describe('JSON response body').optional(),
+    body: z.string().describe('Text response body').optional(),
+  })
+  .refine(
+    (data) =>
+      (data.json !== undefined || data.body !== undefined) &&
+      !(data.json !== undefined && data.body !== undefined),
+    {
+      message: 'Exactly one of response.json or response.body must be provided',
+    },
+  );
+
+export const networkMockRouteRuleSchema = z.object({
+  id: z.string().min(1).describe('Stable identifier for this mock route'),
+  method: z
+    .string()
+    .min(1)
+    .transform((method) => method.toUpperCase())
+    .describe('HTTP method to match'),
+  url: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        try {
+          const parsed = new URL(value);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'url must be an absolute http(s) URL or URL glob' },
+    )
+    .describe('Absolute URL or URL glob to match'),
+  response: networkMockResponseSchema,
+});
+
+export const networkMockConfigSchema = z.object({
+  routes: z.array(networkMockRouteRuleSchema).default([]),
+});
+
 export const buildInputSchema = z.object({
   buildType: z
     .enum(['build:test'])
@@ -545,6 +600,26 @@ export const clipboardInputSchema = z
     },
   );
 
+const mockNetworkAddInputSchema = z
+  .object({
+    action: z.literal('add'),
+    rule: networkMockRouteRuleSchema.optional(),
+    routes: z.array(networkMockRouteRuleSchema).min(1).optional(),
+  })
+  .refine((data) => Boolean(data.rule) !== Boolean(data.routes), {
+    message: 'Exactly one of rule or routes must be provided for add',
+  });
+
+export const mockNetworkInputSchema = z.union([
+  mockNetworkAddInputSchema,
+  z.object({ action: z.literal('clear') }),
+  z.object({ action: z.literal('list') }),
+  z.object({
+    action: z.literal('requests'),
+    limit: z.number().int().min(1).max(500).optional(),
+  }),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -572,6 +647,7 @@ export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
+export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
 
 export const toolSchemas = {
   build: buildInputSchema,
@@ -603,6 +679,7 @@ export const toolSchemas = {
   get_context: getContextInputSchema,
   clipboard: clipboardInputSchema,
   cdp: cdpInputSchema,
+  mock_network: mockNetworkInputSchema,
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;
@@ -638,3 +715,5 @@ export type KnowledgeFiltersZ = z.infer<typeof knowledgeFiltersSchema>;
 export type RunStepsInputZ = z.infer<typeof runStepsInputSchema>;
 export type SwitchToTabInputZ = z.infer<typeof switchToTabInputSchema>;
 export type CloseTabInputZ = z.infer<typeof closeTabInputSchema>;
+export type NetworkMockRouteRuleZ = z.infer<typeof networkMockRouteRuleSchema>;
+export type NetworkMockConfigZ = z.infer<typeof networkMockConfigSchema>;

@@ -162,6 +162,48 @@ export type CdpInput = {
   timeoutMs: number;
 };
 
+export type NetworkMockResponse = {
+  status?: number;
+  headers?: Record<string, string>;
+  json?: unknown;
+  body?: string;
+};
+
+export type NetworkMockRouteRule = {
+  id: string;
+  method: string;
+  url: string;
+  response: NetworkMockResponse;
+};
+
+export type NetworkMockRequestRecord = {
+  timestamp: string;
+  method: string;
+  url: string;
+  matched: boolean;
+  ruleId?: string;
+  status?: number;
+};
+
+export type NetworkMockSummary = {
+  ruleCount: number;
+  requestCount: number;
+  hits: number;
+  misses: number;
+  lastMatchedUrl?: string;
+  lastRequestUrl?: string;
+};
+
+export type MockNetworkInput =
+  | {
+      action: 'add';
+      rule?: NetworkMockRouteRule;
+      routes?: NetworkMockRouteRule[];
+    }
+  | { action: 'clear' }
+  | { action: 'list' }
+  | { action: 'requests'; limit?: number };
+
 export type SetContextInput = {
   context: 'e2e' | 'prod';
   options?: Record<string, unknown>;
