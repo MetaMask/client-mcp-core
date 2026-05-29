@@ -171,6 +171,21 @@ export const launchInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Force replace an existing active session (runs cleanup first)'),
+  platform: z
+    .enum(['browser', 'ios', 'android'])
+    .describe(
+      'Target platform: browser (default), ios, or android. ' +
+        'Mobile platforms require @metamask/device-mcp.',
+    )
+    .optional(),
+  deviceId: z
+    .string()
+    .min(1)
+    .describe(
+      'Explicit device ID for mobile platforms (iOS UDID or Android serial). ' +
+        'When omitted, auto-detects if exactly one device is connected.',
+    )
+    .optional(),
 });
 
 export const cleanupInputSchema = z.object({

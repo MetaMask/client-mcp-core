@@ -498,6 +498,54 @@ describe('parseLaunchArgs', () => {
     );
   });
 
+  it('parses --platform value', () => {
+    expect(parseLaunchArgs(['--platform', 'ios'])).toStrictEqual({
+      platform: 'ios',
+    });
+  });
+
+  it('parses --device-id value', () => {
+    expect(
+      parseLaunchArgs(['--device-id', '4A3B2C1D-E5F6-7890-ABCD-EF1234567890']),
+    ).toStrictEqual({
+      deviceId: '4A3B2C1D-E5F6-7890-ABCD-EF1234567890',
+    });
+  });
+
+  it('parses --platform and --device-id together', () => {
+    expect(
+      parseLaunchArgs([
+        '--platform',
+        'android',
+        '--device-id',
+        'emulator-5554',
+      ]),
+    ).toStrictEqual({
+      platform: 'android',
+      deviceId: 'emulator-5554',
+    });
+  });
+
+  it('exits for --platform without value', () => {
+    expect(() => parseLaunchArgs(['--platform'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --platform requires a value (browser|ios|android)\n',
+    );
+  });
+
+  it('exits for --platform with flag as value', () => {
+    expect(() => parseLaunchArgs(['--platform', '--force'])).toThrowError(
+      'process.exit',
+    );
+  });
+
+  it('exits for --device-id without value', () => {
+    expect(() => parseLaunchArgs(['--device-id'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --device-id requires a value\n',
+    );
+  });
+
   it('writes warning for unknown flags', () => {
     parseLaunchArgs(['--unknown']);
     expect(stderrSpy).toHaveBeenCalledWith(

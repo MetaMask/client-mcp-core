@@ -24,6 +24,10 @@ export type LaunchInput = {
   tags?: string[];
   seedContracts?: SmartContractName[];
   force?: boolean;
+  /** Target platform: browser (default), ios, or android. */
+  platform?: 'browser' | 'ios' | 'android';
+  /** Explicit device ID for mobile platforms (iOS UDID or Android serial). */
+  deviceId?: string;
 };
 
 export type CleanupInput = {
