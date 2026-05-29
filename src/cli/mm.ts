@@ -1296,6 +1296,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     '--goal',
     '--force',
     '--flow-tags',
+    '--tags',
   ]);
 
   for (let i = 0; i < args.length; i++) {
@@ -1341,6 +1342,15 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
         process.exit(1);
       }
       result.flowTags = args[i].split(',').map((tag) => tag.trim());
+    } else if (arg === '--tags') {
+      i += 1;
+      if (!args[i] || args[i].startsWith('--')) {
+        process.stderr.write(
+          'Error: --tags requires a comma-separated value\n',
+        );
+        process.exit(1);
+      }
+      result.tags = args[i].split(',').map((tag) => tag.trim());
     } else if (arg.startsWith('--') && !knownFlags.has(arg)) {
       process.stderr.write(`Warning: unknown launch flag '${arg}'\n`);
     }
@@ -1365,7 +1375,7 @@ Environment Variables:
                       Falls back to the current git worktree root.
 
 Lifecycle:
-  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
+  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--tags <tags>]
   mm cleanup [--shutdown]
   mm status
   mm stop [--force]

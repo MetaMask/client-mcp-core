@@ -117,19 +117,22 @@ The `run_steps` tool collects observations once after all steps complete. Contro
 Starts the daemon (if not running) and launches a headed Chrome session with the extension.
 
 ```
-mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
+mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--tags <tags>]
 ```
 
-| Flag                      | Description                                                     |
-| ------------------------- | --------------------------------------------------------------- |
-| `--context e2e\|prod`     | Set the environment context before launching                    |
-| `--state default`         | Pre-onboarded wallet with 25 ETH on local Anvil chain (default) |
-| `--state onboarding`      | Fresh wallet requiring manual onboarding setup                  |
-| `--state custom`          | Use a custom fixture for wallet state                           |
-| `--extension-path <path>` | Override the extension build directory                          |
-| `--goal <text>`           | Tag the session with a goal for knowledge store                 |
-| `--force`                 | Replace an existing active session                              |
-| `--flow-tags <tags>`      | Comma-separated flow tags for cross-session knowledge           |
+| Flag                      | Description                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `--context e2e\|prod`     | Set the environment context before launching                                   |
+| `--state default`         | Pre-onboarded wallet with 25 ETH on local Anvil chain (default)                |
+| `--state onboarding`      | Fresh wallet requiring manual onboarding setup                                 |
+| `--state custom`          | Use a custom fixture for wallet state                                          |
+| `--extension-path <path>` | Override the extension build directory                                         |
+| `--goal <text>`           | **Required for knowledge.** Describe what this session is doing                |
+| `--force`                 | Replace an existing active session                                             |
+| `--flow-tags <tags>`      | **Required for knowledge.** Comma-separated flow tags (see table below)        |
+| `--tags <tags>`           | Comma-separated free-form tags for ad-hoc filtering (e.g., `smoke,regression`) |
+
+**⚠ Always provide `--goal` and `--flow-tags` on every launch.** Without them, the knowledge store cannot index the session for cross-session learning, prior knowledge, or search. Sessions launched without tags are invisible to future sessions.
 
 Returns: `sessionId`, `extensionId`, `state` (current extension state).
 
@@ -651,9 +654,13 @@ These contracts can be deployed to the local Anvil chain via `seed_contract` / `
 | `simpleAccountFactory` | ERC-4337 account factory                            |
 | `verifyingPaymaster`   | ERC-4337 paymaster                                  |
 
-## Flow Tags
+## Session Tagging (REQUIRED)
 
-When launching, tag your session with flow tags for cross-session knowledge:
+**Every `mm launch` must include `--goal` and `--flow-tags`.** This is what makes the knowledge store work — without tags, the session is invisible to search, prior knowledge, and cross-session learning.
+
+### Flow Tags
+
+Pick one or more flow tags that describe what the session is doing:
 
 | Tag               | Use for                        |
 | ----------------- | ------------------------------ |
@@ -664,6 +671,16 @@ When launching, tag your session with flow tags for cross-session knowledge:
 | `onboarding`      | Wallet setup/onboarding        |
 | `settings`        | Settings configuration         |
 | `tx-confirmation` | Transaction confirmation flows |
+
+### Free-Form Tags
+
+Use `--tags` for ad-hoc categorization not covered by flow tags:
+
+```bash
+mm launch --goal "Regression test send USDC" --flow-tags send --tags regression,usdc
+```
+
+Tags enable filtering via `knowledge_sessions` and `knowledge_search`.
 
 ## Daemon Model
 
@@ -679,7 +696,7 @@ When launching, tag your session with flow tags for cross-session knowledge:
 ### Basic Interaction
 
 ```bash
-mm launch --state default
+mm launch --state default --goal "Test send ETH flow" --flow-tags send
 mm describe-screen
 # Response includes a11y nodes: [{ ref: "e1", role: "button", name: "Send" }, ...]
 mm click e1
@@ -693,7 +710,7 @@ mm cleanup --shutdown
 ### Transaction with Notification
 
 ```bash
-mm launch --state default
+mm launch --state default --goal "Test Uniswap swap via dApp" --flow-tags swap,connect
 mm navigate https://app.uniswap.org
 mm describe-screen
 # Interact with dApp...
@@ -710,13 +727,13 @@ mm cleanup --shutdown
 # Set once — all subsequent mm commands target this project
 export MM_PROJECT=/path/to/metamask-extension
 
-mm launch --state default
+mm launch --state default --goal "Verify home screen" --flow-tags settings
 mm describe-screen
 mm click e1
 mm cleanup --shutdown
 
 # Or use --project per command
-mm --project ../metamask-extension launch
+mm --project ../metamask-extension launch --goal "Quick check" --flow-tags send
 mm --project ../metamask-extension describe-screen
 ```
 

@@ -505,6 +505,42 @@ describe('parseLaunchArgs', () => {
     );
   });
 
+  it('parses --tags as comma-separated array', () => {
+    expect(parseLaunchArgs(['--tags', 'smoke, regression'])).toStrictEqual({
+      tags: ['smoke', 'regression'],
+    });
+  });
+
+  it('exits for --tags without value', () => {
+    expect(() => parseLaunchArgs(['--tags'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --tags requires a comma-separated value\n',
+    );
+  });
+
+  it('exits for --tags with flag as value', () => {
+    expect(() => parseLaunchArgs(['--tags', '--force'])).toThrowError(
+      'process.exit',
+    );
+  });
+
+  it('parses --tags and --flow-tags together', () => {
+    expect(
+      parseLaunchArgs([
+        '--flow-tags',
+        'send',
+        '--tags',
+        'smoke,e2e',
+        '--goal',
+        'test send',
+      ]),
+    ).toStrictEqual({
+      flowTags: ['send'],
+      tags: ['smoke', 'e2e'],
+      goal: 'test send',
+    });
+  });
+
   it('parses --context value', () => {
     expect(parseLaunchArgs(['--context', 'prod'])).toStrictEqual({
       context: 'prod',
