@@ -16,6 +16,7 @@ import {
   navigateInputSchema,
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
+  launchInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -397,5 +398,68 @@ describe('network mock schemas', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('launchInputSchema', () => {
+  it('preserves platform field', () => {
+    const input = { platform: 'ios' };
+    const result = launchInputSchema.safeParse(input);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.platform).toBe('ios');
+    }
+  });
+
+  it('preserves deviceId field', () => {
+    const input = { deviceId: 'emulator-5554' };
+    const result = launchInputSchema.safeParse(input);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.deviceId).toBe('emulator-5554');
+    }
+  });
+
+  it('preserves platform and deviceId together', () => {
+    const input = {
+      platform: 'android' as const,
+      deviceId: 'emulator-5554',
+      stateMode: 'default' as const,
+    };
+    const result = launchInputSchema.safeParse(input);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.platform).toBe('android');
+      expect(result.data.deviceId).toBe('emulator-5554');
+      expect(result.data.stateMode).toBe('default');
+    }
+  });
+
+  it('rejects invalid platform value', () => {
+    const input = { platform: 'windows' };
+    const result = launchInputSchema.safeParse(input);
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty deviceId', () => {
+    const input = { deviceId: '' };
+    const result = launchInputSchema.safeParse(input);
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts launch input without platform or deviceId', () => {
+    const input = { stateMode: 'default' as const };
+    const result = launchInputSchema.safeParse(input);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.platform).toBeUndefined();
+      expect(result.data.deviceId).toBeUndefined();
+    }
   });
 });

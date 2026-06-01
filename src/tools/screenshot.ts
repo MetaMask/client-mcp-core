@@ -1,5 +1,6 @@
 import { classifyScreenshotError } from './error-classification.js';
 import type { ScreenshotInput, ScreenshotToolResult } from './types';
+import { ErrorCodes } from './types';
 import {
   createToolError,
   createToolSuccess,
@@ -23,12 +24,20 @@ export async function screenshotTool(
     return missingSession;
   }
 
+  if (!context.driver) {
+    return createToolError(
+      ErrorCodes.MM_NO_ACTIVE_SESSION,
+      'No platform driver available',
+    );
+  }
+
   try {
     const screenshotName = input.name ?? `screenshot-${Date.now()}`;
-    const result = await context.sessionManager.screenshot({
+    const result = await context.driver.screenshot({
       name: screenshotName,
       fullPage: input.fullPage ?? true,
       selector: input.selector,
+      includeBase64: input.includeBase64,
     });
 
     const response: ScreenshotToolResult = {

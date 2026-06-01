@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { screenshotTool } from './screenshot.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
+import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
 function createMockContext(
@@ -18,13 +19,18 @@ function createMockContext(
   } = {},
 ): ToolContext {
   const { hasActive = true } = options;
+  const page = {} as ToolContext['page'];
+  const sessionManager = createMockSessionManager({ hasActive });
 
   return {
-    sessionManager: createMockSessionManager({ hasActive }),
-    page: {} as ToolContext['page'],
+    sessionManager,
+    page,
     refMap: new Map(),
     workflowContext: {},
     knowledgeStore: {},
+    driver: hasActive
+      ? new PlaywrightPlatformDriver(() => page, sessionManager as any)
+      : undefined,
   } as unknown as ToolContext;
 }
 

@@ -12,6 +12,7 @@ import type { StateSnapshotCapability } from '../capabilities/types.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import type { MockSessionManagerOptions } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
+import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
 function createMockPage(url = 'chrome-extension://ext-123/home.html') {
@@ -36,12 +37,21 @@ function createMockContext(
     options.stateSnapshotCapability,
   );
 
+  const activePage = options.page ?? page;
+  const hasSession = options.hasActive ?? false;
+
   return {
     sessionManager,
-    page: options.page ?? page,
+    page: activePage,
     refMap: new Map(),
     workflowContext: {},
     knowledgeStore: {},
+    driver: hasSession
+      ? new PlaywrightPlatformDriver(
+          () => activePage as any,
+          sessionManager as any,
+        )
+      : undefined,
   } as unknown as ToolContext & {
     sessionManager: ReturnType<typeof createMockSessionManager>;
   };

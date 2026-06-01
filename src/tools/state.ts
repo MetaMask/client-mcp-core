@@ -1,7 +1,8 @@
 import type { Page } from '@playwright/test';
 
 import { classifyStateError } from './error-classification.js';
-import type { GetStateResult } from './types';
+import type { GetStateResult, TabInfo } from './types';
+import { ErrorCodes } from './types';
 import {
   createToolError,
   createToolSuccess,
@@ -15,14 +16,14 @@ import type { ISessionManager } from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 /**
- * Retrieves the extension state using the snapshot capability or session manager.
+ * Retrieves the extension state using the snapshot capability or driver.
  *
  * @param page - The active Playwright page.
  * @param sessionManager - The session manager instance.
  * @param stateSnapshotCapability - Optional capability for direct state snapshots.
  * @returns The current extension state.
  */
-async function getState(
+async function getStateWithCapability(
   page: Page,
   sessionManager: ISessionManager,
   stateSnapshotCapability?: StateSnapshotCapability,
@@ -54,27 +55,46 @@ export async function getStateTool(
     return missingSession;
   }
 
-  try {
-    const state = await getState(
-      context.page,
-      context.sessionManager,
-      context.workflowContext.stateSnapshot ??
-        context.sessionManager.getStateSnapshotCapability(),
+  if (!context.driver) {
+    return createToolError(
+      ErrorCodes.MM_NO_ACTIVE_SESSION,
+      'No platform driver available',
     );
+  }
+
+  try {
+    const stateSnapshotCapability =
+      context.workflowContext.stateSnapshot ??
+      context.sessionManager.getStateSnapshotCapability?.();
+
+    const state =
+      stateSnapshotCapability && context.driver.getPlatform() === 'browser'
+        ? await getStateWithCapability(
+            context.page,
+            context.sessionManager,
+            stateSnapshotCapability,
+          )
+        : await context.driver.getAppState();
 
     const trackedPages = context.sessionManager.getTrackedPages();
-    const activePage = context.sessionManager.getPage();
-    const activeTabInfo = trackedPages.find(
-      (trackedPage) => trackedPage.page === activePage,
-    );
+    let activeTab: TabInfo;
+    try {
+      const activePage = context.sessionManager.getPage();
+      const tracked = trackedPages.find(
+        (trackedPage) => trackedPage.page === activePage,
+      );
+      activeTab = {
+        role: tracked?.role ?? 'other',
+        url: activePage.url(),
+      };
+    } catch {
+      activeTab = { role: 'other', url: '' };
+    }
 
     return createToolSuccess({
       state,
       tabs: {
-        active: {
-          role: activeTabInfo?.role ?? 'other',
-          url: activePage.url(),
-        },
+        active: activeTab,
         tracked: trackedPages.map((trackedPage) => ({
           role: trackedPage.role,
           url: trackedPage.url,

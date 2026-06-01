@@ -129,3 +129,21 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
 export function getToolCategory(toolName: string): ToolCategory {
   return TOOL_CATEGORIES[toolName] ?? 'mutating';
 }
+
+const BROWSER_ONLY_TOOLS = new Set([
+  'navigate',
+  'switch_to_tab',
+  'close_tab',
+  'wait_for_notification',
+  'cdp',
+]);
+
+/**
+ * Checks if a tool is only available on the browser platform.
+ *
+ * @param toolName - The registered tool name to check.
+ * @returns True if the tool is browser-only, false if cross-platform.
+ */
+export function isBrowserOnlyTool(toolName: string): boolean {
+  return BROWSER_ONLY_TOOLS.has(toolName);
+}

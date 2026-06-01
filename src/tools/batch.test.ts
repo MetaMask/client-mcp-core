@@ -9,9 +9,14 @@ function createMockContext(
   options: {
     hasActive?: boolean;
     toolRegistry?: Map<string, ToolFunction<any, any>>;
+    driverPlatform?: 'browser' | 'ios' | 'android';
   } = {},
 ): ToolContext {
-  const { hasActive = true, toolRegistry } = options;
+  const { hasActive = true, toolRegistry, driverPlatform } = options;
+
+  const driver = driverPlatform
+    ? ({ getPlatform: () => driverPlatform } as ToolContext['driver'])
+    : undefined;
 
   return {
     sessionManager: createMockSessionManager({ hasActive }),
@@ -20,6 +25,7 @@ function createMockContext(
     workflowContext: {},
     knowledgeStore: {},
     toolRegistry,
+    driver,
   } as unknown as ToolContext;
 }
 
@@ -622,6 +628,59 @@ describe('runStepsTool', () => {
         }),
         context,
       );
+    }
+  });
+
+  it('rejects browser-only tools on non-browser platforms', async () => {
+    const navigateHandler = vi.fn();
+    const clickHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['navigate', navigateHandler],
+        ['click', clickHandler],
+      ]),
+      driverPlatform: 'ios',
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'navigate', args: { screen: 'home' } },
+          { tool: 'click', args: { testId: 'btn' } },
+        ],
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps).toHaveLength(2);
+      expect(result.result.steps[0].ok).toBe(false);
+      expect(result.result.steps[0].error?.code).toBe(
+        'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+      );
+      expect(navigateHandler).not.toHaveBeenCalled();
+      expect(result.result.steps[1].ok).toBe(true);
+      expect(clickHandler).toHaveBeenCalled();
+    }
+  });
+
+  it('allows browser-only tools on browser platform', async () => {
+    const navigateHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
+    const context = createMockContext({
+      toolRegistry: new Map([['navigate', navigateHandler]]),
+      driverPlatform: 'browser',
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'navigate', args: { screen: 'home' } }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(true);
+      expect(navigateHandler).toHaveBeenCalled();
     }
   });
 });

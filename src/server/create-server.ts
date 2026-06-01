@@ -14,7 +14,12 @@ import {
   KnowledgeStore,
   createDefaultObservation,
 } from '../knowledge-store/knowledge-store.js';
-import { toolRegistry, getToolCategory } from '../tools/registry.js';
+import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
+import {
+  toolRegistry,
+  getToolCategory,
+  isBrowserOnlyTool,
+} from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
 import type {
   StepRecordObservation,
@@ -300,6 +305,14 @@ export function createServer(config: ServerConfig): ServerInstance {
    * @returns A ToolContext with lazy page and refMap accessors.
    */
   function buildToolContext(wfCtx: WorkflowContext): ToolContext {
+    const driver = config.sessionManager.hasActiveSession()
+      ? (config.sessionManager.getPlatformDriver?.() ??
+        new PlaywrightPlatformDriver(
+          () => config.sessionManager.getPage(),
+          config.sessionManager,
+        ))
+      : undefined;
+
     return {
       sessionManager: config.sessionManager,
       get page(): ReturnType<typeof config.sessionManager.getPage> {
@@ -313,6 +326,7 @@ export function createServer(config: ServerConfig): ServerInstance {
       workflowContext: wfCtx,
       knowledgeStore,
       toolRegistry,
+      driver,
     };
   }
 
@@ -433,6 +447,21 @@ export function createServer(config: ServerConfig): ServerInstance {
     const currentWorkflowContext = workflowContext;
 
     const category = getToolCategory(toolName);
+
+    if (isBrowserOnlyTool(toolName)) {
+      const platformDriver = config.sessionManager.getPlatformDriver?.();
+      if (platformDriver && platformDriver.getPlatform() !== 'browser') {
+        res.json({
+          ok: false,
+          error: {
+            code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+            message: `Tool "${toolName}" is not supported on ${platformDriver.getPlatform()} platform`,
+          },
+        });
+        return;
+      }
+    }
+
     const inputRecord = validatedInput as Record<string, unknown>;
     const toolTimeoutMs = inputRecord?.timeoutMs;
     const queueTimeoutMs =
@@ -457,6 +486,19 @@ export function createServer(config: ServerConfig): ServerInstance {
             try {
               obs = await Promise.race([
                 (async (): Promise<StepRecordObservation> => {
+                  const { driver } = context;
+
+                  if (driver && driver.getPlatform() !== 'browser') {
+                    const state = await driver.getAppState();
+                    const testIds = await driver.getTestIds(
+                      OBSERVATION_TESTID_LIMIT,
+                    );
+                    const { nodes, refMap: newRefMap } =
+                      await driver.getAccessibilityTree();
+                    config.sessionManager.setRefMap(newRefMap);
+                    return createDefaultObservation(state, testIds, nodes);
+                  }
+
                   const page = config.sessionManager.getPage();
 
                   if (category === 'mutating') {
@@ -482,8 +524,6 @@ export function createServer(config: ServerConfig): ServerInstance {
                   }
                   let state = await config.sessionManager.getExtensionState();
 
-                  // Post-mutation recheck: if currentScreen is 'unknown' after a mutation,
-                  // the extension's internal router may not have updated yet. Poll briefly.
                   if (
                     category === 'mutating' &&
                     state.currentScreen === 'unknown'
