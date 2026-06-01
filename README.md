@@ -23,45 +23,45 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
   ┌───────────────────────────────────────────────────────────────────┐
   │                    HTTP Daemon (createServer)                     │
   │                                                                   │
-  │  ┌──────────┐  ┌──────────────┐  ┌────────────┐  ┌────────────┐ │
-  │  │  Routes   │  │ RequestQueue │  │   Tool     │  │ Knowledge  │ │
-  │  │ /health   │  │ (async mutex)  │  │  Registry  │  │   Store    │ │
-  │  │ /status   │  │              │  │  30 tools  │  │            │ │
-  │  │ /launch   │  └──────────────┘  └─────┬──────┘  └────────────┘ │
-  │  │ /cleanup  │                          │                         │
-  │  │ /tool/:n  │                          ▼                         │
-  │  └──────────┘               ┌──────────────────┐                 │
-  │                             │   ToolContext     │                 │
-  │                             │  sessionManager   │                 │
-  │                             │  page / refMap    │                 │
-  │                             │  workflowContext  │                 │
-  │                             │  knowledgeStore   │                 │
-  │                             └────────┬─────────┘                 │
-  └──────────────────────────────────────┼───────────────────────────┘
+  │  ┌──────────┐  ┌───────────────┐  ┌────────────┐  ┌────────────┐  │
+  │  │  Routes  │  │ RequestQueue  │  │   Tool     │  │ Knowledge  │  │
+  │  │ /health  │  │ (async mutex) │  │  Registry  │  │   Store    │  │
+  │  │ /status  │  │               │  │  30 tools  │  │            │  │
+  │  │ /launch  │  └───────────────┘  └─────┬──────┘  └────────────┘  │
+  │  │ /cleanup │                           │                         │
+  │  │ /tool/:n │                           ▼                         │
+  │  └──────────┘               ┌──────────────────┐                  │
+  │                             │   ToolContext    │                  │
+  │                             │  sessionManager  │                  │
+  │                             │  page / refMap   │                  │
+  │                             │  workflowContext │                  │
+  │                             │  knowledgeStore  │                  │
+  │                             └────────┬─────────┘                  │
+  └──────────────────────────────────────┼────────────────────────────┘
                                          │
                    ┌─────────────────────┼─────────────────────┐
-                   │          ISessionManager                   │
-                   │       (consumer implementation)            │
-                   │                                            │
-                   │  Session lifecycle   Page management       │
-                   │  Extension state     A11y reference map    │
-                   │  Navigation          Screenshots           │
-                   │  Capabilities (opt)  Environment config    │
+                   │          ISessionManager                  │
+                   │       (consumer implementation)           │
+                   │                                           │
+                   │  Session lifecycle   Page management      │
+                   │  Extension state     A11y reference map   │
+                   │  Navigation          Screenshots          │
+                   │  Capabilities (opt)  Environment config   │
                    └─────────────────────┬─────────────────────┘
                                          │
                    ┌─────────────────────┼─────────────────────┐
-                   │          WorkflowContext                   │
-                   │                                            │
-                   │  build?            fixture?                │
-                   │  chain?            contractSeeding?        │
-                   │  stateSnapshot?    mockServer?             │
-                   │  config: EnvironmentConfig                 │
+                   │          WorkflowContext                  │
+                   │                                           │
+                   │  build?            fixture?               │
+                   │  chain?            contractSeeding?       │
+                   │  stateSnapshot?    mockServer?            │
+                   │  config: EnvironmentConfig                │
                    └─────────────────────┬─────────────────────┘
                                          │
                                          ▼
                    ┌───────────────────────────────────────────┐
                    │        Playwright  →  Chrome Browser      │
-                   │            Browser Extension               │
+                   │            Browser Extension              │
                    └───────────────────────────────────────────┘
 ```
 
