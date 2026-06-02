@@ -242,11 +242,8 @@ export type WebSocketMockSummary = {
 };
 
 export type MockWebSocketInput =
-  | {
-      action: 'add';
-      mock?: WebSocketMockDefinition;
-      mocks?: WebSocketMockDefinition[];
-    }
+  | { action: 'add'; mock: WebSocketMockDefinition; mocks?: never }
+  | { action: 'add'; mocks: WebSocketMockDefinition[]; mock?: never }
   | { action: 'clear' }
   | { action: 'list' }
   | { action: 'messages'; limit?: number };

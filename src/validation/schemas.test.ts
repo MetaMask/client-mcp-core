@@ -18,6 +18,7 @@ import {
   mockNetworkInputSchema,
   launchInputSchema,
   webSocketMockDefinitionSchema,
+  mockWebSocketInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -520,6 +521,71 @@ describe('webSocketMockDefinitionSchema', () => {
       url: 'https://example.com/ws',
     });
 
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('mockWebSocketInputSchema', () => {
+  const validMock = {
+    url: 'wss://api.example.com/ws',
+    rules: [{ id: 'rule-1', match: { includes: 'hello' } }],
+  };
+
+  it('accepts add with mock only', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+      mock: validMock,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts add with mocks only', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+      mocks: [validMock],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects add with both mock and mocks', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+      mock: validMock,
+      mocks: [validMock],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects add with neither mock nor mocks', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts clear action', () => {
+    const result = mockWebSocketInputSchema.safeParse({ action: 'clear' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts list action', () => {
+    const result = mockWebSocketInputSchema.safeParse({ action: 'list' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts messages action with optional limit', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'messages',
+      limit: 50,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects messages action with limit exceeding 500', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'messages',
+      limit: 501,
+    });
     expect(result.success).toBe(false);
   });
 });
