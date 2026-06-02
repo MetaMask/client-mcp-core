@@ -1,0 +1,19 @@
+src/tools/registry.ts
+  s_5c13f227468dc5::t_aa05eac98a1ab4 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8205d5b351710b6af4be9a7fa00285c3ca20642e",
+  "prompts": {},
+  "sessions": {
+    "s_5c13f227468dc5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_176d88fc3ffeigQS9tKgsSvlYy",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
