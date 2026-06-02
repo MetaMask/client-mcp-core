@@ -1,0 +1,30 @@
+src/tools/types/tool-inputs.ts
+  s_a3c87b9212f52e::t_78eeb718f8dc9f 245-246
+src/validation/schemas.test.ts
+  s_9ae8d3bff0e359::t_4c15655d3739eb 21
+  s_9ae8d3bff0e359::t_901aadb14c870c 527-591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b9467c66268aa82cb3a2d50c8f40eb348ab4c6ae",
+  "prompts": {},
+  "sessions": {
+    "s_9ae8d3bff0e359": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_176d8a503ffe1Cuky169i36Yzg",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_a3c87b9212f52e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_176d9163effeDKtHBXYCiUylom",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
