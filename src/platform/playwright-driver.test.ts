@@ -44,16 +44,6 @@ describe('PlaywrightPlatformDriver', () => {
     });
   });
 
-  describe('isToolSupported', () => {
-    it('returns true for all tools', () => {
-      const driver = createDriver();
-      expect(driver.isToolSupported('click')).toBe(true);
-      expect(driver.isToolSupported('navigate')).toBe(true);
-      expect(driver.isToolSupported('cdp')).toBe(true);
-      expect(driver.isToolSupported('anything')).toBe(true);
-    });
-  });
-
   describe('getCurrentUrl', () => {
     it('returns the page URL', () => {
       const page = createMockPage();

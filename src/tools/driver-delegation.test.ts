@@ -56,7 +56,6 @@ function createMockDriver(
       chainId: null,
       balance: null,
     }),
-    isToolSupported: vi.fn().mockReturnValue(true),
     getCurrentUrl: vi.fn().mockReturnValue(''),
     getPlatform: vi.fn().mockReturnValue('ios'),
     ...overrides,

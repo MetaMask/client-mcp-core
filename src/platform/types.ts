@@ -82,8 +82,6 @@ export type IPlatformDriver = {
 
   getAppState(): Promise<ExtensionState>;
 
-  isToolSupported(toolName: string): boolean;
-
   getCurrentUrl(): string;
 
   getPlatform(): PlatformType;

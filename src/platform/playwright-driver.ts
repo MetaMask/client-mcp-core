@@ -266,16 +266,6 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * Check if a tool is supported on the browser platform. All tools are supported.
-   *
-   * @param _toolName - The tool name to check.
-   * @returns Always true for browser platform.
-   */
-  isToolSupported(_toolName: string): boolean {
-    return true;
-  }
-
-  /**
    * Get the current page URL.
    *
    * @returns The URL of the active page.

@@ -486,15 +486,25 @@ export function createServer(config: ServerConfig): ServerInstance {
             try {
               obs = await Promise.race([
                 (async (): Promise<StepRecordObservation> => {
-                  const { driver } = context;
+                  // Re-read the driver from the session manager rather than
+                  // using context.driver, which was captured before the tool
+                  // ran.  The launch tool creates the session (and sets the
+                  // platform driver) during execution, so the context snapshot
+                  // would still be undefined at that point.
+                  const currentDriver =
+                    config.sessionManager.getPlatformDriver?.() ??
+                    context.driver;
 
-                  if (driver && driver.getPlatform() !== 'browser') {
-                    const state = await driver.getAppState();
-                    const testIds = await driver.getTestIds(
+                  if (
+                    currentDriver &&
+                    currentDriver.getPlatform() !== 'browser'
+                  ) {
+                    const state = await currentDriver.getAppState();
+                    const testIds = await currentDriver.getTestIds(
                       OBSERVATION_TESTID_LIMIT,
                     );
                     const { nodes, refMap: newRefMap } =
-                      await driver.getAccessibilityTree();
+                      await currentDriver.getAccessibilityTree();
                     config.sessionManager.setRefMap(newRefMap);
                     return createDefaultObservation(state, testIds, nodes);
                   }
