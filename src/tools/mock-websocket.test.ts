@@ -239,6 +239,24 @@ describe('WebSocketMockRouteManager', () => {
     expect(route.connectToServer).toHaveBeenCalled();
   });
 
+  it('defaults passthrough to true when omitted', async () => {
+    const browserContext = createMockBrowserContext();
+    const manager = new WebSocketMockRouteManager(browserContext as never);
+
+    const mockWithoutPassthrough: WebSocketMockDefinition = {
+      url: 'wss://api.hyperliquid.xyz/ws',
+      rules: [MOCK_RULE],
+    };
+
+    await manager.addMock(mockWithoutPassthrough);
+    const wsHandler = browserContext.routeWebSocket.mock.calls[0]?.[1];
+    const { route } = createMockWebSocketRoute('wss://api.hyperliquid.xyz/ws');
+
+    wsHandler(route);
+
+    expect(route.connectToServer).toHaveBeenCalled();
+  });
+
   it('forwards unmatched messages to server in passthrough mode', async () => {
     const browserContext = createMockBrowserContext();
     const manager = new WebSocketMockRouteManager(browserContext as never);
@@ -260,7 +278,10 @@ describe('WebSocketMockRouteManager', () => {
     const manager = new WebSocketMockRouteManager(browserContext as never);
 
     await manager.addMock(MOCK_DEFINITION);
-    await manager.addMock({ ...MOCK_DEFINITION, rules: [] });
+    await manager.addMock({
+      ...MOCK_DEFINITION,
+      rules: [{ id: 'replacement', match: { includes: 'replacement' } }],
+    });
 
     expect(browserContext.routeWebSocket).toHaveBeenCalledTimes(1);
     expect(browserContext.routeWebSocket).toHaveBeenCalledWith(
@@ -313,6 +334,26 @@ describe('WebSocketMockRouteManager', () => {
     handlers.onMessage?.('unmatched');
 
     expect(manager.getSummary()).toMatchObject({ hits: 1, misses: 1 });
+  });
+
+  it('does not count server-to-client messages as misses in passthrough mode', async () => {
+    const browserContext = createMockBrowserContext();
+    const manager = new WebSocketMockRouteManager(browserContext as never);
+
+    await manager.addMock(MOCK_DEFINITION_PASSTHROUGH);
+    const wsHandler = browserContext.routeWebSocket.mock.calls[0]?.[1];
+    const { route, handlers, serverHandlers } = createMockWebSocketRoute(
+      'wss://api.hyperliquid.xyz/ws',
+    );
+    wsHandler(route);
+
+    handlers.onMessage?.('{"subscription":{"type":"clearinghouseState"}}');
+    serverHandlers.onMessage?.('server response');
+
+    const summary = manager.getSummary();
+    expect(summary.hits).toBe(1);
+    expect(summary.misses).toBe(0);
+    expect(summary.messageCount).toBe(2);
   });
 
   it('handles delay before responding', async () => {
@@ -430,6 +471,27 @@ describe('WebSocketMockRouteManager', () => {
     expect(manager.getMessages()).toHaveLength(2);
     expect(manager.getMessages()[0]?.message).toBe('msg2');
     expect(manager.getMessages()[1]?.message).toBe('msg3');
+  });
+
+  it('returns limited message records via getMessages(limit)', async () => {
+    const browserContext = createMockBrowserContext();
+    const manager = new WebSocketMockRouteManager(browserContext as never);
+
+    await manager.addMock(MOCK_DEFINITION);
+    const wsHandler = browserContext.routeWebSocket.mock.calls[0]?.[1];
+    const { route, handlers } = createMockWebSocketRoute(
+      'wss://api.hyperliquid.xyz/ws',
+    );
+    wsHandler(route);
+
+    handlers.onMessage?.('msg1');
+    handlers.onMessage?.('msg2');
+    handlers.onMessage?.('msg3');
+
+    const limited = manager.getMessages(2);
+    expect(limited).toHaveLength(2);
+    expect(limited[0]?.message).toBe('msg2');
+    expect(limited[1]?.message).toBe('msg3');
   });
 
   it('clears makes handler no-op', async () => {
@@ -609,6 +671,53 @@ describe('WebSocketMockRouteManager', () => {
 
     expect(route.close).not.toHaveBeenCalled();
     expect(manager.getSummary().activeConnections).toBe(1);
+  });
+
+  it('does not invalidate unrelated URL connections when replacing a mock', async () => {
+    const browserContext = createMockBrowserContext();
+    const manager = new WebSocketMockRouteManager(browserContext as never);
+
+    const mockA: WebSocketMockDefinition = {
+      url: 'wss://a.example.com/ws',
+      rules: [
+        { id: 'rule-a', match: { includes: 'ping-a' }, respond: 'pong-a' },
+      ],
+      passthrough: false,
+    };
+    const mockB: WebSocketMockDefinition = {
+      url: 'wss://b.example.com/ws',
+      rules: [
+        { id: 'rule-b', match: { includes: 'ping-b' }, respond: 'pong-b' },
+      ],
+      passthrough: false,
+    };
+
+    await manager.addMock(mockA);
+    await manager.addMock(mockB);
+
+    // Open a connection for URL B
+    const wsHandlerB = browserContext.routeWebSocket.mock.calls[1]?.[1];
+    const { route: routeB, handlers: handlersB } = createMockWebSocketRoute(
+      'wss://b.example.com/ws',
+    );
+    wsHandlerB(routeB);
+
+    // Replace mock A — should NOT affect B
+    await manager.addMock({
+      url: 'wss://a.example.com/ws',
+      rules: [
+        {
+          id: 'rule-a-new',
+          match: { includes: 'ping-a' },
+          respond: 'pong-a-new',
+        },
+      ],
+      passthrough: false,
+    });
+
+    // URL B should still work
+    handlersB.onMessage?.('ping-b');
+    expect(routeB.send).toHaveBeenCalledWith('pong-b');
   });
 
   it('invalidates stale delayed responses when replacing a mock', async () => {

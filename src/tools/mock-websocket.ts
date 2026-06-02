@@ -91,7 +91,7 @@ export class WebSocketMockRouteManager {
 
   readonly #maxMessageRecords: number;
 
-  #generation = 0;
+  readonly #generationsByUrl = new Map<string, number>();
 
   readonly #activeSockets = new Set<WebSocketRoute>();
 
@@ -125,8 +125,13 @@ export class WebSocketMockRouteManager {
     ];
 
     if (isReplacement) {
-      this.#generation += 1;
+      this.#generationsByUrl.set(
+        mock.url,
+        (this.#generationsByUrl.get(mock.url) ?? 0) + 1,
+      );
       this.#closeSocketsForUrl(mock.url);
+    } else if (!this.#generationsByUrl.has(mock.url)) {
+      this.#generationsByUrl.set(mock.url, 0);
     }
 
     await this.#ensureRouteForUrl(mock.url);
@@ -149,7 +154,12 @@ export class WebSocketMockRouteManager {
    * pass through to the real server for new connections after clear.
    */
   clear(): void {
-    this.#generation += 1;
+    for (const url of this.#generationsByUrl.keys()) {
+      this.#generationsByUrl.set(
+        url,
+        (this.#generationsByUrl.get(url) ?? 0) + 1,
+      );
+    }
     this.#mocks = [];
     this.#messageRecords.length = 0;
 
@@ -189,8 +199,12 @@ export class WebSocketMockRouteManager {
    * @returns WebSocket mock summary.
    */
   getSummary(): WebSocketMockSummary {
-    const hits = this.#messageRecords.filter((record) => record.matched).length;
-    const misses = this.#messageRecords.length - hits;
+    const hits = this.#messageRecords.filter(
+      (record) => record.direction === 'client-to-server' && record.matched,
+    ).length;
+    const misses = this.#messageRecords.filter(
+      (record) => record.direction === 'client-to-server' && !record.matched,
+    ).length;
 
     return {
       mockCount: this.#mocks.length,
@@ -239,12 +253,13 @@ export class WebSocketMockRouteManager {
     this.#activeConnections += 1;
     this.#activeSockets.add(ws);
 
-    const generation = this.#generation;
-    const server = mock.passthrough ? ws.connectToServer() : undefined;
+    const generation = this.#generationsByUrl.get(url) ?? 0;
+    const server =
+      (mock.passthrough ?? true) ? ws.connectToServer() : undefined;
     let closed = false;
 
     ws.onMessage((message) => {
-      if (this.#generation !== generation) {
+      if ((this.#generationsByUrl.get(url) ?? 0) !== generation) {
         return;
       }
 
@@ -263,7 +278,10 @@ export class WebSocketMockRouteManager {
           const delay = rule.delay ?? 0;
           if (delay > 0) {
             setTimeout(() => {
-              if (!closed && this.#generation === generation) {
+              if (
+                !closed &&
+                (this.#generationsByUrl.get(url) ?? 0) === generation
+              ) {
                 safeSend(ws, responseText);
               }
             }, delay);
@@ -279,7 +297,10 @@ export class WebSocketMockRouteManager {
               : JSON.stringify(rule.followUpResponse);
           const followUpDelay = (rule.delay ?? 0) + (rule.followUpDelay ?? 0);
           setTimeout(() => {
-            if (!closed && this.#generation === generation) {
+            if (
+              !closed &&
+              (this.#generationsByUrl.get(url) ?? 0) === generation
+            ) {
               safeSend(ws, followUpText);
             }
           }, followUpDelay);
@@ -305,7 +326,7 @@ export class WebSocketMockRouteManager {
 
     if (server) {
       server.onMessage((message) => {
-        if (this.#generation !== generation) {
+        if ((this.#generationsByUrl.get(url) ?? 0) !== generation) {
           return;
         }
 
@@ -360,13 +381,10 @@ export class WebSocketMockRouteManager {
    * @param url - The WebSocket URL whose connections should be closed.
    */
   #closeSocketsForUrl(url: string): void {
-    for (const ws of this.#activeSockets) {
-      if (ws.url() === url) {
-        ws.close({ code: 1001, reason: 'mock replaced' }).catch(
-          () => undefined,
-        );
-        this.#removeSocket(ws);
-      }
+    const toClose = [...this.#activeSockets].filter((ws) => ws.url() === url);
+    for (const ws of toClose) {
+      ws.close({ code: 1001, reason: 'mock replaced' }).catch(() => undefined);
+      this.#removeSocket(ws);
     }
   }
 
