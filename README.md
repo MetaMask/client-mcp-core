@@ -26,7 +26,7 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
   │  ┌──────────┐  ┌───────────────┐  ┌────────────┐  ┌────────────┐  │
   │  │  Routes  │  │ RequestQueue  │  │   Tool     │  │ Knowledge  │  │
   │  │ /health  │  │ (async mutex) │  │  Registry  │  │   Store    │  │
-  │  │ /status  │  │               │  │  30 tools  │  │            │  │
+  │  │ /status  │  │               │  │  31 tools  │  │            │  │
   │  │ /launch  │  └───────────────┘  └─────┬──────┘  └────────────┘  │
   │  │ /cleanup │                           │                         │
   │  │ /tool/:n │                           ▼                         │
@@ -404,6 +404,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 | `run_steps`              | Executes a batch of tool invocations sequentially. Supports `stopOnError` to halt on first failure, `includeObservations` (`'all'`, `'none'`, `'failures'`) to control observations, and `batchTimeoutMs` to set an overall deadline (remaining steps are skipped on timeout). Accepts tool aliases like `navigate_home` / `navigate-home`. Returns per-step results with timing. |
 | **Advanced**             |                                                                                                                                                                                                                                                                                                                                                                                   |
 | `mock_network`           | Adds, clears, lists, and inspects targeted Playwright network mocks on the active browser context. Unmatched same-origin requests are continued unchanged.                                                                                                                                                                                                                        |
+| `mock_websocket`         | Adds, clears, lists, and inspects targeted WebSocket mocks using Playwright's `routeWebSocket` API. Intercepts WebSocket connections by exact URL, matches incoming messages against rules, and sends scripted responses. Supports passthrough mode (default) to forward unmatched messages to the real server, or full mock mode with no real connection.                        |
 | `cdp`                    | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for cases where structured tools are insufficient (e.g., `Runtime.evaluate`, `Network.enable`). A small set of destructive methods (`Browser.close`, `Target.closeTarget`, etc.) are blocked to protect session state. Categorized as mutating — run `describe_screen` afterward to re-sync.   |
 
 ### Accessibility References
@@ -612,6 +613,10 @@ mm describe-screen
 | `mm mock-network clear`                          | Clears route mocks and recorded requests.                                                                                                                                               |
 | `mm mock-network list`                           | Lists active route mocks.                                                                                                                                                               |
 | `mm mock-network requests [--limit <n>]`         | Shows recorded matched and missed requests.                                                                                                                                             |
+| `mm mock-websocket add '<json-mock-definition>'` | Adds a targeted WebSocket mock by exact `ws://` or `wss://` URL. Pass a single mock object, an array of mocks, or an object with a `mocks` array.                                       |
+| `mm mock-websocket clear`                        | Clears all WebSocket mocks, message records, and closes active intercepted connections.                                                                                                 |
+| `mm mock-websocket list`                         | Lists currently registered WebSocket mock definitions.                                                                                                                                  |
+| `mm mock-websocket messages [--limit <n>]`       | Shows recorded WebSocket message hits and misses with direction, matched rule, and timestamps.                                                                                          |
 | `mm cdp <method> [params-json] [--timeout <ms>]` | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for when structured tools are insufficient. Destructive methods (`Browser.close`, etc.) are blocked. |
 
 ```bash
@@ -679,6 +684,7 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded in run_steps    |
 | `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive to session)     |
 | `MM_CDP_FAILED`                  | CDP command execution failed or timed out          |
+| `MM_MOCK_WEBSOCKET_FAILED`       | WebSocket mock operation failed                    |
 
 ## Development
 

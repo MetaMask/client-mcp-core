@@ -25,12 +25,12 @@ mm cleanup --shutdown      # 5. Clean up when done
 
 Tool responses include different data based on the tool's category:
 
-| Category      | Examples                                                                    | Observations in response?                      |
-| ------------- | --------------------------------------------------------------------------- | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context                | No — faster response                           |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot           | Data is already in `result`                    |
-| **Batch**     | run_steps                                                                   | Controlled by `includeObservations` param      |
+| Category      | Examples                                                                                    | Observations in response?                      |
+| ------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network, mock_websocket | Yes — `state` + `a11y` (compacted) + `testIds` |
+| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context                                | No — faster response                           |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                           | Data is already in `result`                    |
+| **Batch**     | run_steps                                                                                   | Controlled by `includeObservations` param      |
 
 **Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
 
@@ -549,6 +549,65 @@ mm mock-network requests [--limit <n>]
 | ------------- | ------------------------------------------ |
 | `--limit <n>` | Maximum number of recent records to return |
 
+#### `mm mock-websocket add '<json-mock-definition>'`
+
+Adds a targeted WebSocket mock during an active session. Each mock intercepts connections to an exact `ws://` or `wss://` URL, matches incoming messages against rules, and sends scripted responses. Unmatched messages are forwarded to the real server by default (passthrough mode).
+
+```bash
+mm mock-websocket add '{"url":"wss://api.example.com/ws","rules":[{"id":"sub","match":{"includes":"subscribe"},"respond":{"channel":"prices","data":[]}}]}'
+```
+
+A mock definition requires:
+
+| Field                      | Description                                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `url`                      | Exact `ws://` or `wss://` URL to intercept (no wildcards)                                                       |
+| `rules`                    | Array of message matching rules (at least one)                                                                  |
+| `rules[].id`               | Stable identifier for the rule                                                                                  |
+| `rules[].match`            | Object with `includes` — a string or array of strings that must appear in the incoming message (all must match) |
+| `rules[].respond`          | JSON payload to send back to the page (optional)                                                                |
+| `rules[].delay`            | Milliseconds before sending the response (0–30000, optional)                                                    |
+| `rules[].followUpResponse` | Second JSON payload sent after `followUpDelay` (optional)                                                       |
+| `rules[].followUpDelay`    | Milliseconds before sending the follow-up response (0–30000, optional)                                          |
+| `passthrough`              | Connect to real server and forward unmatched messages (default: `true`). Set `false` for full mock mode.        |
+
+You can also pass an array of mocks or an object with a `mocks` array:
+
+```bash
+mm mock-websocket add '[{"url":"wss://a.com/ws","rules":[...]},{"url":"wss://b.com/ws","rules":[...]}]'
+mm mock-websocket add '{"mocks":[...]}'
+```
+
+Adding a mock with the same URL as an existing one replaces it and closes active connections for that URL.
+
+#### `mm mock-websocket clear`
+
+Clears all WebSocket mocks, message records, and closes active intercepted connections.
+
+```bash
+mm mock-websocket clear
+```
+
+#### `mm mock-websocket list`
+
+Lists currently registered WebSocket mock definitions.
+
+```bash
+mm mock-websocket list
+```
+
+#### `mm mock-websocket messages`
+
+Shows recorded WebSocket message hits and misses with direction, matched rule ID, and timestamps.
+
+```bash
+mm mock-websocket messages [--limit <n>]
+```
+
+| Flag          | Description                                |
+| ------------- | ------------------------------------------ |
+| `--limit <n>` | Maximum number of recent records to return |
+
 #### `mm cdp <method> [params-json] [--timeout <ms>]`
 
 Sends a raw Chrome DevTools Protocol command against the active page. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree directly.
@@ -634,6 +693,7 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded                 | Remaining steps were skipped; check partial results                                                 |
 | `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive)                | Use a different CDP method; see blocked list                                                        |
 | `MM_CDP_FAILED`                  | CDP command failed or timed out                    | Check method name/params; retry or increase timeout                                                 |
+| `MM_MOCK_WEBSOCKET_FAILED`       | WebSocket mock operation failed                    | Check mock definition format; verify session is active                                              |
 
 ## Available Contracts (E2E only)
 
