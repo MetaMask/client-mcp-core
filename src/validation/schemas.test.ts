@@ -17,6 +17,7 @@ import {
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   launchInputSchema,
+  webSocketMockDefinitionSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -461,5 +462,64 @@ describe('launchInputSchema', () => {
       expect(result.data.platform).toBeUndefined();
       expect(result.data.deviceId).toBeUndefined();
     }
+  });
+});
+
+describe('webSocketMockDefinitionSchema', () => {
+  const baseMock = {
+    url: 'wss://api.example.com/ws',
+    rules: [{ id: 'rule-1', match: { includes: 'hello' } }],
+  };
+
+  it('accepts a valid wss URL without wildcards', () => {
+    const result = webSocketMockDefinitionSchema.safeParse(baseMock);
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a valid ws URL without wildcards', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'ws://api.example.com/ws',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a wss URL containing double asterisk wildcard', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'wss://example.com/**',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(
+        'Wildcard patterns are not supported for WebSocket URLs; use an exact ws:// or wss:// URL',
+      );
+    }
+  });
+
+  it('rejects a wss URL containing single asterisk wildcard', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'wss://example.com/*/ws',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(
+        'Wildcard patterns are not supported for WebSocket URLs; use an exact ws:// or wss:// URL',
+      );
+    }
+  });
+
+  it('rejects non-WebSocket URLs', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'https://example.com/ws',
+    });
+
+    expect(result.success).toBe(false);
   });
 });

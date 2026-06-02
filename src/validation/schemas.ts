@@ -635,6 +635,90 @@ export const mockNetworkInputSchema = z.union([
   }),
 ]);
 
+const webSocketMockMessageRuleSchema = z.object({
+  id: z.string().min(1).describe('Stable identifier for this message rule'),
+  match: z.object({
+    includes: z
+      .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+      .describe(
+        'String or array of strings that must appear in the incoming WebSocket message. ' +
+          'Array means all strings must match.',
+      ),
+  }),
+  respond: z
+    .unknown()
+    .describe('JSON payload to send back to the page')
+    .optional(),
+  delay: z
+    .number()
+    .int()
+    .min(0)
+    .max(30000)
+    .describe('Milliseconds before sending the response')
+    .optional(),
+  followUpResponse: z
+    .unknown()
+    .describe('Second JSON payload sent after followUpDelay')
+    .optional(),
+  followUpDelay: z
+    .number()
+    .int()
+    .min(0)
+    .max(30000)
+    .describe('Milliseconds before sending the follow-up response')
+    .optional(),
+});
+
+export const webSocketMockDefinitionSchema = z.object({
+  url: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        try {
+          const parsed = new URL(value);
+          return parsed.protocol === 'ws:' || parsed.protocol === 'wss:';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'url must be an absolute ws:// or wss:// URL' },
+    )
+    .refine((value) => !value.includes('*'), {
+      message:
+        'Wildcard patterns are not supported for WebSocket URLs; use an exact ws:// or wss:// URL',
+    })
+    .describe('WebSocket URL to intercept'),
+  rules: z.array(webSocketMockMessageRuleSchema).min(1),
+  passthrough: z
+    .boolean()
+    .default(true)
+    .describe(
+      'Connect to real server and forward unmatched messages (default: true). ' +
+        'Set false for full mock mode with no real server connection.',
+    ),
+});
+
+const mockWebSocketAddInputSchema = z
+  .object({
+    action: z.literal('add'),
+    mock: webSocketMockDefinitionSchema.optional(),
+    mocks: z.array(webSocketMockDefinitionSchema).min(1).optional(),
+  })
+  .refine((data) => Boolean(data.mock) !== Boolean(data.mocks), {
+    message: 'Exactly one of mock or mocks must be provided for add',
+  });
+
+export const mockWebSocketInputSchema = z.union([
+  mockWebSocketAddInputSchema,
+  z.object({ action: z.literal('clear') }),
+  z.object({ action: z.literal('list') }),
+  z.object({
+    action: z.literal('messages'),
+    limit: z.number().int().min(1).max(500).optional(),
+  }),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -695,6 +779,7 @@ export const toolSchemas = {
   clipboard: clipboardInputSchema,
   cdp: cdpInputSchema,
   mock_network: mockNetworkInputSchema,
+  mock_websocket: mockWebSocketInputSchema,
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;
@@ -732,3 +817,7 @@ export type SwitchToTabInputZ = z.infer<typeof switchToTabInputSchema>;
 export type CloseTabInputZ = z.infer<typeof closeTabInputSchema>;
 export type NetworkMockRouteRuleZ = z.infer<typeof networkMockRouteRuleSchema>;
 export type NetworkMockConfigZ = z.infer<typeof networkMockConfigSchema>;
+export type MockWebSocketInputZ = z.infer<typeof mockWebSocketInputSchema>;
+export type WebSocketMockDefinitionZ = z.infer<
+  typeof webSocketMockDefinitionSchema
+>;
