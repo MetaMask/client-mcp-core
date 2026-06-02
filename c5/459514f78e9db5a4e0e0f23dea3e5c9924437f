@@ -1,0 +1,34 @@
+src/validation/schemas.ts
+  s_a7dc94819df7b6::t_58fda8a67e2794 805-808
+  s_0c9d7319a23210::t_0627e98b030842 672-675
+  s_a7dc94819df7b6::t_5d33f17b3dc88f 623-671,676-706
+  s_a7dc94819df7b6::t_b990ad45b3adfd 767
+src/validation/schemas.test.ts
+  s_0c9d7319a23210::t_0419cf47aa4b28 407
+  s_0c9d7319a23210::t_441b4c15e85cf7 19
+  s_0c9d7319a23210::t_5e92b8b1987808 403-406,408-461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c5459514f78e9db5a4e0e0f23dea3e5c9924437f",
+  "prompts": {},
+  "sessions": {
+    "s_0c9d7319a23210": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1777776dcffeuEVqCEEX44CCKU",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_a7dc94819df7b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_17bcdc26affewpizNU3nTtiaAd",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
