@@ -1,0 +1,34 @@
+README.md
+  s_6683c1731e9830::t_2796ca3a516009 687
+  s_6683c1731e9830::t_4469ee9ac7749d 29
+  s_20a5fcaff4619d::t_e6a78c0b866039 407,616-619
+SKILL.md
+  s_20a5fcaff4619d::t_e6a78c0b866039 28-29,31-33,562-572
+  s_6683c1731e9830::t_ff0947d04e7c45 30
+  s_6683c1731e9830::t_9cf3d8a602d866 552-561,573-610
+  s_6683c1731e9830::t_cba70f847af7ea 696
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7a8d8a300989e9b9bdef35647b5c3415c843fde4",
+  "prompts": {},
+  "sessions": {
+    "s_20a5fcaff4619d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1774ac622ffezhsGvoL7zaEJCi",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_6683c1731e9830": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1775177d7ffe1owz4sdvzXSyI7",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
