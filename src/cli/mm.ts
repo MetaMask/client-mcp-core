@@ -641,6 +641,10 @@ export async function routeCommand(
       await routeMockNetworkCommand(args, port);
       break;
     }
+    case 'mock-websocket': {
+      await routeMockWebSocketCommand(args, port);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -741,6 +745,62 @@ export async function routeMockNetworkCommand(
 
   process.stderr.write(
     'Usage: mm mock-network <add|clear|list|requests> [options]\n',
+  );
+  process.exit(1);
+}
+
+/**
+ * Routes mock-websocket subcommands to the daemon.
+ *
+ * @param args - CLI arguments after `mock-websocket`.
+ * @param port - The daemon HTTP server port.
+ */
+export async function routeMockWebSocketCommand(
+  args: string[],
+  port: number,
+): Promise<void> {
+  const action = args[0];
+
+  if (action === 'add') {
+    const rawMock = args[1];
+    if (!rawMock) {
+      process.stderr.write(
+        "Usage: mm mock-websocket add '<json-mock-definition>'\n",
+      );
+      process.exit(1);
+    }
+
+    const parsed = parseJsonArgument(rawMock, 'mock-websocket add');
+    await sendRequest(port, 'POST', '/tool/mock_websocket', {
+      action: 'add',
+      ...normalizeMockWebSocketAddPayload(parsed),
+    });
+    return;
+  }
+
+  if (action === 'clear') {
+    await sendRequest(port, 'POST', '/tool/mock_websocket', {
+      action: 'clear',
+    });
+    return;
+  }
+
+  if (action === 'list') {
+    await sendRequest(port, 'POST', '/tool/mock_websocket', { action: 'list' });
+    return;
+  }
+
+  if (action === 'messages') {
+    const limit = parseIntFlag(args, '--limit');
+    await sendRequest(port, 'POST', '/tool/mock_websocket', {
+      action: 'messages',
+      ...(limit === undefined ? {} : { limit }),
+    });
+    return;
+  }
+
+  process.stderr.write(
+    'Usage: mm mock-websocket <add|clear|list|messages> [options]\n',
   );
   process.exit(1);
 }
@@ -1282,6 +1342,26 @@ export function normalizeMockNetworkAddPayload(
 }
 
 /**
+ * Normalizes a mock-websocket add payload.
+ *
+ * @param payload - Parsed JSON payload.
+ * @returns A payload accepted by the mock_websocket tool.
+ */
+export function normalizeMockWebSocketAddPayload(
+  payload: unknown,
+): { mock: unknown } | { mocks: unknown } {
+  if (typeof payload === 'object' && payload !== null && 'mocks' in payload) {
+    return { mocks: (payload as { mocks: unknown }).mocks };
+  }
+
+  if (Array.isArray(payload)) {
+    return { mocks: payload };
+  }
+
+  return { mock: payload };
+}
+
+/**
  * Parses launch command arguments into a key-value object.
  *
  * @param args - The raw CLI arguments after the command name.
@@ -1436,6 +1516,10 @@ Advanced:
   mm mock-network clear
   mm mock-network list
   mm mock-network requests [--limit <n>]
+  mm mock-websocket add '<json-mock-definition>'
+  mm mock-websocket clear
+  mm mock-websocket list
+  mm mock-websocket messages [--limit <n>]
   mm cdp <method> [params-json] [--timeout <ms>]
 
 Examples:
