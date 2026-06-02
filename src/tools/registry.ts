@@ -81,7 +81,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
 export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (15)
+  // MUTATING (16)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
