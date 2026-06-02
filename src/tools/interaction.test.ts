@@ -17,6 +17,7 @@ import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
 import * as discoveryModule from './utils/discovery.js';
 import * as targetsModule from './utils/targets.js';
+import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
 function createMockLocator() {
@@ -43,14 +44,20 @@ function createMockContext(
     refMap?: Map<string, string>;
   } = {},
 ): ToolContext {
+  const page = (options.page ?? createMockPage()) as ToolContext['page'];
+  const sessionManager = createMockSessionManager({
+    hasActive: options.hasActive ?? true,
+  });
+  const hasSession = options.hasActive ?? true;
   return {
-    sessionManager: createMockSessionManager({
-      hasActive: options.hasActive ?? true,
-    }),
-    page: (options.page ?? createMockPage()) as ToolContext['page'],
+    sessionManager,
+    page,
     refMap: options.refMap ?? new Map(),
     workflowContext: {},
     knowledgeStore: {},
+    driver: hasSession
+      ? new PlaywrightPlatformDriver(() => page, sessionManager as any)
+      : undefined,
   } as unknown as ToolContext;
 }
 
@@ -324,6 +331,7 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toContain('describe-screen');
       }
     });
 
@@ -349,7 +357,6 @@ describe('interaction', () => {
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(1000);
-      nowSpy.mockReturnValueOnce(1006);
       nowSpy.mockReturnValueOnce(1006);
 
       const result = await clickTool(
@@ -674,7 +681,6 @@ describe('interaction', () => {
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(2000);
-      nowSpy.mockReturnValueOnce(2006);
       nowSpy.mockReturnValueOnce(2006);
 
       const result = await typeTool(
@@ -1146,7 +1152,6 @@ describe('interaction', () => {
 
       const nowSpy = vi.spyOn(Date, 'now');
       nowSpy.mockReturnValueOnce(3000);
-      nowSpy.mockReturnValueOnce(3006);
       nowSpy.mockReturnValueOnce(3006);
 
       const result = await getTextTool(

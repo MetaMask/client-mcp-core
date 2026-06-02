@@ -2,6 +2,17 @@
 export type * from './capabilities/types.js';
 export * from './capabilities/context.js';
 
+// Platform
+export type {
+  PlatformType,
+  IPlatformDriver,
+  ClickActionResult,
+  TypeActionResult,
+  GetTextActionResult,
+  PlatformScreenshotOptions,
+} from './platform';
+export { PlaywrightPlatformDriver } from './platform';
+
 // Session Manager Interface (transport-agnostic)
 export type {
   ISessionManager,

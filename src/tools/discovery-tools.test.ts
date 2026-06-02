@@ -19,6 +19,7 @@ import { createMockSessionManager } from './test-utils/mock-factories.js';
 import type { A11yNodeTrimmed, TestIdItem } from './types';
 import { ErrorCodes } from './types/errors.js';
 import * as discoveryModule from './utils/discovery.js';
+import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
 function createMockPage(): Page {
@@ -33,29 +34,34 @@ function createMockContext(
   } = {},
 ): ToolContext {
   const { hasActive = true } = options;
+  const page = createMockPage();
+  const sessionManager = createMockSessionManager({
+    hasActive,
+    sessionId: 'test-session-123',
+    sessionMetadata: {
+      schemaVersion: 1,
+      sessionId: 'test-session-123',
+      createdAt: '2026-02-04T00:00:00.000Z',
+      goal: 'Test discovery',
+      flowTags: ['discovery'],
+      tags: [],
+      launch: {
+        stateMode: 'default',
+      },
+    },
+  });
 
   return {
-    sessionManager: createMockSessionManager({
-      hasActive,
-      sessionId: 'test-session-123',
-      sessionMetadata: {
-        schemaVersion: 1,
-        sessionId: 'test-session-123',
-        createdAt: '2026-02-04T00:00:00.000Z',
-        goal: 'Test discovery',
-        flowTags: ['discovery'],
-        tags: [],
-        launch: {
-          stateMode: 'default',
-        },
-      },
-    }),
-    page: createMockPage(),
+    sessionManager,
+    page,
     refMap: new Map(),
     workflowContext: {},
     knowledgeStore: {
       generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
     },
+    driver: hasActive
+      ? new PlaywrightPlatformDriver(() => page, sessionManager as any)
+      : undefined,
   } as unknown as ToolContext;
 }
 
@@ -222,23 +228,20 @@ describe('discovery-tools', () => {
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
     });
 
-    it('collects test ids with observation limit', async () => {
+    it('updates refMap after snapshot', async () => {
       const context = createMockContext();
+      const refMap = new Map([['e1', 'role=button[name="OK"]']]);
 
       vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
         {
-          nodes: [],
-          refMap: new Map(),
+          nodes: [{ ref: 'e1', role: 'button', name: 'OK', path: [] }],
+          refMap,
         },
       );
-      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
 
       await accessibilitySnapshotTool({}, context);
 
-      expect(discoveryModule.collectTestIds).toHaveBeenCalledWith(
-        context.page,
-        50,
-      );
+      expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(refMap);
     });
 
     it('returns error when no active session', async () => {

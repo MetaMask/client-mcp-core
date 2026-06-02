@@ -1789,3 +1789,88 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations).toBeUndefined();
   });
 });
+
+describe('createServer observation driver freshness after launch', () => {
+  let server: ServerInstance;
+  let state: DaemonState;
+  let mockSM: ReturnType<typeof createMockSessionManager>;
+  let mobileDriver: {
+    getPlatform: ReturnType<typeof vi.fn>;
+    getAppState: ReturnType<typeof vi.fn>;
+    getTestIds: ReturnType<typeof vi.fn>;
+    getAccessibilityTree: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(async () => {
+    await fs.mkdir(tmpDir, { recursive: true });
+
+    mobileDriver = {
+      getPlatform: vi.fn().mockReturnValue('ios'),
+      getAppState: vi.fn().mockResolvedValue({
+        isLoaded: true,
+        currentUrl: '',
+        extensionId: 'io.metamask',
+        isUnlocked: true,
+        currentScreen: 'unknown',
+        accountAddress: null,
+        networkName: null,
+        chainId: null,
+        balance: null,
+      }),
+      getTestIds: vi.fn().mockResolvedValue([]),
+      getAccessibilityTree: vi
+        .fn()
+        .mockResolvedValue({ nodes: [], refMap: new Map() }),
+    };
+
+    mockSM = createMockSessionManager();
+    const getPlatformDriverMock = vi.fn().mockReturnValue(undefined);
+    (mockSM as Record<string, unknown>).getPlatformDriver =
+      getPlatformDriverMock;
+    // Session starts inactive; launch activates it and sets the mobile driver
+    mockSM.hasActiveSession.mockReturnValue(false);
+    mockSM.launch.mockImplementation(async () => {
+      mockSM.hasActiveSession.mockReturnValue(true);
+      getPlatformDriverMock.mockReturnValue(mobileDriver);
+      return {
+        sessionId: 'mobile-session',
+        extensionId: 'io.metamask',
+        state: {},
+      };
+    });
+
+    server = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+      }),
+    );
+    state = await server.start();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('uses the mobile driver for observations after launch sets it', async () => {
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'ios' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: { state: unknown };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    // The mobile driver's getAppState should have been called for
+    // observation collection, NOT the Playwright path (which would
+    // fail since there's no browser page).
+    expect(mobileDriver.getAppState).toHaveBeenCalled();
+    expect(mobileDriver.getTestIds).toHaveBeenCalled();
+    expect(mobileDriver.getAccessibilityTree).toHaveBeenCalled();
+    expect(body.observations).toBeDefined();
+  });
+});
