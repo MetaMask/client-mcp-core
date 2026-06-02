@@ -1,0 +1,21 @@
+src/tools/mock-network.test.ts
+  s_20a5fcaff4619d::t_56d52e2c3b5585 123
+  s_20a5fcaff4619d::t_ace8319d09f7b3 92
+  s_20a5fcaff4619d::t_ab57bf57d26d6f 147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3b4f731fc440231d8123234d9cfd91f1eaf58137",
+  "prompts": {},
+  "sessions": {
+    "s_20a5fcaff4619d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1774ac622ffezhsGvoL7zaEJCi",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
