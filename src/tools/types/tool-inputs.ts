@@ -208,6 +208,49 @@ export type MockNetworkInput =
   | { action: 'list' }
   | { action: 'requests'; limit?: number };
 
+export type WebSocketMockMessageRule = {
+  id: string;
+  match: { includes: string | string[] };
+  respond?: unknown;
+  delay?: number;
+  followUpResponse?: unknown;
+  followUpDelay?: number;
+};
+
+export type WebSocketMockDefinition = {
+  url: string;
+  rules: WebSocketMockMessageRule[];
+  passthrough?: boolean;
+};
+
+export type WebSocketMockMessageRecord = {
+  timestamp: string;
+  url: string;
+  direction: 'client-to-server' | 'server-to-client';
+  message: string;
+  matched: boolean;
+  ruleId?: string;
+};
+
+export type WebSocketMockSummary = {
+  mockCount: number;
+  messageCount: number;
+  hits: number;
+  misses: number;
+  activeConnections: number;
+  lastMatchedUrl?: string;
+};
+
+export type MockWebSocketInput =
+  | {
+      action: 'add';
+      mock?: WebSocketMockDefinition;
+      mocks?: WebSocketMockDefinition[];
+    }
+  | { action: 'clear' }
+  | { action: 'list' }
+  | { action: 'messages'; limit?: number };
+
 export type SetContextInput = {
   context: 'e2e' | 'prod';
   options?: Record<string, unknown>;
