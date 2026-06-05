@@ -139,6 +139,30 @@ describe('MobilePlatformDriver', () => {
         driver.click('a11yRef', 'e99', new Map(), 5000),
       ).rejects.toThrowError('Unknown a11yRef: e99');
     });
+
+    it('resolves a11yRef with no-colon stable id as identifier', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'bare-id']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        identifier: 'bare-id',
+      });
+    });
+
+    it('resolves a11yRef with unknown prefix as identifier', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'custom:some-value']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        identifier: 'custom:some-value',
+      });
+    });
   });
 
   describe('type', () => {
@@ -353,6 +377,28 @@ describe('MobilePlatformDriver', () => {
         text: 'Email',
         visible: true,
       });
+    });
+
+    it('collects identifiers from nested children', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Window',
+              children: [makeElement({ identifier: 'child-btn', label: 'OK' })],
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items).toHaveLength(1);
+      expect(items[0].testId).toBe('child-btn');
     });
 
     it('respects limit', async () => {
@@ -632,9 +678,7 @@ describe('MobilePlatformDriver', () => {
   describe('getDeviceContexts', () => {
     it('returns backend contexts', async () => {
       const backend = createMockBackend({
-        getContexts: vi
-          .fn()
-          .mockResolvedValue(['NATIVE_APP', 'WEBVIEW_1234']),
+        getContexts: vi.fn().mockResolvedValue(['NATIVE_APP', 'WEBVIEW_1234']),
       });
       const driver = new MobilePlatformDriver(backend);
 
@@ -704,9 +748,7 @@ describe('MobilePlatformDriver', () => {
   describe('stopScreenRecording', () => {
     it('returns file path from backend', async () => {
       const backend = createMockBackend({
-        stopScreenRecording: vi
-          .fn()
-          .mockResolvedValue('/tmp/recording.mp4'),
+        stopScreenRecording: vi.fn().mockResolvedValue('/tmp/recording.mp4'),
       });
       const driver = new MobilePlatformDriver(backend);
 
