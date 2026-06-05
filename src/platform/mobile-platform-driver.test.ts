@@ -448,4 +448,291 @@ describe('MobilePlatformDriver', () => {
       expect(backend.getAppState).toHaveBeenCalledWith('com.example.app');
     });
   });
+
+  describe('swipe', () => {
+    it('delegates direction and optional params', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.swipe('up', 100, 200, 500);
+
+      expect(backend.swipe).toHaveBeenCalledWith('up', 100, 200, 500);
+    });
+
+    it('works with direction only', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.swipe('down');
+
+      expect(backend.swipe).toHaveBeenCalledWith(
+        'down',
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+  });
+
+  describe('scrollToElement', () => {
+    it('resolves target and delegates', async () => {
+      const backend = createMockBackend({
+        scrollToElement: vi.fn().mockResolvedValue(makeElement()),
+      });
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'identifier:footer']]);
+
+      await driver.scrollToElement('a11yRef', 'e1', refMap, 'down', 5);
+
+      expect(backend.scrollToElement).toHaveBeenCalledWith(
+        { identifier: 'footer' },
+        'down',
+        5,
+      );
+    });
+
+    it('resolves testId target', async () => {
+      const backend = createMockBackend({
+        scrollToElement: vi.fn().mockResolvedValue(makeElement()),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.scrollToElement('testId', 'terms-section', new Map());
+
+      expect(backend.scrollToElement).toHaveBeenCalledWith(
+        { identifier: 'terms-section' },
+        undefined,
+        undefined,
+      );
+    });
+  });
+
+  describe('longPress', () => {
+    it('resolves target and delegates with duration', async () => {
+      const backend = createMockBackend({
+        longPress: vi.fn().mockResolvedValue({
+          success: true,
+          x: 50,
+          y: 50,
+          targetDescription: 'Button',
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.longPress('testId', 'token-row', new Map(), 2000);
+
+      expect(backend.longPress).toHaveBeenCalledWith(
+        { identifier: 'token-row' },
+        2000,
+      );
+    });
+  });
+
+  describe('tapCoordinates', () => {
+    it('delegates x and y', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.tapCoordinates(150, 300);
+
+      expect(backend.tapCoordinates).toHaveBeenCalledWith(150, 300);
+    });
+  });
+
+  describe('dismissKeyboard', () => {
+    it('delegates to backend', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.dismissKeyboard();
+
+      expect(backend.dismissKeyboard).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('dismissAlert', () => {
+    it('delegates accept=true', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.dismissAlert(true);
+
+      expect(backend.dismissAlert).toHaveBeenCalledWith(true);
+    });
+
+    it('delegates accept=false', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.dismissAlert(false);
+
+      expect(backend.dismissAlert).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('getAlertText', () => {
+    it('returns backend result', async () => {
+      const backend = createMockBackend({
+        getAlertText: vi.fn().mockResolvedValue('Allow location access?'),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const text = await driver.getAlertText();
+
+      expect(text).toBe('Allow location access?');
+    });
+  });
+
+  describe('getWindowSize', () => {
+    it('returns backend dimensions', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi.fn().mockResolvedValue({ width: 390, height: 844 }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const size = await driver.getWindowSize();
+
+      expect(size).toStrictEqual({ width: 390, height: 844 });
+    });
+  });
+
+  describe('openApp', () => {
+    it('delegates bundleId', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.openApp('io.metamask');
+
+      expect(backend.openApp).toHaveBeenCalledWith('io.metamask');
+    });
+  });
+
+  describe('closeApp', () => {
+    it('delegates bundleId', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.closeApp('io.metamask');
+
+      expect(backend.closeApp).toHaveBeenCalledWith('io.metamask');
+    });
+  });
+
+  describe('pressButton', () => {
+    it('delegates button name', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.pressButton('home');
+
+      expect(backend.pressButton).toHaveBeenCalledWith('home');
+    });
+  });
+
+  describe('getDeviceContexts', () => {
+    it('returns backend contexts', async () => {
+      const backend = createMockBackend({
+        getContexts: vi
+          .fn()
+          .mockResolvedValue(['NATIVE_APP', 'WEBVIEW_1234']),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const contexts = await driver.getDeviceContexts();
+
+      expect(contexts).toStrictEqual(['NATIVE_APP', 'WEBVIEW_1234']);
+    });
+  });
+
+  describe('setDeviceContext', () => {
+    it('delegates context name', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.setDeviceContext('WEBVIEW_1234');
+
+      expect(backend.setContext).toHaveBeenCalledWith('WEBVIEW_1234');
+    });
+  });
+
+  describe('getClipboard', () => {
+    it('returns backend clipboard text', async () => {
+      const backend = createMockBackend({
+        getClipboard: vi.fn().mockResolvedValue('0x1234abcd'),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const text = await driver.getClipboard();
+
+      expect(text).toBe('0x1234abcd');
+    });
+  });
+
+  describe('setClipboard', () => {
+    it('delegates text', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.setClipboard('0x1234abcd');
+
+      expect(backend.setClipboard).toHaveBeenCalledWith('0x1234abcd');
+    });
+  });
+
+  describe('startScreenRecording', () => {
+    it('delegates with output path', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.startScreenRecording('/tmp/recording.mp4');
+
+      expect(backend.startScreenRecording).toHaveBeenCalledWith(
+        '/tmp/recording.mp4',
+      );
+    });
+
+    it('works without output path', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await driver.startScreenRecording();
+
+      expect(backend.startScreenRecording).toHaveBeenCalledWith(undefined);
+    });
+  });
+
+  describe('stopScreenRecording', () => {
+    it('returns file path from backend', async () => {
+      const backend = createMockBackend({
+        stopScreenRecording: vi
+          .fn()
+          .mockResolvedValue('/tmp/recording.mp4'),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const path = await driver.stopScreenRecording();
+
+      expect(path).toBe('/tmp/recording.mp4');
+    });
+  });
+
+  describe('getLogs', () => {
+    it('delegates params and returns result', async () => {
+      const logsResult = {
+        entries: [
+          { timestamp: '2025-01-01T00:00:00Z', level: 'info', message: 'ok' },
+        ],
+        source: 'syslog',
+      };
+      const backend = createMockBackend({
+        getLogs: vi.fn().mockResolvedValue(logsResult),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const result = await driver.getLogs(30, 'MetaMask');
+
+      expect(backend.getLogs).toHaveBeenCalledWith(30, 'MetaMask');
+      expect(result).toStrictEqual(logsResult);
+    });
+  });
 });

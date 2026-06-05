@@ -1,5 +1,6 @@
 import type {
   DeviceBackend,
+  DeviceButton,
   ElementQuery,
   UIElement,
 } from '@metamask/device-mcp';
@@ -20,8 +21,9 @@ import type {
 } from '../capabilities/types.js';
 import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 
+import { OBSERVATION_TESTID_LIMIT } from '../tools/utils/constants.js';
+
 const DEFAULT_BUNDLE_ID = 'io.metamask';
-const DEFAULT_TESTID_LIMIT = 150;
 
 /**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
@@ -153,7 +155,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
     const snapshot = await this.#backend.snapshot();
     const items: TestIdItem[] = [];
-    const max = limit ?? DEFAULT_TESTID_LIMIT;
+    const max = limit ?? OBSERVATION_TESTID_LIMIT;
     collectTestIds(snapshot.hierarchy, items, max);
     return items;
   }
@@ -205,6 +207,171 @@ export class MobilePlatformDriver implements IPlatformDriver {
    */
   getPlatform(): PlatformType {
     return this.#backend.platform;
+  }
+
+  // ---- Mobile-specific ----
+
+  /**
+   * @param direction - Swipe direction.
+   * @param startX - Optional start X coordinate.
+   * @param startY - Optional start Y coordinate.
+   * @param distance - Optional swipe distance in pixels.
+   */
+  async swipe(
+    direction: 'up' | 'down' | 'left' | 'right',
+    startX?: number,
+    startY?: number,
+    distance?: number,
+  ): Promise<void> {
+    await this.#backend.swipe(direction, startX, startY, distance);
+  }
+
+  /**
+   * @param targetType - Target identifier type.
+   * @param targetValue - Target value for element lookup.
+   * @param refMap - Map of a11y refs to stable identifiers.
+   * @param direction - Scroll direction (default: down).
+   * @param maxAttempts - Maximum scroll attempts.
+   */
+  async scrollToElement(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    direction?: 'up' | 'down',
+    maxAttempts?: number,
+  ): Promise<void> {
+    const query = resolveTargetToQuery(targetType, targetValue, refMap);
+    await this.#backend.scrollToElement(query, direction, maxAttempts);
+  }
+
+  /**
+   * @param targetType - Target identifier type.
+   * @param targetValue - Target value for element lookup.
+   * @param refMap - Map of a11y refs to stable identifiers.
+   * @param durationMs - Press duration in milliseconds.
+   */
+  async longPress(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    durationMs?: number,
+  ): Promise<void> {
+    const query = resolveTargetToQuery(targetType, targetValue, refMap);
+    await this.#backend.longPress(query, durationMs);
+  }
+
+  /**
+   * @param x - X coordinate in pixels.
+   * @param y - Y coordinate in pixels.
+   */
+  async tapCoordinates(x: number, y: number): Promise<void> {
+    await this.#backend.tapCoordinates(x, y);
+  }
+
+  /**
+   * Hides the on-screen keyboard.
+   */
+  async dismissKeyboard(): Promise<void> {
+    await this.#backend.dismissKeyboard();
+  }
+
+  /**
+   * @param accept - True to accept, false to dismiss.
+   */
+  async dismissAlert(accept: boolean): Promise<void> {
+    await this.#backend.dismissAlert(accept);
+  }
+
+  /**
+   * @returns The text content of the current system alert.
+   */
+  async getAlertText(): Promise<string> {
+    return this.#backend.getAlertText();
+  }
+
+  /**
+   * @returns The device screen dimensions.
+   */
+  async getWindowSize(): Promise<{ width: number; height: number }> {
+    return this.#backend.getWindowSize();
+  }
+
+  /**
+   * @param bundleId - App bundle ID to launch.
+   */
+  async openApp(bundleId: string): Promise<void> {
+    await this.#backend.openApp(bundleId);
+  }
+
+  /**
+   * @param bundleId - App bundle ID to terminate.
+   */
+  async closeApp(bundleId: string): Promise<void> {
+    await this.#backend.closeApp(bundleId);
+  }
+
+  /**
+   * @param button - Device button name (home, back, enter, lock).
+   */
+  async pressButton(button: string): Promise<void> {
+    await this.#backend.pressButton(button as DeviceButton);
+  }
+
+  /**
+   * @returns Available app contexts (NATIVE_APP, WEBVIEW_*, etc.).
+   */
+  async getDeviceContexts(): Promise<string[]> {
+    return this.#backend.getContexts();
+  }
+
+  /**
+   * @param contextName - Context to switch to (e.g. NATIVE_APP, WEBVIEW_1).
+   */
+  async setDeviceContext(contextName: string): Promise<void> {
+    await this.#backend.setContext(contextName);
+  }
+
+  /**
+   * @returns Current clipboard text.
+   */
+  async getClipboard(): Promise<string> {
+    return this.#backend.getClipboard();
+  }
+
+  /**
+   * @param text - Text to write to the device clipboard.
+   */
+  async setClipboard(text: string): Promise<void> {
+    await this.#backend.setClipboard(text);
+  }
+
+  /**
+   * @param outputPath - Optional file path for the recording.
+   */
+  async startScreenRecording(outputPath?: string): Promise<void> {
+    await this.#backend.startScreenRecording(outputPath);
+  }
+
+  /**
+   * @returns File path of the saved recording.
+   */
+  async stopScreenRecording(): Promise<string> {
+    return this.#backend.stopScreenRecording();
+  }
+
+  /**
+   * @param durationSeconds - Seconds of logs to retrieve.
+   * @param filter - Text pattern to filter log entries.
+   * @returns Filtered log entries.
+   */
+  async getLogs(
+    durationSeconds?: number,
+    filter?: string,
+  ): Promise<{
+    entries: { timestamp: string; level: string; message: string }[];
+    source: string;
+  }> {
+    return this.#backend.getLogs(durationSeconds, filter);
   }
 }
 

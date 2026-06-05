@@ -85,4 +85,64 @@ export type IPlatformDriver = {
   getCurrentUrl(): string;
 
   getPlatform(): PlatformType;
+
+  // ---- Mobile-specific (optional) ----
+
+  swipe?(
+    direction: 'up' | 'down' | 'left' | 'right',
+    startX?: number,
+    startY?: number,
+    distance?: number,
+  ): Promise<void>;
+
+  scrollToElement?(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    direction?: 'up' | 'down',
+    maxAttempts?: number,
+  ): Promise<void>;
+
+  longPress?(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    durationMs?: number,
+  ): Promise<void>;
+
+  tapCoordinates?(x: number, y: number): Promise<void>;
+
+  dismissKeyboard?(): Promise<void>;
+
+  dismissAlert?(accept: boolean): Promise<void>;
+
+  getAlertText?(): Promise<string>;
+
+  getWindowSize?(): Promise<{ width: number; height: number }>;
+
+  openApp?(bundleId: string): Promise<void>;
+
+  closeApp?(bundleId: string): Promise<void>;
+
+  pressButton?(button: string): Promise<void>;
+
+  getDeviceContexts?(): Promise<string[]>;
+
+  setDeviceContext?(contextName: string): Promise<void>;
+
+  getClipboard?(): Promise<string>;
+
+  setClipboard?(text: string): Promise<void>;
+
+  startScreenRecording?(outputPath?: string): Promise<void>;
+
+  stopScreenRecording?(): Promise<string>;
+
+  getLogs?(
+    durationSeconds?: number,
+    filter?: string,
+  ): Promise<{
+    entries: { timestamp: string; level: string; message: string }[];
+    source: string;
+  }>;
 };
