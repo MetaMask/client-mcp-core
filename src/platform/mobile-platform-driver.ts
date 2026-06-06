@@ -5,6 +5,21 @@ import type {
   UIElement,
 } from '@metamask/device-mcp';
 
+import type {
+  IPlatformDriver,
+  TargetType,
+  ClickActionResult,
+  TypeActionResult,
+  GetTextActionResult,
+  PlatformScreenshotOptions,
+  PlatformType,
+  WithinScope,
+} from './types.js';
+import type {
+  ScreenshotResult,
+  ExtensionState,
+} from '../capabilities/types.js';
+import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 import { OBSERVATION_TESTID_LIMIT } from '../tools/utils/constants.js';
 
 const DEFAULT_BUNDLE_ID = 'io.metamask';
