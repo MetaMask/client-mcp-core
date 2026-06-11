@@ -121,15 +121,12 @@ describe('MobilePlatformDriver', () => {
       });
     });
 
-    it('resolves selector as identifier', async () => {
-      const backend = createMockBackend();
-      const driver = new MobilePlatformDriver(backend);
+    it('throws for selector target type', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
 
-      await driver.click('selector', 'my-element', new Map(), 5000);
-
-      expect(backend.tapElement).toHaveBeenCalledWith({
-        identifier: 'my-element',
-      });
+      await expect(
+        driver.click('selector', 'my-element', new Map(), 5000),
+      ).rejects.toThrowError('CSS selectors are not supported on mobile');
     });
 
     it('throws for unknown a11yRef', async () => {
@@ -163,6 +160,53 @@ describe('MobilePlatformDriver', () => {
         identifier: 'custom:some-value',
       });
     });
+
+    it('throws when within scope is provided', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      await expect(
+        driver.click('testId', 'btn', new Map(), 5000, {
+          type: 'testId',
+          value: 'parent',
+        }),
+      ).rejects.toThrowError('not supported on mobile');
+    });
+
+    it('resolves label|type stable id via parseStableIdentifier', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'label:OK|type:Button']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({ label: 'OK' });
+    });
+
+    it('throws when timeout budget is exceeded after waitForElement', async () => {
+      const backend = createMockBackend({
+        waitForElement: vi.fn().mockImplementation(
+          () => new Promise((resolve) => setTimeout(resolve, 50)),
+        ),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click('testId', 'btn', new Map(), 1),
+      ).rejects.toThrowError('Timeout exceeded');
+    });
+
+    it('throws when tapElement exceeds remaining budget', async () => {
+      const backend = createMockBackend({
+        tapElement: vi.fn().mockImplementation(
+          () => new Promise((resolve) => setTimeout(resolve, 200)),
+        ),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click('testId', 'btn', new Map(), 50),
+      ).rejects.toThrowError('Timeout exceeded during tapElement');
+    });
   });
 
   describe('type', () => {
@@ -192,6 +236,17 @@ describe('MobilePlatformDriver', () => {
         textLength: 9,
       });
     });
+
+    it('throws when within scope is provided', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      await expect(
+        driver.type('testId', 'input', 'text', new Map(), 5000, {
+          type: 'testId',
+          value: 'parent',
+        }),
+      ).rejects.toThrowError('not supported on mobile');
+    });
   });
 
   describe('waitForElement', () => {
@@ -206,6 +261,17 @@ describe('MobilePlatformDriver', () => {
         { label: 'Settings' },
         10000,
       );
+    });
+
+    it('throws when within scope is provided', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      await expect(
+        driver.waitForElement('testId', 'el', new Map(), 5000, {
+          type: 'testId',
+          value: 'parent',
+        }),
+      ).rejects.toThrowError('not supported on mobile');
     });
   });
 
@@ -241,6 +307,17 @@ describe('MobilePlatformDriver', () => {
       expect(backend.getElementText).toHaveBeenCalledWith({
         text: '0.5 ETH',
       });
+    });
+
+    it('throws when within scope is provided', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      await expect(
+        driver.getText('testId', 'el', new Map(), 5000, {
+          type: 'testId',
+          value: 'parent',
+        }),
+      ).rejects.toThrowError('not supported on mobile');
     });
   });
 
@@ -287,7 +364,7 @@ describe('MobilePlatformDriver', () => {
         textContent: 'user@test.com',
       });
       expect(refMap.get('e1')).toBe('identifier:submit-btn');
-      expect(refMap.get('e2')).toBe('label:Email');
+      expect(refMap.get('e2')).toBe('label:Email|type:TextField');
     });
 
     it('assigns sequential refs to nested children', async () => {
@@ -334,7 +411,69 @@ describe('MobilePlatformDriver', () => {
 
       const { refMap } = await driver.getAccessibilityTree();
 
-      expect(refMap.get('e1')).toBe('value:0.5 ETH');
+      expect(refMap.get('e1')).toBe('value:0.5 ETH|type:StaticText');
+    });
+
+    it('flags ambiguous nodes with duplicate stable ids', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({ type: 'Button', label: 'OK' }),
+            makeElement({ type: 'Button', label: 'OK' }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes } = await driver.getAccessibilityTree();
+
+      expect(nodes[0].ambiguous).toBe(true);
+      expect(nodes[1].ambiguous).toBe(true);
+    });
+
+    it('does not flag nodes with same label but different types', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({ type: 'Button', label: 'OK' }),
+            makeElement({ type: 'Link', label: 'OK' }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes, refMap } = await driver.getAccessibilityTree();
+
+      expect(refMap.get('e1')).toBe('label:OK|type:Button');
+      expect(refMap.get('e2')).toBe('label:OK|type:Link');
+      expect(nodes[0].ambiguous).toBeUndefined();
+      expect(nodes[1].ambiguous).toBeUndefined();
+    });
+
+    it('does not flag identifier-based refs', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({ type: 'Button', identifier: 'ok-btn', label: 'OK' }),
+            makeElement({ type: 'Button', label: 'OK' }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes } = await driver.getAccessibilityTree();
+
+      expect(nodes[0].ambiguous).toBeUndefined();
+      expect(nodes[1].ambiguous).toBeUndefined();
     });
   });
 
@@ -468,6 +607,21 @@ describe('MobilePlatformDriver', () => {
         chainId: null,
         balance: null,
       });
+    });
+
+    it('returns isLoaded true for Appium foreground state code', async () => {
+      const backend = createMockBackend({
+        getAppState: vi.fn().mockResolvedValue({
+          bundleId: 'io.metamask',
+          state: '4',
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const state = await driver.getAppState();
+
+      expect(state.isLoaded).toBe(true);
+      expect(state.isUnlocked).toBe(true);
     });
 
     it('returns isLoaded false for non-running app', async () => {

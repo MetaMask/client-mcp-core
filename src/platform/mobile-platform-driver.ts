@@ -23,6 +23,7 @@ import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 import { OBSERVATION_TESTID_LIMIT } from '../tools/utils/constants.js';
 
 const DEFAULT_BUNDLE_ID = 'io.metamask';
+const APPIUM_STATE_RUNNING_IN_FOREGROUND = '4';
 
 /**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
@@ -49,7 +50,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param targetValue - Target value for element lookup.
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
-   * @param _within - Unused on mobile — elements are always searched globally.
+   * @param within - Must be undefined — scoped search is not supported on mobile.
    * @returns Click result with success status and target info.
    */
   async click(
@@ -57,11 +58,14 @@ export class MobilePlatformDriver implements IPlatformDriver {
     targetValue: string,
     refMap: Map<string, string>,
     timeoutMs: number,
-    _within?: WithinScope,
+    within?: WithinScope,
   ): Promise<ClickActionResult> {
+    rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
+    const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
-    await this.#backend.tapElement(query);
+    const remaining = deadline - Date.now();
+    await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
     return { clicked: true, target: `${targetType}:${targetValue}` };
   }
 
@@ -71,7 +75,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param text - Text to type into the element.
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
-   * @param _within - Unused on mobile.
+   * @param within - Must be undefined — scoped search is not supported on mobile.
    * @returns Type result with success status and text length.
    */
   async type(
@@ -80,12 +84,16 @@ export class MobilePlatformDriver implements IPlatformDriver {
     text: string,
     refMap: Map<string, string>,
     timeoutMs: number,
-    _within?: WithinScope,
+    within?: WithinScope,
   ): Promise<TypeActionResult> {
+    rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
+    const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
-    await this.#backend.tapElement(query);
-    await this.#backend.typeText(text);
+    let remaining = deadline - Date.now();
+    await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
+    remaining = deadline - Date.now();
+    await withTimeout(this.#backend.typeText(text), remaining, 'typeText');
     return {
       typed: true,
       target: `${targetType}:${targetValue}`,
@@ -98,15 +106,16 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param targetValue - Target value for element lookup.
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
-   * @param _within - Unused on mobile.
+   * @param within - Must be undefined — scoped search is not supported on mobile.
    */
   async waitForElement(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
     timeoutMs: number,
-    _within?: WithinScope,
+    within?: WithinScope,
   ): Promise<void> {
+    rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     await this.#backend.waitForElement(query, timeoutMs);
   }
@@ -116,7 +125,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param targetValue - Target value for element lookup.
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
-   * @param _within - Unused on mobile.
+   * @param within - Must be undefined — scoped search is not supported on mobile.
    * @returns The element's text content, target descriptor, and length.
    */
   async getText(
@@ -124,11 +133,18 @@ export class MobilePlatformDriver implements IPlatformDriver {
     targetValue: string,
     refMap: Map<string, string>,
     timeoutMs: number,
-    _within?: WithinScope,
+    within?: WithinScope,
   ): Promise<GetTextActionResult> {
+    rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
+    const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
-    const text = await this.#backend.getElementText(query);
+    const remaining = deadline - Date.now();
+    const text = await withTimeout(
+      this.#backend.getElementText(query),
+      remaining,
+      'getElementText',
+    );
     return {
       text,
       target: `${targetType}:${targetValue}`,
@@ -180,7 +196,9 @@ export class MobilePlatformDriver implements IPlatformDriver {
    */
   async getAppState(): Promise<ExtensionState> {
     const appState = await this.#backend.getAppState(this.#bundleId);
-    const isRunning = appState.state === 'Running' || appState.state === '4';
+    const isRunning =
+      appState.state === 'Running' ||
+      appState.state === APPIUM_STATE_RUNNING_IN_FOREGROUND;
     return {
       isLoaded: isRunning,
       currentUrl: '',
@@ -401,7 +419,9 @@ function resolveTargetToQuery(
     case 'testId':
       return { identifier: targetValue };
     case 'selector':
-      return { identifier: targetValue };
+      throw new Error(
+        'CSS selectors are not supported on mobile. Use testId or a11yRef instead.',
+      );
     default: {
       const _exhaustive: never = targetType;
       throw new Error(`Unknown target type: ${_exhaustive as string}`);
@@ -416,12 +436,15 @@ function resolveTargetToQuery(
  * @returns The corresponding ElementQuery.
  */
 function parseStableIdentifier(stableId: string): ElementQuery {
-  const colonIndex = stableId.indexOf(':');
+  const pipeIndex = stableId.indexOf('|');
+  const core = pipeIndex >= 0 ? stableId.slice(0, pipeIndex) : stableId;
+
+  const colonIndex = core.indexOf(':');
   if (colonIndex < 0) {
-    return { identifier: stableId };
+    return { identifier: core };
   }
-  const prefix = stableId.slice(0, colonIndex);
-  const value = stableId.slice(colonIndex + 1);
+  const prefix = core.slice(0, colonIndex);
+  const value = core.slice(colonIndex + 1);
 
   switch (prefix) {
     case 'identifier':
@@ -431,7 +454,7 @@ function parseStableIdentifier(stableId: string): ElementQuery {
     case 'value':
       return { text: value };
     default:
-      return { identifier: stableId };
+      return { identifier: core };
   }
 }
 
@@ -447,6 +470,7 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
 } {
   const nodes: A11yNodeTrimmed[] = [];
   const refMap = new Map<string, string>();
+  const stableIdCount = new Map<string, string[]>();
   let refCounter = 0;
 
   /**
@@ -472,12 +496,20 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
       }
       nodes.push(node);
 
+      let stableId: string | undefined;
       if (el.identifier) {
-        refMap.set(ref, `identifier:${el.identifier}`);
+        stableId = `identifier:${el.identifier}`;
       } else if (el.label) {
-        refMap.set(ref, `label:${el.label}`);
+        stableId = `label:${el.label}|type:${role}`;
       } else if (el.value) {
-        refMap.set(ref, `value:${el.value}`);
+        stableId = `value:${el.value}|type:${role}`;
+      }
+
+      if (stableId) {
+        refMap.set(ref, stableId);
+        const refs = stableIdCount.get(stableId) ?? [];
+        refs.push(ref);
+        stableIdCount.set(stableId, refs);
       }
 
       if (el.children?.length) {
@@ -487,6 +519,18 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
   }
 
   walk(hierarchy, []);
+
+  for (const refs of stableIdCount.values()) {
+    if (refs.length > 1) {
+      for (const ref of refs) {
+        const node = nodes.find((nd) => nd.ref === ref);
+        if (node) {
+          node.ambiguous = true;
+        }
+      }
+    }
+  }
+
   return { nodes, refMap };
 }
 
@@ -518,4 +562,41 @@ function collectTestIds(
       collectTestIds(el.children, items, max);
     }
   }
+}
+
+/**
+ * @param within - The within scope to validate.
+ */
+function rejectWithinScope(within: WithinScope | undefined): void {
+  if (within) {
+    throw new Error(
+      'Scoped element search (within) is not supported on mobile. ' +
+        'Target elements directly by testId or a11yRef.',
+    );
+  }
+}
+
+/**
+ * @param promise - The operation to race against the deadline.
+ * @param remainingMs - Milliseconds remaining in the timeout budget.
+ * @param operationName - Label for the timeout error message.
+ * @returns The result of the promise if it resolves within the budget.
+ */
+async function withTimeout<TResult>(
+  promise: Promise<TResult>,
+  remainingMs: number,
+  operationName: string,
+): Promise<TResult> {
+  if (remainingMs <= 0) {
+    throw new Error(`Timeout exceeded before ${operationName}`);
+  }
+  return Promise.race([
+    promise,
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(
+        () => reject(new Error(`Timeout exceeded during ${operationName}`)),
+        remainingMs,
+      ),
+    ),
+  ]);
 }

@@ -136,6 +136,9 @@ const BROWSER_ONLY_TOOLS = new Set([
   'close_tab',
   'wait_for_notification',
   'cdp',
+  'clipboard',
+  'mock_network',
+  'build',
 ]);
 
 /**

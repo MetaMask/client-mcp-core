@@ -9,6 +9,9 @@ describe('isBrowserOnlyTool', () => {
     expect(isBrowserOnlyTool('close_tab')).toBe(true);
     expect(isBrowserOnlyTool('wait_for_notification')).toBe(true);
     expect(isBrowserOnlyTool('cdp')).toBe(true);
+    expect(isBrowserOnlyTool('clipboard')).toBe(true);
+    expect(isBrowserOnlyTool('mock_network')).toBe(true);
+    expect(isBrowserOnlyTool('build')).toBe(true);
   });
 
   it('returns false for cross-platform tools', () => {
@@ -23,7 +26,6 @@ describe('isBrowserOnlyTool', () => {
     expect(isBrowserOnlyTool('list_testids')).toBe(false);
     expect(isBrowserOnlyTool('accessibility_snapshot')).toBe(false);
     expect(isBrowserOnlyTool('get_text')).toBe(false);
-    expect(isBrowserOnlyTool('clipboard')).toBe(false);
   });
 
   it('returns false for unknown tools', () => {

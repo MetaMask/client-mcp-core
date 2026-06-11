@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { toolRegistry, TOOL_CATEGORIES, getToolCategory } from './registry.js';
+import {
+  toolRegistry,
+  TOOL_CATEGORIES,
+  getToolCategory,
+  isBrowserOnlyTool,
+} from './registry.js';
 
 describe('toolRegistry', () => {
   it('has expected tool entries', () => {
@@ -80,4 +85,26 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
   it('getToolCategory returns batch for run_steps', () => {
     expect(getToolCategory('run_steps')).toBe('batch');
   });
+});
+
+describe('isBrowserOnlyTool', () => {
+  it.each([
+    'navigate',
+    'switch_to_tab',
+    'close_tab',
+    'wait_for_notification',
+    'cdp',
+    'clipboard',
+    'mock_network',
+    'build',
+  ])('returns true for %s', (toolName) => {
+    expect(isBrowserOnlyTool(toolName)).toBe(true);
+  });
+
+  it.each(['click', 'type', 'launch', 'screenshot', 'get_text'])(
+    'returns false for %s',
+    (toolName) => {
+      expect(isBrowserOnlyTool(toolName)).toBe(false);
+    },
+  );
 });

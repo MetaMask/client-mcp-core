@@ -54,6 +54,7 @@ export type A11yNodeTrimmed = {
   path: string[];
   testId?: string;
   textContent?: string;
+  ambiguous?: boolean;
 };
 
 export type RawA11yNode = {
