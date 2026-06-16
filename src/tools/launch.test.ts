@@ -228,6 +228,68 @@ describe('launchTool', () => {
     });
   });
 
+  describe('platform validation', () => {
+    it('rejects android launch without androidDeviceId', async () => {
+      const context = createMockContext({ hasActive: false });
+
+      const result = await launchTool({ platform: 'android' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+        expect(result.error.message).toContain('androidDeviceId');
+      }
+    });
+
+    it('rejects ios launch without simulatorDeviceId', async () => {
+      const context = createMockContext({ hasActive: false });
+
+      const result = await launchTool(
+        { platform: 'ios', appBundlePath: '/path/to/app.app' },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+        expect(result.error.message).toContain('simulatorDeviceId');
+      }
+    });
+
+    it('allows ios launch without appBundlePath (prod context resolves installed app)', async () => {
+      const context = createMockContext({ hasActive: false });
+
+      const result = await launchTool(
+        { platform: 'ios', simulatorDeviceId: 'AAA-BBB' },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('allows ios launch with all required fields', async () => {
+      const context = createMockContext({ hasActive: false });
+
+      const result = await launchTool(
+        {
+          platform: 'ios',
+          simulatorDeviceId: 'AAA-BBB',
+          appBundlePath: '/path/to/app.app',
+        },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: 'ios',
+          simulatorDeviceId: 'AAA-BBB',
+          appBundlePath: '/path/to/app.app',
+        }),
+      );
+    });
+  });
+
   describe('launch failures', () => {
     it('returns port conflict error for EADDRINUSE', async () => {
       const context = createMockContext({ hasActive: false });

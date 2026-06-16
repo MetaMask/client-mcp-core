@@ -11,6 +11,7 @@ import type {
   ExtensionState,
   StateSnapshotCapability,
 } from '../capabilities/types.js';
+import { classifyIOSError } from '../platform/ios/error-classification.js';
 import type { ISessionManager } from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
@@ -52,6 +53,17 @@ export async function getStateTool(
   const missingSession = requireActiveSession<GetStateResult>(context);
   if (missingSession) {
     return missingSession;
+  }
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const state = await driver.getAppState();
+      return createToolSuccess({ state });
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
   }
 
   try {

@@ -23,6 +23,7 @@ import type {
   StateSnapshotCapability,
   ScreenshotResult,
 } from '../capabilities/types.js';
+import type { IPlatformDriver } from '../platform/types.js';
 import type { TabRole, SessionState, SessionMetadata } from '../tools/types';
 
 /**
@@ -63,6 +64,33 @@ export type SessionLaunchInput = {
   };
   /** Smart contracts to deploy on launch */
   seedContracts?: string[];
+  /** Platform to launch on (defaults to 'browser') */
+  platform?: 'browser' | 'ios' | 'android';
+  /** iOS simulator device UDID (required when platform is 'ios') */
+  simulatorDeviceId?: string;
+  /** Path to .app bundle (required when platform is 'ios') */
+  appBundlePath?: string;
+  /** Android device ID (required when platform is 'android') */
+  androidDeviceId?: string;
+  /**
+   * Metro inspector proxy port for iOS Hermes CDP (default 8081 when omitted).
+   *
+   * Cross-repo contract: the consumer's launch() implementation is
+   * responsible for forwarding this value to its IOSPlatformDriver
+   * constructor (e.g., `new IOSPlatformDriver({ metroPort })`). The
+   * driver exposes the value via getMetroPort(), which hermes_cdp
+   * reads when its per-call metroPort input is omitted.
+   *
+   * Multi-worktree setup: each worktree's daemon owns its own Metro
+   * instance on a distinct port to avoid cross-worktree collisions.
+   */
+  metroPort?: number;
+  /** Uninstall and reinstall the app bundle. Destructive to app container. */
+  reinstall?: boolean;
+  /** Clear app data/container. Destructive to wallet state. */
+  resetAppData?: boolean;
+  /** Bypass fox_code compatibility guard. Use with caution. */
+  allowFoxCodeMismatch?: boolean;
 };
 
 /**
@@ -101,6 +129,11 @@ export type ISessionManager = {
   hasActiveSession(): boolean;
 
   /**
+   * Check if a launch operation is currently in progress.
+   */
+  isLaunchInProgress(): boolean;
+
+  /**
    * Get the current session ID, or undefined if no session.
    */
   getSessionId(): string | undefined;
@@ -128,6 +161,18 @@ export type ISessionManager = {
    * @returns true if cleanup was performed, false if no session was active
    */
   cleanup(): Promise<boolean>;
+
+  /**
+   * Get the platform driver for the current session (if available).
+   * Optional — will be set for iOS sessions or handled by the server.
+   */
+  getPlatformDriver?(): IPlatformDriver | undefined;
+
+  /**
+   * Set the platform driver for the current session.
+   * Called by launch logic when platform is 'ios'.
+   */
+  setPlatformDriver?(driver: IPlatformDriver): void;
 
   // -----------------------------------------------------------------------------
   // Page Management

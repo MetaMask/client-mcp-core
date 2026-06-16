@@ -15,5 +15,13 @@ export async function cleanupTool(
 ): Promise<ToolResponse<CleanupResult>> {
   const cleanedUp = await context.sessionManager.cleanup();
 
+  try {
+    const { stopAllRunners } =
+      await import('../platform/ios/runner-lifecycle.js');
+    await stopAllRunners();
+  } catch {
+    /* iOS runner lifecycle module may be unavailable in browser-only builds. */
+  }
+
   return createToolSuccess({ cleanedUp });
 }

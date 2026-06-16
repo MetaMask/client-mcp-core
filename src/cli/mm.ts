@@ -22,6 +22,7 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
   cleanup: 30_000,
   cdp: 35_000,
+  hermes_cdp: 125_000,
   default: 30_000,
 };
 
@@ -160,6 +161,13 @@ export async function main(): Promise<void> {
   if (command === 'stop') {
     const force = args.includes('--force');
     await handleStop(worktreeRoot, force);
+    return;
+  }
+
+  if (command === 'devices') {
+    const { listDevices } = await import('../platform/ios/simctl.js');
+    const devices = await listDevices();
+    process.stdout.write(`${JSON.stringify(devices, null, 2)}\n`);
     return;
   }
 
@@ -677,6 +685,57 @@ export async function routeCommand(
         ...(cdpParams ? { params: cdpParams } : {}),
         ...(cdpTimeout === undefined ? {} : { timeoutMs: cdpTimeout }),
       });
+      break;
+    }
+    case 'hermes-cdp': {
+      const hermesMethod = args[0];
+      if (!hermesMethod) {
+        process.stderr.write(
+          'Usage: mm hermes-cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>]\n' +
+            '  mm hermes-cdp Runtime.evaluate \'{"expression":"globalThis.location"}\'\n' +
+            '  mm hermes-cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --metro-port 8081\n',
+        );
+        process.exit(1);
+      }
+      const hermesTimeout = parseIntFlag(args, '--timeout');
+      const metroPort = parseIntFlag(args, '--metro-port');
+      const hermesParamsRaw =
+        args[1] !== undefined && !args[1].startsWith('--')
+          ? args[1]
+          : undefined;
+      let hermesParams: Record<string, unknown> | undefined;
+      if (hermesParamsRaw) {
+        try {
+          const parsed: unknown = JSON.parse(hermesParamsRaw);
+          if (
+            typeof parsed !== 'object' ||
+            parsed === null ||
+            Array.isArray(parsed)
+          ) {
+            throw new TypeError('params must be a plain object');
+          }
+          hermesParams = parsed as Record<string, unknown>;
+        } catch {
+          process.stderr.write(
+            `Error: invalid JSON params — expected a JSON object\n`,
+          );
+          process.exit(1);
+        }
+      }
+      await sendRequest(
+        port,
+        'POST',
+        '/tool/hermes_cdp',
+        {
+          method: hermesMethod,
+          ...(hermesParams ? { params: hermesParams } : {}),
+          ...(hermesTimeout === undefined ? {} : { timeoutMs: hermesTimeout }),
+          ...(metroPort === undefined ? {} : { metroPort }),
+        },
+        hermesTimeout === undefined
+          ? undefined
+          : { requestTimeoutMs: computeTimeoutBudget(hermesTimeout).http },
+      );
       break;
     }
     default:
@@ -1200,6 +1259,13 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     '--goal',
     '--force',
     '--flow-tags',
+    '--platform',
+    '--device',
+    '--app-bundle',
+    '--metro-port',
+    '--reinstall',
+    '--reset-app-data',
+    '--allow-fox-code-mismatch',
   ]);
 
   for (let i = 0; i < args.length; i++) {
@@ -1245,6 +1311,50 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
         process.exit(1);
       }
       result.flowTags = args[i].split(',').map((tag) => tag.trim());
+    } else if (arg === '--platform') {
+      i += 1;
+      if (!args[i] || (args[i] !== 'browser' && args[i] !== 'ios')) {
+        process.stderr.write('Error: --platform requires browser or ios\n');
+        process.exit(1);
+      }
+      result.platform = args[i];
+    } else if (arg === '--device') {
+      i += 1;
+      if (!args[i] || args[i].startsWith('--')) {
+        process.stderr.write('Error: --device requires a simulator UDID\n');
+        process.exit(1);
+      }
+      result.simulatorDeviceId = args[i];
+    } else if (arg === '--app-bundle') {
+      i += 1;
+      if (!args[i] || args[i].startsWith('--')) {
+        process.stderr.write('Error: --app-bundle requires a path\n');
+        process.exit(1);
+      }
+      result.appBundlePath = args[i];
+    } else if (arg === '--metro-port') {
+      i += 1;
+      const rawPort = args[i];
+      const port = parseInt(rawPort ?? '', 10);
+      if (
+        !rawPort ||
+        rawPort.startsWith('--') ||
+        !Number.isInteger(port) ||
+        port < 1 ||
+        port > 65535
+      ) {
+        process.stderr.write(
+          'Error: --metro-port requires a valid port (1-65535)\n',
+        );
+        process.exit(1);
+      }
+      result.metroPort = port;
+    } else if (arg === '--reinstall') {
+      result.reinstall = true;
+    } else if (arg === '--reset-app-data') {
+      result.resetAppData = true;
+    } else if (arg === '--allow-fox-code-mismatch') {
+      result.allowFoxCodeMismatch = true;
     } else if (arg.startsWith('--') && !knownFlags.has(arg)) {
       process.stderr.write(`Warning: unknown launch flag '${arg}'\n`);
     }
@@ -1269,12 +1379,17 @@ Environment Variables:
                       Falls back to the current git worktree root.
 
 Lifecycle:
-  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
+  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios] [--device <udid>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
   mm cleanup [--shutdown]
   mm status
   mm stop [--force]
   mm serve [--background]
   mm build [--force]
+
+Mobile (iOS):
+  mm launch --platform ios --device <udid> [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
+  mm devices                                    List available iOS simulators
+  mm hermes-cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>]
 
 Interaction:
   mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
@@ -1319,6 +1434,7 @@ Batching:
 
 Advanced:
   mm cdp <method> [params-json] [--timeout <ms>]
+  mm hermes-cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>]
 
 Examples:
   mm launch                                          (from inside project)

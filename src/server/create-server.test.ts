@@ -115,6 +115,7 @@ function createMockSessionManager() {
       capabilities: { available: [] },
       canSwitchContext: true,
     })),
+    getPlatformDriver: vi.fn(() => undefined),
   };
 }
 
@@ -1787,5 +1788,184 @@ describe('observation compaction in HTTP responses', () => {
 
     // Discovery tools never include observations in the HTTP response
     expect(body.observations).toBeUndefined();
+  });
+});
+
+describe('createServer with iOS platform driver', () => {
+  let server: ServerInstance;
+  let state: DaemonState;
+  let mockSM: ReturnType<typeof createMockSessionManager>;
+
+  function createMockIOSDriver() {
+    const supportedTools = new Set([
+      'click',
+      'type',
+      'wait_for',
+      'screenshot',
+      'accessibility_snapshot',
+      'list_testids',
+      'describe_screen',
+      'get_state',
+      'build',
+      'launch',
+      'cleanup',
+      'run_steps',
+      'knowledge_last',
+    ]);
+    return {
+      getPlatform: vi.fn(() => 'ios'),
+      isToolSupported: vi.fn((toolName: string) =>
+        supportedTools.has(toolName),
+      ),
+      click: vi.fn().mockResolvedValue({ clicked: true, target: 'a11yRef:e1' }),
+      type: vi.fn().mockResolvedValue({
+        typed: true,
+        target: 'testId:input',
+        textLength: 3,
+      }),
+      getAppState: vi.fn().mockResolvedValue({
+        isLoaded: true,
+        currentUrl: '',
+        extensionId: 'io.metamask.MetaMask',
+        isUnlocked: true,
+        currentScreen: 'unknown',
+        accountAddress: null,
+        networkName: null,
+        chainId: null,
+        balance: null,
+      }),
+      getAccessibilityTree: vi
+        .fn()
+        .mockResolvedValue({ nodes: [], refMap: new Map() }),
+      getTestIds: vi.fn().mockResolvedValue([]),
+      screenshot: vi.fn().mockResolvedValue({
+        path: '/tmp/test.png',
+        base64: '',
+        width: 0,
+        height: 0,
+      }),
+      waitForElement: vi.fn().mockResolvedValue(undefined),
+      getCurrentUrl: vi.fn(() => ''),
+    };
+  }
+
+  beforeEach(async () => {
+    await fs.mkdir(tmpDir, { recursive: true });
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+
+    mockSM = createMockSessionManager();
+    mockSM.hasActiveSession.mockReturnValue(true);
+    mockSM.getPlatformDriver.mockReturnValue(createMockIOSDriver());
+    mockSM.getExtensionState.mockResolvedValue({
+      isLoaded: true,
+      currentUrl: '',
+    });
+
+    server = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+      }),
+    );
+    state = await server.start();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+    exitSpy.mockRestore();
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM for clipboard on iOS', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/clipboard`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'read' }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string; message: string };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+    expect(body.error.message).toContain('clipboard');
+    expect(body.error.message).toContain('ios');
+  });
+
+  it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM for navigate on iOS', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/navigate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ screen: 'home' }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string; message: string };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+  });
+
+  it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM for switch_to_tab on iOS', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/switch_to_tab`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'extension' }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string; message: string };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+  });
+
+  it('allows get_state on iOS', async () => {
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/get_state`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      result?: { state: unknown };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.result?.state).toBeDefined();
+  });
+
+  it('allows click on iOS', async () => {
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      result?: { clicked: boolean; target: string };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.result?.clicked).toBe(true);
   });
 });

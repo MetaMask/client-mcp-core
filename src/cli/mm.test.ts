@@ -81,6 +81,17 @@ vi.mock('cosmiconfig', () => ({
   })),
 }));
 
+vi.mock('../platform/ios/simctl.js', () => ({
+  listDevices: vi.fn(async () => [
+    {
+      name: 'iPhone 15',
+      udid: 'A1B2C3D4-E5F6-7890-ABCD-EF1234567890',
+      state: 'Shutdown',
+      runtime: 'iOS 17.0',
+    },
+  ]),
+}));
+
 let exitSpy: MockInstance;
 let stderrSpy: MockInstance;
 let stdoutSpy: MockInstance;
@@ -498,6 +509,199 @@ describe('parseLaunchArgs', () => {
     );
   });
 
+  it('parses --platform ios', () => {
+    expect(parseLaunchArgs(['--platform', 'ios'])).toStrictEqual({
+      platform: 'ios',
+    });
+  });
+
+  it('parses --platform browser', () => {
+    expect(parseLaunchArgs(['--platform', 'browser'])).toStrictEqual({
+      platform: 'browser',
+    });
+  });
+
+  it('exits for --platform without value', () => {
+    expect(() => parseLaunchArgs(['--platform'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --platform requires browser or ios\n',
+    );
+  });
+
+  it('exits for --platform with invalid value', () => {
+    expect(() => parseLaunchArgs(['--platform', 'android'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --platform requires browser or ios\n',
+    );
+  });
+
+  it('parses --device value', () => {
+    expect(
+      parseLaunchArgs(['--device', 'A1B2C3D4-E5F6-7890-ABCD-EF1234567890']),
+    ).toStrictEqual({
+      simulatorDeviceId: 'A1B2C3D4-E5F6-7890-ABCD-EF1234567890',
+    });
+  });
+
+  it('exits for --device without value', () => {
+    expect(() => parseLaunchArgs(['--device'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --device requires a simulator UDID\n',
+    );
+  });
+
+  it('exits for --device with flag as value', () => {
+    expect(() => parseLaunchArgs(['--device', '--other'])).toThrowError(
+      'process.exit',
+    );
+  });
+
+  it('parses --app-bundle value', () => {
+    expect(parseLaunchArgs(['--app-bundle', '/path/to/app.app'])).toStrictEqual(
+      {
+        appBundlePath: '/path/to/app.app',
+      },
+    );
+  });
+
+  it('exits for --app-bundle without value', () => {
+    expect(() => parseLaunchArgs(['--app-bundle'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --app-bundle requires a path\n',
+    );
+  });
+
+  it('exits for --app-bundle with flag as value', () => {
+    expect(() => parseLaunchArgs(['--app-bundle', '--other'])).toThrowError(
+      'process.exit',
+    );
+  });
+
+  it('parses --metro-port value', () => {
+    expect(parseLaunchArgs(['--metro-port', '8082'])).toStrictEqual({
+      metroPort: 8082,
+    });
+  });
+
+  it('parses --metro-port alongside other flags', () => {
+    expect(
+      parseLaunchArgs([
+        '--platform',
+        'ios',
+        '--device',
+        'A1B2C3D4',
+        '--app-bundle',
+        '/path/to/app.app',
+        '--metro-port',
+        '8083',
+      ]),
+    ).toStrictEqual({
+      platform: 'ios',
+      simulatorDeviceId: 'A1B2C3D4',
+      appBundlePath: '/path/to/app.app',
+      metroPort: 8083,
+    });
+  });
+
+  it('exits for --metro-port without value', () => {
+    expect(() => parseLaunchArgs(['--metro-port'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
+  it('exits for --metro-port with flag as value', () => {
+    expect(() => parseLaunchArgs(['--metro-port', '--other'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
+  it('exits for --metro-port with non-numeric value', () => {
+    expect(() => parseLaunchArgs(['--metro-port', 'abc'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
+  it('exits for --metro-port with port 0', () => {
+    expect(() => parseLaunchArgs(['--metro-port', '0'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
+  it('exits for --metro-port with port 65536 (out of range)', () => {
+    expect(() => parseLaunchArgs(['--metro-port', '65536'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
+  it('parses --metro-port with port 65536 (out of range)', () => {
+    expect(() => parseLaunchArgs(['--metro-port', '65536'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
+  it('accepts boundary port values 1 and 65535', () => {
+    expect(parseLaunchArgs(['--metro-port', '1'])).toStrictEqual({
+      metroPort: 1,
+    });
+    expect(parseLaunchArgs(['--metro-port', '65535'])).toStrictEqual({
+      metroPort: 65535,
+    });
+  });
+
+  it('parses --reinstall flag', () => {
+    expect(parseLaunchArgs(['--reinstall'])).toStrictEqual({
+      reinstall: true,
+    });
+  });
+
+  it('parses --reset-app-data flag', () => {
+    expect(parseLaunchArgs(['--reset-app-data'])).toStrictEqual({
+      resetAppData: true,
+    });
+  });
+
+  it('parses --allow-fox-code-mismatch flag', () => {
+    expect(parseLaunchArgs(['--allow-fox-code-mismatch'])).toStrictEqual({
+      allowFoxCodeMismatch: true,
+    });
+  });
+
+  it('parses all three destructive flags together', () => {
+    expect(
+      parseLaunchArgs([
+        '--reinstall',
+        '--reset-app-data',
+        '--allow-fox-code-mismatch',
+      ]),
+    ).toStrictEqual({
+      reinstall: true,
+      resetAppData: true,
+      allowFoxCodeMismatch: true,
+    });
+  });
+
   it('writes warning for unknown flags', () => {
     parseLaunchArgs(['--unknown']);
     expect(stderrSpy).toHaveBeenCalledWith(
@@ -514,6 +718,10 @@ describe('printHelp', () => {
     expect(output).toContain('mm — MetaMask CLI');
     expect(output).toContain('Usage:');
     expect(output).toContain('mm launch');
+    expect(output).toContain('Mobile (iOS):');
+    expect(output).toContain('mm devices');
+    expect(output).toContain('mm hermes-cdp');
+    expect(output).toContain('--metro-port');
   });
 });
 
@@ -1771,6 +1979,60 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes hermes-cdp with method, params, timeout, and Metro port', async () => {
+    await routeCommand(
+      'hermes-cdp',
+      [
+        'Runtime.evaluate',
+        '{"expression":"1+1"}',
+        '--timeout',
+        '60000',
+        '--metro-port',
+        '8082',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hermes_cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          params: { expression: '1+1' },
+          timeoutMs: 60000,
+          metroPort: 8082,
+        }),
+      }),
+    );
+  });
+
+  it('routes hermes-cdp with method only', async () => {
+    await routeCommand('hermes-cdp', ['Runtime.enable'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hermes_cdp',
+      expect.objectContaining({
+        body: JSON.stringify({ method: 'Runtime.enable' }),
+      }),
+    );
+  });
+
+  it('exits when hermes-cdp has no method', async () => {
+    await expect(routeCommand('hermes-cdp', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm hermes-cdp'),
+    );
+  });
+
+  it('exits when hermes-cdp has invalid JSON params', async () => {
+    await expect(
+      routeCommand('hermes-cdp', ['Runtime.evaluate', '{bad json}'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('invalid JSON'),
+    );
+  });
+
   it('exits for unknown command', async () => {
     await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
       'process.exit',
@@ -2000,6 +2262,22 @@ describe('main', () => {
     process.argv = origArgv;
   });
 
+  it('routes devices command without daemon', async () => {
+    const { listDevices } = await import('../platform/ios/simctl.js');
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'devices'];
+
+    await main();
+
+    expect(listDevices).toHaveBeenCalled();
+    expect(stdoutSpy).toHaveBeenCalledWith(
+      expect.stringContaining('iPhone 15'),
+    );
+
+    process.argv = origArgv;
+  });
+
   it('routes serve command', async () => {
     const { readDaemonState, isDaemonAlive } =
       await import('../server/daemon-state.js');
@@ -2051,6 +2329,56 @@ describe('main', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'http://127.0.0.1:3000/launch',
       expect.objectContaining({ method: 'POST' }),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('routes launch command with mobile flags', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const origArgv = process.argv;
+    process.argv = [
+      'node',
+      'mm',
+      'launch',
+      '--platform',
+      'ios',
+      '--device',
+      'A1B2C3D4-E5F6-7890-ABCD-EF1234567890',
+      '--app-bundle',
+      '/path/to/app.app',
+    ];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          platform: 'ios',
+          simulatorDeviceId: 'A1B2C3D4-E5F6-7890-ABCD-EF1234567890',
+          appBundlePath: '/path/to/app.app',
+        }),
+      }),
     );
 
     process.argv = origArgv;

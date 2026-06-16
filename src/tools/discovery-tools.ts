@@ -21,6 +21,7 @@ import {
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
+import { classifyIOSError } from '../platform/ios/error-classification.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 /**
@@ -40,6 +41,19 @@ export async function listTestIdsTool(
   }
 
   const limit = input.limit ?? DEFAULT_TESTID_LIMIT;
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const items = await driver.getTestIds(limit);
+      const { refMap } = await driver.getAccessibilityTree();
+      context.sessionManager.setRefMap(refMap);
+      return createToolSuccess({ items });
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
 
   try {
     const items = await collectTestIds(context.page, limit);
@@ -69,6 +83,20 @@ export async function accessibilitySnapshotTool(
     requireActiveSession<AccessibilitySnapshotResult>(context);
   if (missingSession) {
     return missingSession;
+  }
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const { nodes, refMap } = await driver.getAccessibilityTree(
+        input.rootSelector,
+      );
+      context.sessionManager.setRefMap(refMap);
+      return createToolSuccess({ nodes });
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
   }
 
   try {
@@ -101,6 +129,61 @@ export async function describeScreenTool(
   const missingSession = requireActiveSession<DescribeScreenResult>(context);
   if (missingSession) {
     return missingSession;
+  }
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const state = await driver.getAppState();
+      const testIds = await driver.getTestIds(DEFAULT_TESTID_LIMIT);
+      const { nodes, refMap } = await driver.getAccessibilityTree();
+
+      context.sessionManager.setRefMap(refMap);
+
+      let screenshot: DescribeScreenResult['screenshot'] = null;
+
+      if (input.includeScreenshot) {
+        const screenshotName = input.screenshotName ?? 'describe-screen';
+        const result = await driver.screenshot({
+          name: screenshotName,
+          fullPage: true,
+          includeBase64: input.includeScreenshotBase64,
+        });
+
+        screenshot = {
+          path: result.path,
+          width: result.width,
+          height: result.height,
+          base64: input.includeScreenshotBase64 ? result.base64 : null,
+        };
+      }
+
+      const sessionMetadata = context.sessionManager.getSessionMetadata();
+      const priorKnowledgeContext: PriorKnowledgeContext = {
+        currentScreen: state.currentScreen,
+        currentUrl: state.currentUrl,
+        visibleTestIds: testIds,
+        a11yNodes: nodes,
+        currentSessionFlowTags: sessionMetadata?.flowTags,
+      };
+
+      const priorKnowledge =
+        await context.knowledgeStore.generatePriorKnowledge(
+          priorKnowledgeContext,
+          context.sessionManager.getSessionId(),
+        );
+
+      return createToolSuccess({
+        state,
+        testIds: { items: testIds },
+        a11y: { nodes },
+        screenshot,
+        priorKnowledge,
+      });
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
   }
 
   try {

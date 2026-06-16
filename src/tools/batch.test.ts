@@ -526,6 +526,101 @@ describe('runStepsTool', () => {
     }
   });
 
+  it('rejects tool unsupported on the active platform', async () => {
+    const navigateHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { navigated: true },
+    });
+    const clickHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { clicked: true },
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['navigate', navigateHandler],
+        ['click', clickHandler],
+      ]),
+    });
+    (context as any).platformDriver = {
+      getPlatform: () => 'ios',
+      isToolSupported: (name: string) => name !== 'navigate',
+    };
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'click', args: { testId: 'btn' } },
+          { tool: 'navigate', args: { screen: 'home' } },
+        ],
+      },
+      context,
+    );
+
+    expect(clickHandler).toHaveBeenCalledTimes(1);
+    expect(navigateHandler).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps).toHaveLength(2);
+      expect(result.result.steps[0]).toMatchObject({ tool: 'click', ok: true });
+      expect(result.result.steps[1]).toMatchObject({
+        tool: 'navigate',
+        ok: false,
+        error: {
+          code: ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+          message: 'Tool "navigate" is not supported on ios platform',
+        },
+      });
+      expect(result.result.summary).toMatchObject({
+        ok: false,
+        total: 2,
+        succeeded: 1,
+        failed: 1,
+      });
+    }
+  });
+
+  it('stops on unsupported platform tool when stopOnError is true', async () => {
+    const navigateHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { navigated: true },
+    });
+    const clickHandler = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { clicked: true },
+    });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['navigate', navigateHandler],
+        ['click', clickHandler],
+      ]),
+    });
+    (context as any).platformDriver = {
+      getPlatform: () => 'ios',
+      isToolSupported: (name: string) => name !== 'navigate',
+    };
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'navigate', args: { screen: 'home' } },
+          { tool: 'click', args: { testId: 'btn' } },
+        ],
+        stopOnError: true,
+      },
+      context,
+    );
+
+    expect(navigateHandler).not.toHaveBeenCalled();
+    expect(clickHandler).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps).toHaveLength(1);
+      expect(result.result.steps[0].error?.code).toBe(
+        ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      );
+    }
+  });
+
   it('resolves navigate_home alias to navigate with screen: home', async () => {
     const navigateHandler = vi.fn().mockResolvedValue({
       ok: true,

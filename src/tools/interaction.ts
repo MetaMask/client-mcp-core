@@ -32,6 +32,7 @@ import {
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
+import { classifyIOSError } from '../platform/ios/error-classification.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 /**
@@ -250,6 +251,23 @@ export async function clickTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const result = await driver.click(
+        targetType,
+        targetValue,
+        context.refMap,
+        timeoutMs,
+      );
+      return createToolSuccess(result);
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
+
   return runInteractionWithTimeout({
     context,
     timeoutMs,
@@ -302,6 +320,24 @@ export async function typeTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const result = await driver.type(
+        targetType,
+        targetValue,
+        input.text,
+        context.refMap,
+        timeoutMs,
+      );
+      return createToolSuccess(result);
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
+
   return runInteractionWithTimeout({
     context,
     timeoutMs,
@@ -344,6 +380,25 @@ export async function waitForTool(
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
   const { targetType, targetValue } = validated.target;
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      await driver.waitForElement(
+        targetType,
+        targetValue,
+        context.refMap,
+        timeoutMs,
+      );
+      return createToolSuccess({
+        found: true,
+        target: `${targetType}:${targetValue}`,
+      });
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
+  }
 
   try {
     await waitForTarget(

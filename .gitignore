@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+ios-runner-derived-data/
+.ios-runner-build-tmp/
 
 # Test coverage
 coverage/
@@ -46,3 +48,6 @@ yalc.lock
 !.yarn/yarn-corepack.tgz
 
 docs/
+
+ios-runner/AXSnapshot/.build/
+**/xcuserdata/

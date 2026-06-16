@@ -14,6 +14,8 @@ import {
   KnowledgeStore,
   createDefaultObservation,
 } from '../knowledge-store/knowledge-store.js';
+import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
+import type { IPlatformDriver } from '../platform/types.js';
 import { toolRegistry, getToolCategory } from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
 import type {
@@ -310,6 +312,19 @@ export function createServer(config: ServerConfig): ServerInstance {
           ? config.sessionManager.getRefMap()
           : new Map<string, string>();
       },
+      get platformDriver(): IPlatformDriver | undefined {
+        if (!config.sessionManager.hasActiveSession()) {
+          return undefined;
+        }
+        const explicitDriver = config.sessionManager.getPlatformDriver?.();
+        if (explicitDriver) {
+          return explicitDriver;
+        }
+        return new PlaywrightPlatformDriver(
+          () => config.sessionManager.getPage(),
+          config.sessionManager,
+        );
+      },
       workflowContext: wfCtx,
       knowledgeStore,
       toolRegistry,
@@ -444,6 +459,22 @@ export function createServer(config: ServerConfig): ServerInstance {
       const { toolResult, observations } = await queue.enqueue(
         async () => {
           const context = buildToolContext(currentWorkflowContext);
+
+          // Platform gating: check if tool is supported on current platform
+          const driver = context.platformDriver;
+          if (driver && !driver.isToolSupported(toolName)) {
+            return {
+              toolResult: {
+                ok: false as const,
+                error: {
+                  code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+                  message: `Tool "${toolName}" is not supported on ${driver.getPlatform()} platform`,
+                },
+              },
+              observations: undefined,
+            };
+          }
+
           const result = await tool(validatedInput, context);
 
           let obs: StepRecordObservation | undefined;
@@ -457,6 +488,20 @@ export function createServer(config: ServerConfig): ServerInstance {
             try {
               obs = await Promise.race([
                 (async (): Promise<StepRecordObservation> => {
+                  const pageDriver = context.platformDriver;
+                  const isIOS = pageDriver?.getPlatform() === 'ios';
+
+                  if (isIOS && pageDriver) {
+                    const state = await pageDriver.getAppState();
+                    const testIds = await pageDriver.getTestIds(
+                      OBSERVATION_TESTID_LIMIT,
+                    );
+                    const { nodes, refMap: newRefMap } =
+                      await pageDriver.getAccessibilityTree();
+                    config.sessionManager.setRefMap(newRefMap);
+                    return createDefaultObservation(state, testIds, nodes);
+                  }
+
                   const page = config.sessionManager.getPage();
 
                   if (category === 'mutating') {

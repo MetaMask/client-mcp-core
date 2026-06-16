@@ -118,7 +118,7 @@ module.exports = defineConfig({
     workspace.set('exports["."].import.types', './dist/index.d.mts');
     workspace.set('exports["./package.json"]', './package.json');
     expectExports(workspace);
-    workspace.set('files', ['dist']);
+    workspace.set('files', ['dist', 'ios-runner']);
     workspace.unset('private');
     workspace.set('publishConfig.access', 'public');
     workspace.set('publishConfig.registry', 'https://registry.npmjs.org/');

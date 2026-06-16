@@ -159,6 +159,32 @@ export async function runStepsTool(
       continue;
     }
 
+    // Platform gating: reject tools unsupported on the active platform.
+    // The server-level gate in create-server.ts only covers direct /tool/:name
+    // requests. Steps executed here bypass that gate, so we check explicitly.
+    const driver = context.platformDriver;
+    if (driver && !driver.isToolSupported(tool)) {
+      stepResults.push({
+        tool,
+        ok: false,
+        error: {
+          code: ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+          message: `Tool "${tool}" is not supported on ${driver.getPlatform()} platform`,
+        },
+        meta: {
+          durationMs: Date.now() - stepStartTime,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      failed += 1;
+
+      if (stopOnError) {
+        break;
+      }
+
+      continue;
+    }
+
     const schema =
       tool in toolSchemas ? toolSchemas[tool as ToolName] : undefined;
     let validatedArgs: Record<string, unknown> = args;

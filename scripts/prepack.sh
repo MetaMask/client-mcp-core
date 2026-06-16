@@ -9,5 +9,6 @@ if [[ -n $SKIP_PREPACK ]]; then
 fi
 
 yarn build
+yarn build:native:sanity
 
 chmod +x dist/cli/mm.cjs

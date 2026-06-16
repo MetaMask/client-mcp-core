@@ -5,6 +5,7 @@ import {
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
+import { classifyIOSError } from '../platform/ios/error-classification.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 /**
@@ -21,6 +22,34 @@ export async function screenshotTool(
   const missingSession = requireActiveSession<ScreenshotToolResult>(context);
   if (missingSession) {
     return missingSession;
+  }
+
+  const driver = context.platformDriver;
+  if (driver?.getPlatform() === 'ios') {
+    try {
+      const screenshotName = input.name ?? `screenshot-${Date.now()}`;
+      const result = await driver.screenshot({
+        name: screenshotName,
+        fullPage: input.fullPage ?? true,
+        selector: input.selector,
+        includeBase64: input.includeBase64,
+      });
+
+      const response: ScreenshotToolResult = {
+        path: result.path,
+        width: result.width,
+        height: result.height,
+      };
+
+      if (input.includeBase64) {
+        response.base64 = result.base64;
+      }
+
+      return createToolSuccess(response);
+    } catch (error) {
+      const errorInfo = classifyIOSError(error);
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
   }
 
   try {

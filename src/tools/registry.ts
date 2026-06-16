@@ -9,6 +9,7 @@ import {
   describeScreenTool,
   listTestIdsTool,
 } from './discovery-tools.js';
+import { hermesCdpTool } from './hermes-cdp.js';
 import {
   clickTool,
   getTextTool,
@@ -72,6 +73,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['get_context', getContextTool],
   ['clipboard', clipboardTool],
   ['cdp', cdpTool],
+  ['hermes_cdp', hermesCdpTool],
 ]);
 
 export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
@@ -92,6 +94,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   seed_contract: 'mutating',
   seed_contracts: 'mutating',
   cdp: 'mutating',
+  hermes_cdp: 'mutating',
   // READONLY (10)
   knowledge_last: 'readonly',
   knowledge_search: 'readonly',

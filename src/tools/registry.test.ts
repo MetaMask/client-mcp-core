@@ -15,6 +15,7 @@ describe('toolRegistry', () => {
       'describe_screen',
       'clipboard',
       'run_steps',
+      'hermes_cdp',
     ];
 
     for (const toolName of expectedTools) {
@@ -31,7 +32,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(29);
+    expect(toolRegistry.size).toBe(30);
   });
 
   it('stores only functions as values', () => {
@@ -66,6 +67,10 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
 
   it('getToolCategory returns mutating for click', () => {
     expect(getToolCategory('click')).toBe('mutating');
+  });
+
+  it('getToolCategory returns mutating for hermes_cdp', () => {
+    expect(getToolCategory('hermes_cdp')).toBe('mutating');
   });
 
   it('getToolCategory returns readonly for knowledge_last', () => {

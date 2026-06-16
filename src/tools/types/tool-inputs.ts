@@ -24,6 +24,18 @@ export type LaunchInput = {
   tags?: string[];
   seedContracts?: SmartContractName[];
   force?: boolean;
+  platform?: 'browser' | 'ios' | 'android';
+  simulatorDeviceId?: string;
+  appBundlePath?: string;
+  androidDeviceId?: string;
+  /** Metro inspector proxy port for iOS Hermes CDP (default 8081). */
+  metroPort?: number;
+  /** Uninstall and reinstall the app bundle. Destructive to app container. */
+  reinstall?: boolean;
+  /** Clear app data/container. Destructive to wallet state. */
+  resetAppData?: boolean;
+  /** Bypass fox_code compatibility guard. Use with caution. */
+  allowFoxCodeMismatch?: boolean;
 };
 
 export type CleanupInput = {
@@ -160,6 +172,24 @@ export type CdpInput = {
   params?: Record<string, unknown>;
   /** Always populated after Zod validation (schema default: 30 000). */
   timeoutMs: number;
+};
+
+export type HermesCdpInput = {
+  method: string;
+  params?: Record<string, unknown>;
+  /** Always populated after Zod validation (schema default: 30 000). */
+  timeoutMs: number;
+  /**
+   * Metro dev server port used for Hermes target discovery.
+   *
+   * Optional. Resolution chain at call time:
+   *   input.metroPort ?? platformDriver.getMetroPort() ?? 8081
+   *
+   * Per-call input wins over the session-scoped port plumbed via
+   * SessionLaunchInput.metroPort. Omit to fall through to the
+   * session-level port set at launch time.
+   */
+  metroPort?: number;
 };
 
 export type SetContextInput = {

@@ -47,6 +47,26 @@ export async function launchTool(
       }
     }
 
+    if (input.platform === 'ios') {
+      if (!input.simulatorDeviceId) {
+        return createToolError(
+          ErrorCodes.MM_INVALID_INPUT,
+          'simulatorDeviceId is required when platform is "ios"',
+        );
+      }
+      // appBundlePath is optional — prod context resolves the installed app automatically.
+      // The mobile session manager's validateIOSPrerequisites() handles resolution and safety checks.
+    }
+
+    if (input.platform === 'android') {
+      if (!input.androidDeviceId) {
+        return createToolError(
+          ErrorCodes.MM_INVALID_INPUT,
+          'androidDeviceId is required when platform is "android"',
+        );
+      }
+    }
+
     if (input.context) {
       sessionManager.setContext(input.context);
     }
@@ -60,6 +80,16 @@ export async function launchTool(
     });
   } catch (error) {
     const message = extractErrorMessage(error);
+
+    const errorCode = (error as { code?: string }).code;
+    if (
+      errorCode &&
+      Object.values(ErrorCodes).includes(
+        errorCode as (typeof ErrorCodes)[keyof typeof ErrorCodes],
+      )
+    ) {
+      return createToolError(errorCode, message);
+    }
 
     if (message.includes('EADDRINUSE') || message.includes('port')) {
       return createToolError(

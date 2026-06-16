@@ -42,3 +42,16 @@ export * from './launcher/retry.js';
 
 // Error classification
 export * from './tools/error-classification.js';
+
+// Platform driver interface (transport-agnostic)
+export type {
+  PlatformType,
+  ClickActionResult,
+  TypeActionResult,
+  PlatformScreenshotOptions,
+  IPlatformDriver,
+} from './platform/types.js';
+
+// iOS platform driver and helpers (includes IOSPlatformDriver, XCUITestClient,
+// ensureRunnerBuild, startRunner, waitForReady, simctl helpers, classifyIOSError)
+export * from './platform/ios';

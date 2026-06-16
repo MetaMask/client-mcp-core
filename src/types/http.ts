@@ -8,6 +8,7 @@ import type { Page } from '@playwright/test';
 
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { KnowledgeStore } from '../knowledge-store/knowledge-store.js';
+import type { IPlatformDriver } from '../platform/types.js';
 import type { ISessionManager } from '../server/session-manager.js';
 
 /**
@@ -23,6 +24,8 @@ export type ToolContext = {
   get page(): Page;
   /** Accessibility reference map (lazy — returns empty map if no session) */
   get refMap(): Map<string, string>;
+  /** Platform driver for the active session (undefined if no session or browser-only) */
+  platformDriver?: IPlatformDriver;
   /** Workflow context with capabilities and environment config */
   workflowContext: WorkflowContext;
   /** Knowledge store for session history and prior knowledge */
