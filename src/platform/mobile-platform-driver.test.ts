@@ -184,9 +184,11 @@ describe('MobilePlatformDriver', () => {
 
     it('throws when timeout budget is exceeded after waitForElement', async () => {
       const backend = createMockBackend({
-        waitForElement: vi.fn().mockImplementation(
-          () => new Promise((resolve) => setTimeout(resolve, 50)),
-        ),
+        waitForElement: vi
+          .fn()
+          .mockImplementation(
+            async () => new Promise((resolve) => setTimeout(resolve, 50)),
+          ),
       });
       const driver = new MobilePlatformDriver(backend);
 
@@ -197,9 +199,11 @@ describe('MobilePlatformDriver', () => {
 
     it('throws when tapElement exceeds remaining budget', async () => {
       const backend = createMockBackend({
-        tapElement: vi.fn().mockImplementation(
-          () => new Promise((resolve) => setTimeout(resolve, 200)),
-        ),
+        tapElement: vi
+          .fn()
+          .mockImplementation(
+            async () => new Promise((resolve) => setTimeout(resolve, 200)),
+          ),
       });
       const driver = new MobilePlatformDriver(backend);
 
