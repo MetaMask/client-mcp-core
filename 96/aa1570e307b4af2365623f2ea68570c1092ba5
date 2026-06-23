@@ -1,0 +1,24 @@
+src/platform/ios/runner-build.ts
+  s_9a59e84f14467b::t_dd8f5b799f3525 1-566
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "96aa1570e307b4af2365623f2ea68570c1092ba5",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_9a59e84f14467b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f0213f0ffeFaySSkBtQeaYEd",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
