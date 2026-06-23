@@ -47,6 +47,24 @@ export async function launchTool(
       }
     }
 
+    if (input.platform === 'android') {
+      return createToolError(
+        ErrorCodes.MM_CAPABILITY_NOT_AVAILABLE,
+        'Android platform is not yet supported. Supported platforms: browser, ios.',
+      );
+    }
+
+    if (input.platform === 'ios' && !input.simulatorDeviceId && !input.deviceId) {
+      return createToolError(
+        ErrorCodes.MM_INVALID_INPUT,
+        'simulatorDeviceId (or deviceId) is required when platform is "ios"',
+      );
+    }
+
+    if (input.platform === 'ios' && !input.simulatorDeviceId && input.deviceId) {
+      input.simulatorDeviceId = input.deviceId;
+    }
+
     if (input.context) {
       sessionManager.setContext(input.context);
     }
@@ -60,6 +78,16 @@ export async function launchTool(
     });
   } catch (error) {
     const message = extractErrorMessage(error);
+
+    const errorCode = (error as { code?: string }).code;
+    if (
+      errorCode &&
+      Object.values(ErrorCodes).includes(
+        errorCode as (typeof ErrorCodes)[keyof typeof ErrorCodes],
+      )
+    ) {
+      return createToolError(errorCode, message);
+    }
 
     if (message.includes('EADDRINUSE') || message.includes('port')) {
       return createToolError(

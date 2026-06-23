@@ -91,6 +91,9 @@ describe('mockNetworkTool', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.action).toBe('add');
+      if (result.result.action !== 'add') {
+        throw new Error(`Expected add result, got ${result.result.action}`);
+      }
       expect(result.result.added).toBe(1);
       expect(result.result.rules).toStrictEqual([MOCK_RULE]);
     }
@@ -123,6 +126,9 @@ describe('mockNetworkTool', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.action).toBe('list');
+      if (result.result.action !== 'list') {
+        throw new Error(`Expected list result, got ${result.result.action}`);
+      }
       expect(result.result.rules).toStrictEqual([MOCK_RULE]);
     }
   });
@@ -148,6 +154,11 @@ describe('mockNetworkTool', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.action).toBe('requests');
+      if (result.result.action !== 'requests') {
+        throw new Error(
+          `Expected requests result, got ${result.result.action}`,
+        );
+      }
       expect(result.result.requests).toHaveLength(1);
       expect(result.result.summary.hits).toBe(1);
     }

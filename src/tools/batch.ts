@@ -1,4 +1,3 @@
-import { isBrowserOnlyTool } from './registry.js';
 import type { RunStepsInput, RunStepsResult, StepResult } from './types';
 import { ErrorCodes } from './types';
 import { createToolError, createToolSuccess } from './utils.js';
@@ -160,29 +159,26 @@ export async function runStepsTool(
       continue;
     }
 
-    if (isBrowserOnlyTool(tool)) {
-      const driverPlatform = context.driver?.getPlatform();
-      if (driverPlatform && driverPlatform !== 'browser') {
-        stepResults.push({
-          tool,
-          ok: false,
-          error: {
-            code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
-            message: `Tool "${tool}" is not supported on ${driverPlatform} platform`,
-          },
-          meta: {
-            durationMs: Date.now() - stepStartTime,
-            timestamp: new Date().toISOString(),
-          },
-        });
-        failed += 1;
+    if (context.driver && !context.driver.isToolSupported(tool)) {
+      stepResults.push({
+        tool,
+        ok: false,
+        error: {
+          code: ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+          message: `Tool "${tool}" is not supported on ${context.driver.getPlatform()} platform`,
+        },
+        meta: {
+          durationMs: Date.now() - stepStartTime,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      failed += 1;
 
-        if (stopOnError) {
-          break;
-        }
-
-        continue;
+      if (stopOnError) {
+        break;
       }
+
+      continue;
     }
 
     const schema =

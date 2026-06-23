@@ -10,12 +10,21 @@ function createMockContext(
     hasActive?: boolean;
     toolRegistry?: Map<string, ToolFunction<any, any>>;
     driverPlatform?: 'browser' | 'ios' | 'android';
+    isToolSupported?: (toolName: string) => boolean;
   } = {},
 ): ToolContext {
-  const { hasActive = true, toolRegistry, driverPlatform } = options;
+  const {
+    hasActive = true,
+    toolRegistry,
+    driverPlatform,
+    isToolSupported = () => true,
+  } = options;
 
   const driver = driverPlatform
-    ? ({ getPlatform: () => driverPlatform } as ToolContext['driver'])
+    ? ({
+        getPlatform: () => driverPlatform,
+        isToolSupported,
+      } as ToolContext['driver'])
     : undefined;
 
   return {
@@ -640,6 +649,7 @@ describe('runStepsTool', () => {
         ['click', clickHandler],
       ]),
       driverPlatform: 'ios',
+      isToolSupported: (toolName) => toolName !== 'navigate',
     });
 
     const result = await runStepsTool(
@@ -681,6 +691,43 @@ describe('runStepsTool', () => {
     if (result.ok) {
       expect(result.result.steps[0].ok).toBe(true);
       expect(navigateHandler).toHaveBeenCalled();
+    }
+  });
+
+  it('rejects tools unsupported by the active platform driver', async () => {
+    const clipboardHandler = vi
+      .fn()
+      .mockResolvedValue({ ok: true, result: {} });
+    const clickHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['clipboard', clipboardHandler],
+        ['click', clickHandler],
+      ]),
+      driverPlatform: 'ios',
+      isToolSupported: (toolName) => toolName === 'click',
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'clipboard', args: { action: 'read' } },
+          { tool: 'click', args: { testId: 'btn' } },
+        ],
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0]).toMatchObject({
+        tool: 'clipboard',
+        ok: false,
+        error: { code: ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM },
+      });
+      expect(clipboardHandler).not.toHaveBeenCalled();
+      expect(result.result.steps[1].ok).toBe(true);
+      expect(clickHandler).toHaveBeenCalled();
     }
   });
 });
