@@ -1,0 +1,46 @@
+src/platform/android/types.ts
+  s_9a59e84f14467b::t_95637b097928cf 1-17
+src/platform/android/android-driver.ts
+  s_428066e4856374::t_44ff74bb7a1103 63,84,105,121-125
+  s_4fc708f03fc8fd::t_b73a7a81d858dc 1-20,22-23,25-62,64-70,72-83,85-92,94-104,106-112,114,135-189
+  s_428066e4856374::t_32c339c3a51700 21,24,71,93,113,115-120,126-134
+src/platform/android/index.ts
+  s_4fc708f03fc8fd::t_cecd929f235fd6 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "cc0be56c2a62053a4c82a6c221504eec908d8bbd",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_4fc708f03fc8fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_9a59e84f14467b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f0213f0ffeFaySSkBtQeaYEd",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
