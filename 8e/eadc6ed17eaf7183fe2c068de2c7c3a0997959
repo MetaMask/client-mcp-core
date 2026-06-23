@@ -1,0 +1,24 @@
+ios-runner/AXSnapshot/Package.swift
+  s_deea310d92cc12::t_be98fe80c58640 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "8eeadc6ed17eaf7183fe2c068de2c7c3a0997959",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_deea310d92cc12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f1cc6b8ffewV9u9dBs9DPRcn",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
