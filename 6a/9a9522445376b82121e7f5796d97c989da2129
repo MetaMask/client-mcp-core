@@ -1,0 +1,41 @@
+src/platform/index.ts
+  s_428066e4856374::t_44ff74bb7a1103 13-14
+src/platform/types.ts
+  s_428066e4856374::t_32c339c3a51700 75-76,90-97
+src/platform/playwright-driver.ts
+  s_428066e4856374::t_32c339c3a51700 285-296
+src/platform/types.test.ts
+  s_428066e4856374::t_8254c718880532 8,10-11,17-18,39-44,46-57,63-123,135-138
+  s_bb8a7bfc486dc0::t_6a03dedaaf5333 1-7,9,12-16,19-38,58-62,139-140
+  s_428066e4856374::t_cb6afe14436db1 124-133
+  s_428066e4856374::t_44ff74bb7a1103 45,134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "6a9a9522445376b82121e7f5796d97c989da2129",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_bb8a7bfc486dc0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f9a5967ffeFPuHmqexoUHX5i",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
