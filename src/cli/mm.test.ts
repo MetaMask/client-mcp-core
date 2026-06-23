@@ -76,6 +76,12 @@ vi.mock('../server/daemon-state.js', () => ({
   releaseStartupLock: vi.fn(async () => {}),
 }));
 
+vi.mock('../platform/ios/simctl.js', () => ({
+  listDevices: vi.fn(async () => [
+    { udid: 'UDID-1', name: 'iPhone 15', state: 'Booted' },
+  ]),
+}));
+
 const mockSearch = vi.fn();
 
 vi.mock('cosmiconfig', () => ({
@@ -561,6 +567,48 @@ describe('parseLaunchArgs', () => {
     });
   });
 
+  it('parses iOS-specific launch flags', () => {
+    expect(
+      parseLaunchArgs([
+        '--platform',
+        'ios',
+        '--device',
+        'UDID-1',
+        '--app-bundle',
+        '/tmp/MetaMask.app',
+        '--metro-port',
+        '8082',
+        '--reinstall',
+        '--reset-app-data',
+        '--allow-fox-code-mismatch',
+      ]),
+    ).toStrictEqual({
+      platform: 'ios',
+      simulatorDeviceId: 'UDID-1',
+      appBundlePath: '/tmp/MetaMask.app',
+      metroPort: 8082,
+      reinstall: true,
+      resetAppData: true,
+      allowFoxCodeMismatch: true,
+    });
+  });
+
+  it('exits for --device without value', () => {
+    expect(() => parseLaunchArgs(['--device'])).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --device requires a simulator UDID\n',
+    );
+  });
+
+  it('exits for invalid --metro-port', () => {
+    expect(() => parseLaunchArgs(['--metro-port', '70000'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --metro-port requires a valid port (1-65535)\n',
+    );
+  });
+
   it('exits for --platform without value', () => {
     expect(() => parseLaunchArgs(['--platform'])).toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
@@ -597,6 +645,8 @@ describe('printHelp', () => {
     expect(output).toContain('mm — MetaMask CLI');
     expect(output).toContain('Usage:');
     expect(output).toContain('mm launch');
+    expect(output).toContain('mm devices');
+    expect(output).toContain('mm hermes-cdp');
   });
 });
 
@@ -1940,6 +1990,77 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes hermes-cdp with method and params', async () => {
+    await routeCommand(
+      'hermes-cdp',
+      ['Runtime.evaluate', '{"expression":"1+1"}'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hermes_cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          params: { expression: '1+1' },
+        }),
+      }),
+    );
+  });
+
+  it('routes hermes-cdp with timeout and metro port', async () => {
+    await routeCommand(
+      'hermes-cdp',
+      [
+        'Runtime.evaluate',
+        '{"expression":"globalThis.location"}',
+        '--timeout',
+        '60000',
+        '--metro-port',
+        '8082',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hermes_cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          params: { expression: 'globalThis.location' },
+          timeoutMs: 60000,
+          metroPort: 8082,
+        }),
+      }),
+    );
+  });
+
+  it('routes hermes-cdp with method only', async () => {
+    await routeCommand('hermes-cdp', ['Debugger.enable'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hermes_cdp',
+      expect.objectContaining({
+        body: JSON.stringify({ method: 'Debugger.enable' }),
+      }),
+    );
+  });
+
+  it('exits when hermes-cdp has no method', async () => {
+    await expect(routeCommand('hermes-cdp', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm hermes-cdp'),
+    );
+  });
+
+  it('exits when hermes-cdp has invalid JSON params', async () => {
+    await expect(
+      routeCommand('hermes-cdp', ['Runtime.evaluate', '{bad json}'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('invalid JSON'),
+    );
+  });
+
   it('exits for unknown command', async () => {
     await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
       'process.exit',
@@ -2187,6 +2308,28 @@ describe('main', () => {
     await expect(main()).rejects.toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining('daemon already running'),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('routes devices command without daemon discovery', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    const { listDevices } = await import('../platform/ios/simctl.js');
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'devices'];
+
+    await main();
+
+    expect(listDevices).toHaveBeenCalledTimes(1);
+    expect(readDaemonState).not.toHaveBeenCalled();
+    expect(stdoutSpy).toHaveBeenCalledWith(
+      `${JSON.stringify(
+        [{ udid: 'UDID-1', name: 'iPhone 15', state: 'Booted' }],
+        null,
+        2,
+      )}\n`,
     );
 
     process.argv = origArgv;
