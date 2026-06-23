@@ -1,0 +1,60 @@
+src/tools/mock-network.test.ts
+  s_428066e4856374::t_7fa3e59b437b6a 94-96,129-131,157-161
+src/tools/batch.ts
+  s_428066e4856374::t_73a81faf6d8753 162-175,177-178,180-181
+src/tools/cleanup.ts
+  s_31e596c28f0b45::t_3f030a6fcaeee9 8-12
+src/tools/batch.test.ts
+  s_428066e4856374::t_44ff74bb7a1103 698-700
+  s_67199399275e74::t_7e9c56aad06c03 652
+  s_428066e4856374::t_25245629957212 13,16-21,24-27,696-697,701-730
+src/tools/launch.ts
+  s_67199399275e74::t_0ac5ee87d44da4 50,52-53
+  s_428066e4856374::t_3d88e164dd0b67 51,54-56,58-59,61,66-67,82-90
+  s_99aa7d4d557dfb::t_86f9f406cea96c 57,60,62-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "bb138da919e6e3c6e92497bcb33d261647701aac",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_31e596c28f0b45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_10ffc66bdffewmDrEw7AE8WsVE",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_67199399275e74": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1103c011affeijqz6X3EzkPKZz",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_99aa7d4d557dfb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_10fa25a5cffeSS9Un9g2EG1yzB",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
