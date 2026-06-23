@@ -1,0 +1,36 @@
+src/tools/types/tool-outputs.ts
+  s_428066e4856374::t_1d918d2bfddb55 162-166
+src/tools/types/errors.ts
+  s_428066e4856374::t_51798ae80fe287 13,47-64
+src/tools/registry.ts
+  s_428066e4856374::t_44ff74bb7a1103 12
+  s_428066e4856374::t_82e5df34d99a3f 77,99
+src/tools/types/tool-inputs.ts
+  s_428066e4856374::t_a120f073efd1a0 31-41,180-186
+src/tools/registry.test.ts
+  s_428066e4856374::t_12ff30981cd593 17,36,73-75
+src/tools/driver-delegation.test.ts
+  s_428066e4856374::t_b37b67a6bb56bd 26,64-65
+  s_428066e4856374::t_44ff74bb7a1103 24-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "3d66fc8c2b55f28c31562cd46b20e8041542b913",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
