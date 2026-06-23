@@ -1,0 +1,24 @@
+src/platform/ios/xcuitest-client.ts
+  s_a49c05362f1e43::t_b324d97907884e 1-234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "1b3483eecbc57e2ad1979d3278bb6e2e34f45547",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_a49c05362f1e43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f0199f5ffeP4oMjDYV00xZ00",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
