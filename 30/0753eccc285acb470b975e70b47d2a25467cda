@@ -1,0 +1,45 @@
+src/platform/ios/ios-driver.ts
+  s_428066e4856374::t_44ff74bb7a1103 193,290,362
+  s_debe75c253225a::t_eb72db317df817 301,309-316,333
+  s_4fc708f03fc8fd::t_0df82b0dfab28b 1-30,32-33,35-192,194-200,202-289,291-298,300,302-308,317-332,334-361,363-369,371-381,417-1146
+  s_428066e4856374::t_32c339c3a51700 31,34,201,299,370,382-416
+src/platform/ios/index.ts
+  s_4fc708f03fc8fd::t_ae68c0c2368c09 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "300753eccc285acb470b975e70b47d2a25467cda",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_4fc708f03fc8fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_debe75c253225a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1101d7befffeM1EzX8zhVgJHmF",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
