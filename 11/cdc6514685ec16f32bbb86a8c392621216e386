@@ -1,0 +1,34 @@
+.gitignore
+  s_428066e4856374::t_a480b010b04851 6-7,50-53
+yarn.config.cjs
+  s_428066e4856374::t_1acc2f398def06 121
+vitest.config.mts
+  s_428066e4856374::t_1acc2f398def06 34-37,40-42
+  s_428066e4856374::t_25b5ef5e61e653 38-39
+.github/workflows/build-lint-test.yml
+  s_428066e4856374::t_1acc2f398def06 35-36
+src/index.ts
+  s_428066e4856374::t_a480b010b04851 6
+  s_428066e4856374::t_0021aa87cba893 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "11cdc6514685ec16f32bbb86a8c392621216e386",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
