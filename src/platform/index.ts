@@ -10,3 +10,5 @@ export type {
 } from './types.js';
 
 export { PlaywrightPlatformDriver } from './playwright-driver.js';
+export * from './ios';
+export * from './android';

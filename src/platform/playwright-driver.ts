@@ -282,4 +282,16 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
   getPlatform(): PlatformType {
     return 'browser';
   }
+
+  /**
+   * Check whether a tool is supported by the browser driver.
+   *
+   * Browser remains the fully capable default platform; browser-only gating is
+   * handled by the registry/server layer for non-browser drivers.
+   *
+   * @returns Always true for browser automation.
+   */
+  isToolSupported(): boolean {
+    return true;
+  }
 }

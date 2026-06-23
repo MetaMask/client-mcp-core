@@ -72,6 +72,8 @@ export type IPlatformDriver = {
     within?: WithinScope,
   ): Promise<GetTextActionResult>;
 
+  isToolSupported(toolName: string): boolean;
+
   getAccessibilityTree(
     rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }>;
@@ -85,4 +87,12 @@ export type IPlatformDriver = {
   getCurrentUrl(): string;
 
   getPlatform(): PlatformType;
+
+  getAppId?(): string | undefined;
+
+  getMetroPort?(): number | undefined;
+
+  getPinnedHermesDeviceId?(): string | undefined;
+
+  setPinnedHermesDeviceId?(id: string): void;
 };
