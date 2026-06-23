@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "d41b02ce0e3a05bba2bdbfd8833affd3ee14ae53",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
