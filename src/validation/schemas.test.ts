@@ -17,6 +17,7 @@ import {
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   launchInputSchema,
+  hermesCdpInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -458,8 +459,74 @@ describe('launchInputSchema', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.platform).toBeUndefined();
+      expect(result.data.platform).toBe('browser');
       expect(result.data.deviceId).toBeUndefined();
     }
+  });
+
+  it('preserves iOS launch-specific fields', () => {
+    const result = launchInputSchema.safeParse({
+      platform: 'ios',
+      simulatorDeviceId: 'UDID-1',
+      appBundlePath: '/tmp/MetaMask.app',
+      metroPort: 8082,
+      reinstall: true,
+      resetAppData: true,
+      allowFoxCodeMismatch: true,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        platform: 'ios',
+        simulatorDeviceId: 'UDID-1',
+        appBundlePath: '/tmp/MetaMask.app',
+        metroPort: 8082,
+        reinstall: true,
+        resetAppData: true,
+        allowFoxCodeMismatch: true,
+      });
+    }
+  });
+
+  it('preserves Android-specific device field', () => {
+    const result = launchInputSchema.safeParse({
+      platform: 'android',
+      androidDeviceId: 'emulator-5554',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.androidDeviceId).toBe('emulator-5554');
+    }
+  });
+});
+
+describe('hermesCdpInputSchema', () => {
+  it('applies timeout default and accepts optional metro port', () => {
+    const result = hermesCdpInputSchema.safeParse({
+      method: 'Runtime.evaluate',
+      params: { expression: '1+1' },
+      metroPort: 8082,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toStrictEqual({
+        method: 'Runtime.evaluate',
+        params: { expression: '1+1' },
+        timeoutMs: 30000,
+        metroPort: 8082,
+      });
+    }
+  });
+
+  it('rejects invalid metro ports', () => {
+    const result = hermesCdpInputSchema.safeParse({
+      method: 'Runtime.evaluate',
+      metroPort: 70000,
+    });
+
+    expect(result.success).toBe(false);
   });
 });

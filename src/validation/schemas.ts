@@ -228,11 +228,10 @@ export const launchInputSchema = z.object({
     .describe('Force replace an existing active session (runs cleanup first)'),
   platform: z
     .enum(['browser', 'ios', 'android'])
+    .default('browser')
     .describe(
-      'Target platform: browser (default), ios, or android. ' +
-        'Mobile platforms require @metamask/device-mcp.',
-    )
-    .optional(),
+      'Target platform: browser (default), ios simulator, or android device.',
+    ),
   deviceId: z
     .string()
     .min(1)
@@ -241,6 +240,42 @@ export const launchInputSchema = z.object({
         'When omitted, auto-detects if exactly one device is connected.',
     )
     .optional(),
+  simulatorDeviceId: z
+    .string()
+    .min(1)
+    .describe('iOS simulator UDID (required when platform=ios)')
+    .optional(),
+  appBundlePath: z
+    .string()
+    .min(1)
+    .describe('Path to .app bundle for iOS simulator launch')
+    .optional(),
+  androidDeviceId: z
+    .string()
+    .min(1)
+    .describe('Android device ID (required when platform=android)')
+    .optional(),
+  metroPort: z
+    .number()
+    .int()
+    .min(1)
+    .max(65535)
+    .optional()
+    .describe('Metro inspector proxy port (iOS Hermes CDP, default 8081)'),
+  reinstall: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Uninstall and reinstall the app bundle. Destructive to app container.',
+    ),
+  resetAppData: z
+    .boolean()
+    .default(false)
+    .describe('Clear app data/container. Destructive to wallet state.'),
+  allowFoxCodeMismatch: z
+    .boolean()
+    .default(false)
+    .describe('Bypass fox_code compatibility guard. Use with caution.'),
 });
 
 export const cleanupInputSchema = z.object({
@@ -658,10 +693,32 @@ export const cdpInputSchema = z.object({
     ),
 });
 
+export const hermesCdpInputSchema = z.object({
+  method: z
+    .string()
+    .min(1)
+    .describe('CDP method name (e.g., Runtime.evaluate)'),
+  params: z
+    .record(z.string(), z.unknown())
+    .describe('CDP method parameters')
+    .optional(),
+  timeoutMs: z.number().int().min(1000).max(120000).default(30000),
+  metroPort: z
+    .number()
+    .int()
+    .min(1)
+    .max(65535)
+    .optional()
+    .describe(
+      'Metro bundler port. Optional — falls through to driver.getMetroPort() ?? 8081 when omitted.',
+    ),
+});
+
 export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
+export type HermesCdpInputZ = z.infer<typeof hermesCdpInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
 
 export const toolSchemas = {
@@ -694,6 +751,7 @@ export const toolSchemas = {
   get_context: getContextInputSchema,
   clipboard: clipboardInputSchema,
   cdp: cdpInputSchema,
+  hermes_cdp: hermesCdpInputSchema,
   mock_network: mockNetworkInputSchema,
 } as const;
 
