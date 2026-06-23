@@ -54,14 +54,22 @@ export async function launchTool(
       );
     }
 
-    if (input.platform === 'ios' && !input.simulatorDeviceId && !input.deviceId) {
+    if (
+      input.platform === 'ios' &&
+      !input.simulatorDeviceId &&
+      !input.deviceId
+    ) {
       return createToolError(
         ErrorCodes.MM_INVALID_INPUT,
         'simulatorDeviceId (or deviceId) is required when platform is "ios"',
       );
     }
 
-    if (input.platform === 'ios' && !input.simulatorDeviceId && input.deviceId) {
+    if (
+      input.platform === 'ios' &&
+      !input.simulatorDeviceId &&
+      input.deviceId
+    ) {
       input.simulatorDeviceId = input.deviceId;
     }
 

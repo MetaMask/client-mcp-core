@@ -132,4 +132,3 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
 export function getToolCategory(toolName: string): ToolCategory {
   return TOOL_CATEGORIES[toolName] ?? 'mutating';
 }
-
