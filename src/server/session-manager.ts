@@ -68,6 +68,20 @@ export type SessionLaunchInput = {
   platform?: PlatformType;
   /** Device ID for explicit mobile device targeting */
   deviceId?: string;
+  /** iOS simulator UDID. */
+  simulatorDeviceId?: string;
+  /** Path to an iOS .app bundle. */
+  appBundlePath?: string;
+  /** Android device serial. */
+  androidDeviceId?: string;
+  /** Metro inspector proxy port for iOS Hermes CDP. */
+  metroPort?: number;
+  /** Reinstall the mobile app bundle before launch. */
+  reinstall?: boolean;
+  /** Clear mobile app data before launch. */
+  resetAppData?: boolean;
+  /** Bypass fox_code compatibility guard for mobile launch. */
+  allowFoxCodeMismatch?: boolean;
 };
 
 /**

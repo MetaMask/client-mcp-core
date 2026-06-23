@@ -108,6 +108,7 @@ function createMockSessionManager() {
     setWorkflowContext: vi.fn(),
     getEnvironmentMode: vi.fn(() => 'e2e'),
     setContext: vi.fn(),
+    getPlatformDriver: vi.fn<() => unknown>(() => undefined),
     getContextInfo: vi.fn(() => ({
       currentContext: 'e2e',
       hasActiveSession: false,
@@ -1018,6 +1019,31 @@ describe('createServer with active session', () => {
     expect(body.observations).toBeUndefined();
   });
 
+  it('rejects tools unsupported by the active platform driver', async () => {
+    vi.spyOn(mockSM, 'getPlatformDriver').mockReturnValue({
+      getPlatform: vi.fn().mockReturnValue('ios'),
+      isToolSupported: vi.fn((toolName: string) => toolName === 'click'),
+    });
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/clipboard`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'read' }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error?: { code: string; message: string };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+    expect(body.error?.message).toContain('ios platform');
+  });
+
   it('mutating tool response includes observations with state, testIds, a11y', async () => {
     const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
       method: 'POST',
@@ -1796,6 +1822,7 @@ describe('createServer observation driver freshness after launch', () => {
   let mockSM: ReturnType<typeof createMockSessionManager>;
   let mobileDriver: {
     getPlatform: ReturnType<typeof vi.fn>;
+    isToolSupported: ReturnType<typeof vi.fn>;
     getAppState: ReturnType<typeof vi.fn>;
     getTestIds: ReturnType<typeof vi.fn>;
     getAccessibilityTree: ReturnType<typeof vi.fn>;
@@ -1806,6 +1833,7 @@ describe('createServer observation driver freshness after launch', () => {
 
     mobileDriver = {
       getPlatform: vi.fn().mockReturnValue('ios'),
+      isToolSupported: vi.fn().mockReturnValue(true),
       getAppState: vi.fn().mockResolvedValue({
         isLoaded: true,
         currentUrl: '',
@@ -1824,9 +1852,7 @@ describe('createServer observation driver freshness after launch', () => {
     };
 
     mockSM = createMockSessionManager();
-    const getPlatformDriverMock = vi.fn().mockReturnValue(undefined);
-    (mockSM as Record<string, unknown>).getPlatformDriver =
-      getPlatformDriverMock;
+    const getPlatformDriverMock = mockSM.getPlatformDriver;
     // Session starts inactive; launch activates it and sets the mobile driver
     mockSM.hasActiveSession.mockReturnValue(false);
     mockSM.launch.mockImplementation(async () => {
@@ -1856,7 +1882,7 @@ describe('createServer observation driver freshness after launch', () => {
     const res = await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform: 'ios' }),
+      body: JSON.stringify({ platform: 'ios', simulatorDeviceId: 'UDID-1' }),
     });
     const body = (await res.json()) as {
       ok: boolean;

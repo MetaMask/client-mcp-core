@@ -15,11 +15,7 @@ import {
   createDefaultObservation,
 } from '../knowledge-store/knowledge-store.js';
 import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
-import {
-  toolRegistry,
-  getToolCategory,
-  isBrowserOnlyTool,
-} from '../tools/registry.js';
+import { toolRegistry, getToolCategory } from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
 import type {
   StepRecordObservation,
@@ -448,18 +444,16 @@ export function createServer(config: ServerConfig): ServerInstance {
 
     const category = getToolCategory(toolName);
 
-    if (isBrowserOnlyTool(toolName)) {
-      const platformDriver = config.sessionManager.getPlatformDriver?.();
-      if (platformDriver && platformDriver.getPlatform() !== 'browser') {
-        res.json({
-          ok: false,
-          error: {
-            code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
-            message: `Tool "${toolName}" is not supported on ${platformDriver.getPlatform()} platform`,
-          },
-        });
-        return;
-      }
+    const platformDriver = config.sessionManager.getPlatformDriver?.();
+    if (platformDriver && !platformDriver.isToolSupported(toolName)) {
+      res.json({
+        ok: false,
+        error: {
+          code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+          message: `Tool "${toolName}" is not supported on ${platformDriver.getPlatform()} platform`,
+        },
+      });
+      return;
     }
 
     const inputRecord = validatedInput as Record<string, unknown>;
