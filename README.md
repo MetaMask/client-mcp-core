@@ -26,7 +26,7 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
   │  ┌──────────┐  ┌───────────────┐  ┌────────────┐  ┌────────────┐  │
   │  │  Routes  │  │ RequestQueue  │  │   Tool     │  │ Knowledge  │  │
   │  │ /health  │  │ (async mutex) │  │  Registry  │  │   Store    │  │
-  │  │ /status  │  │               │  │  30 tools  │  │            │  │
+  │  │ /status  │  │               │  │  31 tools  │  │            │  │
   │  │ /launch  │  └───────────────┘  └─────┬──────┘  └────────────┘  │
   │  │ /cleanup │                           │                         │
   │  │ /tool/:n │                           ▼                         │
@@ -70,6 +70,34 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
 - **Node.js** `^20 || ^22 || >=24`
 - **TypeScript** `>=5.0` (for consumer type definitions)
 - **Playwright** `^1.49.0` (peer dependency)
+
+## iOS Prerequisites
+
+iOS support requires a macOS host with Xcode installed:
+
+- Xcode Command Line Tools (`xcode-select --install`)
+- Xcode 15+ (for iOS Simulator runtime)
+- Swift toolchain (bundled with Xcode)
+
+On first iOS use, `mm` builds the XCUITest runner and AXSnapshot binary
+locally and caches them at `~/.metamask-mobile-cli/`. Subsequent runs reuse
+the cached binaries. Total first-run build time is typically ~30-60 seconds.
+
+Override binary or cache paths if needed:
+
+- `METAMASK_AXSNAPSHOT_BINARY=<absolute path>` — use a prebuilt AXSnapshot binary
+  instead of the lazy-built one. The override must accept the `--udid <UDID>`
+  CLI argument; binaries built from this repo's `ios-runner/AXSnapshot` always do.
+- `IOS_RUNNER_DERIVED_DATA_PATH=<absolute path>` — use a custom DerivedData
+  cache directory. Must resolve under `~/.metamask-mobile-cli/`.
+
+**Multi-simulator hosts:** macOS hosts running more than one booted simulator
+are fully supported. The TypeScript driver passes the session's device UDID to
+the AXSnapshot binary; the binary resolves the device name via
+`xcrun simctl list devices --json` and matches against the macOS Simulator
+window title (`<DeviceName> – iOS <version>`). If no matching window is found,
+the call fails closed with `MM_IOS_AX_DEVICE_NOT_FOUND` rather than silently
+returning another simulator's accessibility tree.
 
 ## Installation
 
@@ -222,6 +250,10 @@ type ISessionManager = {
   getEnvironmentMode(): EnvironmentMode;
   setContext(context: 'e2e' | 'prod', options?: Record<string, unknown>): void;
   getContextInfo(): { currentContext: 'e2e' | 'prod'; ... };
+
+  // Platform Driver (optional — consumers that support mobile implement these)
+  getPlatformDriver?(): IPlatformDriver | undefined;
+  setPlatformDriver?(driver: IPlatformDriver): void;
 };
 ```
 
@@ -356,6 +388,7 @@ type ToolContext = {
   workflowContext: WorkflowContext;
   knowledgeStore: KnowledgeStore;
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
+  driver?: IPlatformDriver; // cross-platform driver (browser, iOS, Android)
 };
 ```
 
@@ -405,6 +438,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 | **Advanced**             |                                                                                                                                                                                                                                                                                                                                                                                   |
 | `mock_network`           | Adds, clears, lists, and inspects targeted Playwright network mocks on the active browser context. Unmatched same-origin requests are continued unchanged.                                                                                                                                                                                                                        |
 | `cdp`                    | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for cases where structured tools are insufficient (e.g., `Runtime.evaluate`, `Network.enable`). A small set of destructive methods (`Browser.close`, `Target.closeTarget`, etc.) are blocked to protect session state. Categorized as mutating — run `describe_screen` afterward to re-sync.   |
+| `hermes_cdp`             | Sends a raw Chrome DevTools Protocol command to the active iOS Hermes runtime via Metro's inspector proxy. Enforces strict identity verification (appId match, HermesInternal probe, device pin, WebSocket URL validation). Blocked methods: `Runtime.terminateExecution`, `Inspector.detached`. Categorized as mutating. See [Hermes CDP Identity Verification](#hermes-cdp-identity-verification). |
 
 ### Accessibility References
 
@@ -558,6 +592,70 @@ mm describe-screen
 | `mm status`                                                                                                                                      | Displays the daemon's current status: PID, port, uptime, allocated sub-ports, and whether a browser session is active.                                                                                                                                                                                                                                                                  |
 | `mm serve [--background]`                                                                                                                        | Manually starts the HTTP daemon without launching a browser session. Use `--background` to detach the process. Fails if a daemon is already running for this worktree.                                                                                                                                                                                                                  |
 
+### Mobile
+
+The CLI supports iOS sessions via XCUITest + Hermes CDP. See [iOS Prerequisites](#ios-prerequisites) for the macOS/Xcode/Swift setup required on the host.
+
+| Command                                                                              | Description                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm launch --platform ios --device <udid> --app-bundle <path> [options]`              | Launches a MetaMask Mobile session in the iOS simulator. `--device` is the simulator UDID, `--app-bundle` is the path to the built `.app`. `--metro-port` (default 8081) sets the session-scoped Metro inspector proxy port — see Per-Worktree Setup below. Use `--reinstall` to reinstall the app bundle before launch, `--reset-app-data` to clear app data, and `--allow-fox-code-mismatch` to bypass the fox_code compatibility guard. |
+| `mm devices`                                                                         | Lists available iOS simulator UDIDs.                                                                                                                                                                                                                                                          |
+| `mm hermes-cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>]`        | Sends a raw Chrome DevTools Protocol command to the active Hermes runtime via Metro's inspector proxy. Per-call `--metro-port` overrides the session-scoped port. Subject to the safety guarantees documented in [Hermes CDP Identity Verification](#hermes-cdp-identity-verification) below. |
+
+#### Per-Worktree Setup
+
+iOS Hermes uses Metro on a single port (default 8081). When developing across multiple worktrees in parallel (e.g., for separate branches or features), each worktree's Metro process must listen on a distinct port to avoid collisions. Pattern:
+
+```bash
+# Worktree A
+RCT_METRO_PORT=8081 yarn workspace metamask-mobile metro
+mm launch --platform ios --device <udid-A> --app-bundle <path-A> --metro-port 8081
+
+# Worktree B (parallel)
+RCT_METRO_PORT=8082 yarn workspace metamask-mobile metro
+mm launch --platform ios --device <udid-B> --app-bundle <path-B> --metro-port 8082
+```
+
+The `--metro-port` value passed at launch is plumbed to the consumer's `IOSPlatformDriver` (via the consumer's `ISessionManager.launch()` reading `SessionLaunchInput.metroPort`). All subsequent `mm hermes-cdp` calls in that session default to this port, so the per-call `--metro-port` flag becomes optional once the session is configured correctly.
+
+**Not supported:** A single Metro instance shared across multiple simulators running MetaMask. The Hermes target's `appId` would match all simulators, and the `reactNative.logicalDeviceId` field — while distinct per device — does not provide a guaranteed mapping back from a UDID without app-side cooperation. This scenario is now enforced via fail-closed behavior in `mm hermes-cdp`: multiple candidates with different `logicalDeviceId`s return `MM_HERMES_TARGET_NOT_VERIFIED` rather than silently routing to the wrong simulator (see [Hermes CDP Identity Verification](#hermes-cdp-identity-verification) check #4). Use one Metro per worktree.
+
+#### Hermes CDP Identity Verification
+
+The `mm hermes-cdp` tool exposes `Runtime.evaluate` and other Chrome DevTools Protocol methods against the active iOS Hermes runtime. To prevent the tool from accidentally executing against an unrelated React Native app on the same dev machine (e.g., a colleague's workspace or a sample app on a shared Metro), every call enforces strict identity checks:
+
+1. **Strict `appId` match.** Metro's `/json` discovery payload reports the iOS bundle identifier (`appId`) of each debuggable page. The tool selects only the candidate whose `appId` equals the session's bound `appBundleId` (configured on the consumer's `IOSPlatformDriver`). Substring matches and `targets[0]` fallback are rejected.
+2. **`HermesInternal` runtime probe.** Before executing the caller's method, the tool sends a `Runtime.evaluate` of `HermesInternal.getRuntimeProperties()` and verifies the response. Only Hermes runtimes expose this API — non-Hermes targets (e.g., a Chrome inspector page) fail closed with `MM_HERMES_TARGET_NOT_VERIFIED`.
+3. **Device pin.** The first successful call pins the target's `reactNative.logicalDeviceId` to the driver. Subsequent calls within the same session filter Metro discovery by this pin. If the pinned device disappears (app reload bound to a different IDFV, simulator wipe), the tool fails closed with `MM_HERMES_TARGET_NOT_FOUND` rather than silently switching targets.
+4. **Multi-device fail-closed.** If multiple candidates remain after `appId`/pin/capability filtering and they resolve to different `reactNative.logicalDeviceId`s — or if any candidate is missing the field entirely — the tool fails closed with `MM_HERMES_TARGET_NOT_VERIFIED` rather than picking one. The error message includes each candidate's page id and logical device id for diagnosis. Same-device duplicate pages (e.g., a stale page plus a fresh page after an in-app reload) still resolve via the React Native convention that the most recent page registration wins.
+5. **WebSocket URL validation.** The `webSocketDebuggerUrl` advertised by Metro is parsed and validated: protocol must be `ws:`, hostname must be `localhost`/`127.0.0.1`/`::1`, and the port must match the resolved Metro port. Anything else fails closed with `MM_HERMES_UNSAFE_TARGET`.
+
+These checks add ~50 ms of probe latency per call (one extra Metro WebSocket round-trip) but are required for the tool's safety contract.
+
+#### Consumer Responsibilities
+
+`@metamask/client-mcp-core` defines the platform-driver interface; the MetaMask Mobile consumer implements `ISessionManager.launch()` and constructs the `IOSPlatformDriver`. The consumer MUST:
+
+1. **Pass `appBundleId` to `IOSPlatformDriver`** matching the bundle ID of the build being launched:
+   - Production: `io.metamask.MetaMask` (the driver's default if omitted).
+   - Dev builds: `io.metamask.MetaMask.dev`.
+   - QA builds: `io.metamask.MetaMask.qa`.
+   - Any other variant: pass the actual bundle ID.
+
+   If the consumer omits `appBundleId` for a non-prod build, Metro reports the actual bundle ID (e.g., `io.metamask.MetaMask.dev`) but the driver compares against the prod default, so the strict appId filter rejects the real target and `mm hermes-cdp` returns `MM_HERMES_TARGET_NOT_FOUND`.
+
+2. **Forward `SessionLaunchInput.metroPort`** to the `IOSPlatformDriver` constructor:
+
+   ```ts
+   // Inside the consumer's ISessionManager.launch(input) implementation:
+   const driver = new IOSPlatformDriver(client, deviceUdid, {
+     appBundleId: resolveAppBundleId(input), // see #1
+     metroPort: input.metroPort, // session-scoped port from --metro-port
+   });
+   ```
+
+   Without this, `--metro-port` at launch is silently ignored and every `mm hermes-cdp` call must pass its own `--metro-port`.
+
 ### Interaction
 
 | Command                                                                                       | Description                                                                                                                                                                                                                                                                                                                                                                          |
@@ -606,13 +704,14 @@ mm describe-screen
 
 ### Advanced
 
-| Command                                          | Description                                                                                                                                                                             |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mm mock-network add '<json-rule-or-config>'`    | Adds targeted route mocks during an active session. Pass either a single rule, an array of rules, or an object with a `routes` array.                                                   |
-| `mm mock-network clear`                          | Clears route mocks and recorded requests.                                                                                                                                               |
-| `mm mock-network list`                           | Lists active route mocks.                                                                                                                                                               |
-| `mm mock-network requests [--limit <n>]`         | Shows recorded matched and missed requests.                                                                                                                                             |
-| `mm cdp <method> [params-json] [--timeout <ms>]` | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for when structured tools are insufficient. Destructive methods (`Browser.close`, etc.) are blocked. |
+| Command                                                                       | Description                                                                                                                                                                             |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mm mock-network add '<json-rule-or-config>'`                                 | Adds targeted route mocks during an active session. Pass either a single rule, an array of rules, or an object with a `routes` array.                                                   |
+| `mm mock-network clear`                                                       | Clears route mocks and recorded requests.                                                                                                                                               |
+| `mm mock-network list`                                                        | Lists active route mocks.                                                                                                                                                               |
+| `mm mock-network requests [--limit <n>]`                                      | Shows recorded matched and missed requests.                                                                                                                                             |
+| `mm cdp <method> [params-json] [--timeout <ms>]`                              | Sends a raw Chrome DevTools Protocol command against the active page. Escape hatch for when structured tools are insufficient. Destructive methods (`Browser.close`, etc.) are blocked. |
+| `mm hermes-cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>]` | Sends a raw Chrome DevTools Protocol command to the active iOS Hermes runtime via Metro's inspector proxy.                                                                              |
 
 ```bash
 mm cdp Runtime.evaluate '{"expression":"document.title"}'
@@ -630,55 +729,76 @@ For the full agent-facing reference and workflow guidelines, see [SKILL.md](./SK
 
 Tool errors are classified into specific error codes for structured handling:
 
-| Code                             | Meaning                                            |
-| -------------------------------- | -------------------------------------------------- |
-| **Session & Lifecycle**          |                                                    |
-| `MM_NO_ACTIVE_SESSION`           | No browser session running                         |
-| `MM_SESSION_ALREADY_RUNNING`     | Session already exists                             |
-| `MM_LAUNCH_FAILED`               | Browser session launch failed                      |
-| `MM_PAGE_CLOSED`                 | Browser page was closed unexpectedly               |
-| **Build**                        |                                                    |
-| `MM_BUILD_FAILED`                | Extension build failed                             |
-| `MM_DEPENDENCIES_MISSING`        | Required build dependencies not installed          |
-| **Interaction**                  |                                                    |
-| `MM_TARGET_NOT_FOUND`            | Element not found by ref, testId, or selector      |
-| `MM_WAIT_TIMEOUT`                | Timeout waiting for element visibility             |
-| `MM_CLICK_FAILED`                | Click operation failed                             |
-| `MM_CLICK_TIMEOUT`               | Click action timed out (element found, click hung) |
-| `MM_TYPE_FAILED`                 | Type operation failed                              |
-| `MM_TYPE_TIMEOUT`                | Fill action timed out                              |
-| `MM_GETTEXT_FAILED`              | getText operation failed                           |
-| `MM_GETTEXT_TIMEOUT`             | textContent action timed out                       |
-| **Clipboard**                    |                                                    |
-| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser             |
-| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy               |
-| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                         |
-| **Navigation & Tabs**            |                                                    |
-| `MM_NAVIGATION_FAILED`           | Navigation error or network failure                |
-| `MM_NOTIFICATION_TIMEOUT`        | Notification popup did not appear                  |
-| `MM_TAB_NOT_FOUND`               | Tab not found by role or URL                       |
-| **Discovery & State**            |                                                    |
-| `MM_DISCOVERY_FAILED`            | Discovery tool failure                             |
-| `MM_SCREENSHOT_FAILED`           | Screenshot capture failure                         |
-| `MM_STATE_FAILED`                | State retrieval failed                             |
-| **Knowledge**                    |                                                    |
-| `MM_KNOWLEDGE_ERROR`             | Knowledge store operation failed                   |
-| **Contracts**                    |                                                    |
-| `MM_CONTRACT_NOT_FOUND`          | Unknown contract name                              |
-| `MM_SEED_FAILED`                 | Contract deployment failure                        |
-| **Context & Config**             |                                                    |
-| `MM_CONTEXT_SWITCH_BLOCKED`      | Context switch while session is active             |
-| `MM_SET_CONTEXT_FAILED`          | Context switch operation failed                    |
-| `MM_CAPABILITY_NOT_AVAILABLE`    | Feature requires a capability not configured       |
-| `MM_INVALID_INPUT`               | Bad parameters                                     |
-| `MM_INVALID_CONFIG`              | Invalid configuration                              |
-| `MM_PORT_IN_USE`                 | Port already in use                                |
-| **System**                       |                                                    |
-| `MM_UNKNOWN_TOOL`                | Unknown tool name                                  |
-| `MM_INTERNAL_ERROR`              | Internal server error                              |
-| `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded in run_steps    |
-| `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive to session)     |
-| `MM_CDP_FAILED`                  | CDP command execution failed or timed out          |
+| Code                                | Meaning                                               |
+| ----------------------------------- | ----------------------------------------------------- |
+| **Session & Lifecycle**             |                                                       |
+| `MM_NO_ACTIVE_SESSION`              | No browser session running                            |
+| `MM_SESSION_ALREADY_RUNNING`        | Session already exists                                |
+| `MM_LAUNCH_FAILED`                  | Browser session launch failed                         |
+| `MM_PAGE_CLOSED`                    | Browser page was closed unexpectedly                  |
+| **Build**                           |                                                       |
+| `MM_BUILD_FAILED`                   | Extension build failed                                |
+| `MM_DEPENDENCIES_MISSING`           | Required build dependencies not installed             |
+| **Interaction**                     |                                                       |
+| `MM_TARGET_NOT_FOUND`               | Element not found by ref, testId, or selector         |
+| `MM_WAIT_TIMEOUT`                   | Timeout waiting for element visibility                |
+| `MM_CLICK_FAILED`                   | Click operation failed                                |
+| `MM_CLICK_TIMEOUT`                  | Click action timed out (element found, click hung)    |
+| `MM_TYPE_FAILED`                    | Type operation failed                                 |
+| `MM_TYPE_TIMEOUT`                   | Fill action timed out                                 |
+| `MM_GETTEXT_FAILED`                 | getText operation failed                              |
+| `MM_GETTEXT_TIMEOUT`                | textContent action timed out                          |
+| **Clipboard**                       |                                                       |
+| `MM_CLIPBOARD_PERMISSION_DENIED`    | Clipboard permission denied by browser                |
+| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`     | Clipboard blocked by LavaMoat policy                  |
+| `MM_CLIPBOARD_FAILED`               | Clipboard operation failed                            |
+| **Navigation & Tabs**               |                                                       |
+| `MM_NAVIGATION_FAILED`              | Navigation error or network failure                   |
+| `MM_NOTIFICATION_TIMEOUT`           | Notification popup did not appear                     |
+| `MM_TAB_NOT_FOUND`                  | Tab not found by role or URL                          |
+| **Discovery & State**               |                                                       |
+| `MM_DISCOVERY_FAILED`               | Discovery tool failure                                |
+| `MM_SCREENSHOT_FAILED`              | Screenshot capture failure                            |
+| `MM_STATE_FAILED`                   | State retrieval failed                                |
+| **Knowledge**                       |                                                       |
+| `MM_KNOWLEDGE_ERROR`                | Knowledge store operation failed                      |
+| **Contracts**                       |                                                       |
+| `MM_CONTRACT_NOT_FOUND`             | Unknown contract name                                 |
+| `MM_SEED_FAILED`                    | Contract deployment failure                           |
+| **Context & Config**                |                                                       |
+| `MM_CONTEXT_SWITCH_BLOCKED`         | Context switch while session is active                |
+| `MM_SET_CONTEXT_FAILED`             | Context switch operation failed                       |
+| `MM_CAPABILITY_NOT_AVAILABLE`       | Feature requires a capability not configured          |
+| `MM_INVALID_INPUT`                  | Bad parameters                                        |
+| `MM_INVALID_CONFIG`                 | Invalid configuration                                 |
+| `MM_PORT_IN_USE`                    | Port already in use                                   |
+| **Mobile (iOS) — XCUITest**         |                                                       |
+| `MM_IOS_ELEMENT_NOT_FOUND`          | Element not found within timeout                      |
+| `MM_IOS_SNAPSHOT_FAILED`            | XCUITest snapshot command failed                      |
+| `MM_IOS_EMPTY_SNAPSHOT`             | Discovery snapshot empty after rebind retry           |
+| `MM_IOS_RUNNER_RECOVERING`          | XCUITest runner is recovering                         |
+| `MM_IOS_RUNNER_NOT_READY`           | XCUITest runner not yet ready                         |
+| `MM_IOS_APP_IDENTITY_MISMATCH`      | App bundle ID mismatch between session and device     |
+| **Mobile (iOS) — AX Snapshot**      |                                                       |
+| `MM_IOS_AX_PERMISSION_REQUIRED`     | macOS Accessibility permission not granted            |
+| `MM_IOS_AX_BINARY_MISSING`          | AXSnapshot binary unavailable / could not be built    |
+| `MM_IOS_AX_SNAPSHOT_FAILED`         | AXSnapshot binary returned a runtime error            |
+| `MM_IOS_AX_DEVICE_NOT_FOUND`        | No Simulator window matched the session UDID          |
+| **Mobile (iOS) — Hermes CDP**       |                                                       |
+| `MM_HERMES_CONNECTION_FAILED`       | WebSocket connection to Hermes failed                 |
+| `MM_HERMES_TARGET_NOT_FOUND`        | No matching Hermes target in Metro discovery          |
+| `MM_HERMES_TARGET_NOT_VERIFIED`     | Identity verification failed (probe / multi-device)   |
+| `MM_HERMES_UNSAFE_TARGET`           | WebSocket URL failed safety validation                |
+| `MM_HERMES_DEVICE_PIN_MISMATCH`     | Pinned device differs from discovered target          |
+| `MM_HERMES_CDP_BLOCKED`             | Hermes CDP method blocked (destructive)               |
+| `MM_HERMES_CDP_FAILED`              | Hermes CDP command execution failed                   |
+| **System**                          |                                                       |
+| `MM_UNKNOWN_TOOL`                   | Unknown tool name                                     |
+| `MM_INTERNAL_ERROR`                 | Internal server error                                 |
+| `MM_BATCH_TIMEOUT`                  | `batchTimeoutMs` deadline exceeded in run_steps       |
+| `MM_CDP_BLOCKED`                    | CDP method is blocked (destructive to session)        |
+| `MM_CDP_FAILED`                     | CDP command execution failed or timed out             |
+| `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` | Tool not supported on the active platform (e.g., iOS) |
 
 ## Development
 
