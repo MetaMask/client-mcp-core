@@ -9,6 +9,7 @@ import {
   describeScreenTool,
   listTestIdsTool,
 } from './discovery-tools.js';
+import { hermesCdpTool } from './hermes-cdp.js';
 import {
   clickTool,
   getTextTool,
@@ -73,6 +74,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['get_context', getContextTool],
   ['clipboard', clipboardTool],
   ['cdp', cdpTool],
+  ['hermes_cdp', hermesCdpTool],
   ['mock_network', mockNetworkTool],
 ]);
 
@@ -94,6 +96,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   seed_contract: 'mutating',
   seed_contracts: 'mutating',
   cdp: 'mutating',
+  hermes_cdp: 'mutating',
   mock_network: 'mutating',
   // READONLY (10)
   knowledge_last: 'readonly',
@@ -130,20 +133,3 @@ export function getToolCategory(toolName: string): ToolCategory {
   return TOOL_CATEGORIES[toolName] ?? 'mutating';
 }
 
-const BROWSER_ONLY_TOOLS = new Set([
-  'navigate',
-  'switch_to_tab',
-  'close_tab',
-  'wait_for_notification',
-  'cdp',
-]);
-
-/**
- * Checks if a tool is only available on the browser platform.
- *
- * @param toolName - The registered tool name to check.
- * @returns True if the tool is browser-only, false if cross-platform.
- */
-export function isBrowserOnlyTool(toolName: string): boolean {
-  return BROWSER_ONLY_TOOLS.has(toolName);
-}

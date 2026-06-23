@@ -14,6 +14,7 @@ describe('toolRegistry', () => {
       'screenshot',
       'describe_screen',
       'clipboard',
+      'hermes_cdp',
       'mock_network',
       'run_steps',
     ];
@@ -32,7 +33,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(30);
+    expect(toolRegistry.size).toBe(31);
   });
 
   it('stores only functions as values', () => {
@@ -67,6 +68,11 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
 
   it('getToolCategory returns mutating for click', () => {
     expect(getToolCategory('click')).toBe('mutating');
+  });
+
+  it('getToolCategory returns mutating for hermes_cdp and mock_network', () => {
+    expect(getToolCategory('hermes_cdp')).toBe('mutating');
+    expect(getToolCategory('mock_network')).toBe('mutating');
   });
 
   it('getToolCategory returns readonly for knowledge_last', () => {

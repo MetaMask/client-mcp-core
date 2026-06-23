@@ -21,6 +21,9 @@ import type { ToolContext } from '../types/http.js';
 function createMockDriver(
   overrides: Partial<IPlatformDriver> = {},
 ): IPlatformDriver {
+  const { isToolSupported = vi.fn().mockReturnValue(true), ...otherOverrides } =
+    overrides;
+
   return {
     click: vi.fn().mockResolvedValue({ clicked: true, target: 'testId:btn' }),
     type: vi.fn().mockResolvedValue({
@@ -58,7 +61,8 @@ function createMockDriver(
     }),
     getCurrentUrl: vi.fn().mockReturnValue(''),
     getPlatform: vi.fn().mockReturnValue('ios'),
-    ...overrides,
+    ...otherOverrides,
+    isToolSupported,
   };
 }
 

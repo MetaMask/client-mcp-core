@@ -28,6 +28,17 @@ export type LaunchInput = {
   platform?: 'browser' | 'ios' | 'android';
   /** Explicit device ID for mobile platforms (iOS UDID or Android serial). */
   deviceId?: string;
+  simulatorDeviceId?: string;
+  appBundlePath?: string;
+  androidDeviceId?: string;
+  /** Metro inspector proxy port for iOS Hermes CDP (default 8081). */
+  metroPort?: number;
+  /** Uninstall and reinstall the app bundle. Destructive to app container. */
+  reinstall?: boolean;
+  /** Clear app data/container. Destructive to wallet state. */
+  resetAppData?: boolean;
+  /** Bypass fox_code compatibility guard. Use with caution. */
+  allowFoxCodeMismatch?: boolean;
 };
 
 export type CleanupInput = {
@@ -164,6 +175,15 @@ export type CdpInput = {
   params?: Record<string, unknown>;
   /** Always populated after Zod validation (schema default: 30 000). */
   timeoutMs: number;
+};
+
+export type HermesCdpInput = {
+  method: string;
+  params?: Record<string, unknown>;
+  /** Always populated after Zod validation (schema default: 30 000). */
+  timeoutMs: number;
+  /** Per-call Metro dev server port override for Hermes target discovery. */
+  metroPort?: number;
 };
 
 export type NetworkMockResponse = {

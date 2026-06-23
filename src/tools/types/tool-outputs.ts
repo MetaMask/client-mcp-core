@@ -159,6 +159,11 @@ export type CdpResult = {
   result: unknown;
 };
 
+export type HermesCdpResult = {
+  method: string;
+  result: unknown;
+};
+
 export type MockNetworkResult =
   | {
       action: 'add';
