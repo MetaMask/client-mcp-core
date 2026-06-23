@@ -32,6 +32,8 @@ jobs:
           is-high-risk-environment: false
           node-version: ${{ matrix.node-version }}
       - run: yarn build
+      - name: Verify tarball contents contract
+        run: bash scripts/verify-pack-contents.sh
       - name: Require clean working directory
         shell: bash
         run: |

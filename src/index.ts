@@ -3,15 +3,7 @@ export type * from './capabilities/types.js';
 export * from './capabilities/context.js';
 
 // Platform
-export type {
-  PlatformType,
-  IPlatformDriver,
-  ClickActionResult,
-  TypeActionResult,
-  GetTextActionResult,
-  PlatformScreenshotOptions,
-} from './platform';
-export { PlaywrightPlatformDriver } from './platform';
+export * from './platform';
 
 // Session Manager Interface (transport-agnostic)
 export type {
@@ -24,7 +16,7 @@ export type {
 
 // Core Components
 export * from './knowledge-store/knowledge-store.js';
-export * from './tools/utils/discovery.js';
+export { parseAriaSnapshotYaml } from './tools/utils/discovery.js';
 export * from './validation/schemas.js';
 export * from './knowledge-store/tokenization.js';
 
