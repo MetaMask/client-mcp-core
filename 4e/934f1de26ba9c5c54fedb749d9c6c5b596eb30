@@ -1,0 +1,24 @@
+src/platform/ios/types.ts
+  s_a49c05362f1e43::t_0fc908a5a2e57b 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "4e934f1de26ba9c5c54fedb749d9c6c5b596eb30",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_a49c05362f1e43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f0199f5ffeP4oMjDYV00xZ00",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
