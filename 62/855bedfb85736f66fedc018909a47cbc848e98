@@ -1,0 +1,28 @@
+src/validation/schemas.test.ts
+  s_428066e4856374::t_4a71e8cda2e57b 20,462,466-531
+src/validation/schemas.ts
+  s_428066e4856374::t_8ab08ddb8b0004 696-716,721,754
+  s_428066e4856374::t_79c183d68672f0 231,233,243-278
+  s_428066e4856374::t_391f3a28d95cb7 234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "62855bedfb85736f66fedc018909a47cbc848e98",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
