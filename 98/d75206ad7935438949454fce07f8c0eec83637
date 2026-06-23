@@ -1,0 +1,32 @@
+src/cli/mm.test.ts
+  s_428066e4856374::t_44ff74bb7a1103 604-606
+  s_428066e4856374::t_3c6840002a604b 1993-2063,2316-2333,2336
+  s_428066e4856374::t_1bbbebdbf40f2a 79-84,570-603,607-611,648-649
+src/cli/mm.ts
+  s_428066e4856374::t_24be1f6207f006 1488,1495-1499,1547
+  s_428066e4856374::t_0bc5d18057f38b 1359,1361-1365,1420-1426,1434-1463
+  s_428066e4856374::t_62d296839562c9 694-742
+  h_d6a04d82b61d5e 1312
+  s_428066e4856374::t_314790d8c2c1bc 25,167-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "98d75206ad7935438949454fce07f8c0eec83637",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
