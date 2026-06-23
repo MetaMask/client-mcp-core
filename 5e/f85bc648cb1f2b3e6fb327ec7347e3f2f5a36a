@@ -1,0 +1,41 @@
+scripts/build-axsnapshot.sh
+  s_deea310d92cc12::t_d11ef3aeb2ac88 1-7,10-21,34-40,43-44
+  s_428066e4856374::t_c034cef5e30187 8-9,22-33,41-42
+scripts/start-ios-runner.sh
+  h_d6a04d82b61d5e 1-40
+scripts/prepack.sh
+  s_428066e4856374::t_13db00972f0dc6 12
+scripts/build-ios-runner.sh
+  h_d6a04d82b61d5e 1-86
+scripts/build-native-sanity.sh
+  s_deea310d92cc12::t_6c5f4449f91d6f 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "5ef85bc648cb1f2b3e6fb327ec7347e3f2f5a36a",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_deea310d92cc12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f1cc6b8ffewV9u9dBs9DPRcn",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
