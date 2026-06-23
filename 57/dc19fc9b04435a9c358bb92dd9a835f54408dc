@@ -1,0 +1,53 @@
+README.md
+  s_65bc5dfdfcfe6f::t_d9b589e3c9ef60 29
+  s_65bc5dfdfcfe6f::t_29857aaf9060bf 441
+  s_65bc5dfdfcfe6f::t_35805300134653 391
+  s_65bc5dfdfcfe6f::t_63407632041b18 601
+  s_428066e4856374::t_2c87f47c8ea43c 74-101,595-600,602-658,707-714,732-780,782-801
+  s_65bc5dfdfcfe6f::t_e77869bde1c6b9 781
+  s_65bc5dfdfcfe6f::t_0345673032bc9d 253-256
+ios-runner/README.md
+  s_a49c05362f1e43::t_fb463419397bf3 1-127
+SKILL.md
+  s_65bc5dfdfcfe6f::t_4c97f403f0ac9b 694-700,703-711
+  s_428066e4856374::t_1229c4191c3f86 702
+  s_65bc5dfdfcfe6f::t_400a4520d2ff0b 30
+  s_65bc5dfdfcfe6f::t_fa807dc3bc9f70 572-628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "57dc19fc9b04435a9c358bb92dd9a835f54408dc",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_428066e4856374": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_12f9b7da2ffeDJPHvarPsD3YaA",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_65bc5dfdfcfe6f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_10bbe99d0ffeokI6K0bcxpkb2M",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_a49c05362f1e43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_12f0199f5ffeP4oMjDYV00xZ00",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
