@@ -179,7 +179,104 @@ describe('MobilePlatformDriver', () => {
 
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        label: 'OK',
+        type: 'Button',
+      });
+    });
+
+    it('disambiguates same-label elements by type', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([
+        ['e1', 'label:OK|type:Button'],
+        ['e2', 'label:OK|type:StaticText'],
+      ]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        label: 'OK',
+        type: 'Button',
+      });
+
+      await driver.click('a11yRef', 'e2', refMap, 5000);
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        label: 'OK',
+        type: 'StaticText',
+      });
+    });
+
+    it('resolves value|type stable id with type in query', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'value:0.5 ETH|type:StaticText']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        text: '0.5 ETH',
+        type: 'StaticText',
+      });
+    });
+
+    it('ignores unknown pipe segments in stable id', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'label:OK|unknown']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
       expect(backend.tapElement).toHaveBeenCalledWith({ label: 'OK' });
+    });
+
+    it('falls back to identifier for unknown prefix in stable id', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'custom:something|type:Button']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        identifier: 'custom:something',
+        type: 'Button',
+      });
+    });
+
+    it('handles stable id with no pipe segments', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'identifier:submit-btn']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        identifier: 'submit-btn',
+      });
+    });
+
+    it('treats bare string without colon as identifier', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'rawvalue']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        identifier: 'rawvalue',
+      });
+    });
+
+    it('skips non-type keyed pipe segments in stable id', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const refMap = new Map([['e1', 'label:OK|extra:info|type:Button']]);
+
+      await driver.click('a11yRef', 'e1', refMap, 5000);
+
+      expect(backend.tapElement).toHaveBeenCalledWith({
+        label: 'OK',
+        type: 'Button',
+      });
     });
 
     it('throws when timeout budget is exceeded after waitForElement', async () => {

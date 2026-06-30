@@ -436,8 +436,8 @@ function resolveTargetToQuery(
  * @returns The corresponding ElementQuery.
  */
 function parseStableIdentifier(stableId: string): ElementQuery {
-  const pipeIndex = stableId.indexOf('|');
-  const core = pipeIndex >= 0 ? stableId.slice(0, pipeIndex) : stableId;
+  const segments = stableId.split('|');
+  const core = segments[0] as string;
 
   const colonIndex = core.indexOf(':');
   if (colonIndex < 0) {
@@ -446,16 +446,36 @@ function parseStableIdentifier(stableId: string): ElementQuery {
   const prefix = core.slice(0, colonIndex);
   const value = core.slice(colonIndex + 1);
 
+  let query: ElementQuery;
   switch (prefix) {
     case 'identifier':
-      return { identifier: value };
+      query = { identifier: value };
+      break;
     case 'label':
-      return { label: value };
+      query = { label: value };
+      break;
     case 'value':
-      return { text: value };
+      query = { text: value };
+      break;
     default:
-      return { identifier: core };
+      query = { identifier: core };
+      break;
   }
+
+  for (let i = 1; i < segments.length; i++) {
+    const segment = segments[i] as string;
+    const segColonIndex = segment.indexOf(':');
+    if (segColonIndex < 0) {
+      continue;
+    }
+    const key = segment.slice(0, segColonIndex);
+    const val = segment.slice(segColonIndex + 1);
+    if (key === 'type') {
+      query.type = val;
+    }
+  }
+
+  return query;
 }
 
 /**
