@@ -1,7 +1,16 @@
+import {
+  runHermesCdp,
+  HermesSession,
+  fetchDiscoveryTargets,
+  selectHermesTarget,
+  hasAmbiguousTarget,
+  LEGACY_SYNTHETIC_TITLE,
+} from '@metamask/device-mcp';
 import type {
   DeviceBackend,
   DeviceButton,
   ElementQuery,
+  HermesTarget,
   UIElement,
 } from '@metamask/device-mcp';
 
@@ -20,10 +29,26 @@ import type {
   ExtensionState,
 } from '../capabilities/types.js';
 import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
+import { ErrorCodes } from '../tools/types/errors.js';
+import type {
+  CdpInput,
+  HermesTargetsInput,
+} from '../tools/types/tool-inputs.js';
+import type {
+  CdpOutcome,
+  HermesTargetInfo,
+  HermesTargetsResult,
+} from '../tools/types/tool-outputs.js';
 import { OBSERVATION_TESTID_LIMIT } from '../tools/utils/constants.js';
 
 const DEFAULT_BUNDLE_ID = 'io.metamask';
 const APPIUM_STATE_RUNNING_IN_FOREGROUND = '4';
+const HERMES_DISCOVERY_TIMEOUT_MS = 10_000;
+const HERMES_MULTIPLE_DEVICES_CODE = 'HERMES_MULTIPLE_DEVICES';
+// device-mcp returns this code for its destructive-method blocklist
+// (Runtime.terminateExecution, Inspector.detached); mirror it to MM_CDP_BLOCKED
+// so the agent-facing contract matches the browser driver.
+const HERMES_BLOCKED_METHOD_CODE = 'HERMES_BLOCKED_METHOD';
 
 /**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
@@ -36,6 +61,11 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   readonly #bundleId: string;
 
+  // Scoped to this driver instance rather than the process-wide
+  // getHermesSession() singleton so the pinned Hermes deviceId cannot leak
+  // across mobile sessions (e.g. a relaunch against a different simulator).
+  readonly #hermesSession: HermesSession;
+
   /**
    * @param backend - The device-mcp backend to delegate to.
    * @param bundleId - The app bundle ID for getAppState calls.
@@ -43,6 +73,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
   constructor(backend: DeviceBackend, bundleId: string = DEFAULT_BUNDLE_ID) {
     this.#backend = backend;
     this.#bundleId = bundleId;
+    this.#hermesSession = new HermesSession({ platform: backend.platform });
   }
 
   /**
@@ -390,6 +421,161 @@ export class MobilePlatformDriver implements IPlatformDriver {
   }> {
     return this.#backend.getLogs(durationSeconds, filter);
   }
+
+  /**
+   * Send a raw Chrome DevTools Protocol command to the app's React Native
+   * Hermes JS runtime via Metro's inspector proxy. Hermes exposes only the
+   * JS-engine CDP subset (Runtime, Debugger, Log, HeapProfiler) — there is no
+   * DOM/Page/Network domain. Works on both iOS and Android; only the default
+   * appId differs by platform.
+   *
+   * @param input - The CDP method, params, timeout, and optional Metro port /
+   * appId overrides.
+   * @returns A discriminated outcome carrying the raw CDP result or an error,
+   * with the underlying device-mcp `HERMES_*` code preserved in the message.
+   */
+  async cdp(input: CdpInput): Promise<CdpOutcome> {
+    const session = this.#hermesSession;
+    const resolved = session.resolve({
+      metroPort: input.metroPort,
+      appId: input.appId,
+      platform: this.#backend.platform,
+    });
+
+    const outcome = await runHermesCdp({
+      method: input.method,
+      params: input.params,
+      timeoutMs: input.timeoutMs,
+      metroPort: resolved.metroPort,
+      appId: resolved.appId,
+      pinnedDeviceId: resolved.pinnedDeviceId,
+      onPin: (logicalDeviceId) => {
+        if (session.getPinnedHermesDeviceId() === undefined) {
+          session.setPinnedHermesDeviceId(logicalDeviceId);
+        }
+      },
+    });
+
+    if (outcome.ok) {
+      return { ok: true, result: outcome.result };
+    }
+    return {
+      ok: false,
+      code:
+        outcome.code === HERMES_BLOCKED_METHOD_CODE
+          ? ErrorCodes.MM_CDP_BLOCKED
+          : ErrorCodes.MM_CDP_FAILED,
+      message: `[${outcome.code}] ${outcome.message}`,
+    };
+  }
+
+  /**
+   * Lists and diagnoses the debuggable Hermes targets Metro currently exposes,
+   * reporting which target would be chosen (or why selection is ambiguous).
+   *
+   * @param input - Optional Metro port / appId overrides and an `all` flag to
+   * bypass the appId filter for discovery.
+   * @returns A structured report of discovered targets and the selection result.
+   */
+  async hermesTargets(input: HermesTargetsInput): Promise<HermesTargetsResult> {
+    const session = this.#hermesSession;
+    const resolved = session.resolve({
+      metroPort: input.metroPort,
+      appId: input.appId,
+      platform: this.#backend.platform,
+    });
+    const filterBypassed = Boolean(input.all);
+
+    let targets: HermesTarget[];
+    try {
+      targets = await fetchDiscoveryTargets(
+        resolved.metroPort,
+        HERMES_DISCOVERY_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (isMetroDownError(error)) {
+        return {
+          metroPort: resolved.metroPort,
+          expectedAppId: resolved.appId,
+          filterBypassed,
+          metroDown: true,
+          targetsDiscovered: 0,
+          candidates: [],
+        };
+      }
+      throw error;
+    }
+
+    const candidates = input.all
+      ? targets
+      : targets
+          .filter((target) => Boolean(target.webSocketDebuggerUrl))
+          .filter((target) => target.title !== LEGACY_SYNTHETIC_TITLE)
+          .filter((target) => target.appId === resolved.appId);
+
+    const result: HermesTargetsResult = {
+      metroPort: resolved.metroPort,
+      expectedAppId: resolved.appId,
+      filterBypassed,
+      metroDown: false,
+      targetsDiscovered: targets.length,
+      candidates: candidates.map(toHermesTargetInfo),
+    };
+
+    const selection = selectHermesTarget(
+      targets,
+      resolved.appId,
+      resolved.pinnedDeviceId,
+    );
+    if (selection.ok) {
+      result.chosen = {
+        id: selection.target.id,
+        logicalDeviceId: selection.target.reactNative?.logicalDeviceId,
+      };
+    } else if (
+      selection.code === HERMES_MULTIPLE_DEVICES_CODE &&
+      hasAmbiguousTarget(candidates)
+    ) {
+      result.ambiguous = selection.message;
+    } else {
+      result.noTargetReason = {
+        code: selection.code,
+        message: selection.message,
+      };
+    }
+
+    return result;
+  }
+}
+
+/**
+ * Projects a raw Metro Hermes target into the trimmed shape returned to agents.
+ *
+ * @param target - A discovered Hermes target from Metro.
+ * @returns The trimmed target info for the tool response.
+ */
+function toHermesTargetInfo(target: HermesTarget): HermesTargetInfo {
+  return {
+    id: target.id,
+    title: target.title,
+    appId: target.appId,
+    logicalDeviceId: target.reactNative?.logicalDeviceId,
+    nativePageReloads: target.reactNative?.capabilities?.nativePageReloads,
+    webSocketDebuggerUrl: target.webSocketDebuggerUrl,
+  };
+}
+
+/**
+ * Detects the discovery failure that means Metro is not running (or has no
+ * registered app), which callers surface as a soft `metroDown` result rather
+ * than a hard error.
+ *
+ * @param error - The error thrown by Metro target discovery.
+ * @returns True when the failure indicates Metro is unreachable.
+ */
+function isMetroDownError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('ECONNREFUSED') || message.includes('fetch failed');
 }
 
 /**
@@ -610,13 +796,18 @@ async function withTimeout<TResult>(
   if (remainingMs <= 0) {
     throw new Error(`Timeout exceeded before ${operationName}`);
   }
-  return Promise.race([
-    promise,
-    new Promise<never>((_resolve, reject) =>
-      setTimeout(
-        () => reject(new Error(`Timeout exceeded during ${operationName}`)),
-        remainingMs,
-      ),
-    ),
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Timeout exceeded during ${operationName}`)),
+          remainingMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }

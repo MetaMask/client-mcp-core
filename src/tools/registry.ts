@@ -9,6 +9,7 @@ import {
   describeScreenTool,
   listTestIdsTool,
 } from './discovery-tools.js';
+import { hermesTargetsTool } from './hermes.js';
 import {
   clickTool,
   getTextTool,
@@ -37,6 +38,8 @@ import {
   seedContractsTool,
 } from './seeding.js';
 import { getStateTool } from './state.js';
+import { ErrorCodes } from './types/errors.js';
+import type { PlatformType } from '../platform/types.js';
 import type { ToolFunction } from '../types/http.js';
 
 // holds tools with heterogeneous parameter types. TypeScript's contravariant
@@ -73,6 +76,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['get_context', getContextTool],
   ['clipboard', clipboardTool],
   ['cdp', cdpTool],
+  ['hermes_targets', hermesTargetsTool],
   ['mock_network', mockNetworkTool],
 ]);
 
@@ -95,7 +99,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   seed_contracts: 'mutating',
   cdp: 'mutating',
   mock_network: 'mutating',
-  // READONLY (10)
+  // READONLY (11)
+  hermes_targets: 'readonly',
   knowledge_last: 'readonly',
   knowledge_search: 'readonly',
   knowledge_summarize: 'readonly',
@@ -135,7 +140,6 @@ const BROWSER_ONLY_TOOLS = new Set([
   'switch_to_tab',
   'close_tab',
   'wait_for_notification',
-  'cdp',
   'clipboard',
   'mock_network',
   'build',
@@ -149,4 +153,52 @@ const BROWSER_ONLY_TOOLS = new Set([
  */
 export function isBrowserOnlyTool(toolName: string): boolean {
   return BROWSER_ONLY_TOOLS.has(toolName);
+}
+
+const MOBILE_ONLY_TOOLS = new Set(['hermes_targets']);
+
+/**
+ * Checks if a tool is only available on mobile (iOS/Android) platforms.
+ *
+ * @param toolName - The registered tool name to check.
+ * @returns True if the tool is mobile-only, false otherwise.
+ */
+export function isMobileOnlyTool(toolName: string): boolean {
+  return MOBILE_ONLY_TOOLS.has(toolName);
+}
+
+export type PlatformGateError = {
+  code: typeof ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM;
+  message: string;
+};
+
+/**
+ * Single source of truth for browser-only / mobile-only platform gating,
+ * shared by the HTTP route handler and the run_steps batch executor so the two
+ * paths cannot drift on error code or message. An undefined platform (no active
+ * platform driver) is treated as "not mobile", so mobile-only tools are gated.
+ *
+ * @param toolName - The registered tool name being invoked.
+ * @param platform - The active platform driver's platform, or undefined when no
+ * platform driver is available.
+ * @returns A gating error when the tool may not run on the platform, otherwise
+ * undefined.
+ */
+export function checkPlatformGate(
+  toolName: string,
+  platform: PlatformType | undefined,
+): PlatformGateError | undefined {
+  if (isBrowserOnlyTool(toolName) && platform && platform !== 'browser') {
+    return {
+      code: ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      message: `Tool "${toolName}" is not supported on ${platform} platform`,
+    };
+  }
+  if (isMobileOnlyTool(toolName) && (!platform || platform === 'browser')) {
+    return {
+      code: ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      message: `Tool "${toolName}" is only supported on mobile (iOS/Android) platforms`,
+    };
+  }
+  return undefined;
 }

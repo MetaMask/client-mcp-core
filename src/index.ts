@@ -11,7 +11,7 @@ export type {
   GetTextActionResult,
   PlatformScreenshotOptions,
 } from './platform';
-export { PlaywrightPlatformDriver } from './platform';
+export { PlaywrightPlatformDriver, MobilePlatformDriver } from './platform';
 
 // Session Manager Interface (transport-agnostic)
 export type {

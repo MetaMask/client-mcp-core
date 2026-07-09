@@ -159,6 +159,31 @@ export type CdpResult = {
   result: unknown;
 };
 
+export type CdpOutcome =
+  | { ok: true; result: unknown }
+  | { ok: false; code: string; message: string };
+
+export type HermesTargetInfo = {
+  id?: string;
+  title?: string;
+  appId?: string;
+  logicalDeviceId?: string;
+  nativePageReloads?: boolean;
+  webSocketDebuggerUrl?: string;
+};
+
+export type HermesTargetsResult = {
+  metroPort: number;
+  expectedAppId: string;
+  filterBypassed: boolean;
+  metroDown: boolean;
+  targetsDiscovered: number;
+  candidates: HermesTargetInfo[];
+  chosen?: { id?: string; logicalDeviceId?: string };
+  ambiguous?: string;
+  noTargetReason?: { code: string; message: string };
+};
+
 export type MockNetworkResult =
   | {
       action: 'add';

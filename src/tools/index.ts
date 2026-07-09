@@ -4,6 +4,7 @@ export * from './cleanup.js';
 export * from './clipboard.js';
 export * from './context.js';
 export * from './discovery-tools.js';
+export * from './hermes.js';
 export * from './interaction.js';
 export * from './knowledge.js';
 export * from './launch.js';

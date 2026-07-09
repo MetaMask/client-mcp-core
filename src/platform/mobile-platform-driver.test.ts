@@ -137,6 +137,14 @@ describe('MobilePlatformDriver', () => {
       ).rejects.toThrowError('Unknown a11yRef: e99');
     });
 
+    it('throws for an unknown target type', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      await expect(
+        driver.click('bogus' as unknown as 'testId', 'x', new Map(), 5000),
+      ).rejects.toThrowError('Unknown target type: bogus');
+    });
+
     it('resolves a11yRef with no-colon stable id as identifier', async () => {
       const backend = createMockBackend();
       const driver = new MobilePlatformDriver(backend);
