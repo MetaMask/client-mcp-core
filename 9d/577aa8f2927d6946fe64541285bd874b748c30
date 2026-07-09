@@ -1,0 +1,171 @@
+src/validation/schemas.ts
+  s_616105f54dc6ae::t_0c465628a4ab0d 643-645,666-668,673-675
+  s_616105f54dc6ae::t_35392ab743ab17 702
+  s_616105f54dc6ae::t_4574e9e2cf9227 661-665,669-672,676-695
+  s_616105f54dc6ae::t_cf622700368a6c 735
+src/tools/types/errors.ts
+  s_616105f54dc6ae::t_31e6de9a47ac52 46-47
+  s_616105f54dc6ae::t_42c6e3f3ba5f09 48
+  s_9302cf94c6463b::t_3bafd2b41cd604 49-50
+src/tools/types/tool-inputs.ts
+  s_616105f54dc6ae::t_7a922a620b6dae 167-170,172-175
+  s_616105f54dc6ae::t_77574f644a5619 171,176-182
+src/cli/mm.ts
+  s_616105f54dc6ae::t_b9632d03f58a4a 689-701
+  s_616105f54dc6ae::t_fae5524c09a032 1458-1459
+  s_616105f54dc6ae::t_c52c96914adab8 648,651-653,658-659,687-688
+src/tools/hermes.test.ts
+  s_616105f54dc6ae::t_f01dcaa9135f1f 1-2,4,7-32,37-56,68-90,94-103,117
+  s_616105f54dc6ae::t_7af1b9474bc39b 6,33-36,91-93
+  s_616105f54dc6ae::t_ed3d8675142fbf 3,5
+  s_616105f54dc6ae::t_5407e83d644faa 57-67
+  s_616105f54dc6ae::t_56a336ebf96444 104-116
+src/platform/mobile-platform-driver.hermes.test.ts
+  s_9302cf94c6463b::t_de0c68d4151708 12,21
+  s_616105f54dc6ae::t_7af1b9474bc39b 20,193-196,216
+  s_9302cf94c6463b::t_ccbdc3da23eb69 33-37,44-47,50,53-60
+  s_9302cf94c6463b::t_98a5a0224fdae8 48-49,51-52
+  s_616105f54dc6ae::t_33d9cc6347d972 67,72,103,116,119-124,127-159
+  s_616105f54dc6ae::t_fd7664b1c54428 125-126
+  s_616105f54dc6ae::t_cda7373ff8974f 1-11,13-19,22-32,38-43,61-66,68-71,73-102,104-115,117-118,160-192,197-215,217-284
+README.md
+  s_616105f54dc6ae::t_72bcb04d6dbb5b 408
+  s_616105f54dc6ae::t_eba6c4eafcf39a 630,639,642,645,648
+  s_616105f54dc6ae::t_5d269a5efb85e6 664,666-710
+  s_616105f54dc6ae::t_baa72f4a30260f 29
+  s_616105f54dc6ae::t_a34be57fdf7e38 617,627-629,631,640-641,643-644,646-647,649,651-656
+  s_616105f54dc6ae::t_05887b35710069 711-714
+  s_616105f54dc6ae::t_44d4ec6452fb7a 407,409
+  s_28077e6c573bc0::t_100dba05042c03 366-406,611-616,632-638,650,665
+SKILL.md
+  s_616105f54dc6ae::t_11ac85b45c6a37 552,554,557,561-563,566,568-576,582-583
+  s_616105f54dc6ae::t_aed17954610979 585,587-592
+  s_616105f54dc6ae::t_0fa21f7b41d5b2 657-660
+  s_28077e6c573bc0::t_0fafa2af813f65 567,577-581,620-656
+src/tools/cdp.ts
+  s_616105f54dc6ae::t_c00d932bf7932f 1,3,12-16,18-19,21-23,35-36,38-39,44-50
+src/tools/batch.ts
+  s_9302cf94c6463b::t_112038025f174b 163-174,176-177,179-180
+  s_9302cf94c6463b::t_38686eaf66b0dd 1
+src/tools/platform-gating.test.ts
+  s_9302cf94c6463b::t_5dca2ca3dfc31e 3-7
+  s_616105f54dc6ae::t_3998e21833bade 35-36,43-58
+  s_9302cf94c6463b::t_eae8c9b887b34f 33,59-103
+  s_616105f54dc6ae::t_004afc43a2a6f6 32
+  s_7a2f2b2d50619f::t_30e5f4a6b75107 34
+src/tools/types/tool-outputs.ts
+  s_616105f54dc6ae::t_578482f2653d28 163-186
+  s_616105f54dc6ae::t_34fd34e190f020 162
+src/platform/playwright-driver.ts
+  s_616105f54dc6ae::t_cc6431cb2b4a1c 20-23,30-40
+  s_616105f54dc6ae::t_f8d049e0db99a8 301-360
+  s_616105f54dc6ae::t_4aff600c55d2bd 41
+src/platform/mobile-platform-driver.test.ts
+  s_616105f54dc6ae::t_831f800c90da95 140-143,145-147
+  s_616105f54dc6ae::t_ae0d57133a5208 144
+src/platform/types.ts
+  s_616105f54dc6ae::t_e123e03ba3fbfa 6,8-10,12-13
+  s_616105f54dc6ae::t_1124bd4650586f 7,11
+  s_616105f54dc6ae::t_a6a9e7ac0dbb1d 97-98
+  s_616105f54dc6ae::t_f1ddcff41d399b 158-159
+src/index.ts
+  s_72cfd07d56d873::t_4a43da5a4d9990 14
+src/tools/index.ts
+  s_616105f54dc6ae::t_eb1bb519640eac 7
+src/server/create-server.test.ts
+  s_616105f54dc6ae::t_0e3d1b47004345 1876-1927,1948-1969
+  s_616105f54dc6ae::t_855d132c9b1f0e 1928-1947
+src/tools/cdp.test.ts
+  s_616105f54dc6ae::t_a7483177849fb2 1,5,7,10,12-16,22-23,27-31,34-36,38-41,44,46-49,52-53,55,57-60,64-66,68,70-76,78-82,84,86-89,91-95,98-102,104,106,108-113,115-117,119,121-125,128-130,132,134-138
+src/server/create-server.ts
+  s_9302cf94c6463b::t_ca5b1e76bf3b52 21
+  s_9302cf94c6463b::t_34230a44f0dc5b 451-457
+src/tools/batch.test.ts
+  s_616105f54dc6ae::t_6e0c82106f527c 737-832
+  s_9302cf94c6463b::t_bc2eee6dfd1d63 101-118
+  s_616105f54dc6ae::t_b13b2de9e744ea 686-718
+src/tools/hermes.ts
+  s_616105f54dc6ae::t_0ee57303f6e6de 1,3,14-19
+  s_616105f54dc6ae::t_dcec9d871680a1 2,4-13,20-52
+src/tools/registry.test.ts
+  s_616105f54dc6ae::t_786b4360c6aa0f 43
+  s_616105f54dc6ae::t_16e06e11666ae0 25
+  s_616105f54dc6ae::t_4206fd691f2320 106-111,113-119,123-124,127
+  s_616105f54dc6ae::t_f2c7b5a78e892b 26
+  s_616105f54dc6ae::t_3b9ad21825396a 112,120-122
+  s_616105f54dc6ae::t_b2ec26b83a92f9 8
+src/platform/playwright-driver.test.ts
+  s_616105f54dc6ae::t_2b32a03b2278db 482-500
+  s_616105f54dc6ae::t_e9ffab5dff3bd5 387-481,501-527
+src/platform/mobile-platform-driver.ts
+  s_9302cf94c6463b::t_792891b337cef3 779-792
+  s_616105f54dc6ae::t_31fc3a1314ffe8 32,34,38,48-51
+  s_616105f54dc6ae::t_b14c7d66970980 426-430,432-435,437,445,458-469
+  s_9302cf94c6463b::t_a2ab3514f51e61 438
+  s_9302cf94c6463b::t_63307457307615 3
+  s_9302cf94c6463b::t_24386bfd77aec3 481
+  s_616105f54dc6ae::t_7edd32fb426ddd 424-425,431,436,439-444,446-457,470-480,482-578
+  s_616105f54dc6ae::t_47282f46edacf6 1-2,4-8,13,33,35-37,39-41,46-47
+  s_9302cf94c6463b::t_7ccb92d0ef18fe 64-68,76
+src/tools/registry.ts
+  s_616105f54dc6ae::t_9a377843676d73 12
+  s_616105f54dc6ae::t_db25bb31938560 79
+  s_9302cf94c6463b::t_2e8344806ef4a5 41-42
+  s_616105f54dc6ae::t_32e8f371886f96 102-103
+  s_616105f54dc6ae::t_153dc41480ef76 157,159-168
+  s_616105f54dc6ae::t_4aa2c55f42ef21 158
+  s_9302cf94c6463b::t_b00e1a69776c62 169-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d577aa8f2927d6946fe64541285bd874b748c30",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_28077e6c573bc0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0ec4c6222ffeOed5xyOEZEg0Yb",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_616105f54dc6ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_0ec4c6222ffeOed5xyOEZEg0Yb",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_72cfd07d56d873": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1046dbb38ffehZwPmiD6qiOi41",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_7a2f2b2d50619f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0ebec2be9ffeWcFR1u6ltqeW76",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_9302cf94c6463b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_0ebec2be9ffeWcFR1u6ltqeW76",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
