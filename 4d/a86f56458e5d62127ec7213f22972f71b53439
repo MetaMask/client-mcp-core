@@ -1,0 +1,19 @@
+.github/workflows/publish-release.yml
+  s_0239b7cb249ca4::t_6c3bb3b3b64011 50,75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "4da86f56458e5d62127ec7213f22972f71b53439",
+  "prompts": {},
+  "sessions": {
+    "s_0239b7cb249ca4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_0b908aa0effenSMuXB5Btjl4SF",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
