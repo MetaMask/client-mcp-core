@@ -213,10 +213,13 @@ export class MobilePlatformDriver implements IPlatformDriver {
   async screenshot(
     options: PlatformScreenshotOptions,
   ): Promise<ScreenshotResult> {
-    const result = await this.#backend.screenshot();
+    const includeBase64 = options.includeBase64 === true;
+    const result = await this.#backend.screenshot(undefined, {
+      encode: includeBase64,
+    });
     return {
       path: result.path ?? `${options.name}.${result.format}`,
-      base64: '',
+      base64: result.data ?? '',
       width: 0,
       height: 0,
     };
