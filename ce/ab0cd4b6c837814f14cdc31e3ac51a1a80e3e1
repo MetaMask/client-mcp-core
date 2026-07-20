@@ -1,0 +1,16 @@
+.github/zizmor.yml
+  h_d6a04d82b61d5e 1-15
+.github/workflows/publish-release.yml
+  h_d6a04d82b61d5e 53,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ceab0cd4b6c837814f14cdc31e3ac51a1a80e3e1",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
