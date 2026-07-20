@@ -49,6 +49,7 @@ jobs:
       - name: Dry Run Publish
         uses: MetaMask/action-npm-publish@18df42148c35aabb98e00f9fda127d421af141df # v6
         with:
+          dry-run: true
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           subteam: S042S7RE4AE
         env:
