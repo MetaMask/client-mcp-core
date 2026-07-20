@@ -105,7 +105,7 @@
     "@playwright/test": "^1.49.0",
     "playwright": "^1.49.0"
   },
-  "packageManager": "yarn@4.16.0",
+  "packageManager": "yarn@4.16.0+sha256.ba05224324578801b9cc98170d64aa50b9a36733b440fb0942306da3fbbdc7d1",
   "engines": {
     "node": "^20 || ^22 || >=24"
   },
