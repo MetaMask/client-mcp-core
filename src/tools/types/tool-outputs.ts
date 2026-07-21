@@ -5,6 +5,9 @@ import type {
   NetworkMockRouteRule,
   NetworkMockSummary,
   TabRole,
+  WebSocketMockDefinition,
+  WebSocketMockMessageRecord,
+  WebSocketMockSummary,
 } from './tool-inputs.js';
 import type { ExtensionState } from '../../capabilities/types.js';
 
@@ -180,6 +183,29 @@ export type MockNetworkResult =
       action: 'requests';
       requests: NetworkMockRequestRecord[];
       summary: NetworkMockSummary;
+    };
+
+export type MockWebSocketResult =
+  | {
+      action: 'add';
+      added: number;
+      mocks: WebSocketMockDefinition[];
+      summary: WebSocketMockSummary;
+    }
+  | {
+      action: 'clear';
+      cleared: boolean;
+      summary: WebSocketMockSummary;
+    }
+  | {
+      action: 'list';
+      mocks: WebSocketMockDefinition[];
+      summary: WebSocketMockSummary;
+    }
+  | {
+      action: 'messages';
+      messages: WebSocketMockMessageRecord[];
+      summary: WebSocketMockSummary;
     };
 
 export type SetContextResult = {

@@ -17,6 +17,8 @@ import {
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   launchInputSchema,
+  webSocketMockDefinitionSchema,
+  mockWebSocketInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -461,5 +463,129 @@ describe('launchInputSchema', () => {
       expect(result.data.platform).toBeUndefined();
       expect(result.data.deviceId).toBeUndefined();
     }
+  });
+});
+
+describe('webSocketMockDefinitionSchema', () => {
+  const baseMock = {
+    url: 'wss://api.example.com/ws',
+    rules: [{ id: 'rule-1', match: { includes: 'hello' } }],
+  };
+
+  it('accepts a valid wss URL without wildcards', () => {
+    const result = webSocketMockDefinitionSchema.safeParse(baseMock);
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a valid ws URL without wildcards', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'ws://api.example.com/ws',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a wss URL containing double asterisk wildcard', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'wss://example.com/**',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(
+        'Wildcard patterns are not supported for WebSocket URLs; use an exact ws:// or wss:// URL',
+      );
+    }
+  });
+
+  it('rejects a wss URL containing single asterisk wildcard', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'wss://example.com/*/ws',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(
+        'Wildcard patterns are not supported for WebSocket URLs; use an exact ws:// or wss:// URL',
+      );
+    }
+  });
+
+  it('rejects non-WebSocket URLs', () => {
+    const result = webSocketMockDefinitionSchema.safeParse({
+      ...baseMock,
+      url: 'https://example.com/ws',
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('mockWebSocketInputSchema', () => {
+  const validMock = {
+    url: 'wss://api.example.com/ws',
+    rules: [{ id: 'rule-1', match: { includes: 'hello' } }],
+  };
+
+  it('accepts add with mock only', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+      mock: validMock,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts add with mocks only', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+      mocks: [validMock],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects add with both mock and mocks', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+      mock: validMock,
+      mocks: [validMock],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects add with neither mock nor mocks', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'add',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts clear action', () => {
+    const result = mockWebSocketInputSchema.safeParse({ action: 'clear' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts list action', () => {
+    const result = mockWebSocketInputSchema.safeParse({ action: 'list' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts messages action with optional limit', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'messages',
+      limit: 50,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects messages action with limit exceeding 500', () => {
+    const result = mockWebSocketInputSchema.safeParse({
+      action: 'messages',
+      limit: 501,
+    });
+    expect(result.success).toBe(false);
   });
 });

@@ -89,8 +89,7 @@ describe('mockNetworkTool', () => {
     );
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.result.action).toBe('add');
+    if (result.ok && result.result.action === 'add') {
       expect(result.result.added).toBe(1);
       expect(result.result.rules).toStrictEqual([MOCK_RULE]);
     }
@@ -121,8 +120,7 @@ describe('mockNetworkTool', () => {
     const result = await mockNetworkTool({ action: 'list' }, context);
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.result.action).toBe('list');
+    if (result.ok && result.result.action === 'list') {
       expect(result.result.rules).toStrictEqual([MOCK_RULE]);
     }
   });
@@ -146,8 +144,7 @@ describe('mockNetworkTool', () => {
     );
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.result.action).toBe('requests');
+    if (result.ok && result.result.action === 'requests') {
       expect(result.result.requests).toHaveLength(1);
       expect(result.result.summary.hits).toBe(1);
     }

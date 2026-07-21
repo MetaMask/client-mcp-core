@@ -24,8 +24,10 @@ import {
   sendRequest,
   routeCommand,
   routeMockNetworkCommand,
+  routeMockWebSocketCommand,
   parseJsonArgument,
   normalizeMockNetworkAddPayload,
+  normalizeMockWebSocketAddPayload,
   resolveWorktreeRoot,
   readDaemonConfig,
   shutdownDaemon,
@@ -425,6 +427,23 @@ describe('normalizeMockNetworkAddPayload', () => {
   it('returns rule for single rule objects', () => {
     const rule = { id: 'rule' };
     expect(normalizeMockNetworkAddPayload(rule)).toStrictEqual({ rule });
+  });
+});
+
+describe('normalizeMockWebSocketAddPayload', () => {
+  it('extracts mocks from a config object', () => {
+    expect(normalizeMockWebSocketAddPayload({ mocks: [1] })).toStrictEqual({
+      mocks: [1],
+    });
+  });
+
+  it('wraps an array as mocks', () => {
+    expect(normalizeMockWebSocketAddPayload([1])).toStrictEqual({ mocks: [1] });
+  });
+
+  it('wraps a plain object as a single mock', () => {
+    const mock = { url: 'wss://example.com/ws', rules: [] };
+    expect(normalizeMockWebSocketAddPayload(mock)).toStrictEqual({ mock });
   });
 });
 
@@ -1874,6 +1893,85 @@ describe('routeCommand', () => {
     ).rejects.toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining('Usage: mm mock-network'),
+    );
+  });
+
+  it('routes mock-websocket add with a JSON mock', async () => {
+    const mock = {
+      url: 'wss://api.hyperliquid.xyz/ws',
+      rules: [{ id: 'test', match: { includes: 'subscribe' }, respond: {} }],
+    };
+    await routeCommand('mock-websocket', ['add', JSON.stringify(mock)], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_websocket',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'add', mock }),
+      }),
+    );
+  });
+
+  it('routes mock-websocket add with a JSON config containing mocks array', async () => {
+    const mock = {
+      url: 'wss://api.hyperliquid.xyz/ws',
+      rules: [{ id: 'test', match: { includes: 'subscribe' }, respond: {} }],
+    };
+    await routeMockWebSocketCommand(
+      ['add', JSON.stringify({ mocks: [mock] })],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_websocket',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'add', mocks: [mock] }),
+      }),
+    );
+  });
+
+  it('routes mock-websocket clear', async () => {
+    await routeCommand('mock-websocket', ['clear'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_websocket',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'clear' }),
+      }),
+    );
+  });
+
+  it('routes mock-websocket list', async () => {
+    await routeCommand('mock-websocket', ['list'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_websocket',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'list' }),
+      }),
+    );
+  });
+
+  it('routes mock-websocket messages with limit', async () => {
+    await routeCommand('mock-websocket', ['messages', '--limit', '10'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_websocket',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'messages', limit: 10 }),
+      }),
+    );
+  });
+
+  it('exits when mock-websocket add has no payload', async () => {
+    await expect(
+      routeCommand('mock-websocket', ['add'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm mock-websocket add'),
+    );
+  });
+
+  it('exits when mock-websocket has an unknown action', async () => {
+    await expect(
+      routeCommand('mock-websocket', ['unknown'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm mock-websocket'),
     );
   });
 
