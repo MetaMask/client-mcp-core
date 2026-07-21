@@ -1,0 +1,27 @@
+src/platform/mobile-platform-driver.ts
+  s_d0e981123d1bbf::t_020ab3843f03e6 216-219,222
+src/platform/mobile-platform-driver.test.ts
+  s_d0e981123d1bbf::t_28b0d6432e79e5 41-47,676-678,682-684,693-705
+  s_d0e981123d1bbf::t_99e78e52b41704 706-707
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "27ceb0cd71496c1d11939347ecd0ac7f056be331",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_d0e981123d1bbf": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0b8643682ffeMXit6EdWMEPqAk",
+        "model": "gpt-5.5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
