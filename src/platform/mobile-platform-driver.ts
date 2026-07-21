@@ -437,7 +437,7 @@ function resolveTargetToQuery(
  */
 function parseStableIdentifier(stableId: string): ElementQuery {
   const segments = stableId.split('|');
-  const core = segments[0] as string;
+  const core = segments[0];
 
   const colonIndex = core.indexOf(':');
   if (colonIndex < 0) {
@@ -463,7 +463,7 @@ function parseStableIdentifier(stableId: string): ElementQuery {
   }
 
   for (let i = 1; i < segments.length; i++) {
-    const segment = segments[i] as string;
+    const segment = segments[i];
     const segColonIndex = segment.indexOf(':');
     if (segColonIndex < 0) {
       continue;
