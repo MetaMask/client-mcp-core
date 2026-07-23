@@ -1,0 +1,21 @@
+src/server/create-server.test.ts
+  s_8684ea6d4aaf4e::t_2f917efa88f866 118
+  s_8684ea6d4aaf4e::t_ed973bc1dd1f3d 1828,1833
+  s_8684ea6d4aaf4e::t_616af05d30ea40 1949
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "bd0d9514e7b5961639968dcad7fc6b5019145bb0",
+  "prompts": {},
+  "sessions": {
+    "s_8684ea6d4aaf4e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_070a7fb92ffe9HpQ0dQa07BDAT",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
