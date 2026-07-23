@@ -39,8 +39,8 @@ export type ScreenshotOptions = {
 export type ScreenshotResult = {
   path: string;
   base64: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
 };
 
 export type ScreenName = string;

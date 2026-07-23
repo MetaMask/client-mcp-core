@@ -673,7 +673,7 @@ describe('MobilePlatformDriver', () => {
   });
 
   describe('screenshot', () => {
-    it('skips base64 encoding by default and returns zero dimensions', async () => {
+    it('skips base64 encoding by default and omits unavailable dimensions', async () => {
       const backend = createMockBackend();
       const driver = new MobilePlatformDriver(backend);
 
@@ -685,8 +685,6 @@ describe('MobilePlatformDriver', () => {
       expect(result).toStrictEqual({
         path: '/tmp/screenshot.png',
         base64: '',
-        width: 0,
-        height: 0,
       });
     });
 

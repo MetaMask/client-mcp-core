@@ -208,7 +208,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * @param options - Screenshot options.
-   * @returns Screenshot result with path and placeholder dimensions.
+   * @returns Screenshot result with the path and optional base64 data.
    */
   async screenshot(
     options: PlatformScreenshotOptions,
@@ -220,8 +220,6 @@ export class MobilePlatformDriver implements IPlatformDriver {
     return {
       path: result.path ?? `${options.name}.${result.format}`,
       base64: result.data ?? '',
-      width: 0,
-      height: 0,
     };
   }
 
