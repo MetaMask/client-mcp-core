@@ -280,5 +280,59 @@ describe('MobilePlatformDriver hermes delegation', () => {
       expect(result.filterBypassed).toBe(true);
       expect(result.candidates).toHaveLength(1);
     });
+
+    it('uses appId-filtered candidates for ambiguity when all targets are displayed', async () => {
+      const matchingTargets = [
+        {
+          id: 'page-1',
+          title: 'MetaMask',
+          appId: 'io.metamask',
+          webSocketDebuggerUrl: 'ws://localhost:8081/a',
+          reactNative: { logicalDeviceId: 'dev-1' },
+        },
+        {
+          id: 'page-2',
+          title: 'MetaMask',
+          appId: 'io.metamask',
+          webSocketDebuggerUrl: 'ws://localhost:8081/b',
+          reactNative: { logicalDeviceId: 'dev-2' },
+        },
+      ];
+      const otherAppTarget = {
+        id: 'page-3',
+        title: 'Other App',
+        appId: 'other.app',
+        webSocketDebuggerUrl: 'ws://localhost:8081/c',
+        reactNative: { logicalDeviceId: 'dev-3' },
+      };
+      const targets = [...matchingTargets, otherAppTarget];
+      mocks.fetchDiscoveryTargets.mockResolvedValue(targets);
+      mocks.selectHermesTarget.mockReturnValue({
+        ok: false,
+        code: 'HERMES_MULTIPLE_DEVICES',
+        message: 'Ambiguous Hermes target',
+      });
+      mocks.hasAmbiguousTarget.mockImplementation(
+        (candidates) =>
+          candidates.length === 2 &&
+          candidates.every((target) => target.appId === 'io.metamask'),
+      );
+      const driver = new MobilePlatformDriver(createBackend());
+
+      const result = await driver.hermesTargets({ all: true });
+
+      expect(result.candidates.map(({ appId }) => appId)).toStrictEqual([
+        'io.metamask',
+        'io.metamask',
+        'other.app',
+      ]);
+      expect(result.ambiguous).toBe('Ambiguous Hermes target');
+      expect(mocks.selectHermesTarget).toHaveBeenCalledWith(
+        targets,
+        'io.metamask',
+        undefined,
+      );
+      expect(mocks.hasAmbiguousTarget).toHaveBeenCalledWith(matchingTargets);
+    });
   });
 });

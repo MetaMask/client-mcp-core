@@ -509,12 +509,16 @@ export class MobilePlatformDriver implements IPlatformDriver {
       throw error;
     }
 
-    const candidates = input.all
-      ? targets
-      : targets
-          .filter((target) => Boolean(target.webSocketDebuggerUrl))
-          .filter((target) => target.title !== LEGACY_SYNTHETIC_TITLE)
-          .filter((target) => target.appId === resolved.appId);
+    const selectionCandidates = targets
+      .filter((target) => Boolean(target.webSocketDebuggerUrl))
+      .filter((target) => target.title !== LEGACY_SYNTHETIC_TITLE)
+      .filter((target) => target.appId === resolved.appId)
+      .filter(
+        (target) =>
+          !resolved.pinnedDeviceId ||
+          target.reactNative?.logicalDeviceId === resolved.pinnedDeviceId,
+      );
+    const displayCandidates = input.all ? targets : selectionCandidates;
 
     const result: HermesTargetsResult = {
       metroPort: resolved.metroPort,
@@ -522,7 +526,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
       filterBypassed,
       metroDown: false,
       targetsDiscovered: targets.length,
-      candidates: candidates.map(toHermesTargetInfo),
+      candidates: displayCandidates.map(toHermesTargetInfo),
     };
 
     const selection = selectHermesTarget(
@@ -537,7 +541,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
       };
     } else if (
       selection.code === HERMES_MULTIPLE_DEVICES_CODE &&
-      hasAmbiguousTarget(candidates)
+      hasAmbiguousTarget(selectionCandidates)
     ) {
       result.ambiguous = selection.message;
     } else {
