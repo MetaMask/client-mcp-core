@@ -1,0 +1,19 @@
+src/tools/screenshot.test.ts
+  s_5f69531af3a7af::t_64ecfe0e87b2cf 90-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "3066487756b59d22b8822ea90404e6f8731cf53a",
+  "prompts": {},
+  "sessions": {
+    "s_5f69531af3a7af": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0710e24cbffe4422E01DsM5ZsW",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
