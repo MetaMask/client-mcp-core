@@ -1,0 +1,19 @@
+src/tools/discovery-tools.test.ts
+  s_5f69531af3a7af::t_51c355a5bb5b9c 345-373
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "2136b705ca8c96ba11b936ea97dff0be327ff056",
+  "prompts": {},
+  "sessions": {
+    "s_5f69531af3a7af": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0710e24cbffe4422E01DsM5ZsW",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
