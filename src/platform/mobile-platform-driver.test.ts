@@ -38,7 +38,7 @@ function createMockBackend(
       bundleId: 'io.metamask',
       state: 'Running',
     }),
-    screenshot: vi.fn().mockImplementation((_outputPath, options) =>
+    screenshot: vi.fn().mockImplementation(async (_outputPath, options) =>
       Promise.resolve({
         data: options?.encode === false ? undefined : 'base64data',
         format: 'png' as const,
