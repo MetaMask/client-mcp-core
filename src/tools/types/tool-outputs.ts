@@ -57,8 +57,8 @@ export type AccessibilitySnapshotResult = {
 
 export type ScreenshotInfo = {
   path: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   base64?: string | null;
 } | null;
 
@@ -77,8 +77,8 @@ export type DescribeScreenResult = {
 
 export type ScreenshotToolResult = {
   path: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   base64?: string;
 };
 
