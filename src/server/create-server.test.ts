@@ -115,6 +115,7 @@ function createMockSessionManager() {
       capabilities: { available: [] },
       canSwitchContext: true,
     })),
+    getPlatformDriver: vi.fn().mockReturnValue(undefined),
   };
 }
 
@@ -1824,14 +1825,12 @@ describe('createServer observation driver freshness after launch', () => {
     };
 
     mockSM = createMockSessionManager();
-    const getPlatformDriverMock = vi.fn().mockReturnValue(undefined);
-    (mockSM as Record<string, unknown>).getPlatformDriver =
-      getPlatformDriverMock;
+    mockSM.getPlatformDriver.mockReturnValue(undefined);
     // Session starts inactive; launch activates it and sets the mobile driver
     mockSM.hasActiveSession.mockReturnValue(false);
     mockSM.launch.mockImplementation(async () => {
       mockSM.hasActiveSession.mockReturnValue(true);
-      getPlatformDriverMock.mockReturnValue(mobileDriver);
+      mockSM.getPlatformDriver.mockReturnValue(mobileDriver);
       return {
         sessionId: 'mobile-session',
         extensionId: 'io.metamask',
@@ -1872,5 +1871,97 @@ describe('createServer observation driver freshness after launch', () => {
     expect(mobileDriver.getTestIds).toHaveBeenCalled();
     expect(mobileDriver.getAccessibilityTree).toHaveBeenCalled();
     expect(body.observations).toBeDefined();
+  });
+
+  it('blocks browser-only tools on a mobile platform', async () => {
+    await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'ios' }),
+    });
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/navigate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ screen: 'home' }),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string };
+    };
+
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+  });
+
+  it('lets mobile-only tools pass platform gating on a mobile platform', async () => {
+    await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'ios' }),
+    });
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/hermes_targets`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string };
+    };
+
+    // Gating passes (platform is mobile); the mock driver has no hermesTargets
+    // method, so the tool itself reports MM_HERMES_NOT_AVAILABLE rather than the
+    // platform-gating error.
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_HERMES_NOT_AVAILABLE');
+  });
+
+  it('blocks mobile-only tools when no platform driver is present', async () => {
+    mockSM.hasActiveSession.mockReturnValue(true);
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/hermes_targets`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string };
+    };
+
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+  });
+
+  it('blocks mobile-only tools on a browser platform', async () => {
+    mockSM.hasActiveSession.mockReturnValue(true);
+    mockSM.getPlatformDriver.mockReturnValue({ getPlatform: () => 'browser' });
+
+    const res = await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/hermes_targets`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: { code: string };
+    };
+
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
   });
 });

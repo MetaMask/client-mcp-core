@@ -43,6 +43,11 @@ export const ErrorCodes = {
   MM_CDP_BLOCKED: 'MM_CDP_BLOCKED',
   MM_CDP_FAILED: 'MM_CDP_FAILED',
 
+  MM_HERMES_FAILED: 'MM_HERMES_FAILED', // underlying device-mcp HERMES_* code is preserved in the message
+  MM_HERMES_NOT_AVAILABLE: 'MM_HERMES_NOT_AVAILABLE', // hermes tools require a mobile (iOS/Android) driver
+
+  MM_TOOL_NOT_SUPPORTED_ON_PLATFORM: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM', // tool gated off the active platform (browser-only / mobile-only)
+
   MM_UNKNOWN_TOOL: 'MM_UNKNOWN_TOOL',
   MM_INTERNAL_ERROR: 'MM_INTERNAL_ERROR',
 } as const;

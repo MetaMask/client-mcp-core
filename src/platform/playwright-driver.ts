@@ -17,11 +17,27 @@ import type {
 import type { ISessionManager } from '../server/session-manager.js';
 import { isPageClosedError } from '../tools/error-classification.js';
 import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
+import { ErrorCodes } from '../tools/types/errors.js';
+import type { CdpInput } from '../tools/types/tool-inputs.js';
+import type { CdpOutcome } from '../tools/types/tool-outputs.js';
+import { withCdpSession } from '../tools/utils/cdp.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
   waitForTarget,
 } from '../tools/utils/discovery.js';
+
+/**
+ * Browser CDP methods that would destroy the page/session and break every
+ * other tool. Kept intentionally small — `cdp` is an escape hatch, not a
+ * sandbox.
+ */
+const CDP_BLOCKED_METHODS = new Set([
+  'Browser.close',
+  'Target.closeTarget',
+  'Target.disposeBrowserContext',
+  'Browser.crashGpuProcess',
+]);
 
 /**
  * Platform driver implementation for Playwright-based browser automation.
@@ -281,5 +297,65 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    */
   getPlatform(): PlatformType {
     return 'browser';
+  }
+
+  /**
+   * Send a raw Chrome DevTools Protocol command against the active page over a
+   * short-lived CDP session. The browser exposes the full Chrome CDP surface
+   * (Runtime, DOM, Network, Page, ...). Destructive methods are blocked.
+   *
+   * @param input - The CDP method, params, and per-command timeout. The
+   * `metroPort` / `appId` fields are mobile-only and ignored here.
+   * @returns A discriminated outcome carrying the raw CDP result or an error.
+   */
+  async cdp(input: CdpInput): Promise<CdpOutcome> {
+    if (CDP_BLOCKED_METHODS.has(input.method)) {
+      return {
+        ok: false,
+        code: ErrorCodes.MM_CDP_BLOCKED,
+        message:
+          `CDP method "${input.method}" is blocked because it would destroy the browser session. ` +
+          `Blocked methods: ${[...CDP_BLOCKED_METHODS].join(', ')}`,
+      };
+    }
+
+    const page = this.#getPage();
+    try {
+      const result = await withCdpSession(page, async (cdpSession) => {
+        const send = cdpSession.send.bind(cdpSession) as (
+          method: string,
+          params?: Record<string, unknown>,
+        ) => Promise<unknown>;
+
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            send(input.method, input.params ?? {}),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `CDP call "${input.method}" timed out after ${input.timeoutMs}ms`,
+                    ),
+                  ),
+                input.timeoutMs,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+
+      return { ok: true, result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        code: ErrorCodes.MM_CDP_FAILED,
+        message: `CDP "${input.method}" failed: ${message}`,
+      };
+    }
   }
 }

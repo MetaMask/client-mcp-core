@@ -164,6 +164,22 @@ export type CdpInput = {
   params?: Record<string, unknown>;
   /** Always populated after Zod validation (schema default: 30 000). */
   timeoutMs: number;
+  /**
+   * Mobile only: override the Metro inspector proxy port for the Hermes
+   * runtime. Ignored on the browser platform.
+   */
+  metroPort?: number;
+  /**
+   * Mobile only: override the expected app bundle identifier when selecting
+   * the Hermes debug target. Ignored on the browser platform.
+   */
+  appId?: string;
+};
+
+export type HermesTargetsInput = {
+  metroPort?: number;
+  appId?: string;
+  all?: boolean;
 };
 
 export type NetworkMockResponse = {

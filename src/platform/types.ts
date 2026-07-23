@@ -3,6 +3,14 @@ import type {
   ExtensionState,
 } from '../capabilities/types.js';
 import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
+import type {
+  CdpInput,
+  HermesTargetsInput,
+} from '../tools/types/tool-inputs.js';
+import type {
+  CdpOutcome,
+  HermesTargetsResult,
+} from '../tools/types/tool-outputs.js';
 
 export type PlatformType = 'browser' | 'ios' | 'android';
 
@@ -86,6 +94,8 @@ export type IPlatformDriver = {
 
   getPlatform(): PlatformType;
 
+  cdp(input: CdpInput): Promise<CdpOutcome>;
+
   // ---- Mobile-specific (optional) ----
 
   swipe?(
@@ -145,4 +155,6 @@ export type IPlatformDriver = {
     entries: { timestamp: string; level: string; message: string }[];
     source: string;
   }>;
+
+  hermesTargets?(input: HermesTargetsInput): Promise<HermesTargetsResult>;
 };

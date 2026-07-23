@@ -57,8 +57,8 @@ export type AccessibilitySnapshotResult = {
 
 export type ScreenshotInfo = {
   path: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   base64?: string | null;
 } | null;
 
@@ -77,8 +77,8 @@ export type DescribeScreenResult = {
 
 export type ScreenshotToolResult = {
   path: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   base64?: string;
 };
 
@@ -157,6 +157,31 @@ export type ClipboardResult = {
 export type CdpResult = {
   method: string;
   result: unknown;
+};
+
+export type CdpOutcome =
+  | { ok: true; result: unknown }
+  | { ok: false; code: string; message: string };
+
+export type HermesTargetInfo = {
+  id?: string;
+  title?: string;
+  appId?: string;
+  logicalDeviceId?: string;
+  nativePageReloads?: boolean;
+  webSocketDebuggerUrl?: string;
+};
+
+export type HermesTargetsResult = {
+  metroPort: number;
+  expectedAppId: string;
+  filterBypassed: boolean;
+  metroDown: boolean;
+  targetsDiscovered: number;
+  candidates: HermesTargetInfo[];
+  chosen?: { id?: string; logicalDeviceId?: string };
+  ambiguous?: string;
+  noTargetReason?: { code: string; message: string };
 };
 
 export type MockNetworkResult =
