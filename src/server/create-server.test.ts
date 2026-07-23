@@ -115,6 +115,7 @@ function createMockSessionManager() {
       capabilities: { available: [] },
       canSwitchContext: true,
     })),
+    getPlatformDriver: vi.fn().mockReturnValue(undefined),
   };
 }
 
@@ -1824,14 +1825,12 @@ describe('createServer observation driver freshness after launch', () => {
     };
 
     mockSM = createMockSessionManager();
-    const getPlatformDriverMock = vi.fn().mockReturnValue(undefined);
-    (mockSM as Record<string, unknown>).getPlatformDriver =
-      getPlatformDriverMock;
+    mockSM.getPlatformDriver.mockReturnValue(undefined);
     // Session starts inactive; launch activates it and sets the mobile driver
     mockSM.hasActiveSession.mockReturnValue(false);
     mockSM.launch.mockImplementation(async () => {
       mockSM.hasActiveSession.mockReturnValue(true);
-      getPlatformDriverMock.mockReturnValue(mobileDriver);
+      mockSM.getPlatformDriver.mockReturnValue(mobileDriver);
       return {
         sessionId: 'mobile-session',
         extensionId: 'io.metamask',
@@ -1947,9 +1946,7 @@ describe('createServer observation driver freshness after launch', () => {
 
   it('blocks mobile-only tools on a browser platform', async () => {
     mockSM.hasActiveSession.mockReturnValue(true);
-    (
-      mockSM.getPlatformDriver as unknown as ReturnType<typeof vi.fn>
-    ).mockReturnValue({ getPlatform: () => 'browser' });
+    mockSM.getPlatformDriver.mockReturnValue({ getPlatform: () => 'browser' });
 
     const res = await httpRequest(
       `http://127.0.0.1:${state.port}/tool/hermes_targets`,
