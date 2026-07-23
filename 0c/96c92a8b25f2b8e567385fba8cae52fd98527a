@@ -1,0 +1,24 @@
+src/tools/driver-delegation.test.ts
+  s_8684ea6d4aaf4e::t_0d91d94d1855cb 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "0c96c92a8b25f2b8e567385fba8cae52fd98527a",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  },
+  "sessions": {
+    "s_8684ea6d4aaf4e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_070a7fb92ffe9HpQ0dQa07BDAT",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
