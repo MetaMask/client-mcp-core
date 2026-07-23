@@ -1,0 +1,19 @@
+src/platform/mobile-platform-driver.ts
+  s_5f69531af3a7af::t_f468d66af63a78 211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "cace4a8392167ed6c5187d48202ef62b37cd02ed",
+  "prompts": {},
+  "sessions": {
+    "s_5f69531af3a7af": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0710e24cbffe4422E01DsM5ZsW",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
