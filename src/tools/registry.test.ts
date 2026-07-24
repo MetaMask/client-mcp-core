@@ -5,6 +5,7 @@ import {
   TOOL_CATEGORIES,
   getToolCategory,
   isBrowserOnlyTool,
+  isMobileOnlyTool,
 } from './registry.js';
 
 describe('toolRegistry', () => {
@@ -21,6 +22,8 @@ describe('toolRegistry', () => {
       'clipboard',
       'mock_network',
       'run_steps',
+      'cdp',
+      'hermes_targets',
     ];
 
     for (const toolName of expectedTools) {
@@ -37,7 +40,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(30);
+    expect(toolRegistry.size).toBe(31);
   });
 
   it('stores only functions as values', () => {
@@ -93,7 +96,6 @@ describe('isBrowserOnlyTool', () => {
     'switch_to_tab',
     'close_tab',
     'wait_for_notification',
-    'cdp',
     'clipboard',
     'mock_network',
     'build',
@@ -101,10 +103,28 @@ describe('isBrowserOnlyTool', () => {
     expect(isBrowserOnlyTool(toolName)).toBe(true);
   });
 
-  it.each(['click', 'type', 'launch', 'screenshot', 'get_text'])(
+  it.each([
+    'click',
+    'type',
+    'launch',
+    'screenshot',
+    'get_text',
+    'cdp',
+    'hermes_targets',
+  ])('returns false for %s', (toolName) => {
+    expect(isBrowserOnlyTool(toolName)).toBe(false);
+  });
+});
+
+describe('isMobileOnlyTool', () => {
+  it.each(['hermes_targets'])('returns true for %s', (toolName) => {
+    expect(isMobileOnlyTool(toolName)).toBe(true);
+  });
+
+  it.each(['click', 'type', 'cdp', 'navigate', 'screenshot', 'nonexistent'])(
     'returns false for %s',
     (toolName) => {
-      expect(isBrowserOnlyTool(toolName)).toBe(false);
+      expect(isMobileOnlyTool(toolName)).toBe(false);
     },
   );
 });

@@ -645,14 +645,18 @@ export async function routeCommand(
       const cdpMethod = args[0];
       if (!cdpMethod) {
         process.stderr.write(
-          'Usage: mm cdp <method> [params-json] [--timeout <ms>]\n' +
+          'Usage: mm cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>] [--app-id <id>]\n' +
             '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\'\n' +
             '  mm cdp Network.enable\n' +
-            '  mm cdp DOM.getDocument \'{"depth":2}\' --timeout 60000\n',
+            '  mm cdp DOM.getDocument \'{"depth":2}\' --timeout 60000\n' +
+            '  # mobile (Hermes): --metro-port / --app-id override the Metro target\n' +
+            '  mm cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --app-id io.metamask\n',
         );
         process.exit(1);
       }
       const cdpTimeout = parseIntFlag(args, '--timeout');
+      const cdpMetroPort = parseIntFlag(args, '--metro-port');
+      const cdpAppId = parseStringFlag(args, '--app-id');
       const cdpParamsRaw =
         args[1] !== undefined && !args[1].startsWith('--')
           ? args[1]
@@ -680,6 +684,21 @@ export async function routeCommand(
         method: cdpMethod,
         ...(cdpParams ? { params: cdpParams } : {}),
         ...(cdpTimeout === undefined ? {} : { timeoutMs: cdpTimeout }),
+        ...(cdpMetroPort === undefined ? {} : { metroPort: cdpMetroPort }),
+        ...(cdpAppId ? { appId: cdpAppId } : {}),
+      });
+      break;
+    }
+    case 'hermes-targets': {
+      const targetsMetroPort = parseIntFlag(args, '--metro-port');
+      const targetsAppId = parseStringFlag(args, '--app-id');
+      const targetsAll = args.includes('--all');
+      await sendRequest(port, 'POST', '/tool/hermes_targets', {
+        ...(targetsMetroPort === undefined
+          ? {}
+          : { metroPort: targetsMetroPort }),
+        ...(targetsAppId ? { appId: targetsAppId } : {}),
+        ...(targetsAll ? { all: true } : {}),
       });
       break;
     }
@@ -1436,7 +1455,8 @@ Advanced:
   mm mock-network clear
   mm mock-network list
   mm mock-network requests [--limit <n>]
-  mm cdp <method> [params-json] [--timeout <ms>]
+  mm cdp <method> [params-json] [--timeout <ms>] [--metro-port <p>] [--app-id <id>]
+  mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 
 Examples:
   mm launch                                          (from inside project)

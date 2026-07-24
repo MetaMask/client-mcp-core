@@ -384,4 +384,145 @@ describe('PlaywrightPlatformDriver', () => {
       expect(state).toStrictEqual(mockState);
     });
   });
+
+  describe('cdp', () => {
+    function createCdpPage(cdpSession: {
+      send: ReturnType<typeof vi.fn>;
+      detach: ReturnType<typeof vi.fn>;
+    }) {
+      return {
+        context: vi.fn().mockReturnValue({
+          newCDPSession: vi.fn().mockResolvedValue(cdpSession),
+        }),
+      };
+    }
+
+    const TIMEOUT_MS = 30_000;
+
+    it('sends a CDP command and returns the raw result', async () => {
+      const cdpResult = { result: { value: 'My Page Title' } };
+      const cdpSession = {
+        send: vi.fn().mockResolvedValue(cdpResult),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const driver = createDriver(createCdpPage(cdpSession));
+
+      const outcome = await driver.cdp({
+        method: 'Runtime.evaluate',
+        params: { expression: 'document.title', returnByValue: true },
+        timeoutMs: TIMEOUT_MS,
+      });
+
+      expect(outcome).toStrictEqual({ ok: true, result: cdpResult });
+      expect(cdpSession.send).toHaveBeenCalledWith('Runtime.evaluate', {
+        expression: 'document.title',
+        returnByValue: true,
+      });
+      expect(cdpSession.detach).toHaveBeenCalled();
+    });
+
+    it('sends a CDP command with no params', async () => {
+      const cdpSession = {
+        send: vi.fn().mockResolvedValue({}),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const driver = createDriver(createCdpPage(cdpSession));
+
+      const outcome = await driver.cdp({
+        method: 'Network.enable',
+        timeoutMs: TIMEOUT_MS,
+      });
+
+      expect(outcome.ok).toBe(true);
+      expect(cdpSession.send).toHaveBeenCalledWith('Network.enable', {});
+    });
+
+    it.each([
+      'Browser.close',
+      'Target.closeTarget',
+      'Target.disposeBrowserContext',
+      'Browser.crashGpuProcess',
+    ])('blocks %s with MM_CDP_BLOCKED', async (method) => {
+      const cdpSession = { send: vi.fn(), detach: vi.fn() };
+      const driver = createDriver(createCdpPage(cdpSession));
+
+      const outcome = await driver.cdp({ method, timeoutMs: TIMEOUT_MS });
+
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.code).toBe('MM_CDP_BLOCKED');
+        expect(outcome.message).toContain(method);
+      }
+      expect(cdpSession.send).not.toHaveBeenCalled();
+    });
+
+    it('returns MM_CDP_FAILED on CDP error and still detaches', async () => {
+      const cdpSession = {
+        send: vi
+          .fn()
+          .mockRejectedValue(new Error('Protocol error: method not found')),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const driver = createDriver(createCdpPage(cdpSession));
+
+      const outcome = await driver.cdp({
+        method: 'Nonexistent.method',
+        timeoutMs: TIMEOUT_MS,
+      });
+
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.code).toBe('MM_CDP_FAILED');
+        expect(outcome.message).toContain('Nonexistent.method');
+        expect(outcome.message).toContain('Protocol error');
+      }
+      expect(cdpSession.detach).toHaveBeenCalled();
+    });
+
+    it('returns MM_CDP_FAILED for non-Error throwables', async () => {
+      const cdpSession = {
+        send: vi.fn().mockRejectedValue('string error'),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const driver = createDriver(createCdpPage(cdpSession));
+
+      const outcome = await driver.cdp({
+        method: 'Runtime.evaluate',
+        timeoutMs: TIMEOUT_MS,
+      });
+
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.code).toBe('MM_CDP_FAILED');
+        expect(outcome.message).toContain('string error');
+      }
+    });
+
+    it('times out long-running CDP calls', async () => {
+      vi.useFakeTimers();
+      try {
+        const cdpSession = {
+          send: vi.fn().mockReturnValue(new Promise(() => {})),
+          detach: vi.fn().mockResolvedValue(undefined),
+        };
+        const driver = createDriver(createCdpPage(cdpSession));
+
+        const outcomePromise = driver.cdp({
+          method: 'Runtime.evaluate',
+          timeoutMs: 5_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(5_000);
+        const outcome = await outcomePromise;
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+          expect(outcome.code).toBe('MM_CDP_FAILED');
+          expect(outcome.message).toContain('timed out');
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

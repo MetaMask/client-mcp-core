@@ -342,6 +342,35 @@ describe('discovery-tools', () => {
       });
     });
 
+    it('omits unavailable screenshot dimensions', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        {
+          nodes: [],
+          refMap: new Map(),
+        },
+      );
+      vi.mocked(context.sessionManager.screenshot).mockResolvedValue({
+        path: '/path/to/mobile-screenshot.png',
+        base64: '',
+      });
+
+      const result = await describeScreenTool(
+        { includeScreenshot: true },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.screenshot).toStrictEqual({
+          path: '/path/to/mobile-screenshot.png',
+          base64: null,
+        });
+      }
+    });
+
     it('includes base64 in screenshot when requested', async () => {
       const context = createMockContext();
 

@@ -42,8 +42,8 @@ export async function screenshotTool(
 
     const response: ScreenshotToolResult = {
       path: result.path,
-      width: result.width,
-      height: result.height,
+      ...(result.width === undefined ? {} : { width: result.width }),
+      ...(result.height === undefined ? {} : { height: result.height }),
     };
 
     if (input.includeBase64) {

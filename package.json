@@ -62,7 +62,7 @@
     "hono": "^4.12.25"
   },
   "dependencies": {
-    "@metamask/device-mcp": "^0.2.0",
+    "@metamask/device-mcp": "^0.3.0",
     "cosmiconfig": "^9.0.0",
     "express": "^5.2.1",
     "zod": "^4.4.3"

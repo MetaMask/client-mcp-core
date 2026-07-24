@@ -38,11 +38,13 @@ function createMockBackend(
       bundleId: 'io.metamask',
       state: 'Running',
     }),
-    screenshot: vi.fn().mockResolvedValue({
-      data: 'base64data',
-      format: 'png' as const,
-      path: '/tmp/screenshot.png',
-    }),
+    screenshot: vi.fn().mockImplementation(async (_outputPath, options) =>
+      Promise.resolve({
+        data: options?.encode === false ? undefined : 'base64data',
+        format: 'png' as const,
+        path: '/tmp/screenshot.png',
+      }),
+    ),
     openApp: vi.fn(),
     closeApp: vi.fn(),
     pressButton: vi.fn(),
@@ -135,6 +137,14 @@ describe('MobilePlatformDriver', () => {
       await expect(
         driver.click('a11yRef', 'e99', new Map(), 5000),
       ).rejects.toThrowError('Unknown a11yRef: e99');
+    });
+
+    it('throws for an unknown target type', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      await expect(
+        driver.click('bogus' as unknown as 'testId', 'x', new Map(), 5000),
+      ).rejects.toThrowError('Unknown target type: bogus');
     });
 
     it('resolves a11yRef with no-colon stable id as identifier', async () => {
@@ -663,17 +673,34 @@ describe('MobilePlatformDriver', () => {
   });
 
   describe('screenshot', () => {
-    it('returns mapped result with empty base64 and zero dimensions', async () => {
-      const driver = new MobilePlatformDriver(createMockBackend());
+    it('skips base64 encoding by default and omits unavailable dimensions', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
 
       const result = await driver.screenshot({ name: 'test-shot' });
 
+      expect(backend.screenshot).toHaveBeenCalledWith(undefined, {
+        encode: false,
+      });
       expect(result).toStrictEqual({
         path: '/tmp/screenshot.png',
         base64: '',
-        width: 0,
-        height: 0,
       });
+    });
+
+    it('includes base64 when requested', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      const result = await driver.screenshot({
+        name: 'test-shot',
+        includeBase64: true,
+      });
+
+      expect(backend.screenshot).toHaveBeenCalledWith(undefined, {
+        encode: true,
+      });
+      expect(result.base64).toBe('base64data');
     });
 
     it('uses name as fallback path when backend returns no path', async () => {

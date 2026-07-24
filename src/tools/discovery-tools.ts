@@ -159,8 +159,8 @@ export async function describeScreenTool(
 
       screenshot = {
         path: result.path,
-        width: result.width,
-        height: result.height,
+        ...(result.width === undefined ? {} : { width: result.width }),
+        ...(result.height === undefined ? {} : { height: result.height }),
         base64: input.includeScreenshotBase64 ? result.base64 : null,
       };
     }

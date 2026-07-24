@@ -87,6 +87,25 @@ describe('screenshotTool', () => {
         selector: undefined,
       });
     });
+
+    it('omits dimensions when the platform cannot determine them', async () => {
+      const context = createMockContext();
+
+      vi.spyOn(context.sessionManager, 'screenshot').mockResolvedValue({
+        path: '/path/to/mobile-screenshot.png',
+        base64: '',
+      });
+
+      const result = await screenshotTool(
+        { name: 'mobile-screenshot' },
+        context,
+      );
+
+      expect(result).toStrictEqual({
+        ok: true,
+        result: { path: '/path/to/mobile-screenshot.png' },
+      });
+    });
   });
 
   describe('with base64 encoding', () => {

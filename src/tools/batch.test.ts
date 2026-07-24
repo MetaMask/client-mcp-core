@@ -98,6 +98,24 @@ describe('runStepsTool', () => {
     }
   });
 
+  it('normalises a bare ref arg to a11yRef before dispatch', async () => {
+    const clickHandler = vi.fn().mockResolvedValue({ ok: true, result: 'ok' });
+    const context = createMockContext({
+      toolRegistry: new Map([['click', clickHandler]]),
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'click', args: { ref: 'e1' } }] },
+      context,
+    );
+
+    expect(clickHandler).toHaveBeenCalledWith(
+      { a11yRef: 'e1', timeoutMs: 15000 },
+      context,
+    );
+    expect(result.ok).toBe(true);
+  });
+
   it('returns unknown tool error in the step result', async () => {
     const context = createMockContext({ toolRegistry: new Map() });
 
@@ -665,6 +683,39 @@ describe('runStepsTool', () => {
     }
   });
 
+  it('halts on a browser-only platform mismatch when stopOnError is set', async () => {
+    const navigateHandler = vi.fn();
+    const clickHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['navigate', navigateHandler],
+        ['click', clickHandler],
+      ]),
+      driverPlatform: 'android',
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'navigate', args: { screen: 'home' } },
+          { tool: 'click', args: { testId: 'btn' } },
+        ],
+        stopOnError: true,
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps).toHaveLength(1);
+      expect(result.result.steps[0].error?.code).toBe(
+        'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+      );
+      expect(navigateHandler).not.toHaveBeenCalled();
+      expect(clickHandler).not.toHaveBeenCalled();
+    }
+  });
+
   it('allows browser-only tools on browser platform', async () => {
     const navigateHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
     const context = createMockContext({
@@ -681,6 +732,102 @@ describe('runStepsTool', () => {
     if (result.ok) {
       expect(result.result.steps[0].ok).toBe(true);
       expect(navigateHandler).toHaveBeenCalled();
+    }
+  });
+
+  it('rejects mobile-only tools on browser platform', async () => {
+    const hermesTargetsHandler = vi.fn();
+    const context = createMockContext({
+      toolRegistry: new Map([['hermes_targets', hermesTargetsHandler]]),
+      driverPlatform: 'browser',
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'hermes_targets', args: {} }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(false);
+      expect(result.result.steps[0].error?.code).toBe(
+        'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+      );
+      expect(hermesTargetsHandler).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects mobile-only tools when no driver is present', async () => {
+    const hermesTargetsHandler = vi.fn();
+    const context = createMockContext({
+      toolRegistry: new Map([['hermes_targets', hermesTargetsHandler]]),
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'hermes_targets', args: {} }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(false);
+      expect(result.result.steps[0].error?.code).toBe(
+        'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+      );
+      expect(hermesTargetsHandler).not.toHaveBeenCalled();
+    }
+  });
+
+  it('halts on a mobile-only platform mismatch when stopOnError is set', async () => {
+    const hermesTargetsHandler = vi.fn();
+    const clickHandler = vi.fn().mockResolvedValue({ ok: true, result: {} });
+    const context = createMockContext({
+      toolRegistry: new Map([
+        ['hermes_targets', hermesTargetsHandler],
+        ['click', clickHandler],
+      ]),
+      driverPlatform: 'browser',
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'hermes_targets', args: {} },
+          { tool: 'click', args: { testId: 'btn' } },
+        ],
+        stopOnError: true,
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps).toHaveLength(1);
+      expect(result.result.steps[0].error?.code).toBe(
+        'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+      );
+      expect(clickHandler).not.toHaveBeenCalled();
+    }
+  });
+
+  it('allows mobile-only tools on a mobile platform', async () => {
+    const hermesTargetsHandler = vi
+      .fn()
+      .mockResolvedValue({ ok: true, result: {} });
+    const context = createMockContext({
+      toolRegistry: new Map([['hermes_targets', hermesTargetsHandler]]),
+      driverPlatform: 'ios',
+    });
+
+    const result = await runStepsTool(
+      { steps: [{ tool: 'hermes_targets', args: {} }] },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(true);
+      expect(hermesTargetsHandler).toHaveBeenCalled();
     }
   });
 });

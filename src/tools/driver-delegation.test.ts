@@ -58,6 +58,7 @@ function createMockDriver(
     }),
     getCurrentUrl: vi.fn().mockReturnValue(''),
     getPlatform: vi.fn().mockReturnValue('ios'),
+    cdp: vi.fn().mockResolvedValue({ ok: true, result: undefined }),
     ...overrides,
   };
 }

@@ -640,7 +640,9 @@ export const cdpInputSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'CDP method name (e.g., "Runtime.evaluate", "DOM.getDocument", "Network.enable")',
+      'CDP method name. Browser: full Chrome surface (e.g., "Runtime.evaluate", ' +
+        '"DOM.getDocument", "Network.enable"). Mobile (Hermes): JS-engine subset ' +
+        'only (e.g., "Runtime.evaluate", "Debugger.enable") — no DOM/Page/Network.',
     ),
   params: z
     .record(z.string(), z.unknown())
@@ -656,12 +658,48 @@ export const cdpInputSchema = z.object({
       'Per-command timeout in milliseconds. ' +
         'Capped at 30 000 to stay within the server request-queue ceiling.',
     ),
+  metroPort: z
+    .number()
+    .int()
+    .min(1)
+    .max(65535)
+    .describe(
+      'Mobile only: override the Metro inspector proxy port. Ignored on browser.',
+    )
+    .optional(),
+  appId: z
+    .string()
+    .min(1)
+    .describe(
+      'Mobile only: override the expected app bundle identifier. Ignored on browser.',
+    )
+    .optional(),
+});
+
+export const hermesTargetsInputSchema = z.object({
+  metroPort: z
+    .number()
+    .int()
+    .min(1)
+    .max(65535)
+    .describe('Override the Metro inspector proxy port for this call')
+    .optional(),
+  appId: z
+    .string()
+    .min(1)
+    .describe('Override the expected app bundle identifier for this call')
+    .optional(),
+  all: z
+    .boolean()
+    .default(false)
+    .describe('Bypass the appId filter and list ALL candidates (diagnostics)'),
 });
 
 export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
+export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
 
 export const toolSchemas = {
@@ -694,6 +732,7 @@ export const toolSchemas = {
   get_context: getContextInputSchema,
   clipboard: clipboardInputSchema,
   cdp: cdpInputSchema,
+  hermes_targets: hermesTargetsInputSchema,
   mock_network: mockNetworkInputSchema,
 } as const;
 
