@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0]
 
-### Uncategorized
+### Added
 
 - feat: add mobile Hermes CDP support and hermes_targets tool ([#37](https://github.com/MetaMask/client-mcp-core/pull/37))
 - chore: add mobile platform driver ([#36](https://github.com/MetaMask/client-mcp-core/pull/36))
