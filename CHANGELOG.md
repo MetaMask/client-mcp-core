@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Added
+
+- feat: add mobile Hermes CDP support and hermes_targets tool ([#37](https://github.com/MetaMask/client-mcp-core/pull/37))
+- chore: add mobile platform driver ([#36](https://github.com/MetaMask/client-mcp-core/pull/36))
+- ci: migrate npm publishing to OIDC trusted publishing ([#38](https://github.com/MetaMask/client-mcp-core/pull/38))
+- chore: add platform and tool orchestrator ([#31](https://github.com/MetaMask/client-mcp-core/pull/31))
+- chore: format readme ([#34](https://github.com/MetaMask/client-mcp-core/pull/34))
+
 ## [0.5.0]
 
 ### Added
@@ -51,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.2.0...v0.3.0
