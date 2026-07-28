@@ -9,6 +9,7 @@ import type {
 } from '../tools/types/tool-inputs.js';
 import type {
   CdpOutcome,
+  ElementLocatorInfo,
   HermesTargetsResult,
 } from '../tools/types/tool-outputs.js';
 
@@ -157,4 +158,6 @@ export type IPlatformDriver = {
   }>;
 
   hermesTargets?(input: HermesTargetsInput): Promise<HermesTargetsResult>;
+
+  generateLocators?(): Promise<ElementLocatorInfo[]>;
 };

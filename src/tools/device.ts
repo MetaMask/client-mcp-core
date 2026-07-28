@@ -22,6 +22,7 @@ import type {
   DeviceSwipeResult,
   DismissAlertResult,
   DismissKeyboardResult,
+  GenerateLocatorsResult,
   GetAlertTextResult,
   GetWindowSizeResult,
   LongPressResult,
@@ -711,6 +712,46 @@ export async function deviceLogsTool(
     return createToolError(
       ErrorCodes.MM_DEVICE_ACTION_FAILED,
       `Getting device logs failed: ${message}`,
+    );
+  }
+}
+
+/**
+ * Generates ranked locator suggestions for all interactive elements on the
+ * current screen. Each element gets a prioritized list of selector strategies
+ * (identifier > label > text > type) with confidence levels. Useful for
+ * discovering stable selectors when authoring mobile automation. Mobile only
+ * (iOS/Android) — the browser platform has no device snapshot hierarchy.
+ *
+ * @param _input - No input parameters.
+ * @param context - The tool execution context with session and driver access.
+ * @returns The ranked element locators, or an error response.
+ */
+export async function generateLocatorsTool(
+  _input: Record<string, never>,
+  context: ToolContext,
+): Promise<ToolResponse<GenerateLocatorsResult>> {
+  const missingSession = requireActiveSession<GenerateLocatorsResult>(context);
+  if (missingSession) {
+    return missingSession;
+  }
+
+  const { driver } = context;
+  if (!driver?.generateLocators) {
+    return createToolError(
+      ErrorCodes.MM_DEVICE_NOT_AVAILABLE,
+      'generate_locators is only available on mobile (iOS/Android) sessions.',
+    );
+  }
+
+  try {
+    const locators = await driver.generateLocators();
+    return createToolSuccess<GenerateLocatorsResult>({ locators });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return createToolError(
+      ErrorCodes.MM_DEVICE_ACTION_FAILED,
+      `Generating locators failed: ${message}`,
     );
   }
 }

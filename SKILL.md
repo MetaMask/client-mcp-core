@@ -28,7 +28,7 @@ Tool responses include different data based on the tool's category:
 | Category      | Examples                                                                                                                                                                                                                                        | Observations in response?                      |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context, get_alert_text, screen_recording, device_logs, hermes_targets                                                                                                                     | No — faster response                           |
+| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                  | No — faster response                           |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                               | Data is already in `result`                    |
 | **Batch**     | run_steps                                                                                                                                                                                                                                       | Controlled by `includeObservations` param      |
 
@@ -648,6 +648,12 @@ Starts or stops an on-device screen recording. `stop` returns the recording path
 #### `mm device-logs [--duration <seconds>] [--filter <text>]`
 
 Fetches recent device logs, optionally scoped by duration and a text filter.
+
+#### `mm generate-locators`
+
+Returns ranked locator suggestions (identifier > label > text > type, with confidence)
+for every interactive element on the current screen. Read-only — useful when authoring
+mobile automation to pick stable selectors.
 
 ```bash
 mm scroll-to-element e12 --direction down

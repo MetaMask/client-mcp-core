@@ -1059,4 +1059,42 @@ describe('MobilePlatformDriver', () => {
       expect(result).toStrictEqual(logsResult);
     });
   });
+
+  describe('generateLocators', () => {
+    it('snapshots the device and returns locators for interactive elements', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Button',
+              identifier: 'submit',
+              label: 'Submit',
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const locators = await driver.generateLocators();
+
+      expect(backend.snapshot).toHaveBeenCalledWith();
+      expect(locators).toHaveLength(1);
+      expect(locators[0]?.suggestions[0]).toStrictEqual({
+        strategy: 'identifier',
+        value: 'submit',
+        confidence: 'high',
+      });
+    });
+
+    it('returns an empty list when the snapshot has no interactive elements', async () => {
+      const driver = new MobilePlatformDriver(createMockBackend());
+
+      const locators = await driver.generateLocators();
+
+      expect(locators).toStrictEqual([]);
+    });
+  });
 });

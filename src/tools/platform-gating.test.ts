@@ -59,6 +59,7 @@ describe('isMobileOnlyTool', () => {
     expect(isMobileOnlyTool('device_clipboard')).toBe(true);
     expect(isMobileOnlyTool('screen_recording')).toBe(true);
     expect(isMobileOnlyTool('device_logs')).toBe(true);
+    expect(isMobileOnlyTool('generate_locators')).toBe(true);
   });
 
   it('returns false for browser-only and cross-platform tools', () => {

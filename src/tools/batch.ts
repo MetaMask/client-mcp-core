@@ -45,6 +45,7 @@ const TOOL_ALIASES: Record<
   'device-clipboard': { tool: 'device_clipboard', inject: {} },
   'screen-recording': { tool: 'screen_recording', inject: {} },
   'device-logs': { tool: 'device_logs', inject: {} },
+  'generate-locators': { tool: 'generate_locators', inject: {} },
 };
 
 type NormalisedStep = {

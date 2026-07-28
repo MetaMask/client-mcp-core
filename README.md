@@ -26,7 +26,7 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
   │  ┌──────────┐  ┌───────────────┐  ┌────────────┐  ┌────────────┐  │
   │  │  Routes  │  │ RequestQueue  │  │   Tool     │  │ Knowledge  │  │
   │  │ /health  │  │ (async mutex) │  │  Registry  │  │   Store    │  │
-  │  │ /status  │  │               │  │  46 tools  │  │            │  │
+  │  │ /status  │  │               │  │  47 tools  │  │            │  │
   │  │ /launch  │  └───────────────┘  └─────┬──────┘  └────────────┘  │
   │  │ /cleanup │                           │                         │
   │  │ /tool/:n │                           ▼                         │
@@ -422,6 +422,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 | `device_clipboard`            | Reads (`read`) or writes (`write` + `text`) the device clipboard. Distinct from the browser `clipboard` tool (which uses CDP). Mobile only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `screen_recording`            | Starts (`start`, optional `outputPath`) or stops (`stop`) a screen recording. Read-only. Mobile only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `device_logs`                 | Fetches device logs with optional `durationSeconds` and `filter`. Read-only. Mobile only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `generate_locators`           | Generates ranked locator suggestions (identifier > label > text > type, with confidence) for every interactive element on the current screen, by walking the device snapshot. Read-only. Mobile only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ### Accessibility References
 
@@ -675,22 +676,23 @@ mm hermes-targets --all
 These commands require a mobile session (`mm launch --platform ios|android`). Run on a
 browser session, they return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`.
 
-| Command                                                                                                    | Description                                             |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `mm scroll-to-element <ref> [--direction up\|down] [--maxAttempts <n>] [--selector <css>] [--testid <id>]` | Scrolls until the target element is visible.            |
-| `mm device-swipe --direction <up\|down\|left\|right> [--startX <n>] [--startY <n>] [--distance <n>]`       | Swipes the screen in a direction.                       |
-| `mm long-press <ref> [--duration <ms>] [--selector <css>] [--testid <id>]`                                 | Long-presses the target element.                        |
-| `mm tap-coordinates <x> <y>`                                                                               | Taps raw screen coordinates.                            |
-| `mm dismiss-keyboard`                                                                                      | Dismisses the on-screen keyboard.                       |
-| `mm dismiss-alert [--accept]`                                                                              | Dismisses a native alert; `--accept` accepts it.        |
-| `mm get-alert-text`                                                                                        | Prints the text of a visible native alert.              |
-| `mm open-app <bundleId>`                                                                                   | Launches or foregrounds an app.                         |
-| `mm close-app <bundleId>`                                                                                  | Terminates an app.                                      |
-| `mm press-button <button>`                                                                                 | Presses a hardware/system button (e.g. `home`, `back`). |
-| `mm device-context list` / `mm device-context switch <name>`                                               | Lists or switches native/webview contexts.              |
-| `mm device-clipboard read` / `mm device-clipboard write <text>`                                            | Reads or writes the device clipboard.                   |
-| `mm screen-recording start [--output <path>]` / `mm screen-recording stop`                                 | Starts or stops a screen recording.                     |
-| `mm device-logs [--duration <seconds>] [--filter <text>]`                                                  | Fetches device logs.                                    |
+| Command                                                                                                    | Description                                               |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `mm scroll-to-element <ref> [--direction up\|down] [--maxAttempts <n>] [--selector <css>] [--testid <id>]` | Scrolls until the target element is visible.              |
+| `mm device-swipe --direction <up\|down\|left\|right> [--startX <n>] [--startY <n>] [--distance <n>]`       | Swipes the screen in a direction.                         |
+| `mm long-press <ref> [--duration <ms>] [--selector <css>] [--testid <id>]`                                 | Long-presses the target element.                          |
+| `mm tap-coordinates <x> <y>`                                                                               | Taps raw screen coordinates.                              |
+| `mm dismiss-keyboard`                                                                                      | Dismisses the on-screen keyboard.                         |
+| `mm dismiss-alert [--accept]`                                                                              | Dismisses a native alert; `--accept` accepts it.          |
+| `mm get-alert-text`                                                                                        | Prints the text of a visible native alert.                |
+| `mm open-app <bundleId>`                                                                                   | Launches or foregrounds an app.                           |
+| `mm close-app <bundleId>`                                                                                  | Terminates an app.                                        |
+| `mm press-button <button>`                                                                                 | Presses a hardware/system button (e.g. `home`, `back`).   |
+| `mm device-context list` / `mm device-context switch <name>`                                               | Lists or switches native/webview contexts.                |
+| `mm device-clipboard read` / `mm device-clipboard write <text>`                                            | Reads or writes the device clipboard.                     |
+| `mm screen-recording start [--output <path>]` / `mm screen-recording stop`                                 | Starts or stops a screen recording.                       |
+| `mm device-logs [--duration <seconds>] [--filter <text>]`                                                  | Fetches device logs.                                      |
+| `mm generate-locators`                                                                                     | Lists ranked selector suggestions for on-screen elements. |
 
 ```bash
 mm scroll-to-element e12 --direction down
@@ -698,6 +700,7 @@ mm device-swipe --direction up --distance 400
 mm open-app io.metamask
 mm device-context switch WEBVIEW_1
 mm device-logs --filter MetaMask --duration 30
+mm generate-locators
 ```
 
 For the full agent-facing reference and workflow guidelines, see [SKILL.md](./SKILL.md).

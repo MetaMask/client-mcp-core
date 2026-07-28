@@ -885,6 +885,9 @@ export async function routeCommand(
       });
       break;
     }
+    case 'generate-locators':
+      await sendRequest(port, 'POST', '/tool/generate_locators', {});
+      break;
     default:
       process.stderr.write(
         `Error: unknown command '${command}'. Run 'mm --help' for usage.\n`,
@@ -1656,6 +1659,7 @@ Mobile (iOS/Android only):
   mm device-clipboard <read|write> [text]
   mm screen-recording <start|stop> [--output <path>]
   mm device-logs [--duration <seconds>] [--filter <text>]
+  mm generate-locators
 
 Examples:
   mm launch                                          (from inside project)

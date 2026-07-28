@@ -2322,6 +2322,14 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes generate-locators to /tool/generate_locators', async () => {
+    await routeCommand('generate-locators', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/generate_locators',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
   it('exits for unknown command', async () => {
     await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
       'process.exit',

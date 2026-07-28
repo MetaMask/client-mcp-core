@@ -8,6 +8,7 @@ import {
   deviceSwipeTool,
   dismissAlertTool,
   dismissKeyboardTool,
+  generateLocatorsTool,
   getAlertTextTool,
   getWindowSizeTool,
   longPressTool,
@@ -1436,6 +1437,110 @@ describe('deviceLogsTool', () => {
     if (!result.ok) {
       expect(result.error.code).toBe(ErrorCodes.MM_DEVICE_ACTION_FAILED);
       expect(result.error.message).toContain('logs string error');
+    }
+  });
+});
+
+describe('generateLocatorsTool', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns MM_NO_ACTIVE_SESSION when no session is active', async () => {
+    const context = createContext({
+      hasActive: false,
+      driver: { generateLocators: vi.fn() },
+    });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+    }
+  });
+
+  it('returns MM_DEVICE_NOT_AVAILABLE when driver lacks generateLocators', async () => {
+    const context = createContext({ driver: {} });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_DEVICE_NOT_AVAILABLE);
+    }
+  });
+
+  it('returns MM_DEVICE_NOT_AVAILABLE when no driver is present', async () => {
+    const context = createContext({ driver: undefined });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_DEVICE_NOT_AVAILABLE);
+    }
+  });
+
+  it('delegates to driver.generateLocators and wraps the locators', async () => {
+    const locators = [
+      {
+        description: 'Button label="Submit"',
+        frame: { x: 0, y: 0, width: 100, height: 44 },
+        suggestions: [
+          { strategy: 'identifier', value: 'submit', confidence: 'high' },
+        ],
+      },
+    ];
+    const generateLocators = vi.fn().mockResolvedValue(locators);
+    const context = createContext({ driver: { generateLocators } });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(generateLocators).toHaveBeenCalledWith();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result).toStrictEqual({ locators });
+    }
+  });
+
+  it('returns an empty list when no interactive elements are found', async () => {
+    const generateLocators = vi.fn().mockResolvedValue([]);
+    const context = createContext({ driver: { generateLocators } });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result).toStrictEqual({ locators: [] });
+    }
+  });
+
+  it('returns MM_DEVICE_ACTION_FAILED when the driver throws', async () => {
+    const generateLocators = vi
+      .fn()
+      .mockRejectedValue(new Error('locators boom'));
+    const context = createContext({ driver: { generateLocators } });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_DEVICE_ACTION_FAILED);
+      expect(result.error.message).toContain('locators boom');
+    }
+  });
+
+  it('returns MM_DEVICE_ACTION_FAILED for non-Error throwables', async () => {
+    const generateLocators = vi.fn().mockRejectedValue('locators string error');
+    const context = createContext({ driver: { generateLocators } });
+
+    const result = await generateLocatorsTool({}, context);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_DEVICE_ACTION_FAILED);
+      expect(result.error.message).toContain('locators string error');
     }
   });
 });

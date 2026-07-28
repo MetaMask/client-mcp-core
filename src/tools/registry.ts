@@ -12,6 +12,7 @@ import {
   deviceSwipeTool,
   dismissAlertTool,
   dismissKeyboardTool,
+  generateLocatorsTool,
   getAlertTextTool,
   getWindowSizeTool,
   longPressTool,
@@ -110,6 +111,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['device_clipboard', deviceClipboardTool],
   ['screen_recording', screenRecordingTool],
   ['device_logs', deviceLogsTool],
+  ['generate_locators', generateLocatorsTool],
 ]);
 
 export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
@@ -148,6 +150,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   get_alert_text: 'readonly',
   screen_recording: 'readonly',
   device_logs: 'readonly',
+  generate_locators: 'readonly',
   knowledge_last: 'readonly',
   knowledge_search: 'readonly',
   knowledge_summarize: 'readonly',
@@ -219,6 +222,7 @@ const MOBILE_ONLY_TOOLS = new Set([
   'device_clipboard',
   'screen_recording',
   'device_logs',
+  'generate_locators',
 ]);
 
 /**

@@ -189,6 +189,22 @@ export type GetWindowSizeResult = {
   height: number;
 };
 
+export type LocatorSuggestionInfo = {
+  strategy: 'identifier' | 'label' | 'text' | 'type';
+  value: string;
+  confidence: 'high' | 'medium' | 'low';
+};
+
+export type ElementLocatorInfo = {
+  description: string;
+  frame: { x: number; y: number; width: number; height: number };
+  suggestions: LocatorSuggestionInfo[];
+};
+
+export type GenerateLocatorsResult = {
+  locators: ElementLocatorInfo[];
+};
+
 export type MockNetworkResult =
   | {
       action: 'add';

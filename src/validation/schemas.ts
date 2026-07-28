@@ -838,6 +838,8 @@ export const deviceLogsInputSchema = z.object({
     .optional(),
 });
 
+export const generateLocatorsInputSchema = z.object({});
+
 export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
@@ -858,6 +860,9 @@ export type DeviceContextInputZ = z.infer<typeof deviceContextInputSchema>;
 export type DeviceClipboardInputZ = z.infer<typeof deviceClipboardInputSchema>;
 export type ScreenRecordingInputZ = z.infer<typeof screenRecordingInputSchema>;
 export type DeviceLogsInputZ = z.infer<typeof deviceLogsInputSchema>;
+export type GenerateLocatorsInputZ = z.infer<
+  typeof generateLocatorsInputSchema
+>;
 
 export const toolSchemas = {
   build: buildInputSchema,
@@ -906,6 +911,7 @@ export const toolSchemas = {
   device_clipboard: deviceClipboardInputSchema,
   screen_recording: screenRecordingInputSchema,
   device_logs: deviceLogsInputSchema,
+  generate_locators: generateLocatorsInputSchema,
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;

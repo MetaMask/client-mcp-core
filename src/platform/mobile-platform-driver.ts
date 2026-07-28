@@ -4,6 +4,7 @@ import {
   fetchDiscoveryTargets,
   selectHermesTarget,
   hasAmbiguousTarget,
+  generateLocators,
   LEGACY_SYNTHETIC_TITLE,
 } from '@metamask/device-mcp';
 import type {
@@ -36,6 +37,7 @@ import type {
 } from '../tools/types/tool-inputs.js';
 import type {
   CdpOutcome,
+  ElementLocatorInfo,
   HermesTargetInfo,
   HermesTargetsResult,
 } from '../tools/types/tool-outputs.js';
@@ -550,6 +552,17 @@ export class MobilePlatformDriver implements IPlatformDriver {
     }
 
     return result;
+  }
+
+  /**
+   * Generates ranked locator suggestions for every interactive element on the
+   * current screen by walking the device snapshot hierarchy. Mobile only.
+   *
+   * @returns The ranked element locators.
+   */
+  async generateLocators(): Promise<ElementLocatorInfo[]> {
+    const snapshot = await this.#backend.snapshot();
+    return generateLocators(snapshot.hierarchy);
   }
 }
 

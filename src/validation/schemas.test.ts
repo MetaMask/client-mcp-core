@@ -26,6 +26,7 @@ import {
   deviceClipboardInputSchema,
   screenRecordingInputSchema,
   deviceLogsInputSchema,
+  generateLocatorsInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -678,6 +679,14 @@ describe('device tool schemas', () => {
       const result = deviceLogsInputSchema.safeParse({ durationSeconds: 0 });
 
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('generateLocatorsInputSchema', () => {
+    it('accepts an empty input', () => {
+      const result = generateLocatorsInputSchema.safeParse({});
+
+      expect(result.success).toBe(true);
     });
   });
 });
