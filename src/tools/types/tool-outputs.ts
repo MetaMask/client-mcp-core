@@ -184,6 +184,27 @@ export type HermesTargetsResult = {
   noTargetReason?: { code: string; message: string };
 };
 
+export type GetWindowSizeResult = {
+  width: number;
+  height: number;
+};
+
+export type LocatorSuggestionInfo = {
+  strategy: 'identifier' | 'label' | 'text' | 'type';
+  value: string;
+  confidence: 'high' | 'medium' | 'low';
+};
+
+export type ElementLocatorInfo = {
+  description: string;
+  frame: { x: number; y: number; width: number; height: number };
+  suggestions: LocatorSuggestionInfo[];
+};
+
+export type GenerateLocatorsResult = {
+  locators: ElementLocatorInfo[];
+};
+
 export type MockNetworkResult =
   | {
       action: 'add';
@@ -221,4 +242,88 @@ export type GetContextResult = {
     available: string[];
   };
   canSwitchContext: boolean;
+};
+
+export type ScrollToElementResult = {
+  scrolled: boolean;
+  target: string;
+};
+
+export type DeviceSwipeResult = {
+  swiped: boolean;
+};
+
+export type LongPressResult = {
+  pressed: boolean;
+  target: string;
+};
+
+export type TapCoordinatesResult = {
+  tapped: boolean;
+  x: number;
+  y: number;
+};
+
+export type DismissKeyboardResult = {
+  dismissed: boolean;
+};
+
+export type DismissAlertResult = {
+  dismissed: boolean;
+  accepted: boolean;
+};
+
+export type GetAlertTextResult = {
+  text: string;
+};
+
+export type OpenAppResult = {
+  opened: boolean;
+  bundleId: string;
+};
+
+export type CloseAppResult = {
+  closed: boolean;
+  bundleId: string;
+};
+
+export type PressButtonResult = {
+  pressed: boolean;
+  button: string;
+};
+
+export type DeviceContextResult =
+  | {
+      action: 'list';
+      contexts: string[];
+    }
+  | {
+      action: 'switch';
+      switched: boolean;
+      name: string;
+    };
+
+export type DeviceClipboardResult =
+  | {
+      action: 'read';
+      text: string;
+    }
+  | {
+      action: 'write';
+      success: boolean;
+    };
+
+export type ScreenRecordingResult =
+  | {
+      action: 'start';
+      recording: boolean;
+    }
+  | {
+      action: 'stop';
+      path: string;
+    };
+
+export type DeviceLogsResult = {
+  entries: { timestamp: string; level: string; message: string }[];
+  source: string;
 };

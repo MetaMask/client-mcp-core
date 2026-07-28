@@ -926,7 +926,7 @@ __metadata:
     "@lavamoat/allow-scripts": "npm:^3.0.4"
     "@lavamoat/preinstall-always-fail": "npm:^2.0.0"
     "@metamask/auto-changelog": "npm:^5.3.0"
-    "@metamask/device-mcp": "npm:^0.3.0"
+    "@metamask/device-mcp": "npm:^0.3.2"
     "@metamask/eslint-config": "npm:^15.0.0"
     "@metamask/eslint-config-nodejs": "npm:^15.0.0"
     "@metamask/eslint-config-typescript": "npm:^15.0.0"
@@ -968,15 +968,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@metamask/device-mcp@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@metamask/device-mcp@npm:0.3.0"
+"@metamask/device-mcp@npm:^0.3.2":
+  version: 0.3.2
+  resolution: "@metamask/device-mcp@npm:0.3.2"
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.12.1"
     zod: "npm:^4.4.3"
   bin:
     device-mcp: ./dist/cli/device-mcp.mjs
-  checksum: 10/79c7479d9770643f147fdf05d5a7a23672a73b708f2ff18cdc84c77a3a5a11d3cfc5ea2d53b9e58dd00774a20d9eeff95cca58a28c039b69b4cc77543b694347
+  checksum: 10/62bd0e0f4138f66c161b827dca5fa076b8d14237764c8ee62f9ccda4711ac495f1508802bbdaf5b28c9afec7118c3ff6b1c59969be0b4e3957709d1d591d36c2
   languageName: node
   linkType: hard
 

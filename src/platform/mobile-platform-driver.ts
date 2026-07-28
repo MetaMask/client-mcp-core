@@ -4,11 +4,11 @@ import {
   fetchDiscoveryTargets,
   selectHermesTarget,
   hasAmbiguousTarget,
+  generateLocators,
   LEGACY_SYNTHETIC_TITLE,
 } from '@metamask/device-mcp';
 import type {
   DeviceBackend,
-  DeviceButton,
   ElementQuery,
   HermesTarget,
   UIElement,
@@ -32,10 +32,12 @@ import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 import { ErrorCodes } from '../tools/types/errors.js';
 import type {
   CdpInput,
+  DeviceButtonName,
   HermesTargetsInput,
 } from '../tools/types/tool-inputs.js';
 import type {
   CdpOutcome,
+  ElementLocatorInfo,
   HermesTargetInfo,
   HermesTargetsResult,
 } from '../tools/types/tool-outputs.js';
@@ -362,8 +364,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
   /**
    * @param button - Device button name (home, back, enter, lock).
    */
-  async pressButton(button: string): Promise<void> {
-    await this.#backend.pressButton(button as DeviceButton);
+  async pressButton(button: DeviceButtonName): Promise<void> {
+    await this.#backend.pressButton(button);
   }
 
   /**
@@ -550,6 +552,17 @@ export class MobilePlatformDriver implements IPlatformDriver {
     }
 
     return result;
+  }
+
+  /**
+   * Generates ranked locator suggestions for every interactive element on the
+   * current screen by walking the device snapshot hierarchy. Mobile only.
+   *
+   * @returns The ranked element locators.
+   */
+  async generateLocators(): Promise<ElementLocatorInfo[]> {
+    const snapshot = await this.#backend.snapshot();
+    return generateLocators(snapshot.hierarchy);
   }
 }
 

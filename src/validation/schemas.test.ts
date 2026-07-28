@@ -17,6 +17,17 @@ import {
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   launchInputSchema,
+  scrollToElementInputSchema,
+  deviceSwipeInputSchema,
+  tapCoordinatesInputSchema,
+  dismissAlertInputSchema,
+  openAppInputSchema,
+  pressButtonInputSchema,
+  deviceContextInputSchema,
+  deviceClipboardInputSchema,
+  screenRecordingInputSchema,
+  deviceLogsInputSchema,
+  generateLocatorsInputSchema,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -461,5 +472,236 @@ describe('launchInputSchema', () => {
       expect(result.data.platform).toBeUndefined();
       expect(result.data.deviceId).toBeUndefined();
     }
+  });
+});
+
+describe('device tool schemas', () => {
+  describe('scrollToElementInputSchema', () => {
+    it('accepts a target with direction and maxAttempts', () => {
+      const result = scrollToElementInputSchema.safeParse({
+        testId: 'foo',
+        direction: 'down',
+        maxAttempts: 5,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects when no target selector is provided', () => {
+      const result = scrollToElementInputSchema.safeParse({
+        direction: 'down',
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an invalid direction', () => {
+      const result = scrollToElementInputSchema.safeParse({
+        testId: 'foo',
+        direction: 'left',
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('deviceSwipeInputSchema', () => {
+    it('accepts a valid direction', () => {
+      const result = deviceSwipeInputSchema.safeParse({ direction: 'up' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a missing direction', () => {
+      const result = deviceSwipeInputSchema.safeParse({});
+
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an invalid direction', () => {
+      const result = deviceSwipeInputSchema.safeParse({
+        direction: 'diagonal',
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('tapCoordinatesInputSchema', () => {
+    it('accepts numeric coordinates', () => {
+      const result = tapCoordinatesInputSchema.safeParse({ x: 5, y: 10 });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects negative coordinates', () => {
+      const result = tapCoordinatesInputSchema.safeParse({ x: -1, y: 10 });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects missing coordinates', () => {
+      const result = tapCoordinatesInputSchema.safeParse({ x: 5 });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('dismissAlertInputSchema', () => {
+    it('accepts a boolean accept flag', () => {
+      const result = dismissAlertInputSchema.safeParse({ accept: true });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a missing accept flag', () => {
+      const result = dismissAlertInputSchema.safeParse({});
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('openAppInputSchema', () => {
+    it('accepts a non-empty bundleId', () => {
+      const result = openAppInputSchema.safeParse({ bundleId: 'io.metamask' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an empty bundleId', () => {
+      const result = openAppInputSchema.safeParse({ bundleId: '' });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('pressButtonInputSchema', () => {
+    it('accepts a known device button', () => {
+      const result = pressButtonInputSchema.safeParse({ button: 'home' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an unknown button value', () => {
+      const result = pressButtonInputSchema.safeParse({ button: 'volume_up' });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('deviceContextInputSchema', () => {
+    it('accepts a list action', () => {
+      const result = deviceContextInputSchema.safeParse({ action: 'list' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a switch action with a name', () => {
+      const result = deviceContextInputSchema.safeParse({
+        action: 'switch',
+        name: 'WEBVIEW_1',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a switch action without a name', () => {
+      const result = deviceContextInputSchema.safeParse({ action: 'switch' });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an unknown action', () => {
+      const result = deviceContextInputSchema.safeParse({ action: 'reset' });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('deviceClipboardInputSchema', () => {
+    it('accepts a read action', () => {
+      const result = deviceClipboardInputSchema.safeParse({ action: 'read' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a write action with text', () => {
+      const result = deviceClipboardInputSchema.safeParse({
+        action: 'write',
+        text: 'hello',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a write action without text', () => {
+      const result = deviceClipboardInputSchema.safeParse({ action: 'write' });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('screenRecordingInputSchema', () => {
+    it('accepts a start action without outputPath', () => {
+      const result = screenRecordingInputSchema.safeParse({
+        action: 'start',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a start action with outputPath', () => {
+      const result = screenRecordingInputSchema.safeParse({
+        action: 'start',
+        outputPath: '/tmp/rec.mp4',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a stop action', () => {
+      const result = screenRecordingInputSchema.safeParse({ action: 'stop' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an unknown action', () => {
+      const result = screenRecordingInputSchema.safeParse({
+        action: 'pause',
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('deviceLogsInputSchema', () => {
+    it('accepts an empty input', () => {
+      const result = deviceLogsInputSchema.safeParse({});
+
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts durationSeconds and filter', () => {
+      const result = deviceLogsInputSchema.safeParse({
+        durationSeconds: 30,
+        filter: 'MetaMask',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a non-positive durationSeconds', () => {
+      const result = deviceLogsInputSchema.safeParse({ durationSeconds: 0 });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('generateLocatorsInputSchema', () => {
+    it('accepts an empty input', () => {
+      const result = generateLocatorsInputSchema.safeParse({});
+
+      expect(result.success).toBe(true);
+    });
   });
 });

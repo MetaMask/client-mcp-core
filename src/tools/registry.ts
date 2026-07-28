@@ -5,6 +5,24 @@ import { cleanupTool } from './cleanup.js';
 import { clipboardTool } from './clipboard.js';
 import { getContextTool, setContextTool } from './context.js';
 import {
+  closeAppTool,
+  deviceClipboardTool,
+  deviceContextTool,
+  deviceLogsTool,
+  deviceSwipeTool,
+  dismissAlertTool,
+  dismissKeyboardTool,
+  generateLocatorsTool,
+  getAlertTextTool,
+  getWindowSizeTool,
+  longPressTool,
+  openAppTool,
+  pressButtonTool,
+  screenRecordingTool,
+  scrollToElementTool,
+  tapCoordinatesTool,
+} from './device.js';
+import {
   accessibilitySnapshotTool,
   describeScreenTool,
   listTestIdsTool,
@@ -77,13 +95,29 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['clipboard', clipboardTool],
   ['cdp', cdpTool],
   ['hermes_targets', hermesTargetsTool],
+  ['get_window_size', getWindowSizeTool],
   ['mock_network', mockNetworkTool],
+  ['scroll_to_element', scrollToElementTool],
+  ['device_swipe', deviceSwipeTool],
+  ['long_press', longPressTool],
+  ['tap_coordinates', tapCoordinatesTool],
+  ['dismiss_keyboard', dismissKeyboardTool],
+  ['dismiss_alert', dismissAlertTool],
+  ['get_alert_text', getAlertTextTool],
+  ['open_app', openAppTool],
+  ['close_app', closeAppTool],
+  ['press_button', pressButtonTool],
+  ['device_context', deviceContextTool],
+  ['device_clipboard', deviceClipboardTool],
+  ['screen_recording', screenRecordingTool],
+  ['device_logs', deviceLogsTool],
+  ['generate_locators', generateLocatorsTool],
 ]);
 
 export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (15)
+  // MUTATING (26)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
@@ -99,8 +133,24 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   seed_contracts: 'mutating',
   cdp: 'mutating',
   mock_network: 'mutating',
-  // READONLY (11)
+  scroll_to_element: 'mutating',
+  device_swipe: 'mutating',
+  long_press: 'mutating',
+  tap_coordinates: 'mutating',
+  dismiss_keyboard: 'mutating',
+  dismiss_alert: 'mutating',
+  open_app: 'mutating',
+  close_app: 'mutating',
+  press_button: 'mutating',
+  device_context: 'mutating',
+  device_clipboard: 'mutating',
+  // READONLY (14)
   hermes_targets: 'readonly',
+  get_window_size: 'readonly',
+  get_alert_text: 'readonly',
+  screen_recording: 'readonly',
+  device_logs: 'readonly',
+  generate_locators: 'readonly',
   knowledge_last: 'readonly',
   knowledge_search: 'readonly',
   knowledge_summarize: 'readonly',
@@ -155,7 +205,25 @@ export function isBrowserOnlyTool(toolName: string): boolean {
   return BROWSER_ONLY_TOOLS.has(toolName);
 }
 
-const MOBILE_ONLY_TOOLS = new Set(['hermes_targets']);
+const MOBILE_ONLY_TOOLS = new Set([
+  'hermes_targets',
+  'get_window_size',
+  'scroll_to_element',
+  'device_swipe',
+  'long_press',
+  'tap_coordinates',
+  'dismiss_keyboard',
+  'dismiss_alert',
+  'get_alert_text',
+  'open_app',
+  'close_app',
+  'press_button',
+  'device_context',
+  'device_clipboard',
+  'screen_recording',
+  'device_logs',
+  'generate_locators',
+]);
 
 /**
  * Checks if a tool is only available on mobile (iOS/Android) platforms.

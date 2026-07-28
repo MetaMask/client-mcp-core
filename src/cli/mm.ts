@@ -258,6 +258,14 @@ const VALUE_FLAGS = new Set([
   '--selector',
   '--testid',
   '--within',
+  '--direction',
+  '--maxAttempts',
+  '--duration',
+  '--distance',
+  '--startX',
+  '--startY',
+  '--x',
+  '--y',
 ]);
 
 /**
@@ -702,6 +710,184 @@ export async function routeCommand(
       });
       break;
     }
+    case 'scroll-to-element': {
+      const scrollTarget = getPositionalTarget(args);
+      if (
+        !scrollTarget &&
+        !args.includes('--selector') &&
+        !args.includes('--testid')
+      ) {
+        process.stderr.write(
+          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction up|down] [--maxAttempts <n>]\n',
+        );
+        process.exit(1);
+      }
+      const scrollDirection = parseStringFlag(args, '--direction');
+      const scrollMaxAttempts = parseIntFlag(args, '--maxAttempts');
+      await sendInteractionRequest(port, '/tool/scroll_to_element', args, {
+        ...(scrollDirection ? { direction: scrollDirection } : {}),
+        ...(scrollMaxAttempts === undefined
+          ? {}
+          : { maxAttempts: scrollMaxAttempts }),
+      });
+      break;
+    }
+    case 'device-swipe': {
+      const swipeDirection =
+        parseStringFlag(args, '--direction') ?? getPositionalTarget(args);
+      if (!swipeDirection) {
+        process.stderr.write(
+          'Usage: mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]\n',
+        );
+        process.exit(1);
+      }
+      const swipeStartX = parseIntFlag(args, '--startX');
+      const swipeStartY = parseIntFlag(args, '--startY');
+      const swipeDistance = parseIntFlag(args, '--distance');
+      await sendRequest(port, 'POST', '/tool/device_swipe', {
+        direction: swipeDirection,
+        ...(swipeStartX === undefined ? {} : { startX: swipeStartX }),
+        ...(swipeStartY === undefined ? {} : { startY: swipeStartY }),
+        ...(swipeDistance === undefined ? {} : { distance: swipeDistance }),
+      });
+      break;
+    }
+    case 'long-press': {
+      const longPressTarget = getPositionalTarget(args);
+      if (
+        !longPressTarget &&
+        !args.includes('--selector') &&
+        !args.includes('--testid')
+      ) {
+        process.stderr.write(
+          'Usage: mm long-press <ref> [--selector <css>] [--testid <id>] [--duration <ms>]\n',
+        );
+        process.exit(1);
+      }
+      const pressDuration = parseIntFlag(args, '--duration');
+      await sendInteractionRequest(port, '/tool/long_press', args, {
+        ...(pressDuration === undefined ? {} : { durationMs: pressDuration }),
+      });
+      break;
+    }
+    case 'tap-coordinates': {
+      const tapPositionals = getPositionalArgs(args);
+      const tapXFlag = parseIntFlag(args, '--x');
+      const tapYFlag = parseIntFlag(args, '--y');
+      const tapX = tapXFlag ?? parseInt(tapPositionals[0], 10);
+      const tapY = tapYFlag ?? parseInt(tapPositionals[1], 10);
+      if (Number.isNaN(tapX) || Number.isNaN(tapY)) {
+        process.stderr.write('Usage: mm tap-coordinates <x> <y>\n');
+        process.exit(1);
+      }
+      await sendRequest(port, 'POST', '/tool/tap_coordinates', {
+        x: tapX,
+        y: tapY,
+      });
+      break;
+    }
+    case 'dismiss-keyboard':
+      await sendRequest(port, 'POST', '/tool/dismiss_keyboard', {});
+      break;
+    case 'dismiss-alert':
+      await sendRequest(port, 'POST', '/tool/dismiss_alert', {
+        accept: args.includes('--accept'),
+      });
+      break;
+    case 'get-alert-text':
+      await sendRequest(port, 'POST', '/tool/get_alert_text', {});
+      break;
+    case 'open-app':
+      if (!args[0]) {
+        process.stderr.write('Usage: mm open-app <bundleId>\n');
+        process.exit(1);
+      }
+      await sendRequest(port, 'POST', '/tool/open_app', { bundleId: args[0] });
+      break;
+    case 'close-app':
+      if (!args[0]) {
+        process.stderr.write('Usage: mm close-app <bundleId>\n');
+        process.exit(1);
+      }
+      await sendRequest(port, 'POST', '/tool/close_app', { bundleId: args[0] });
+      break;
+    case 'press-button':
+      if (!args[0]) {
+        process.stderr.write('Usage: mm press-button <button>\n');
+        process.exit(1);
+      }
+      await sendRequest(port, 'POST', '/tool/press_button', {
+        button: args[0],
+      });
+      break;
+    case 'device-context': {
+      const ctxAction = args[0];
+      if (!ctxAction || (ctxAction !== 'list' && ctxAction !== 'switch')) {
+        process.stderr.write('Usage: mm device-context <list|switch> [name]\n');
+        process.exit(1);
+      }
+      if (ctxAction === 'switch' && !args[1]) {
+        process.stderr.write('Usage: mm device-context switch <name>\n');
+        process.exit(1);
+      }
+      await sendRequest(port, 'POST', '/tool/device_context', {
+        action: ctxAction,
+        ...(ctxAction === 'switch' ? { name: args[1] } : {}),
+      });
+      break;
+    }
+    case 'device-clipboard': {
+      const devClipAction = args[0];
+      if (
+        !devClipAction ||
+        (devClipAction !== 'read' && devClipAction !== 'write')
+      ) {
+        process.stderr.write(
+          'Usage: mm device-clipboard <read|write> [text]\n',
+        );
+        process.exit(1);
+      }
+      if (devClipAction === 'write' && !args[1]) {
+        process.stderr.write('Usage: mm device-clipboard write <text>\n');
+        process.exit(1);
+      }
+      await sendRequest(port, 'POST', '/tool/device_clipboard', {
+        action: devClipAction,
+        ...(devClipAction === 'write' ? { text: args[1] } : {}),
+      });
+      break;
+    }
+    case 'screen-recording': {
+      const recAction = args[0];
+      if (!recAction || (recAction !== 'start' && recAction !== 'stop')) {
+        process.stderr.write(
+          'Usage: mm screen-recording <start|stop> [--output <path>]\n',
+        );
+        process.exit(1);
+      }
+      const recOutput = parseStringFlag(args, '--output');
+      await sendRequest(port, 'POST', '/tool/screen_recording', {
+        action: recAction,
+        ...(recAction === 'start' && recOutput
+          ? { outputPath: recOutput }
+          : {}),
+      });
+      break;
+    }
+    case 'device-logs': {
+      const logsDuration = parseIntFlag(args, '--duration');
+      const logsFilter = parseStringFlag(args, '--filter');
+      await sendRequest(port, 'POST', '/tool/device_logs', {
+        ...(logsDuration === undefined
+          ? {}
+          : { durationSeconds: logsDuration }),
+        ...(logsFilter ? { filter: logsFilter } : {}),
+      });
+      break;
+    }
+    case 'generate-locators':
+      await sendRequest(port, 'POST', '/tool/generate_locators', {});
+      break;
     default:
       process.stderr.write(
         `Error: unknown command '${command}'. Run 'mm --help' for usage.\n`,
@@ -1457,6 +1643,23 @@ Advanced:
   mm mock-network requests [--limit <n>]
   mm cdp <method> [params-json] [--timeout <ms>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
+
+Mobile (iOS/Android only):
+  mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction up|down] [--maxAttempts <n>]
+  mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]
+  mm long-press <ref> [--selector <css>] [--testid <id>] [--duration <ms>]
+  mm tap-coordinates <x> <y>
+  mm dismiss-keyboard
+  mm dismiss-alert [--accept]
+  mm get-alert-text
+  mm open-app <bundleId>
+  mm close-app <bundleId>
+  mm press-button <button>
+  mm device-context <list|switch> [name]
+  mm device-clipboard <read|write> [text]
+  mm screen-recording <start|stop> [--output <path>]
+  mm device-logs [--duration <seconds>] [--filter <text>]
+  mm generate-locators
 
 Examples:
   mm launch                                          (from inside project)
