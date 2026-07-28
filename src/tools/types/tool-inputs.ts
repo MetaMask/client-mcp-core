@@ -228,3 +228,57 @@ export type SetContextInput = {
   context: 'e2e' | 'prod';
   options?: Record<string, unknown>;
 };
+
+export type ScrollToElementInput = TargetSelection & {
+  direction?: 'up' | 'down';
+  maxAttempts?: number;
+};
+
+export type DeviceSwipeInput = {
+  direction: 'up' | 'down' | 'left' | 'right';
+  startX?: number;
+  startY?: number;
+  distance?: number;
+};
+
+export type LongPressInput = TargetSelection & {
+  durationMs?: number;
+};
+
+export type TapCoordinatesInput = {
+  x: number;
+  y: number;
+};
+
+export type DismissAlertInput = {
+  accept: boolean;
+};
+
+export type OpenAppInput = {
+  bundleId: string;
+};
+
+export type CloseAppInput = {
+  bundleId: string;
+};
+
+export type PressButtonInput = {
+  button: string;
+};
+
+export type DeviceContextInput =
+  | { action: 'list' }
+  | { action: 'switch'; name: string };
+
+export type DeviceClipboardInput =
+  | { action: 'read' }
+  | { action: 'write'; text: string };
+
+export type ScreenRecordingInput =
+  | { action: 'start'; outputPath?: string }
+  | { action: 'stop' };
+
+export type DeviceLogsInput = {
+  durationSeconds?: number;
+  filter?: string;
+};

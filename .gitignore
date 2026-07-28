@@ -1,3 +1,6 @@
+# Local planning artifacts (not part of the package)
+.sisyphus/
+
 # Dependencies
 node_modules/
 

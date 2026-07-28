@@ -42,8 +42,23 @@ describe('isBrowserOnlyTool', () => {
 });
 
 describe('isMobileOnlyTool', () => {
-  it('returns true for mobile-only hermes tools', () => {
+  it('returns true for mobile-only tools', () => {
     expect(isMobileOnlyTool('hermes_targets')).toBe(true);
+    expect(isMobileOnlyTool('get_window_size')).toBe(true);
+    expect(isMobileOnlyTool('scroll_to_element')).toBe(true);
+    expect(isMobileOnlyTool('device_swipe')).toBe(true);
+    expect(isMobileOnlyTool('long_press')).toBe(true);
+    expect(isMobileOnlyTool('tap_coordinates')).toBe(true);
+    expect(isMobileOnlyTool('dismiss_keyboard')).toBe(true);
+    expect(isMobileOnlyTool('dismiss_alert')).toBe(true);
+    expect(isMobileOnlyTool('get_alert_text')).toBe(true);
+    expect(isMobileOnlyTool('open_app')).toBe(true);
+    expect(isMobileOnlyTool('close_app')).toBe(true);
+    expect(isMobileOnlyTool('press_button')).toBe(true);
+    expect(isMobileOnlyTool('device_context')).toBe(true);
+    expect(isMobileOnlyTool('device_clipboard')).toBe(true);
+    expect(isMobileOnlyTool('screen_recording')).toBe(true);
+    expect(isMobileOnlyTool('device_logs')).toBe(true);
   });
 
   it('returns false for browser-only and cross-platform tools', () => {

@@ -1940,6 +1940,388 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes scroll-to-element with a11y ref', async () => {
+    await routeCommand('scroll-to-element', ['e1'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/scroll_to_element',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e1' }),
+      }),
+    );
+  });
+
+  it('routes scroll-to-element with direction and maxAttempts', async () => {
+    await routeCommand(
+      'scroll-to-element',
+      ['e1', '--direction', 'down', '--maxAttempts', '3'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/scroll_to_element',
+      expect.objectContaining({
+        body: JSON.stringify({
+          a11yRef: 'e1',
+          direction: 'down',
+          maxAttempts: 3,
+        }),
+      }),
+    );
+  });
+
+  it('routes scroll-to-element with --testid', async () => {
+    await routeCommand('scroll-to-element', ['--testid', 'row'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/scroll_to_element',
+      expect.objectContaining({
+        body: JSON.stringify({ testId: 'row' }),
+      }),
+    );
+  });
+
+  it('exits when scroll-to-element has no target', async () => {
+    await expect(
+      routeCommand('scroll-to-element', [], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm scroll-to-element'),
+    );
+  });
+
+  it('routes device-swipe with positional direction', async () => {
+    await routeCommand('device-swipe', ['up'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_swipe',
+      expect.objectContaining({
+        body: JSON.stringify({ direction: 'up' }),
+      }),
+    );
+  });
+
+  it('routes device-swipe with flags', async () => {
+    await routeCommand(
+      'device-swipe',
+      [
+        '--direction',
+        'left',
+        '--startX',
+        '10',
+        '--startY',
+        '20',
+        '--distance',
+        '300',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_swipe',
+      expect.objectContaining({
+        body: JSON.stringify({
+          direction: 'left',
+          startX: 10,
+          startY: 20,
+          distance: 300,
+        }),
+      }),
+    );
+  });
+
+  it('exits when device-swipe has no direction', async () => {
+    await expect(routeCommand('device-swipe', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm device-swipe'),
+    );
+  });
+
+  it('routes long-press with a11y ref', async () => {
+    await routeCommand('long-press', ['e2'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/long_press',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e2' }),
+      }),
+    );
+  });
+
+  it('routes long-press with --duration', async () => {
+    await routeCommand('long-press', ['e2', '--duration', '2000'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/long_press',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e2', durationMs: 2000 }),
+      }),
+    );
+  });
+
+  it('exits when long-press has no target', async () => {
+    await expect(routeCommand('long-press', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm long-press'),
+    );
+  });
+
+  it('routes tap-coordinates with positionals', async () => {
+    await routeCommand('tap-coordinates', ['100', '200'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/tap_coordinates',
+      expect.objectContaining({
+        body: JSON.stringify({ x: 100, y: 200 }),
+      }),
+    );
+  });
+
+  it('routes tap-coordinates with --x/--y flags', async () => {
+    await routeCommand('tap-coordinates', ['--x', '50', '--y', '75'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/tap_coordinates',
+      expect.objectContaining({
+        body: JSON.stringify({ x: 50, y: 75 }),
+      }),
+    );
+  });
+
+  it('exits when tap-coordinates missing coordinates', async () => {
+    await expect(
+      routeCommand('tap-coordinates', ['100'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm tap-coordinates'),
+    );
+  });
+
+  it('routes dismiss-keyboard', async () => {
+    await routeCommand('dismiss-keyboard', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/dismiss_keyboard',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
+  it('routes dismiss-alert with --accept', async () => {
+    await routeCommand('dismiss-alert', ['--accept'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/dismiss_alert',
+      expect.objectContaining({ body: JSON.stringify({ accept: true }) }),
+    );
+  });
+
+  it('routes dismiss-alert without --accept as false', async () => {
+    await routeCommand('dismiss-alert', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/dismiss_alert',
+      expect.objectContaining({ body: JSON.stringify({ accept: false }) }),
+    );
+  });
+
+  it('routes get-alert-text', async () => {
+    await routeCommand('get-alert-text', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_alert_text',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
+  it('routes open-app with bundleId', async () => {
+    await routeCommand('open-app', ['io.metamask'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/open_app',
+      expect.objectContaining({
+        body: JSON.stringify({ bundleId: 'io.metamask' }),
+      }),
+    );
+  });
+
+  it('exits when open-app has no bundleId', async () => {
+    await expect(routeCommand('open-app', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm open-app'),
+    );
+  });
+
+  it('routes close-app with bundleId', async () => {
+    await routeCommand('close-app', ['io.metamask'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/close_app',
+      expect.objectContaining({
+        body: JSON.stringify({ bundleId: 'io.metamask' }),
+      }),
+    );
+  });
+
+  it('exits when close-app has no bundleId', async () => {
+    await expect(routeCommand('close-app', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm close-app'),
+    );
+  });
+
+  it('routes press-button with button name', async () => {
+    await routeCommand('press-button', ['home'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/press_button',
+      expect.objectContaining({
+        body: JSON.stringify({ button: 'home' }),
+      }),
+    );
+  });
+
+  it('exits when press-button has no button', async () => {
+    await expect(routeCommand('press-button', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm press-button'),
+    );
+  });
+
+  it('routes device-context list', async () => {
+    await routeCommand('device-context', ['list'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_context',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'list' }),
+      }),
+    );
+  });
+
+  it('routes device-context switch with name', async () => {
+    await routeCommand('device-context', ['switch', 'WEBVIEW_1'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_context',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'switch', name: 'WEBVIEW_1' }),
+      }),
+    );
+  });
+
+  it('exits when device-context has invalid action', async () => {
+    await expect(
+      routeCommand('device-context', ['bogus'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm device-context'),
+    );
+  });
+
+  it('exits when device-context switch has no name', async () => {
+    await expect(
+      routeCommand('device-context', ['switch'], 3000),
+    ).rejects.toThrowError('process.exit');
+  });
+
+  it('routes device-clipboard read', async () => {
+    await routeCommand('device-clipboard', ['read'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_clipboard',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'read' }),
+      }),
+    );
+  });
+
+  it('routes device-clipboard write with text', async () => {
+    await routeCommand('device-clipboard', ['write', 'hello'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_clipboard',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'write', text: 'hello' }),
+      }),
+    );
+  });
+
+  it('exits when device-clipboard has invalid action', async () => {
+    await expect(
+      routeCommand('device-clipboard', ['bogus'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm device-clipboard'),
+    );
+  });
+
+  it('exits when device-clipboard write has no text', async () => {
+    await expect(
+      routeCommand('device-clipboard', ['write'], 3000),
+    ).rejects.toThrowError('process.exit');
+  });
+
+  it('routes screen-recording start', async () => {
+    await routeCommand('screen-recording', ['start'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/screen_recording',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'start' }),
+      }),
+    );
+  });
+
+  it('routes screen-recording start with --output', async () => {
+    await routeCommand(
+      'screen-recording',
+      ['start', '--output', '/tmp/rec.mp4'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/screen_recording',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'start',
+          outputPath: '/tmp/rec.mp4',
+        }),
+      }),
+    );
+  });
+
+  it('routes screen-recording stop', async () => {
+    await routeCommand('screen-recording', ['stop'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/screen_recording',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'stop' }),
+      }),
+    );
+  });
+
+  it('exits when screen-recording has invalid action', async () => {
+    await expect(
+      routeCommand('screen-recording', ['bogus'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm screen-recording'),
+    );
+  });
+
+  it('routes device-logs with no args', async () => {
+    await routeCommand('device-logs', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_logs',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
+  it('routes device-logs with --duration and --filter', async () => {
+    await routeCommand(
+      'device-logs',
+      ['--duration', '30', '--filter', 'MetaMask'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/device_logs',
+      expect.objectContaining({
+        body: JSON.stringify({
+          durationSeconds: 30,
+          filter: 'MetaMask',
+        }),
+      }),
+    );
+  });
+
   it('exits for unknown command', async () => {
     await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
       'process.exit',

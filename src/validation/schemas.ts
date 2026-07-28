@@ -695,12 +695,169 @@ export const hermesTargetsInputSchema = z.object({
     .describe('Bypass the appId filter and list ALL candidates (diagnostics)'),
 });
 
+export const getWindowSizeInputSchema = z.object({});
+
+export const scrollToElementInputSchema = targetSelectionSchema.and(
+  z.object({
+    direction: z
+      .enum(['up', 'down'])
+      .describe('Scroll direction to reveal the target element')
+      .optional(),
+    maxAttempts: z
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .describe('Maximum number of scroll attempts before giving up')
+      .optional(),
+  }),
+);
+
+export const deviceSwipeInputSchema = z.object({
+  direction: z
+    .enum(['up', 'down', 'left', 'right'])
+    .describe('Finger swipe direction (swipe up scrolls content down)'),
+  startX: z
+    .number()
+    .int()
+    .min(0)
+    .describe('Start X coordinate for the swipe gesture')
+    .optional(),
+  startY: z
+    .number()
+    .int()
+    .min(0)
+    .describe('Start Y coordinate for the swipe gesture')
+    .optional(),
+  distance: z
+    .number()
+    .int()
+    .min(1)
+    .max(10000)
+    .describe('Swipe distance in pixels')
+    .optional(),
+});
+
+export const longPressInputSchema = targetSelectionSchema.and(
+  z.object({
+    durationMs: z
+      .number()
+      .int()
+      .min(1)
+      .max(60000)
+      .describe('Press duration in milliseconds')
+      .optional(),
+  }),
+);
+
+export const tapCoordinatesInputSchema = z.object({
+  x: z.number().min(0).describe('X coordinate to tap'),
+  y: z.number().min(0).describe('Y coordinate to tap'),
+});
+
+export const dismissKeyboardInputSchema = z.object({});
+
+export const dismissAlertInputSchema = z.object({
+  accept: z
+    .boolean()
+    .describe('Accept (true) or dismiss (false) the native alert'),
+});
+
+export const getAlertTextInputSchema = z.object({});
+
+export const openAppInputSchema = z.object({
+  bundleId: z
+    .string()
+    .min(1)
+    .describe('Bundle identifier of the app to launch'),
+});
+
+export const closeAppInputSchema = z.object({
+  bundleId: z
+    .string()
+    .min(1)
+    .describe('Bundle identifier of the app to terminate'),
+});
+
+export const pressButtonInputSchema = z.object({
+  button: z
+    .string()
+    .min(1)
+    .describe('Device button to press (e.g. home, back, enter)'),
+});
+
+export const deviceContextInputSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('list'),
+  }),
+  z.object({
+    action: z.literal('switch'),
+    name: z
+      .string()
+      .min(1)
+      .describe('Name of the device automation context to switch to'),
+  }),
+]);
+
+export const deviceClipboardInputSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('read'),
+  }),
+  z.object({
+    action: z.literal('write'),
+    text: z.string().describe('Text to write to the device clipboard'),
+  }),
+]);
+
+export const screenRecordingInputSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('start'),
+    outputPath: z
+      .string()
+      .min(1)
+      .describe('File path to save the recording to')
+      .optional(),
+  }),
+  z.object({
+    action: z.literal('stop'),
+  }),
+]);
+
+export const deviceLogsInputSchema = z.object({
+  durationSeconds: z
+    .number()
+    .int()
+    .min(1)
+    .max(3600)
+    .describe('How many seconds of logs to retrieve')
+    .optional(),
+  filter: z
+    .string()
+    .min(1)
+    .describe('Substring filter applied to log entries')
+    .optional(),
+});
+
 export type SetContextInputZ = z.infer<typeof setContextInputSchema>;
 export type GetContextInputZ = z.infer<typeof getContextInputSchema>;
 export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
 export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
+export type ScrollToElementInputZ = z.infer<typeof scrollToElementInputSchema>;
+export type DeviceSwipeInputZ = z.infer<typeof deviceSwipeInputSchema>;
+export type LongPressInputZ = z.infer<typeof longPressInputSchema>;
+export type TapCoordinatesInputZ = z.infer<typeof tapCoordinatesInputSchema>;
+export type DismissKeyboardInputZ = z.infer<typeof dismissKeyboardInputSchema>;
+export type DismissAlertInputZ = z.infer<typeof dismissAlertInputSchema>;
+export type GetAlertTextInputZ = z.infer<typeof getAlertTextInputSchema>;
+export type OpenAppInputZ = z.infer<typeof openAppInputSchema>;
+export type CloseAppInputZ = z.infer<typeof closeAppInputSchema>;
+export type PressButtonInputZ = z.infer<typeof pressButtonInputSchema>;
+export type DeviceContextInputZ = z.infer<typeof deviceContextInputSchema>;
+export type DeviceClipboardInputZ = z.infer<typeof deviceClipboardInputSchema>;
+export type ScreenRecordingInputZ = z.infer<typeof screenRecordingInputSchema>;
+export type DeviceLogsInputZ = z.infer<typeof deviceLogsInputSchema>;
 
 export const toolSchemas = {
   build: buildInputSchema,
@@ -733,7 +890,22 @@ export const toolSchemas = {
   clipboard: clipboardInputSchema,
   cdp: cdpInputSchema,
   hermes_targets: hermesTargetsInputSchema,
+  get_window_size: getWindowSizeInputSchema,
   mock_network: mockNetworkInputSchema,
+  scroll_to_element: scrollToElementInputSchema,
+  device_swipe: deviceSwipeInputSchema,
+  long_press: longPressInputSchema,
+  tap_coordinates: tapCoordinatesInputSchema,
+  dismiss_keyboard: dismissKeyboardInputSchema,
+  dismiss_alert: dismissAlertInputSchema,
+  get_alert_text: getAlertTextInputSchema,
+  open_app: openAppInputSchema,
+  close_app: closeAppInputSchema,
+  press_button: pressButtonInputSchema,
+  device_context: deviceContextInputSchema,
+  device_clipboard: deviceClipboardInputSchema,
+  screen_recording: screenRecordingInputSchema,
+  device_logs: deviceLogsInputSchema,
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;

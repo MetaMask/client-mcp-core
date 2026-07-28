@@ -25,12 +25,12 @@ mm cleanup --shutdown      # 5. Clean up when done
 
 Tool responses include different data based on the tool's category:
 
-| Category      | Examples                                                                    | Observations in response?                      |
-| ------------- | --------------------------------------------------------------------------- | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context                | No — faster response                           |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot           | Data is already in `result`                    |
-| **Batch**     | run_steps                                                                   | Controlled by `includeObservations` param      |
+| Category      | Examples                                                                                                                                                                                                                                        | Observations in response?                      |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
+| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context, get_alert_text, screen_recording, device_logs, hermes_targets                                                                                                                     | No — faster response                           |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                               | Data is already in `result`                    |
+| **Batch**     | run_steps                                                                                                                                                                                                                                       | Controlled by `includeObservations` param      |
 
 **Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
 
@@ -591,6 +591,72 @@ mm hermes-targets
 mm hermes-targets --all
 ```
 
+### Mobile device actions (iOS/Android only)
+
+These commands require a mobile session (`mm launch --platform ios|android`). On a browser
+session they return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`. Element-targeting commands accept
+the same `<ref>` / `--testid` / `--selector` targeting as `mm click`.
+
+#### `mm scroll-to-element <ref> [--direction up|down] [--maxAttempts <n>]`
+
+Scrolls the screen until the target element becomes visible.
+
+#### `mm device-swipe --direction <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]`
+
+Swipes the screen. Without coordinates, swipes from the screen center.
+
+#### `mm long-press <ref> [--duration <ms>]`
+
+Long-presses the target element (default press duration is the driver's default).
+
+#### `mm tap-coordinates <x> <y>`
+
+Taps raw screen coordinates. Prefer element targeting when possible.
+
+#### `mm dismiss-keyboard`
+
+Dismisses the on-screen keyboard.
+
+#### `mm dismiss-alert [--accept]`
+
+Dismisses a native OS alert. Pass `--accept` to accept it; omit to dismiss/cancel.
+
+#### `mm get-alert-text`
+
+Returns the text of a visible native alert (read-only).
+
+#### `mm open-app <bundleId>` / `mm close-app <bundleId>`
+
+Launches/foregrounds or terminates an app by bundle identifier (e.g. `io.metamask`).
+
+#### `mm press-button <button>`
+
+Presses a hardware/system button (e.g. `home`, `back`, `enter`).
+
+#### `mm device-context list` / `mm device-context switch <name>`
+
+Lists available native/webview contexts, or switches the active context (e.g. `WEBVIEW_1`).
+
+#### `mm device-clipboard read` / `mm device-clipboard write <text>`
+
+Reads or writes the device clipboard. Distinct from `mm clipboard` (browser CDP).
+
+#### `mm screen-recording start [--output <path>]` / `mm screen-recording stop`
+
+Starts or stops an on-device screen recording. `stop` returns the recording path.
+
+#### `mm device-logs [--duration <seconds>] [--filter <text>]`
+
+Fetches recent device logs, optionally scoped by duration and a text filter.
+
+```bash
+mm scroll-to-element e12 --direction down
+mm device-swipe --direction up --distance 400
+mm open-app io.metamask
+mm device-context switch WEBVIEW_1
+mm device-logs --filter MetaMask --duration 30
+```
+
 ## Element Targeting
 
 Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a target. You must provide exactly ONE of:
@@ -617,47 +683,50 @@ Use prior knowledge to guide your actions, but always verify against the current
 
 When a command fails, the response includes `error.code`. Use this to decide what to do:
 
-| Code                             | Meaning                                                              | Recovery                                                                                                  |
-| -------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `MM_NO_ACTIVE_SESSION`           | No browser session running                                           | Run `mm launch` first                                                                                     |
-| `MM_SESSION_ALREADY_RUNNING`     | Session already exists                                               | Run `mm cleanup` first, or use `--force`                                                                  |
-| `MM_LAUNCH_FAILED`               | Browser session launch failed                                        | Check extension path and config; retry                                                                    |
-| `MM_PAGE_CLOSED`                 | Page was closed unexpectedly                                         | Normal after some confirmations; run describe-screen                                                      |
-| `MM_BUILD_FAILED`                | Extension build failed                                               | Check build logs; fix build errors and retry                                                              |
-| `MM_DEPENDENCIES_MISSING`        | Required build dependencies not installed                            | Run dependency install (npm/yarn) and retry build                                                         |
-| `MM_TARGET_NOT_FOUND`            | Element ref/testId/selector not found                                | Run `mm describe-screen` to get fresh refs                                                                |
-| `MM_WAIT_TIMEOUT`                | Element didn't appear in time                                        | Increase timeout or verify you're on the right screen                                                     |
-| `MM_CLICK_FAILED`                | Click failed after finding element                                   | Element may be obscured; try waiting or scrolling                                                         |
-| `MM_CLICK_TIMEOUT`               | Click action timed out (element found, click hung)                   | Run `mm describe-screen` to verify if click completed; retry with `--timeout` or different approach       |
-| `MM_TYPE_FAILED`                 | Type failed after finding element                                    | Element may not be an input; verify with describe-screen                                                  |
-| `MM_TYPE_TIMEOUT`                | Fill action timed out                                                | Run `mm describe-screen` to verify state; retry with `--timeout`                                          |
-| `MM_GETTEXT_FAILED`              | getText operational failure (non-timeout)                            | Element may be detached; run `mm describe-screen` and re-target                                           |
-| `MM_GETTEXT_TIMEOUT`             | textContent action timed out                                         | Retry with `--timeout`                                                                                    |
-| `MM_CLIPBOARD_PERMISSION_DENIED` | Clipboard permission denied by browser                               | Check browser permissions; try CDP approach                                                               |
-| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`  | Clipboard blocked by LavaMoat policy                                 | Extension security policy blocks clipboard; use alternative input method                                  |
-| `MM_CLIPBOARD_FAILED`            | Clipboard operation failed                                           | Retry; check if page is still active                                                                      |
-| `MM_NAVIGATION_FAILED`           | Navigation error or network failure                                  | Check URL validity; retry once                                                                            |
-| `MM_NOTIFICATION_TIMEOUT`        | Extension notification popup didn't appear                           | Action may not have triggered a notification; check state                                                 |
-| `MM_TAB_NOT_FOUND`               | Tab role/URL not found                                               | Run `mm get-state` to see available tabs                                                                  |
-| `MM_DISCOVERY_FAILED`            | Discovery tool failure                                               | Page may be loading; wait and retry                                                                       |
-| `MM_SCREENSHOT_FAILED`           | Screenshot capture failure                                           | Page may be in unstable state; retry after describe-screen                                                |
-| `MM_STATE_FAILED`                | State retrieval failed                                               | Session may be unstable; run `mm describe-screen`                                                         |
-| `MM_KNOWLEDGE_ERROR`             | Knowledge store operation failed                                     | Retry; check that session exists                                                                          |
-| `MM_CONTRACT_NOT_FOUND`          | Unknown contract name for seeding                                    | See available contracts below                                                                             |
-| `MM_SEED_FAILED`                 | Contract deployment failure                                          | Check Anvil chain is running; verify contract name                                                        |
-| `MM_CAPABILITY_NOT_AVAILABLE`    | Feature requires a capability not configured                         | Check environment mode (e2e vs prod)                                                                      |
-| `MM_CONTEXT_SWITCH_BLOCKED`      | Can't switch context with active session                             | Run `mm cleanup` first                                                                                    |
-| `MM_SET_CONTEXT_FAILED`          | Context switch operation failed                                      | Retry; check session state                                                                                |
-| `MM_INVALID_INPUT`               | Bad parameters                                                       | Fix input and retry                                                                                       |
-| `MM_INVALID_CONFIG`              | Invalid configuration                                                | Check config file format and required fields                                                              |
-| `MM_PORT_IN_USE`                 | Port already in use                                                  | Stop conflicting process or let the daemon auto-allocate                                                  |
-| `MM_UNKNOWN_TOOL`                | Unknown tool name                                                    | Check tool name spelling                                                                                  |
-| `MM_INTERNAL_ERROR`              | Internal server error                                                | Retry; if persistent, restart daemon with `mm stop && mm serve`                                           |
-| `MM_BATCH_TIMEOUT`               | `batchTimeoutMs` deadline exceeded                                   | Remaining steps were skipped; check partial results                                                       |
-| `MM_CDP_BLOCKED`                 | CDP method is blocked (destructive)                                  | Use a different CDP method; blocked list differs by platform (see `cdp`)                                  |
-| `MM_CDP_FAILED`                  | CDP command failed or timed out (mobile: `HERMES_*` code in message) | Check method/params; on mobile ensure a DEBUG build with Metro is running, then `mm hermes-targets --all` |
-| `MM_HERMES_FAILED`               | `hermes_targets` discovery failed (`HERMES_*` code in message)       | Ensure a DEBUG build with Metro is running; run `mm hermes-targets --all` to diagnose                     |
-| `MM_HERMES_NOT_AVAILABLE`        | `hermes_targets` used outside a mobile session                       | Launch a mobile (iOS/Android) session first                                                               |
+| Code                                | Meaning                                                              | Recovery                                                                                                  |
+| ----------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `MM_NO_ACTIVE_SESSION`              | No browser session running                                           | Run `mm launch` first                                                                                     |
+| `MM_SESSION_ALREADY_RUNNING`        | Session already exists                                               | Run `mm cleanup` first, or use `--force`                                                                  |
+| `MM_LAUNCH_FAILED`                  | Browser session launch failed                                        | Check extension path and config; retry                                                                    |
+| `MM_PAGE_CLOSED`                    | Page was closed unexpectedly                                         | Normal after some confirmations; run describe-screen                                                      |
+| `MM_BUILD_FAILED`                   | Extension build failed                                               | Check build logs; fix build errors and retry                                                              |
+| `MM_DEPENDENCIES_MISSING`           | Required build dependencies not installed                            | Run dependency install (npm/yarn) and retry build                                                         |
+| `MM_TARGET_NOT_FOUND`               | Element ref/testId/selector not found                                | Run `mm describe-screen` to get fresh refs                                                                |
+| `MM_WAIT_TIMEOUT`                   | Element didn't appear in time                                        | Increase timeout or verify you're on the right screen                                                     |
+| `MM_CLICK_FAILED`                   | Click failed after finding element                                   | Element may be obscured; try waiting or scrolling                                                         |
+| `MM_CLICK_TIMEOUT`                  | Click action timed out (element found, click hung)                   | Run `mm describe-screen` to verify if click completed; retry with `--timeout` or different approach       |
+| `MM_TYPE_FAILED`                    | Type failed after finding element                                    | Element may not be an input; verify with describe-screen                                                  |
+| `MM_TYPE_TIMEOUT`                   | Fill action timed out                                                | Run `mm describe-screen` to verify state; retry with `--timeout`                                          |
+| `MM_GETTEXT_FAILED`                 | getText operational failure (non-timeout)                            | Element may be detached; run `mm describe-screen` and re-target                                           |
+| `MM_GETTEXT_TIMEOUT`                | textContent action timed out                                         | Retry with `--timeout`                                                                                    |
+| `MM_CLIPBOARD_PERMISSION_DENIED`    | Clipboard permission denied by browser                               | Check browser permissions; try CDP approach                                                               |
+| `MM_CLIPBOARD_LAVAMOAT_BLOCKED`     | Clipboard blocked by LavaMoat policy                                 | Extension security policy blocks clipboard; use alternative input method                                  |
+| `MM_CLIPBOARD_FAILED`               | Clipboard operation failed                                           | Retry; check if page is still active                                                                      |
+| `MM_NAVIGATION_FAILED`              | Navigation error or network failure                                  | Check URL validity; retry once                                                                            |
+| `MM_NOTIFICATION_TIMEOUT`           | Extension notification popup didn't appear                           | Action may not have triggered a notification; check state                                                 |
+| `MM_TAB_NOT_FOUND`                  | Tab role/URL not found                                               | Run `mm get-state` to see available tabs                                                                  |
+| `MM_DISCOVERY_FAILED`               | Discovery tool failure                                               | Page may be loading; wait and retry                                                                       |
+| `MM_SCREENSHOT_FAILED`              | Screenshot capture failure                                           | Page may be in unstable state; retry after describe-screen                                                |
+| `MM_STATE_FAILED`                   | State retrieval failed                                               | Session may be unstable; run `mm describe-screen`                                                         |
+| `MM_KNOWLEDGE_ERROR`                | Knowledge store operation failed                                     | Retry; check that session exists                                                                          |
+| `MM_CONTRACT_NOT_FOUND`             | Unknown contract name for seeding                                    | See available contracts below                                                                             |
+| `MM_SEED_FAILED`                    | Contract deployment failure                                          | Check Anvil chain is running; verify contract name                                                        |
+| `MM_CAPABILITY_NOT_AVAILABLE`       | Feature requires a capability not configured                         | Check environment mode (e2e vs prod)                                                                      |
+| `MM_CONTEXT_SWITCH_BLOCKED`         | Can't switch context with active session                             | Run `mm cleanup` first                                                                                    |
+| `MM_SET_CONTEXT_FAILED`             | Context switch operation failed                                      | Retry; check session state                                                                                |
+| `MM_INVALID_INPUT`                  | Bad parameters                                                       | Fix input and retry                                                                                       |
+| `MM_INVALID_CONFIG`                 | Invalid configuration                                                | Check config file format and required fields                                                              |
+| `MM_PORT_IN_USE`                    | Port already in use                                                  | Stop conflicting process or let the daemon auto-allocate                                                  |
+| `MM_UNKNOWN_TOOL`                   | Unknown tool name                                                    | Check tool name spelling                                                                                  |
+| `MM_INTERNAL_ERROR`                 | Internal server error                                                | Retry; if persistent, restart daemon with `mm stop && mm serve`                                           |
+| `MM_BATCH_TIMEOUT`                  | `batchTimeoutMs` deadline exceeded                                   | Remaining steps were skipped; check partial results                                                       |
+| `MM_CDP_BLOCKED`                    | CDP method is blocked (destructive)                                  | Use a different CDP method; blocked list differs by platform (see `cdp`)                                  |
+| `MM_CDP_FAILED`                     | CDP command failed or timed out (mobile: `HERMES_*` code in message) | Check method/params; on mobile ensure a DEBUG build with Metro is running, then `mm hermes-targets --all` |
+| `MM_HERMES_FAILED`                  | `hermes_targets` discovery failed (`HERMES_*` code in message)       | Ensure a DEBUG build with Metro is running; run `mm hermes-targets --all` to diagnose                     |
+| `MM_HERMES_NOT_AVAILABLE`           | `hermes_targets` used outside a mobile session                       | Launch a mobile (iOS/Android) session first                                                               |
+| `MM_DEVICE_ACTION_FAILED`           | A mobile device action failed                                        | Check the target/args; ensure the device/emulator is responsive                                           |
+| `MM_DEVICE_NOT_AVAILABLE`           | Mobile-only tool invoked without a mobile driver                     | Launch a mobile (iOS/Android) session first                                                               |
+| `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` | Tool gated off the active platform                                   | Use the tool on its supported platform (browser vs mobile)                                                |
 
 ## Available Contracts (E2E only)
 

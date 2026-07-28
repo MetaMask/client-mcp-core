@@ -40,7 +40,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(31);
+    expect(toolRegistry.size).toBe(46);
   });
 
   it('stores only functions as values', () => {

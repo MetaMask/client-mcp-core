@@ -31,6 +31,20 @@ const TOOL_ALIASES: Record<
     tool: 'navigate',
     inject: { screen: 'notification' },
   },
+  'scroll-to-element': { tool: 'scroll_to_element', inject: {} },
+  'device-swipe': { tool: 'device_swipe', inject: {} },
+  'long-press': { tool: 'long_press', inject: {} },
+  'tap-coordinates': { tool: 'tap_coordinates', inject: {} },
+  'dismiss-keyboard': { tool: 'dismiss_keyboard', inject: {} },
+  'dismiss-alert': { tool: 'dismiss_alert', inject: {} },
+  'get-alert-text': { tool: 'get_alert_text', inject: {} },
+  'open-app': { tool: 'open_app', inject: {} },
+  'close-app': { tool: 'close_app', inject: {} },
+  'press-button': { tool: 'press_button', inject: {} },
+  'device-context': { tool: 'device_context', inject: {} },
+  'device-clipboard': { tool: 'device_clipboard', inject: {} },
+  'screen-recording': { tool: 'screen_recording', inject: {} },
+  'device-logs': { tool: 'device_logs', inject: {} },
 };
 
 type NormalisedStep = {

@@ -46,6 +46,9 @@ export const ErrorCodes = {
   MM_HERMES_FAILED: 'MM_HERMES_FAILED', // underlying device-mcp HERMES_* code is preserved in the message
   MM_HERMES_NOT_AVAILABLE: 'MM_HERMES_NOT_AVAILABLE', // hermes tools require a mobile (iOS/Android) driver
 
+  MM_DEVICE_ACTION_FAILED: 'MM_DEVICE_ACTION_FAILED', // a mobile device action (swipe, tap, app control, etc.) failed
+  MM_DEVICE_NOT_AVAILABLE: 'MM_DEVICE_NOT_AVAILABLE', // mobile-only tool invoked without a mobile driver capability
+
   MM_TOOL_NOT_SUPPORTED_ON_PLATFORM: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM', // tool gated off the active platform (browser-only / mobile-only)
 
   MM_UNKNOWN_TOOL: 'MM_UNKNOWN_TOOL',
