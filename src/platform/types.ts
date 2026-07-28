@@ -5,6 +5,7 @@ import type {
 import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 import type {
   CdpInput,
+  DeviceButtonName,
   HermesTargetsInput,
 } from '../tools/types/tool-inputs.js';
 import type {
@@ -135,7 +136,7 @@ export type IPlatformDriver = {
 
   closeApp?(bundleId: string): Promise<void>;
 
-  pressButton?(button: string): Promise<void>;
+  pressButton?(button: DeviceButtonName): Promise<void>;
 
   getDeviceContexts?(): Promise<string[]>;
 

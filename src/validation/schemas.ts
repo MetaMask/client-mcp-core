@@ -781,9 +781,8 @@ export const closeAppInputSchema = z.object({
 
 export const pressButtonInputSchema = z.object({
   button: z
-    .string()
-    .min(1)
-    .describe('Device button to press (e.g. home, back, enter)'),
+    .enum(['home', 'back', 'enter', 'lock'])
+    .describe('Device button to press'),
 });
 
 export const deviceContextInputSchema = z.discriminatedUnion('action', [

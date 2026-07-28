@@ -629,9 +629,9 @@ Returns the text of a visible native alert (read-only).
 
 Launches/foregrounds or terminates an app by bundle identifier (e.g. `io.metamask`).
 
-#### `mm press-button <button>`
+#### `mm press-button <home|back|enter|lock>`
 
-Presses a hardware/system button (e.g. `home`, `back`, `enter`).
+Presses a hardware/system button. Only `home`, `back`, `enter`, and `lock` are accepted.
 
 #### `mm device-context list` / `mm device-context switch <name>`
 
@@ -643,7 +643,9 @@ Reads or writes the device clipboard. Distinct from `mm clipboard` (browser CDP)
 
 #### `mm screen-recording start [--output <path>]` / `mm screen-recording stop`
 
-Starts or stops an on-device screen recording. `stop` returns the recording path.
+Starts or stops an on-device screen recording. `stop` returns the recording path. When
+`--output` is supplied it is sandboxed to the configured `artifactsDir`; paths that escape
+it (absolute paths, `..` traversal) are rejected with `MM_INVALID_INPUT`.
 
 #### `mm device-logs [--duration <seconds>] [--filter <text>]`
 

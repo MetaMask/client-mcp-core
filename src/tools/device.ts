@@ -32,6 +32,7 @@ import type {
   ScrollToElementResult,
   TapCoordinatesResult,
 } from './types/tool-outputs.js';
+import { resolveWithinArtifactsDir } from './utils/paths.js';
 import { validateTargetSelection } from './utils/targets.js';
 import type { TargetType } from './utils/type-guards.js';
 import {
@@ -658,7 +659,18 @@ export async function screenRecordingTool(
 
   try {
     if (input.action === 'start') {
-      await driver.startScreenRecording(input.outputPath);
+      let { outputPath } = input;
+      if (outputPath !== undefined) {
+        const resolved = resolveWithinArtifactsDir(
+          outputPath,
+          context.workflowContext.config?.artifactsDir,
+        );
+        if (!resolved.ok) {
+          return createToolError(ErrorCodes.MM_INVALID_INPUT, resolved.reason);
+        }
+        outputPath = resolved.resolvedPath;
+      }
+      await driver.startScreenRecording(outputPath);
       return createToolSuccess<ScreenRecordingResult>({
         action: 'start',
         recording: true,

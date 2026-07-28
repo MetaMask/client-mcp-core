@@ -262,8 +262,11 @@ export type CloseAppInput = {
   bundleId: string;
 };
 
+/** Device buttons pressable via `press_button`. Mirrors device-mcp's `DeviceButton`. */
+export type DeviceButtonName = 'home' | 'back' | 'enter' | 'lock';
+
 export type PressButtonInput = {
-  button: string;
+  button: DeviceButtonName;
 };
 
 export type DeviceContextInput =

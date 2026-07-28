@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
@@ -26,12 +27,15 @@ import type { ToolContext } from '../types/http.js';
 function createContext(options: {
   hasActive?: boolean;
   driver?: Partial<IPlatformDriver> | undefined;
+  artifactsDir?: string;
 }): ToolContext {
-  const { hasActive = true, driver } = options;
+  const { hasActive = true, driver, artifactsDir } = options;
   return {
     sessionManager: createMockSessionManager({ hasActive }),
     refMap: new Map(),
-    workflowContext: {},
+    workflowContext: {
+      config: artifactsDir === undefined ? {} : { artifactsDir },
+    },
     knowledgeStore: {},
     toolRegistry: new Map(),
     driver: driver as IPlatformDriver | undefined,
@@ -1275,25 +1279,87 @@ describe('screenRecordingTool', () => {
     }
   });
 
-  it('starts recording via driver.startScreenRecording', async () => {
+  it('starts recording with a sandboxed output path resolved to artifactsDir', async () => {
     const startScreenRecording = vi.fn().mockResolvedValue(undefined);
     const stopScreenRecording = vi.fn();
     const context = createContext({
       driver: { startScreenRecording, stopScreenRecording },
+      artifactsDir: '/tmp/artifacts',
     });
 
     const result = await screenRecordingTool(
-      { action: 'start', outputPath: '/tmp/rec.mp4' },
+      { action: 'start', outputPath: 'rec.mp4' },
       context,
     );
 
-    expect(startScreenRecording).toHaveBeenCalledWith('/tmp/rec.mp4');
+    expect(startScreenRecording).toHaveBeenCalledWith(
+      path.resolve('/tmp/artifacts', 'rec.mp4'),
+    );
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result).toStrictEqual({
         action: 'start',
         recording: true,
       });
+    }
+  });
+
+  it('rejects an output path that escapes artifactsDir via traversal', async () => {
+    const startScreenRecording = vi.fn();
+    const stopScreenRecording = vi.fn();
+    const context = createContext({
+      driver: { startScreenRecording, stopScreenRecording },
+      artifactsDir: '/tmp/artifacts',
+    });
+
+    const result = await screenRecordingTool(
+      { action: 'start', outputPath: '../escape.mp4' },
+      context,
+    );
+
+    expect(startScreenRecording).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+    }
+  });
+
+  it('rejects an absolute output path outside artifactsDir', async () => {
+    const startScreenRecording = vi.fn();
+    const stopScreenRecording = vi.fn();
+    const context = createContext({
+      driver: { startScreenRecording, stopScreenRecording },
+      artifactsDir: '/tmp/artifacts',
+    });
+
+    const result = await screenRecordingTool(
+      { action: 'start', outputPath: '/etc/passwd' },
+      context,
+    );
+
+    expect(startScreenRecording).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+    }
+  });
+
+  it('rejects a custom output path when no artifactsDir is configured', async () => {
+    const startScreenRecording = vi.fn();
+    const stopScreenRecording = vi.fn();
+    const context = createContext({
+      driver: { startScreenRecording, stopScreenRecording },
+    });
+
+    const result = await screenRecordingTool(
+      { action: 'start', outputPath: 'rec.mp4' },
+      context,
+    );
+
+    expect(startScreenRecording).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
     }
   });
 

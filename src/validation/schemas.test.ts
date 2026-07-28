@@ -22,6 +22,7 @@ import {
   tapCoordinatesInputSchema,
   dismissAlertInputSchema,
   openAppInputSchema,
+  pressButtonInputSchema,
   deviceContextInputSchema,
   deviceClipboardInputSchema,
   screenRecordingInputSchema,
@@ -569,6 +570,20 @@ describe('device tool schemas', () => {
 
     it('rejects an empty bundleId', () => {
       const result = openAppInputSchema.safeParse({ bundleId: '' });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('pressButtonInputSchema', () => {
+    it('accepts a known device button', () => {
+      const result = pressButtonInputSchema.safeParse({ button: 'home' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an unknown button value', () => {
+      const result = pressButtonInputSchema.safeParse({ button: 'volume_up' });
 
       expect(result.success).toBe(false);
     });
