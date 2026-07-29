@@ -28,6 +28,16 @@ export type LaunchInput = {
   platform?: 'browser' | 'ios' | 'android';
   /** Explicit device ID for mobile platforms (iOS UDID or Android serial). */
   deviceId?: string;
+  /** Mobile only: path to the app artifact to install before launching. */
+  appBundlePath?: string;
+  /** Mobile only: Metro bundler / inspector proxy port for watch-mode attach. */
+  metroPort?: number;
+  /** Mobile only: uninstall and reinstall the app before launching (destructive). */
+  reinstall?: boolean;
+  /** Mobile only: clear app data/container before launching (destructive). */
+  resetAppData?: boolean;
+  /** Mobile only: bypass the consumer app-identity compatibility guard (dangerous). */
+  allowFoxCodeMismatch?: boolean;
 };
 
 export type CleanupInput = {

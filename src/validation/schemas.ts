@@ -228,11 +228,11 @@ export const launchInputSchema = z.object({
     .describe('Force replace an existing active session (runs cleanup first)'),
   platform: z
     .enum(['browser', 'ios', 'android'])
+    .default('browser')
     .describe(
       'Target platform: browser (default), ios, or android. ' +
         'Mobile platforms require @metamask/device-mcp.',
-    )
-    .optional(),
+    ),
   deviceId: z
     .string()
     .min(1)
@@ -241,6 +241,46 @@ export const launchInputSchema = z.object({
         'When omitted, auto-detects if exactly one device is connected.',
     )
     .optional(),
+  appBundlePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Mobile only: path to the app artifact to install before launching ' +
+        '(iOS `.app` bundle or Android `.apk`). When omitted, the consumer ' +
+        'decides how to resolve the app (typically reusing the installed one).',
+    )
+    .optional(),
+  metroPort: z
+    .number()
+    .int()
+    .min(1)
+    .max(65535)
+    .describe(
+      'Mobile only: Metro bundler / inspector proxy port for watch-mode ' +
+        'attach and Hermes CDP (development builds only).',
+    )
+    .optional(),
+  reinstall: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Mobile only: uninstall and reinstall the app before launching. ' +
+        'DESTRUCTIVE — discards the existing app container.',
+    ),
+  resetAppData: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Mobile only: clear app data/container before launching. ' +
+        'DESTRUCTIVE — discards existing wallet state.',
+    ),
+  allowFoxCodeMismatch: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Mobile only: bypass the consumer app-identity (fox_code) compatibility ' +
+        'guard. DANGEROUS — may render existing wallet/keychain data unreadable.',
+    ),
 });
 
 export const cleanupInputSchema = z.object({

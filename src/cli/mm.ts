@@ -1503,6 +1503,11 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     '--flow-tags',
     '--platform',
     '--device-id',
+    '--app-bundle',
+    '--metro-port',
+    '--reinstall',
+    '--reset-app-data',
+    '--allow-fox-code-mismatch',
   ]);
 
   for (let i = 0; i < args.length; i++) {
@@ -1564,6 +1569,36 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
         process.exit(1);
       }
       result.deviceId = args[i];
+    } else if (arg === '--app-bundle') {
+      i += 1;
+      if (!args[i] || args[i].startsWith('--')) {
+        process.stderr.write('Error: --app-bundle requires a path\n');
+        process.exit(1);
+      }
+      result.appBundlePath = args[i];
+    } else if (arg === '--metro-port') {
+      i += 1;
+      const rawPort = args[i];
+      const port = parseInt(rawPort ?? '', 10);
+      if (
+        !rawPort ||
+        rawPort.startsWith('--') ||
+        !Number.isInteger(port) ||
+        port < 1 ||
+        port > 65535
+      ) {
+        process.stderr.write(
+          'Error: --metro-port requires a valid port (1-65535)\n',
+        );
+        process.exit(1);
+      }
+      result.metroPort = port;
+    } else if (arg === '--reinstall') {
+      result.reinstall = true;
+    } else if (arg === '--reset-app-data') {
+      result.resetAppData = true;
+    } else if (arg === '--allow-fox-code-mismatch') {
+      result.allowFoxCodeMismatch = true;
     } else if (arg.startsWith('--') && !knownFlags.has(arg)) {
       process.stderr.write(`Warning: unknown launch flag '${arg}'\n`);
     }
@@ -1589,6 +1624,7 @@ Environment Variables:
 
 Lifecycle:
   mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios|android] [--device-id <id>]
+  mm launch --platform ios|android [--device-id <id>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
   mm cleanup [--shutdown]
   mm status
   mm stop [--force]
