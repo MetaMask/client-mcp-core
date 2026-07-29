@@ -469,9 +469,59 @@ describe('launchInputSchema', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.platform).toBeUndefined();
+      expect(result.data.platform).toBe('browser');
       expect(result.data.deviceId).toBeUndefined();
     }
+  });
+
+  it('preserves mobile launch-specific fields', () => {
+    const result = launchInputSchema.safeParse({
+      platform: 'ios',
+      deviceId: 'UDID-1',
+      appBundlePath: '/tmp/MetaMask.app',
+      metroPort: 8082,
+      reinstall: true,
+      resetAppData: true,
+      allowFoxCodeMismatch: true,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        platform: 'ios',
+        deviceId: 'UDID-1',
+        appBundlePath: '/tmp/MetaMask.app',
+        metroPort: 8082,
+        reinstall: true,
+        resetAppData: true,
+        allowFoxCodeMismatch: true,
+      });
+    }
+  });
+
+  it('defaults mobile destructive flags to false', () => {
+    const result = launchInputSchema.safeParse({ platform: 'ios' });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reinstall).toBe(false);
+      expect(result.data.resetAppData).toBe(false);
+      expect(result.data.allowFoxCodeMismatch).toBe(false);
+      expect(result.data.appBundlePath).toBeUndefined();
+      expect(result.data.metroPort).toBeUndefined();
+    }
+  });
+
+  it('rejects empty appBundlePath', () => {
+    expect(launchInputSchema.safeParse({ appBundlePath: '' }).success).toBe(
+      false,
+    );
+  });
+
+  it.each([0, 65536, 8081.5])('rejects out-of-range metroPort %s', (port) => {
+    expect(launchInputSchema.safeParse({ metroPort: port }).success).toBe(
+      false,
+    );
   });
 });
 

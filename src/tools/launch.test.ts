@@ -291,5 +291,57 @@ describe('launchTool', () => {
         expect(result.error.message).toContain('Launch failed');
       }
     });
+
+    it('preserves a known error code thrown by the session manager', async () => {
+      const context = createMockContext({ hasActive: false });
+      vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
+        Object.assign(new Error('idb is not installed'), {
+          code: ErrorCodes.MM_DEPENDENCIES_MISSING,
+        }),
+      );
+
+      const result = await launchTool({ stateMode: 'default' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_DEPENDENCIES_MISSING);
+        expect(result.error.message).toBe('idb is not installed');
+      }
+    });
+
+    it('falls back to MM_LAUNCH_FAILED for an unknown error code', async () => {
+      const context = createMockContext({ hasActive: false });
+      vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
+        Object.assign(new Error('device exploded'), {
+          code: 'MM_CONSUMER_SPECIFIC_CODE',
+        }),
+      );
+
+      const result = await launchTool({ stateMode: 'default' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_LAUNCH_FAILED);
+        expect(result.error.message).toContain('device exploded');
+      }
+    });
+
+    it('forwards mobile launch options to the session manager', async () => {
+      const context = createMockContext({ hasActive: false });
+      const input: LaunchInput = {
+        platform: 'ios',
+        deviceId: 'UDID-1',
+        appBundlePath: '/tmp/MetaMask.app',
+        metroPort: 8082,
+        reinstall: true,
+        resetAppData: true,
+        allowFoxCodeMismatch: true,
+      };
+
+      const result = await launchTool(input, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.launch).toHaveBeenCalledWith(input);
+    });
   });
 });

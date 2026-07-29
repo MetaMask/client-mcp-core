@@ -568,13 +568,14 @@ mm describe-screen
 
 ### Lifecycle
 
-| Command                                                                                                                                          | Description                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mm launch [--context e2e\|prod] [--state default\|onboarding\|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]` | Auto-starts the daemon if needed, then launches a headed Chrome session with the configured extension. Use `--context` to set the environment context before launching. Use `--state` to control wallet initialization. Use `--extension-path` to override the extension directory. Use `--goal` and `--flow-tags` for knowledge tagging. Use `--force` to replace an existing session. |
-| `mm cleanup [--shutdown]`                                                                                                                        | Stops the browser, tears down test services (fixture server, Anvil, mock server), and releases session resources. Add `--shutdown` to also terminate the daemon process.                                                                                                                                                                                                                |
-| `mm stop [--force]`                                                                                                                              | Stops the daemon process (symmetric to `mm serve`). Sends a best-effort cleanup before shutdown. Use `--force` to remove stale `.mm-server` state from crashed daemons.                                                                                                                                                                                                                 |
-| `mm status`                                                                                                                                      | Displays the daemon's current status: PID, port, uptime, allocated sub-ports, and whether a browser session is active.                                                                                                                                                                                                                                                                  |
-| `mm serve [--background]`                                                                                                                        | Manually starts the HTTP daemon without launching a browser session. Use `--background` to detach the process. Fails if a daemon is already running for this worktree.                                                                                                                                                                                                                  |
+| Command                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mm launch [--context e2e\|prod] [--state default\|onboarding\|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]`                | Auto-starts the daemon if needed, then launches a headed Chrome session with the configured extension. Use `--context` to set the environment context before launching. Use `--state` to control wallet initialization. Use `--extension-path` to override the extension directory. Use `--goal` and `--flow-tags` for knowledge tagging. Use `--force` to replace an existing session.                                                                                                                                                          |
+| `mm launch --platform ios\|android [--device-id <id>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]` | Launches a mobile session. Use `--device-id` to target a specific device (auto-detected when exactly one is connected). Use `--app-bundle` to install a specific app artifact before launching. Use `--metro-port` to attach to a running Metro bundler (development builds). `--reinstall` and `--reset-app-data` are **destructive** to the app container and wallet state; `--allow-fox-code-mismatch` bypasses the consumer's app-identity guard. Consumers decide how to honor these — see [Mobile launch options](#mobile-launch-options). |
+| `mm cleanup [--shutdown]`                                                                                                                                       | Stops the browser, tears down test services (fixture server, Anvil, mock server), and releases session resources. Add `--shutdown` to also terminate the daemon process.                                                                                                                                                                                                                                                                                                                                                                         |
+| `mm stop [--force]`                                                                                                                                             | Stops the daemon process (symmetric to `mm serve`). Sends a best-effort cleanup before shutdown. Use `--force` to remove stale `.mm-server` state from crashed daemons.                                                                                                                                                                                                                                                                                                                                                                          |
+| `mm status`                                                                                                                                                     | Displays the daemon's current status: PID, port, uptime, allocated sub-ports, and whether a browser session is active.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `mm serve [--background]`                                                                                                                                       | Manually starts the HTTP daemon without launching a browser session. Use `--background` to detach the process. Fails if a daemon is already running for this worktree.                                                                                                                                                                                                                                                                                                                                                                           |
 
 ### Interaction
 
@@ -670,6 +671,47 @@ mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.
 mm hermes-targets
 mm hermes-targets --all
 ```
+
+#### Mobile launch options
+
+`mm launch --platform ios|android` accepts additional options that the core
+validates and forwards verbatim to the consumer's `ISessionManager.launch()`.
+The core does **not** act on them itself — it owns no install or device
+lifecycle. Each consumer decides how (or whether) to honor them:
+
+| Option                      | Field                  | Meaning                                                                          |
+| --------------------------- | ---------------------- | -------------------------------------------------------------------------------- |
+| `--device-id <id>`          | `deviceId`             | Target a specific device. Auto-detected when exactly one is connected.           |
+| `--app-bundle <path>`       | `appBundlePath`        | App artifact to install before launching (iOS `.app`, Android `.apk`).           |
+| `--metro-port <port>`       | `metroPort`            | Metro bundler / inspector proxy port for watch-mode attach (development builds). |
+| `--reinstall`               | `reinstall`            | **Destructive.** Uninstall and reinstall the app, discarding its container.      |
+| `--reset-app-data`          | `resetAppData`         | **Destructive.** Clear app data, discarding existing wallet state.               |
+| `--allow-fox-code-mismatch` | `allowFoxCodeMismatch` | **Dangerous.** Bypass the consumer's app-identity compatibility guard.           |
+
+```bash
+# Reuse whatever is already installed on the only booted device
+mm launch --platform ios
+
+# Install a specific build on a specific simulator
+mm launch --platform ios --device-id <UDID> --app-bundle ios/build/MetaMask.app
+
+# Attach to a running Metro bundler (development build)
+mm launch --platform ios --metro-port 8081
+
+# Replace the installed app, discarding wallet state
+mm launch --platform ios --app-bundle ios/build/MetaMask.app --reinstall
+```
+
+The destructive flags default to `false`. Because they can irreversibly destroy
+real wallet state in a prod-context session, consumers are expected to guard
+them — for example by refusing `--reinstall` when no `--app-bundle` is supplied,
+or by requiring `--allow-fox-code-mismatch` before replacing an app whose
+identity differs from the installed one.
+
+When a consumer's `launch()` throws an error carrying a `code` that is a known
+[`ErrorCode`](#error-classification), the `launch` tool preserves it instead of
+collapsing it into `MM_LAUNCH_FAILED`, so precise device/prerequisite failures
+reach the agent intact.
 
 #### Mobile device actions (iOS/Android only)
 

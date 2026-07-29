@@ -581,6 +581,79 @@ describe('parseLaunchArgs', () => {
     );
   });
 
+  it('parses mobile-specific launch flags', () => {
+    expect(
+      parseLaunchArgs([
+        '--platform',
+        'ios',
+        '--device-id',
+        'UDID-1',
+        '--app-bundle',
+        '/tmp/MetaMask.app',
+        '--metro-port',
+        '8082',
+        '--reinstall',
+        '--reset-app-data',
+        '--allow-fox-code-mismatch',
+      ]),
+    ).toStrictEqual({
+      platform: 'ios',
+      deviceId: 'UDID-1',
+      appBundlePath: '/tmp/MetaMask.app',
+      metroPort: 8082,
+      reinstall: true,
+      resetAppData: true,
+      allowFoxCodeMismatch: true,
+    });
+  });
+
+  it('does not warn about mobile launch flags', () => {
+    parseLaunchArgs([
+      '--app-bundle',
+      '/tmp/MetaMask.app',
+      '--metro-port',
+      '8081',
+      '--reinstall',
+      '--reset-app-data',
+      '--allow-fox-code-mismatch',
+    ]);
+
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it('exits for --app-bundle without value', () => {
+    expect(() => parseLaunchArgs(['--app-bundle'])).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --app-bundle requires a path\n',
+    );
+  });
+
+  it('exits for --app-bundle with flag as value', () => {
+    expect(() => parseLaunchArgs(['--app-bundle', '--force'])).toThrowError(
+      'process.exit',
+    );
+  });
+
+  it.each(['70000', '0', 'abc'])(
+    'exits for invalid --metro-port %s',
+    (port) => {
+      expect(() => parseLaunchArgs(['--metro-port', port])).toThrowError(
+        'process.exit',
+      );
+      expect(stderrSpy).toHaveBeenCalledWith(
+        'Error: --metro-port requires a valid port (1-65535)\n',
+      );
+    },
+  );
+
+  it('exits for --metro-port without value', () => {
+    expect(() => parseLaunchArgs(['--metro-port'])).toThrowError(
+      'process.exit',
+    );
+  });
+
   it('writes warning for unknown flags', () => {
     parseLaunchArgs(['--unknown']);
     expect(stderrSpy).toHaveBeenCalledWith(

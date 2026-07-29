@@ -68,6 +68,19 @@ export type SessionLaunchInput = {
   platform?: PlatformType;
   /** Device ID for explicit mobile device targeting */
   deviceId?: string;
+  /**
+   * Mobile only: path to the app artifact to install before launching
+   * (iOS `.app` bundle or Android `.apk`).
+   */
+  appBundlePath?: string;
+  /** Mobile only: Metro bundler / inspector proxy port for watch-mode attach. */
+  metroPort?: number;
+  /** Mobile only: uninstall and reinstall the app before launching (destructive). */
+  reinstall?: boolean;
+  /** Mobile only: clear app data/container before launching (destructive). */
+  resetAppData?: boolean;
+  /** Mobile only: bypass the consumer app-identity compatibility guard (dangerous). */
+  allowFoxCodeMismatch?: boolean;
 };
 
 /**
