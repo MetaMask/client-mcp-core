@@ -1,0 +1,24 @@
+CHANGELOG.md
+  s_14802583f06312::t_5589fce2a750cc 10-13
+src/platform/mobile-platform-driver.ts
+  s_14802583f06312::t_d35a5f59e86771 688-694,696,699-702,709,714,752
+  s_14802583f06312::t_7fc03eb14ae5ed 196
+src/platform/mobile-platform-driver.test.ts
+  s_14802583f06312::t_05c0b589b36b12 512-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "02dbd3a59f5dab068b4ef60f7821419ef175475f",
+  "prompts": {},
+  "sessions": {
+    "s_14802583f06312": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_002d0dfdcffew11D6vrRVysQ3U",
+        "model": "unknown"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
