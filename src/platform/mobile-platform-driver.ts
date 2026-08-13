@@ -193,7 +193,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
     _rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
     const snapshot = await this.#backend.snapshot();
-    return normalizeSnapshot(snapshot.hierarchy);
+    return normalizeSnapshot(snapshot.hierarchy, this.#backend.platform);
   }
 
   /**
@@ -685,21 +685,33 @@ function parseStableIdentifier(stableId: string): ElementQuery {
 /**
  * Normalizes a UIElement hierarchy into A11yNodeTrimmed nodes with sequential refs.
  *
+ * On Android the ancestor-role `path` is a chain of widget class names
+ * (e.g. `android.widget.FrameLayout`) that offers no targeting value — mobile
+ * targeting is by a11y `ref` or `testId` only — and dominates the payload
+ * returned to agents. So on Android we emit an empty `path` rather than
+ * accumulating the ancestry. iOS keeps the ancestor path (its parity is
+ * unvalidated), matching the browser driver's behavior.
+ *
  * @param hierarchy - The raw UIElement tree from a device snapshot.
+ * @param platform - The device platform; `'android'` skips path computation.
  * @returns Trimmed nodes and the ref-to-stable-identifier map.
  */
-function normalizeSnapshot(hierarchy: UIElement[]): {
+function normalizeSnapshot(
+  hierarchy: UIElement[],
+  platform: PlatformType,
+): {
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
 } {
   const nodes: A11yNodeTrimmed[] = [];
   const refMap = new Map<string, string>();
   const stableIdCount = new Map<string, string[]>();
+  const skipPath = platform === 'android';
   let refCounter = 0;
 
   /**
    * @param elements - UIElement nodes to walk.
-   * @param path - Accumulated ancestor roles.
+   * @param path - Accumulated ancestor roles (always empty on Android).
    */
   function walk(elements: UIElement[], path: string[]): void {
     for (const el of elements) {
@@ -737,7 +749,7 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
       }
 
       if (el.children?.length) {
-        walk(el.children, [...path, role]);
+        walk(el.children, skipPath ? path : [...path, role]);
       }
     }
   }

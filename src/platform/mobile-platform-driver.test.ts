@@ -509,6 +509,42 @@ describe('MobilePlatformDriver', () => {
       expect(nodes[2].path).toStrictEqual(['Window']);
     });
 
+    it('emits an empty path for every node on android', async () => {
+      const backend = createMockBackend({
+        platform: 'android',
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'android',
+          hierarchy: [
+            makeElement({
+              type: 'android.widget.FrameLayout',
+              children: [
+                makeElement({
+                  type: 'android.widget.LinearLayout',
+                  children: [
+                    makeElement({ type: 'android.widget.Button', label: 'OK' }),
+                    makeElement({
+                      type: 'android.widget.Button',
+                      label: 'Cancel',
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes } = await driver.getAccessibilityTree();
+
+      expect(nodes).toHaveLength(4);
+      for (const node of nodes) {
+        expect(node.path).toStrictEqual([]);
+      }
+    });
+
     it('builds refMap with value fallback', async () => {
       const backend = createMockBackend({
         snapshot: vi.fn().mockResolvedValue({
