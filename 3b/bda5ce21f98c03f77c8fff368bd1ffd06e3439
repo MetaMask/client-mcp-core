@@ -1,0 +1,25 @@
+src/platform/mobile-platform-driver.test.ts
+  s_14802583f06312::t_05c0b589b36b12 512-547
+CHANGELOG.md
+  s_14802583f06312::t_5589fce2a750cc 10-11,13
+  s_14802583f06312::t_9c673ee22bb727 12
+src/platform/mobile-platform-driver.ts
+  s_14802583f06312::t_d35a5f59e86771 688-694,696,699-702,709,714,752
+  s_14802583f06312::t_7fc03eb14ae5ed 196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3bbda5ce21f98c03f77c8fff368bd1ffd06e3439",
+  "prompts": {},
+  "sessions": {
+    "s_14802583f06312": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_002d0dfdcffew11D6vrRVysQ3U",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
