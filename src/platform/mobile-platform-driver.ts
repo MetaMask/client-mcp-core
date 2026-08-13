@@ -16,6 +16,7 @@ import type {
 
 import {
   filterAppHierarchy,
+  pruneLayoutOnly,
   viewportFromHierarchy,
 } from './mobile-hierarchy.js';
 import type { Viewport } from './mobile-hierarchy.js';
@@ -226,7 +227,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
     _rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
     const { hierarchy } = await this.#snapshotApp();
-    return normalizeSnapshot(hierarchy);
+    return normalizeSnapshot(hierarchy, this.#backend.platform);
   }
 
   /**
@@ -249,7 +250,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
   async captureScreen(): Promise<ScreenCapture> {
     const { hierarchy, viewport } = await this.#snapshotApp();
     return {
-      ...normalizeSnapshot(hierarchy),
+      ...normalizeSnapshot(hierarchy, this.#backend.platform),
       getTestIds: async (limit?: number) =>
         this.#testIdsOf(hierarchy, viewport, limit),
     };
@@ -846,12 +847,32 @@ function parseStableIdentifier(stableId: string): ElementQuery {
 }
 
 /**
- * Normalizes a UIElement hierarchy into A11yNodeTrimmed nodes with sequential refs.
+ * Normalizes a UIElement hierarchy into a flat, pre-order list of
+ * A11yNodeTrimmed nodes with sequential refs.
  *
- * @param hierarchy - The raw UIElement tree from a device snapshot.
+ * Layout-only elements (no name, no testId, not actionable, see
+ * `pruneLayoutOnly`) are removed first, so they get no node, and node refs
+ * number only the kept nodes. Nodes have no `path`: on mobile the ancestors
+ * are native view classes (`android.widget.FrameLayout`, `RNSScreenView`)
+ * with no targeting value, and the ancestor list was most of the payload.
+ * Targeting is by `ref` or `testId`.
+ *
+ * Only a node with a testId, label or value gets a refMap entry, so only
+ * its ref can be targeted. Kept nodes with none of them are listed (with
+ * `bounds`, for `tap-coordinates`) but their ref does not resolve:
+ * unlabelled tap targets (see `isUnlabelledTapTarget`), progress indicators
+ * (kept for the screen settle) and unnamed controls. Ambiguity is computed
+ * over the kept nodes.
+ *
+ * @param hierarchy - The UIElement tree from a device snapshot (after
+ * `filterAppHierarchy`).
+ * @param platform - The device platform.
  * @returns Trimmed nodes and the ref-to-stable-identifier map.
  */
-function normalizeSnapshot(hierarchy: UIElement[]): {
+function normalizeSnapshot(
+  hierarchy: UIElement[],
+  platform: 'ios' | 'android',
+): {
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
 } {
@@ -862,16 +883,15 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
 
   /**
    * @param elements - UIElement nodes to walk.
-   * @param path - Accumulated ancestor roles.
    */
-  function walk(elements: UIElement[], path: string[]): void {
+  function walk(elements: UIElement[]): void {
     for (const el of elements) {
       refCounter += 1;
       const ref = `e${refCounter}`;
       const role = el.type || 'element';
       const name = el.label ?? el.value ?? '';
 
-      const node: A11yNodeTrimmed = { ref, role, name, path };
+      const node: A11yNodeTrimmed = { ref, role, name };
       if (!el.enabled) {
         node.disabled = true;
       }
@@ -882,7 +902,10 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
         node.textContent = el.value;
       }
       if (el.frame.width > 0 || el.frame.height > 0) {
-        node.bounds = { ...el.frame };
+        // Fixed key order: idb returns frame keys in varying order, and
+        // screenSignature / diffs compare the serialized nodes.
+        const { x, y, width, height } = el.frame;
+        node.bounds = { x, y, width, height };
       }
       nodes.push(node);
 
@@ -903,12 +926,12 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
       }
 
       if (el.children?.length) {
-        walk(el.children, [...path, role]);
+        walk(el.children);
       }
     }
   }
 
-  walk(hierarchy, []);
+  walk(pruneLayoutOnly(hierarchy, platform));
 
   for (const refs of stableIdCount.values()) {
     if (refs.length > 1) {

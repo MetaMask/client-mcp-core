@@ -67,6 +67,21 @@ describe('collapseOptionSubtrees', () => {
     });
   });
 
+  it('builds a summary without a path when the options have none (mobile)', () => {
+    const { path: _comboPath, ...combobox } = createNode('e1', 'combobox');
+    const options = createOptionRun(5, 2).map(
+      ({ path: _path, ...option }) => option,
+    );
+
+    const result = collapseOptionSubtrees([combobox, ...options]);
+
+    expect(result[1]).toStrictEqual({
+      ref: 'e2\u2013e6',
+      role: 'option',
+      name: '5 options (refs e2\u2013e6)',
+    });
+  });
+
   it('does not collapse runs below the threshold', () => {
     const combobox = createNode('e1', 'combobox');
     const optionOne = createNode('e2', 'option');
@@ -343,6 +358,25 @@ describe('nodeChanged', () => {
     expect(nodeChanged(current, previous)).toBe(false);
   });
 
+  it('treats two absent paths as equal (mobile nodes have no path)', () => {
+    const { path: _previousPath, ...previous } = createNode('e1', 'button', {
+      name: 'Send',
+    });
+    const { path: _currentPath, ...current } = createNode('e1', 'button', {
+      name: 'Send',
+    });
+
+    expect(nodeChanged(current, previous)).toBe(false);
+  });
+
+  it('returns true when a path appears or disappears', () => {
+    const withPath = createNode('e1', 'button', { name: 'Send', path: [] });
+    const { path: _path, ...withoutPath } = withPath;
+
+    expect(nodeChanged(withPath, withoutPath)).toBe(true);
+    expect(nodeChanged(withoutPath, withPath)).toBe(true);
+  });
+
   it('does not compare refs', () => {
     const previous = createNode('e1', 'button', {
       name: 'Continue',
@@ -358,6 +392,26 @@ describe('nodeChanged', () => {
 });
 
 describe('diffObservation', () => {
+  it('diffs mobile nodes that have no path', () => {
+    const strip = ({ path: _path, ...node }: A11yNodeTrimmed) => node;
+    const send = strip(createNode('e1', 'button', { name: 'Send' }));
+    const balance = strip(createNode('e2', 'text', { name: '1 ETH' }));
+    const previous = createObservation([send, balance]);
+    const current = createObservation([
+      { ...send },
+      { ...balance, name: '2 ETH' },
+    ]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([{ ...balance, name: '2 ETH' }]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: [],
+      removed: [],
+      unchanged: 1,
+    });
+  });
+
   it('tracks added nodes and omits unchanged nodes from the diff payload', () => {
     const stable = createNode('e1', 'button', { name: 'Continue' });
     const added = createNode('e2', 'button', { name: 'Cancel' });

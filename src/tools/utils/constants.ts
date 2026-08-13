@@ -93,3 +93,30 @@ export const TEXT_PREVIEW_MAX_LENGTH = 100;
 
 /** Minimum number of option nodes under a combobox/listbox to trigger collapsing */
 export const OPTION_COLLAPSE_MIN_COUNT = 3;
+
+// ============================================================================
+// Mobile accessibility tree
+// ============================================================================
+
+/**
+ * Types of progress indicators, matched as a suffix of the element type
+ * (the mobile node `role`). Used by the screen settle to detect a busy
+ * screen, and by the mobile tree filter to keep these elements:
+ *
+ * - Android (adb/Appium `class`): `android.widget.ProgressBar` and
+ * subclasses whose class name ends in `ProgressBar`.
+ * - iOS via Appium XCUITest: `XCUIElementTypeActivityIndicator` and
+ * `XCUIElementTypeProgressIndicator`, reported without the
+ * `XCUIElementType` prefix (`ActivityIndicator`, `ProgressIndicator`).
+ * - iOS via idb `describe-all`: the element `type`, either the AX role
+ * without `AX` (`ProgressIndicator`) or the UIKit class name
+ * (`UIActivityIndicatorView`, used by React Native `ActivityIndicator`).
+ */
+export const MOBILE_BUSY_TYPE =
+  /(?:ProgressBar|ActivityIndicator(?:View)?|ProgressIndicator)$/u;
+
+/**
+ * Minimum frame size (width and height, in snapshot units: iOS points,
+ * Android pixels) of an unlabelled tap target kept in the mobile tree.
+ */
+export const MOBILE_TAP_TARGET_MIN_SIZE = 24;

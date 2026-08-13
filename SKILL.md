@@ -232,7 +232,11 @@ Each node looks like:
 
 The `testId` and `textContent` fields appear only on nodes with short or generic names — they provide extra context from the DOM to help identify ambiguous elements. Nodes with clear names omit these fields.
 
+On the browser, `path` lists the `role:name` of the dialogs and headings that contain the node. Mobile nodes have no `path`.
+
 When 3+ consecutive identical nodes appear (same role, name, and path), they are collapsed into a summary like `… 3 more "maskicon" (refs e2–e4)` to reduce token waste. Individual refs still work for targeting.
+
+On mobile (iOS, Android), the tree is a flat list in screen order. A node is a native element: `role` is its type (`Button`, `StaticText`, `android.widget.Button`, `android.view.ViewGroup`), and `bounds` is its frame (`{ x, y, width, height }`). Layout-only elements are left out: elements with no label or text, no testId, and a type that is not a control (button, link, text field, switch, slider, checkbox and similar). Their children stay in the list. Containers with a testId stay. Plain unlabelled views of at least 24×24 with nothing kept inside also stay: they are often icon buttons (for example the iOS wallet home action buttons). Only a node with a testId, label or text has a ref you can click or type into. Nodes without one (unlabelled views, spinners, unnamed controls) are listed with their `bounds` but their ref cannot be targeted: use `mm tap-coordinates <x> <y>` with the center of `bounds`.
 
 Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails (strict mode) instead of acting on another element: refs use the exact, case-sensitive name, and elements that share a role and name get a unique DOM selector, so two "Send" buttons get two refs that each click their own button. If a click fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 

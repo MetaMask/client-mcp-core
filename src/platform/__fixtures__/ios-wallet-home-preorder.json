@@ -1,0 +1,1268 @@
+[
+  {
+    "depth": 0,
+    "type": "Other",
+    "label": "MetaMask",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 1,
+    "type": "Application",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 2,
+    "type": "UITransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 3,
+    "type": "UIDropShadowView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 4,
+    "type": "DevLauncherWrapperView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 5,
+    "type": "RCTSurfaceHostingProxyRootView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 6,
+    "type": "RCTSurfaceView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 7,
+    "type": "RCTRootComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 8,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 9,
+    "type": "RNCSafeAreaProviderComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 10,
+    "type": "KeyboardControllerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 11,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 11,
+    "type": "RNSScreenStackView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 12,
+    "type": "UILayoutContainerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 13,
+    "type": "UINavigationTransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 14,
+    "type": "UIViewControllerWrapperView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 15,
+    "type": "RNSScreenView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 16,
+    "type": "RNSScreenContentWrapper",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 17,
+    "type": "RNSSafeAreaViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 18,
+    "type": "RNSScreenStackView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 19,
+    "type": "UILayoutContainerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 20,
+    "type": "UINavigationTransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 21,
+    "type": "UIViewControllerWrapperView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 22,
+    "type": "RNSScreenView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 23,
+    "type": "RNSScreenContentWrapper",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 24,
+    "type": "RNSSafeAreaViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 25,
+    "type": "RNSScreenStackView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 26,
+    "type": "UILayoutContainerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 27,
+    "type": "UINavigationTransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 28,
+    "type": "UIViewControllerWrapperView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 29,
+    "type": "RNSScreenView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 30,
+    "type": "RNSScreenContentWrapper",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 31,
+    "type": "RNSSafeAreaViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 32,
+    "type": "RNSTabsHostComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 33,
+    "type": "UILayoutContainerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 34,
+    "type": "UITransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 35,
+    "type": "UIViewControllerWrapperView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 36,
+    "type": "RNSTabsScreenComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 37,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "RNSScreenStackView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "UILayoutContainerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 40,
+    "type": "UINavigationTransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 41,
+    "type": "UIViewControllerWrapperView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 42,
+    "type": "RNSScreenView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 43,
+    "type": "RNSScreenContentWrapper",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 44,
+    "type": "RNSSafeAreaViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 45,
+    "type": "RNCSafeAreaViewComponentView",
+    "identifier": "wallet-safe-area",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 46,
+    "type": "RCTViewComponentView",
+    "identifier": "wallet-floating-header",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 118 },
+    "enabled": true
+  },
+  {
+    "depth": 47,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 142 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "RCTLegacyViewManagerInteropComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 127.66666412353516 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "RNCMaskedView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 127.66666412353516 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 127.66666412353516 },
+    "enabled": true
+  },
+  {
+    "depth": 47,
+    "type": "RCTViewComponentView",
+    "identifier": "wallet-header-root",
+    "frame": { "x": 0, "y": 62, "width": 402, "height": 56 },
+    "enabled": true
+  },
+  {
+    "depth": 47,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 12, "y": 70, "width": 40, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "ExpoGlassEffect.GlassView",
+    "frame": { "x": 12, "y": 70, "width": 40, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "UIVisualEffectView",
+    "frame": { "x": 12, "y": 70, "width": 40, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Open my profile",
+    "identifier": "profile-button",
+    "frame": { "x": 12, "y": 70, "width": 40, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 47,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 60, "y": 70, "width": 234, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "ExpoGlassEffect.GlassView",
+    "identifier": "wallet-header-account-picker-capsule",
+    "frame": { "x": 60, "y": 70, "width": 162.6666717529297, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "UIVisualEffectView",
+    "frame": { "x": 60, "y": 70, "width": 162.66666666666666, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Agent Account",
+    "identifier": "account-picker",
+    "frame": { "x": 60, "y": 78, "width": 162.6666717529297, "height": 24 },
+    "enabled": true
+  },
+  {
+    "depth": 47,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 302, "y": 70, "width": 88, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "ExpoGlassEffect.GlassView",
+    "identifier": "wallet-header-actions-capsule",
+    "frame": { "x": 302, "y": 70, "width": 88, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "UIVisualEffectView",
+    "frame": { "x": 302, "y": 70, "width": 88, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 310, "y": 74, "width": 72, "height": 32 },
+    "enabled": true
+  },
+  {
+    "depth": 46,
+    "type": "RCTViewComponentView",
+    "identifier": "wallet-screen",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 46,
+    "type": "RCTScrollViewComponentView",
+    "identifier": "wallet-scroll-view",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 47,
+    "type": "ScrollView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "_UITouchPassthroughView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "BackdropView",
+    "frame": { "x": 0, "y": 751, "width": 402, "height": 123 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "_UITouchPassthroughView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "UIKit.ScrollEdgeEffectView",
+    "frame": { "x": 0, "y": 751, "width": 402, "height": 123 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "UIView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 2938 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 2938 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-balance-breakdown",
+    "frame": { "x": 0, "y": 134, "width": 402, "height": 434.66668701171875 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-balance-breakdown-section",
+    "frame": { "x": 0, "y": 134, "width": 402, "height": 438.66668701171875 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-container",
+    "frame": { "x": 0, "y": 134, "width": 402, "height": 2688 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "$<AMT>, $<AMT>, (<PCT>%), Today",
+    "identifier": "homepage-balance-breakdown-hero",
+    "frame": { "x": 16, "y": 134, "width": 370, "height": 84 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "wallet-action-buttons",
+    "frame": { "x": 0, "y": 242, "width": 402, "height": 73.33334350585938 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": {
+      "x": 16,
+      "y": 242,
+      "width": 86.66666412353516,
+      "height": 73.33334350585938
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": {
+      "x": 110.66666412353516,
+      "y": 242,
+      "width": 86.33333587646484,
+      "height": 73.33334350585938
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": {
+      "x": 205,
+      "y": 242,
+      "width": 86.66665649414062,
+      "height": 73.33334350585938
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": {
+      "x": 299.6666564941406,
+      "y": 242,
+      "width": 86.33334350585938,
+      "height": 73.33334350585938
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "braze-banner-container",
+    "frame": {
+      "x": 16,
+      "y": 331.33333587646484,
+      "width": 370,
+      "height": 97.33331298828125
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "Test Banner 9, Testing banners from Braze. Tap to try Rewards.",
+    "identifier": "braze-banner-pressable",
+    "frame": {
+      "x": 16,
+      "y": 331.33333587646484,
+      "width": 370,
+      "height": 97.33331298828125
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-balance-breakdown-rows",
+    "frame": {
+      "x": 0,
+      "y": 440.6666564941406,
+      "width": 402,
+      "height": 128.00003051757812
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Money, $<AMT>, <PCT>%, <PCT>% APY",
+    "identifier": "homepage-balance-breakdown-row-money",
+    "frame": { "x": 0, "y": 448.6666564941406, "width": 402, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Tokens, $<AMT>, <PCT>%",
+    "identifier": "homepage-balance-breakdown-row-tokens",
+    "frame": {
+      "x": 0,
+      "y": 488.6666564941406,
+      "width": 402,
+      "height": 40.000030517578125
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Perps, $<AMT>, <PCT>%",
+    "identifier": "homepage-balance-breakdown-row-perps",
+    "frame": { "x": 0, "y": 528.6666564941406, "width": 402, "height": 40 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 592.6666564941406, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Tokens",
+    "identifier": "homepage-section-title-tokens",
+    "frame": { "x": 0, "y": 613.6666564941406, "width": 402, "height": 44 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "Ethereum, Stake <PCT>%, $<AMT>, $<AMT> • , <PCT>%, <AMT> ETH",
+    "identifier": "asset-ETH",
+    "frame": { "x": 16, "y": 657.6666564941406, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "USD Coin, $<AMT>, $<AMT> • , Get <PCT>% APY, <AMT> USDC",
+    "identifier": "asset-USDC",
+    "frame": { "x": 16, "y": 721.6666564941406, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "Ethereum, $<AMT>, $<AMT> • , <PCT>%, <AMT> ETH",
+    "identifier": "asset-ETH",
+    "frame": { "x": 16, "y": 785.6666564941406, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "USD Coin (Native), $<AMT>, $<AMT> • , Get <PCT>% APY, <AMT> USDC",
+    "identifier": "asset-USDC",
+    "frame": { "x": 16, "y": 849.6666564941406, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "MetaMask USD, $<AMT>, $<AMT> • , Get <PCT>% APY, <AMT> mUSD",
+    "identifier": "asset-mUSD",
+    "frame": { "x": 16, "y": 913.6666564941406, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 997.6666870117188, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Perps",
+    "identifier": "homepage-section-title-perps",
+    "frame": { "x": 0, "y": 1018.6666870117188, "width": 402, "height": 44 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTScrollViewComponentView",
+    "identifier": "homepage-trending-perps-carousel",
+    "frame": {
+      "x": 0,
+      "y": 1074.6666870117188,
+      "width": 402,
+      "height": 179.99993896484375
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 1286.6666259765625, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Predictions",
+    "identifier": "homepage-section-title-predictions",
+    "frame": { "x": 0, "y": 1307.6666259765625, "width": 402, "height": 44 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "Pro Football: 2027 Champion, <PCT>% chance on San Francisco 49ers",
+    "identifier": "homepage-predict-discovery-market-slot-1",
+    "frame": { "x": 16, "y": 1351.6666259765625, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "BTC Price: —, Price to beat: —, Live, --:--",
+    "identifier": "homepage-predict-discovery-btc-row",
+    "frame": { "x": 16, "y": 1415.6666259765625, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "label": "EPL: 2027 Champion, <PCT>% chance on Arsenal",
+    "identifier": "homepage-predict-discovery-market-slot-3",
+    "frame": { "x": 16, "y": 1479.6666259765625, "width": 370, "height": 64 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 1575.6666259765625, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Watchlist",
+    "identifier": "homepage-section-title-watchlist",
+    "frame": { "x": 0, "y": 1596.6666259765625, "width": 402, "height": 44 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 16, "y": 1640.5819848651226, "width": 370, "height": 320 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "watchlist-suggested-section",
+    "frame": { "x": 16, "y": 1640.6666259765625, "width": 370, "height": 320 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-top-traders-section-root",
+    "frame": {
+      "x": 0,
+      "y": 1960.6666259765625,
+      "width": 402,
+      "height": 229.0001220703125
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 1980.6666259765625, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Top traders",
+    "identifier": "homepage-section-title-top-traders",
+    "frame": { "x": 0, "y": 2001.6666259765625, "width": 402, "height": 44 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTScrollViewComponentView",
+    "identifier": "homepage-top-traders-carousel",
+    "frame": { "x": 0, "y": 2057.6666259765625, "width": 402, "height": 120 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 2209.666748046875, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "DeFi",
+    "identifier": "homepage-section-title-defi",
+    "frame": { "x": 0, "y": 2230.666748046875, "width": 402, "height": 44 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTLegacyViewManagerInteropComponentView",
+    "frame": { "x": 16, "y": 2274.666748046875, "width": 370, "height": 56 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 2350.666748046875, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-section-title-nfts",
+    "frame": {
+      "x": 0,
+      "y": 2371.666748046875,
+      "width": 402,
+      "height": 43.9998779296875
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "StaticText",
+    "label": "NFTs",
+    "frame": {
+      "x": 16,
+      "y": 2383.666748046875,
+      "width": 50.666664123535156,
+      "height": 24
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTLegacyViewManagerInteropComponentView",
+    "frame": {
+      "x": 16,
+      "y": 2415.666748046875,
+      "width": 115.33332824707031,
+      "height": 153.33349609375
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTLegacyViewManagerInteropComponentView",
+    "frame": {
+      "x": 143.33333587646484,
+      "y": 2415.666748046875,
+      "width": 115.33332824707031,
+      "height": 153.33349609375
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTLegacyViewManagerInteropComponentView",
+    "frame": {
+      "x": 270.6666717529297,
+      "y": 2415.666748046875,
+      "width": 115.33334350585938,
+      "height": 153.33349609375
+    },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "identifier": "homepage-more-section",
+    "frame": { "x": 0, "y": 2593, "width": 402, "height": 229 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 2613, "width": 402, "height": 1 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "StaticText",
+    "label": "More",
+    "frame": { "x": 16, "y": 2646, "width": 50, "height": 24 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Import a token",
+    "identifier": "import-token-button",
+    "frame": { "x": 0, "y": 2678, "width": 402, "height": 48 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Import an NFT",
+    "identifier": "import-collectible-button",
+    "frame": { "x": 0, "y": 2726, "width": 402, "height": 48 },
+    "enabled": true
+  },
+  {
+    "depth": 50,
+    "type": "Button",
+    "label": "Contact support",
+    "identifier": "homepage-more-contact-support-button",
+    "frame": { "x": 0, "y": 2774, "width": 402, "height": 48.00006103515625 },
+    "enabled": true
+  },
+  {
+    "depth": 48,
+    "type": "_UIScrollViewScrollIndicator",
+    "label": "Horizontal scroll bar, 1 page",
+    "value": "<PCT>%",
+    "frame": { "x": 62, "y": 758, "width": 278, "height": 30 },
+    "enabled": true
+  },
+  {
+    "depth": 49,
+    "type": "UIView",
+    "frame": { "x": 65, "y": 785, "width": 272, "height": 3 },
+    "enabled": true
+  },
+  {
+    "depth": 40,
+    "type": "Toolbar",
+    "label": "Toolbar",
+    "identifier": "Toolbar",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 41,
+    "type": "FloatingBarHostingView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 34,
+    "type": "UIKit._UITabBarContainerWrapperView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 35,
+    "type": "UIKit._UITabBarContainerView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 36,
+    "type": "TabBar",
+    "label": "Tab Bar",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 37,
+    "type": "UIKit._UITabBarItemPlatterView",
+    "frame": { "x": 21, "y": 791, "width": 290, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "DestOutView",
+    "frame": { "x": 21, "y": 791, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "ContentView",
+    "frame": { "x": 21, "y": 791, "width": 290, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "Button",
+    "label": "Home",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "Button",
+    "label": "Explore",
+    "frame": {
+      "x": 93.66666666666667,
+      "y": 795,
+      "width": 76.00000000000001,
+      "height": 54
+    },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "Button",
+    "label": "Money",
+    "frame": { "x": 162.33333333333334, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "Button",
+    "label": "Social",
+    "frame": { "x": 231, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "BadgeContainerView",
+    "frame": { "x": 21, "y": 791, "width": 290, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "_UILiquidLensView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "UIView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 40,
+    "type": "_UITabSelectionView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 40,
+    "type": "ClearGlassView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 41,
+    "type": "UIView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 42,
+    "type": "SDFView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 43,
+    "type": "SDFElementView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 42,
+    "type": "_UIPortalView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 41,
+    "type": "UIView",
+    "frame": { "x": 25, "y": 795, "width": 76, "height": 54 },
+    "enabled": true
+  },
+  {
+    "depth": 37,
+    "type": "UIKit._UITabBarAuxiliaryView",
+    "frame": { "x": 319, "y": 791, "width": 62, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "UIKit._UITabBarItemPlatterView",
+    "frame": { "x": 319, "y": 791, "width": 62, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "ContentView",
+    "frame": { "x": 319, "y": 791, "width": 62, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 40,
+    "type": "Button",
+    "label": "Trade",
+    "frame": { "x": 319, "y": 791, "width": 62, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "BadgeContainerView",
+    "frame": { "x": 319, "y": 791, "width": 62, "height": 62 },
+    "enabled": true
+  },
+  {
+    "depth": 35,
+    "type": "UIKit._GlassGroupView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 36,
+    "type": "GlassGroupLayerView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 37,
+    "type": "UIKit._UIMaterialDefinitionView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "UIKit.UISDFBackdropView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "UIKit.UISDFView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 40,
+    "type": "UIView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 38,
+    "type": "UIKit.UISDFView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 39,
+    "type": "_UIPortalView",
+    "frame": { "x": 0, "y": 791, "width": 402, "height": 83 },
+    "enabled": true
+  },
+  {
+    "depth": 27,
+    "type": "Toolbar",
+    "label": "Toolbar",
+    "identifier": "Toolbar",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 28,
+    "type": "FloatingBarHostingView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 20,
+    "type": "Toolbar",
+    "label": "Toolbar",
+    "identifier": "Toolbar",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 21,
+    "type": "FloatingBarHostingView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 13,
+    "type": "Toolbar",
+    "label": "Toolbar",
+    "identifier": "Toolbar",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 14,
+    "type": "FloatingBarHostingView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 11,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 129, "y": 365, "width": 144, "height": 144 },
+    "enabled": true
+  },
+  {
+    "depth": 8,
+    "type": "RCTViewComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 9,
+    "type": "RCTDebuggingOverlayComponentView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 10,
+    "type": "RCTDebuggingOverlay",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 1,
+    "type": "Application",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 2,
+    "type": "UITrackingWindowView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 3,
+    "type": "UIEditingOverlayGestureView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 1,
+    "type": "Application",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 2,
+    "type": "UITransitionView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 3,
+    "type": "UIDropShadowView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 4,
+    "type": "_UIHostingView",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 5,
+    "type": "SwiftUI.AccessibilityNode",
+    "frame": { "x": 0, "y": 0, "width": 402, "height": 874 },
+    "enabled": true
+  },
+  {
+    "depth": 6,
+    "type": "Image",
+    "label": "Gear Shape, Filled",
+    "identifier": "gearshape.fill",
+    "frame": { "x": 348, "y": 96, "width": 26, "height": 26 },
+    "enabled": true
+  }
+]

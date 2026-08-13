@@ -2,6 +2,7 @@ import type { DeviceBackend, UIElement } from '@metamask/device-mcp';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import androidLoginSnapshot from './__fixtures__/android-login-snapshot.json';
+import iosWalletHomePreorder from './__fixtures__/ios-wallet-home-preorder.json';
 import { MobilePlatformDriver } from './mobile-platform-driver.js';
 
 function makeElement(overrides: Partial<UIElement> = {}): UIElement {
@@ -65,6 +66,35 @@ function createMockBackend(
     getElementText: vi.fn().mockResolvedValue('Hello World'),
     ...overrides,
   };
+}
+
+/**
+ * The real iOS wallet home snapshot (idb nested format, device-mcp P1-26,
+ * proof/p1-26/ios/home-describe-screen.txt, amounts sanitized). The fixture
+ * stores the elements in pre-order with their depth, to keep the file small;
+ * this rebuilds the nested hierarchy. It is the raw (intentionally
+ * unpruned) snapshot: the DevLauncher window and all layout-only elements
+ * are in it, so the tests exercise `filterAppHierarchy` and
+ * `pruneLayoutOnly` end to end.
+ *
+ * @returns The hierarchy.
+ */
+function iosWalletHomeSnapshot(): UIElement[] {
+  const roots: UIElement[] = [];
+  const stack: UIElement[] = [];
+  for (const { depth, ...element } of iosWalletHomePreorder as (UIElement & {
+    depth: number;
+  })[]) {
+    stack.length = depth;
+    const parent = stack[depth - 1];
+    if (parent) {
+      parent.children = [...(parent.children ?? []), element];
+    } else {
+      roots.push(element);
+    }
+    stack.push(element);
+  }
+  return roots;
 }
 
 describe('MobilePlatformDriver', () => {
@@ -271,8 +301,10 @@ describe('MobilePlatformDriver', () => {
       expect(
         screen.nodes.flatMap((node) => (node.testId ? [node.testId] : [])),
       ).toStrictEqual(testIds.map((item) => item.testId));
+      // The unnamed app window is layout-only (P1-14): the first node is
+      // its first child with a testId.
       expect(screen.nodes[0]?.ref).toBe('e1');
-      expect(screen.nodes[0]?.role).toBe('android.widget.FrameLayout');
+      expect(screen.nodes[0]?.role).toBe('android.widget.LinearLayout');
     });
 
     it('drops the iOS DevLauncher overlay by default', async () => {
@@ -803,7 +835,6 @@ describe('MobilePlatformDriver', () => {
         ref: 'e1',
         role: 'Button',
         name: 'Submit',
-        path: [],
         testId: 'submit-btn',
         bounds: { x: 0, y: 0, width: 100, height: 44 },
       });
@@ -811,7 +842,6 @@ describe('MobilePlatformDriver', () => {
         ref: 'e2',
         role: 'TextField',
         name: 'Email',
-        path: [],
         disabled: true,
         textContent: 'user@test.com',
         bounds: { x: 0, y: 0, width: 100, height: 44 },
@@ -842,7 +872,7 @@ describe('MobilePlatformDriver', () => {
       expect(nodes[0].bounds).toBeUndefined();
     });
 
-    it('assigns sequential refs to nested children', async () => {
+    it('assigns sequential refs to nested children, with no path', async () => {
       const backend = createMockBackend({
         snapshot: vi.fn().mockResolvedValue({
           platform: 'ios',
@@ -864,13 +894,401 @@ describe('MobilePlatformDriver', () => {
 
       const { nodes } = await driver.getAccessibilityTree();
 
-      expect(nodes).toHaveLength(3);
-      expect(nodes[0].ref).toBe('e1');
-      expect(nodes[0].path).toStrictEqual([]);
-      expect(nodes[1].ref).toBe('e2');
-      expect(nodes[1].path).toStrictEqual(['Window']);
-      expect(nodes[2].ref).toBe('e3');
-      expect(nodes[2].path).toStrictEqual(['Window']);
+      expect(nodes.map((node) => node.ref)).toStrictEqual(['e1', 'e2', 'e3']);
+      for (const node of nodes) {
+        expect(node).not.toHaveProperty('path');
+      }
+    });
+
+    it.each(['ios', 'android'] as const)(
+      'emits no path on %s',
+      async (platform) => {
+        const button = platform === 'ios' ? 'Button' : 'android.widget.Button';
+        const backend = createMockBackend({
+          platform,
+          snapshot: vi.fn().mockResolvedValue({
+            platform,
+            hierarchy: [
+              makeElement({
+                type: 'Container',
+                identifier: 'root',
+                children: [
+                  makeElement({
+                    type: 'Container',
+                    identifier: 'row',
+                    children: [
+                      makeElement({ type: button, label: 'OK' }),
+                      makeElement({ type: button, label: 'Cancel' }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+            raw: '[]',
+            timestamp: Date.now(),
+          }),
+        });
+        const driver = new MobilePlatformDriver(backend);
+
+        const screen = await driver.captureScreen();
+        const tree = await driver.getAccessibilityTree();
+
+        expect(tree.nodes).toHaveLength(4);
+        for (const node of [...tree.nodes, ...screen.nodes]) {
+          expect(node).not.toHaveProperty('path');
+        }
+      },
+    );
+
+    describe('layout-only nodes (P1-14)', () => {
+      const snapshotWith = (
+        platform: 'ios' | 'android',
+        hierarchy: UIElement[],
+      ): DeviceBackend =>
+        createMockBackend({
+          platform,
+          snapshot: vi.fn().mockResolvedValue({
+            platform,
+            hierarchy,
+            raw: '[]',
+            timestamp: Date.now(),
+          }),
+        });
+
+      it('drops unnamed containers and hoists their children in order', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('android', [
+            makeElement({
+              type: 'android.widget.FrameLayout',
+              children: [
+                makeElement({
+                  type: 'android.view.ViewGroup',
+                  children: [
+                    makeElement({
+                      type: 'android.widget.TextView',
+                      value: 'A',
+                    }),
+                    makeElement({
+                      type: 'android.view.ViewGroup',
+                      children: [
+                        makeElement({
+                          type: 'android.widget.TextView',
+                          value: 'B',
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+                makeElement({ type: 'android.widget.TextView', value: 'C' }),
+                // Unnamed, no testId, no kept descendant, and too small
+                // to be a tap target (a 1 px divider).
+                makeElement({
+                  type: 'android.view.ViewGroup',
+                  frame: { x: 0, y: 0, width: 1080, height: 1 },
+                  children: [makeElement({ type: 'android.view.View' })],
+                }),
+              ],
+            }),
+          ]),
+        );
+
+        const { nodes, refMap } = await driver.getAccessibilityTree();
+
+        expect(nodes.map(({ ref, name }) => [ref, name])).toStrictEqual([
+          ['e1', 'A'],
+          ['e2', 'B'],
+          ['e3', 'C'],
+        ]);
+        expect([...refMap]).toStrictEqual([
+          ['e1', 'value:A|type:android.widget.TextView'],
+          ['e2', 'value:B|type:android.widget.TextView'],
+          ['e3', 'value:C|type:android.widget.TextView'],
+        ]);
+      });
+
+      it('keeps containers with a testId, actionable controls, text and disabled state', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('ios', [
+            makeElement({
+              type: 'UIView',
+              children: [
+                makeElement({
+                  type: 'RCTViewComponentView',
+                  identifier: 'wallet-screen',
+                  children: [
+                    makeElement({ type: 'StaticText', label: 'Balance' }),
+                    makeElement({ type: 'SecureTextField', enabled: false }),
+                    makeElement({ type: 'UIActivityIndicatorView' }),
+                  ],
+                }),
+              ],
+            }),
+          ]),
+        );
+
+        const { nodes, refMap } = await driver.getAccessibilityTree();
+
+        expect(nodes).toStrictEqual([
+          expect.objectContaining({
+            ref: 'e1',
+            role: 'RCTViewComponentView',
+            testId: 'wallet-screen',
+          }),
+          expect.objectContaining({ ref: 'e2', name: 'Balance' }),
+          expect.objectContaining({
+            ref: 'e3',
+            role: 'SecureTextField',
+            name: '',
+            disabled: true,
+          }),
+          expect.objectContaining({
+            ref: 'e4',
+            role: 'UIActivityIndicatorView',
+          }),
+        ]);
+        // Only nodes with a testId, label or value can be resolved.
+        expect([...refMap.keys()]).toStrictEqual(['e1', 'e2']);
+      });
+
+      it('gives a dropped node no ref, so every ref resolves', async () => {
+        const backend = snapshotWith('android', [
+          makeElement({
+            type: 'android.view.ViewGroup',
+            children: [
+              makeElement({
+                type: 'android.widget.Button',
+                identifier: 'send',
+                label: 'Send',
+              }),
+            ],
+          }),
+        ]);
+        const driver = new MobilePlatformDriver(backend);
+
+        const { nodes, refMap } = await driver.getAccessibilityTree();
+
+        expect(nodes.map((node) => node.ref)).toStrictEqual(['e1']);
+        expect([...refMap]).toStrictEqual([['e1', 'identifier:send']]);
+        await driver.click('a11yRef', 'e1', refMap, 1000);
+        expect(backend.tapElement).toHaveBeenCalledWith({ identifier: 'send' });
+        await expect(
+          driver.click('a11yRef', 'e2', refMap, 1000),
+        ).rejects.toThrowError('Unknown a11yRef: e2');
+      });
+
+      it('marks ambiguity over the kept nodes only', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('ios', [
+            makeElement({
+              type: 'UIView',
+              children: [
+                makeElement({ type: 'Button', label: 'OK' }),
+                makeElement({
+                  type: 'UIView',
+                  children: [makeElement({ type: 'Button', label: 'OK' })],
+                }),
+                makeElement({ type: 'Button', label: 'Cancel' }),
+              ],
+            }),
+          ]),
+        );
+
+        const { nodes } = await driver.getAccessibilityTree();
+
+        expect(
+          nodes.map(({ ref, name, ambiguous }) => [ref, name, ambiguous]),
+        ).toStrictEqual([
+          ['e1', 'OK', true],
+          ['e2', 'OK', true],
+          ['e3', 'Cancel', undefined],
+        ]);
+      });
+
+      it('lists an unlabelled tap target with bounds but no ref', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('ios', [
+            makeElement({
+              type: 'UIView',
+              children: [
+                // A Pressable icon: an unlabelled RN view, 48x48.
+                makeElement({
+                  type: 'RCTViewComponentView',
+                  frame: { x: 10, y: 20, width: 48, height: 48 },
+                  children: [makeElement({ type: 'RNSVGPath' })],
+                }),
+                // Too small: a spacer or divider.
+                makeElement({
+                  type: 'RCTViewComponentView',
+                  frame: { x: 0, y: 80, width: 300, height: 1 },
+                }),
+                // Not a plain RN view.
+                makeElement({
+                  type: 'UIView',
+                  frame: { x: 0, y: 100, width: 300, height: 300 },
+                }),
+                makeElement({ type: 'Button', label: 'Send' }),
+              ],
+            }),
+          ]),
+        );
+
+        const { nodes, refMap } = await driver.getAccessibilityTree();
+
+        expect(nodes).toStrictEqual([
+          {
+            ref: 'e1',
+            role: 'RCTViewComponentView',
+            name: '',
+            bounds: { x: 10, y: 20, width: 48, height: 48 },
+          },
+          expect.objectContaining({ ref: 'e2', name: 'Send' }),
+        ]);
+        expect([...refMap]).toStrictEqual([['e2', 'label:Send|type:Button']]);
+      });
+
+      it('reduces the real Android login snapshot (47 -> 15 nodes)', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('android', androidLoginSnapshot as UIElement[]),
+        );
+
+        const { nodes, refMap } = await driver.getAccessibilityTree();
+
+        // After filterAppHierarchy: 47 elements. 32 are layout-only
+        // (unnamed FrameLayout/View/ScrollView/WebView/small ViewGroups...);
+        // 3 unlabelled ViewGroup leaves are kept as tap targets (no ref).
+        expect(
+          nodes.map((node) => node.testId ?? (node.name || node.role)),
+        ).toStrictEqual([
+          'io.metamask:id/action_bar_root',
+          'android:id/content',
+          'android.view.ViewGroup',
+          'npm:@metamask/bitcoin-wallet-snap',
+          'android.view.ViewGroup',
+          'login',
+          'login-download-logs-button',
+          'metamask-wordmark',
+          'android.view.ViewGroup',
+          'login-password-input',
+          'log-in-button',
+          'Unlock',
+          'reset-wallet-button',
+          'Forgot password?',
+          'fox-animation',
+        ]);
+        expect(nodes.map((node) => node.ref)).toStrictEqual(
+          nodes.map((_node, index) => `e${index + 1}`),
+        );
+        expect([...refMap.keys()]).toStrictEqual(
+          nodes
+            .filter((node) => node.testId ?? node.name)
+            .map((node) => node.ref),
+        );
+        expect(
+          nodes
+            .filter((node) => !refMap.has(node.ref))
+            .map((node) => node.bounds),
+        ).toStrictEqual([
+          { x: 0, y: 0, width: 1080, height: 2400 },
+          { x: 0, y: 0, width: 1080, height: 2400 },
+          { x: 42, y: 1232, width: 996, height: 126 },
+        ]);
+        // Before P1-14 (with path): 24154 bytes. Without path and layout-only
+        // nodes: about 2 kB.
+        expect(JSON.stringify(nodes).length).toBeLessThan(2500);
+      });
+
+      it('keeps the buttons, tabs and unlabelled action buttons of the real iOS wallet home (183 -> 67 nodes)', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('ios', iosWalletHomeSnapshot()),
+        );
+
+        const { nodes, refMap } = await driver.getAccessibilityTree();
+
+        // 183 elements; 6 are the DevLauncher window (filterAppHierarchy).
+        // 57 have a testId or a name; 10 are unlabelled tap targets.
+        expect(nodes).toHaveLength(67);
+        expect(
+          nodes.filter((node) => node.role === 'Button').map((n) => n.name),
+        ).toStrictEqual([
+          'Open my profile',
+          'Agent Account',
+          '$<AMT>, $<AMT>, (<PCT>%), Today',
+          'Money, $<AMT>, <PCT>%, <PCT>% APY',
+          'Tokens, $<AMT>, <PCT>%',
+          'Perps, $<AMT>, <PCT>%',
+          'Tokens',
+          'Perps',
+          'Predictions',
+          'BTC Price: \u2014, Price to beat: \u2014, Live, --:--',
+          'Watchlist',
+          'Top traders',
+          'DeFi',
+          'Import a token',
+          'Import an NFT',
+          'Contact support',
+          'Home',
+          'Explore',
+          'Money',
+          'Social',
+          'Trade',
+        ]);
+        // The 4 unlabelled action buttons (Buy, Swap, Send, Receive) right
+        // after `wallet-action-buttons`: listed with bounds, no ref.
+        const actions = nodes.findIndex(
+          (node) => node.testId === 'wallet-action-buttons',
+        );
+        const actionButtons = nodes.slice(actions + 1, actions + 5);
+        expect(
+          actionButtons.map(({ role, name, bounds }) => ({
+            role,
+            name,
+            x: Math.round(bounds?.x ?? -1),
+            y: bounds?.y,
+          })),
+        ).toStrictEqual([
+          { role: 'RCTViewComponentView', name: '', x: 16, y: 242 },
+          { role: 'RCTViewComponentView', name: '', x: 111, y: 242 },
+          { role: 'RCTViewComponentView', name: '', x: 205, y: 242 },
+          { role: 'RCTViewComponentView', name: '', x: 300, y: 242 },
+        ]);
+        for (const button of actionButtons) {
+          expect(refMap.has(button.ref)).toBe(false);
+        }
+        // Every node with a testId or a name has a ref that resolves.
+        expect([...refMap.keys()]).toStrictEqual(
+          nodes
+            .filter((node) => node.testId ?? node.name)
+            .map((node) => node.ref),
+        );
+        expect(refMap.size).toBe(57);
+        // P1-14 AC1: at most 15 kB (was 183 kB with path, 55 kB flat).
+        expect(JSON.stringify(nodes).length).toBeLessThan(11_000);
+      });
+
+      it('writes bounds with a fixed key order', async () => {
+        const driver = new MobilePlatformDriver(
+          snapshotWith('ios', [
+            makeElement({
+              type: 'Button',
+              label: 'OK',
+              // idb returns frame keys in varying order.
+              frame: { height: 44, width: 100, y: 20, x: 10 },
+            }),
+          ]),
+        );
+
+        const { nodes } = await driver.getAccessibilityTree();
+
+        expect(Object.keys(nodes[0]?.bounds ?? {})).toStrictEqual([
+          'x',
+          'y',
+          'width',
+          'height',
+        ]);
+        expect(JSON.stringify(nodes[0]?.bounds)).toBe(
+          '{"x":10,"y":20,"width":100,"height":44}',
+        );
+      });
     });
 
     it('builds refMap with value fallback', async () => {
@@ -1590,5 +2008,59 @@ describe('MobilePlatformDriver', () => {
 
       expect(locators).toStrictEqual([]);
     });
+  });
+});
+
+describe('MobilePlatformDriver refs across layout changes', () => {
+  it('keeps mobile refs when only layout-only containers change (P1-14)', async () => {
+    const element = (
+      type: string,
+      extra: Partial<UIElement> = {},
+      children?: UIElement[],
+    ): UIElement => ({
+      type,
+      frame: { x: 0, y: 0, width: 10, height: 10 },
+      enabled: true,
+      ...extra,
+      ...(children ? { children } : {}),
+    });
+    const send = element('android.widget.Button', {
+      identifier: 'send',
+      label: 'Send',
+    });
+    const swap = element('android.widget.Button', { label: 'Swap' });
+    const readTree = async (hierarchy: UIElement[]) =>
+      new MobilePlatformDriver({
+        platform: 'android',
+        snapshot: async () => ({
+          platform: 'android',
+          hierarchy,
+          raw: '',
+          timestamp: 0,
+        }),
+      } as unknown as DeviceBackend).getAccessibilityTree();
+
+    const previous = await readTree([
+      element('android.view.ViewGroup', {}, [send, swap]),
+    ]);
+    // Two more unnamed wrappers, and an unnamed zero-height spacer.
+    const next = await readTree([
+      element('android.widget.FrameLayout', {}, [
+        element('android.view.ViewGroup', {}, [
+          element('android.view.ViewGroup', {}, [send]),
+          element('android.view.View', {
+            frame: { x: 0, y: 0, width: 10, height: 0 },
+          }),
+          swap,
+        ]),
+      ]),
+    ]);
+
+    expect(next.nodes).toStrictEqual(previous.nodes);
+    expect([...next.refMap]).toStrictEqual([...previous.refMap]);
+    expect(previous.nodes.map((node) => node.path)).toStrictEqual([
+      undefined,
+      undefined,
+    ]);
   });
 });
