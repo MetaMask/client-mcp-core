@@ -199,12 +199,21 @@ export class MobilePlatformDriver implements IPlatformDriver {
   /**
    * @param limit - Maximum number of test IDs to return.
    * @returns Array of test ID items with identifiers from the UI hierarchy.
+   * Visibility reflects whether each element's frame intersects the device
+   * viewport; elements with unknown geometry are assumed visible.
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
     const snapshot = await this.#backend.snapshot();
     const items: TestIdItem[] = [];
     const max = limit ?? OBSERVATION_TESTID_LIMIT;
-    collectTestIds(snapshot.hierarchy, items, max);
+    let viewport: { width: number; height: number } | undefined;
+    try {
+      viewport = await this.#backend.getWindowSize();
+    } catch {
+      // Without a viewport we cannot judge visibility; report everything.
+      viewport = undefined;
+    }
+    collectTestIds(snapshot.hierarchy, items, max, viewport);
     return items;
   }
 
@@ -718,6 +727,9 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
       if (el.value && el.value !== name) {
         node.textContent = el.value;
       }
+      if (el.frame.width > 0 || el.frame.height > 0) {
+        node.bounds = { ...el.frame };
+      }
       nodes.push(node);
 
       let stableId: string | undefined;
@@ -764,11 +776,17 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
  * @param elements - The UIElement nodes to scan.
  * @param items - Accumulator for discovered test ID items.
  * @param max - Maximum number of items to collect.
+ * @param viewport - Device viewport in logical points, when known. Elements
+ * whose frames do not intersect it are reported `visible: false`; elements
+ * with unknown or zero-size geometry are assumed visible.
+ * @param viewport.width - Viewport width in logical points.
+ * @param viewport.height - Viewport height in logical points.
  */
 function collectTestIds(
   elements: UIElement[],
   items: TestIdItem[],
   max: number,
+  viewport?: { width: number; height: number },
 ): void {
   for (const el of elements) {
     if (items.length >= max) {
@@ -779,13 +797,38 @@ function collectTestIds(
         testId: el.identifier,
         tag: el.type || 'element',
         text: el.label ?? el.value,
-        visible: true,
+        visible: isWithinViewport(el.frame, viewport),
       });
     }
     if (el.children?.length) {
-      collectTestIds(el.children, items, max);
+      collectTestIds(el.children, items, max, viewport);
     }
   }
+}
+
+/**
+ * Checks whether an element frame intersects the device viewport.
+ *
+ * @param frame - Element frame in logical points.
+ * @param viewport - Device viewport in logical points, when known.
+ * @param viewport.width - Viewport width in logical points.
+ * @param viewport.height - Viewport height in logical points.
+ * @returns False only when a positive-size frame lies entirely outside the
+ * viewport; unknown geometry is conservatively treated as visible.
+ */
+function isWithinViewport(
+  frame: UIElement['frame'],
+  viewport?: { width: number; height: number },
+): boolean {
+  if (!viewport || viewport.width <= 0 || viewport.height <= 0) {
+    return true;
+  }
+  if (frame.width <= 0 || frame.height <= 0) {
+    return true;
+  }
+  const intersectsX = frame.x < viewport.width && frame.x + frame.width > 0;
+  const intersectsY = frame.y < viewport.height && frame.y + frame.height > 0;
+  return intersectsX && intersectsY;
 }
 
 /**
