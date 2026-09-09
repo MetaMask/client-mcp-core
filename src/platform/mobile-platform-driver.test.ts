@@ -768,9 +768,7 @@ describe('MobilePlatformDriver', () => {
 
     it('assumes visibility for elements with zero-size frames', async () => {
       const backend = createMockBackend({
-        getWindowSize: vi
-          .fn()
-          .mockResolvedValue({ width: 402, height: 874 }),
+        getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
         snapshot: vi.fn().mockResolvedValue({
           platform: 'ios',
           hierarchy: [
