@@ -480,6 +480,28 @@ describe('MobilePlatformDriver', () => {
       expect(refMap.get('e2')).toBe('label:Email|type:TextField');
     });
 
+    it('omits bounds for elements with zero-size frames', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Container',
+              label: 'Frameless',
+              frame: { x: 0, y: 0, width: 0, height: 0 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes } = await driver.getAccessibilityTree();
+
+      expect(nodes[0].bounds).toBeUndefined();
+    });
+
     it('assigns sequential refs to nested children', async () => {
       const backend = createMockBackend({
         snapshot: vi.fn().mockResolvedValue({
@@ -731,6 +753,31 @@ describe('MobilePlatformDriver', () => {
               type: 'Button',
               identifier: 'somewhere-btn',
               frame: { x: 0, y: 5000, width: 402, height: 44 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0].visible).toBe(true);
+    });
+
+    it('assumes visibility for elements with zero-size frames', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi
+          .fn()
+          .mockResolvedValue({ width: 402, height: 874 }),
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Container',
+              identifier: 'frameless-container',
+              frame: { x: 0, y: 0, width: 0, height: 0 },
             }),
           ],
           raw: '[]',
