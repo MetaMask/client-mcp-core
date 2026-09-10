@@ -741,7 +741,9 @@ export const scrollToElementInputSchema = targetSelectionSchema.and(
   z.object({
     direction: z
       .enum(['up', 'down'])
-      .describe('Scroll direction to reveal the target element')
+      .describe(
+        'Finger swipe direction to perform while searching (swipe up scrolls content down)',
+      )
       .optional(),
     maxAttempts: z
       .number()
@@ -761,20 +763,20 @@ export const deviceSwipeInputSchema = z.object({
     .number()
     .int()
     .min(0)
-    .describe('Start X coordinate for the swipe gesture')
+    .describe('Start X coordinate for the swipe gesture, in logical points')
     .optional(),
   startY: z
     .number()
     .int()
     .min(0)
-    .describe('Start Y coordinate for the swipe gesture')
+    .describe('Start Y coordinate for the swipe gesture, in logical points')
     .optional(),
   distance: z
     .number()
     .int()
     .min(1)
     .max(10000)
-    .describe('Swipe distance in pixels')
+    .describe('Swipe distance in logical points')
     .optional(),
 });
 
