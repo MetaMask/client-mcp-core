@@ -41,6 +41,12 @@ export type TestIdItem = {
   testId: string;
   tag: string;
   text?: string;
+  /**
+   * Whether the element is expected to be on-screen. On mobile this is
+   * derived from the element frame vs the device viewport intersection and
+   * does not account for occlusion by other content; elements with unknown
+   * geometry are assumed visible.
+   */
   visible: boolean;
 };
 
@@ -55,6 +61,11 @@ export type A11yNodeTrimmed = {
   testId?: string;
   textContent?: string;
   ambiguous?: boolean;
+  /**
+   * Element frame in logical points relative to the device viewport, when the
+   * platform reports geometry (mobile only).
+   */
+  bounds?: { x: number; y: number; width: number; height: number };
 };
 
 export type RawA11yNode = {

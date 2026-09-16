@@ -465,6 +465,7 @@ describe('MobilePlatformDriver', () => {
         name: 'Submit',
         path: [],
         testId: 'submit-btn',
+        bounds: { x: 0, y: 0, width: 100, height: 44 },
       });
       expect(nodes[1]).toStrictEqual({
         ref: 'e2',
@@ -473,9 +474,32 @@ describe('MobilePlatformDriver', () => {
         path: [],
         disabled: true,
         textContent: 'user@test.com',
+        bounds: { x: 0, y: 0, width: 100, height: 44 },
       });
       expect(refMap.get('e1')).toBe('identifier:submit-btn');
       expect(refMap.get('e2')).toBe('label:Email|type:TextField');
+    });
+
+    it('omits bounds for elements with zero-size frames', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Container',
+              label: 'Frameless',
+              frame: { x: 0, y: 0, width: 0, height: 0 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes } = await driver.getAccessibilityTree();
+
+      expect(nodes[0].bounds).toBeUndefined();
     });
 
     it('assigns sequential refs to nested children', async () => {
@@ -649,6 +673,120 @@ describe('MobilePlatformDriver', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0].testId).toBe('child-btn');
+    });
+
+    it('marks elements outside the viewport as not visible', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Button',
+              identifier: 'on-screen-btn',
+              label: 'On screen',
+              frame: { x: 0, y: 100, width: 402, height: 44 },
+            }),
+            makeElement({
+              type: 'StaticText',
+              identifier: 'below-fold-header',
+              label: 'Predictions',
+              frame: { x: 0, y: 1000, width: 402, height: 44 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0]).toStrictEqual({
+        testId: 'on-screen-btn',
+        tag: 'Button',
+        text: 'On screen',
+        visible: true,
+      });
+      expect(items[1]).toStrictEqual({
+        testId: 'below-fold-header',
+        tag: 'StaticText',
+        text: 'Predictions',
+        visible: false,
+      });
+    });
+
+    it('marks partially visible elements as visible', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Button',
+              identifier: 'peeking-btn',
+              frame: { x: 0, y: 800, width: 402, height: 150 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0].visible).toBe(true);
+    });
+
+    it('assumes visibility when the viewport is unavailable', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi
+          .fn()
+          .mockRejectedValue(
+            new Error('Unable to determine window size from device'),
+          ),
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Button',
+              identifier: 'somewhere-btn',
+              frame: { x: 0, y: 5000, width: 402, height: 44 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0].visible).toBe(true);
+    });
+
+    it('assumes visibility for elements with zero-size frames', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({
+              type: 'Container',
+              identifier: 'frameless-container',
+              frame: { x: 0, y: 0, width: 0, height: 0 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0].visible).toBe(true);
     });
 
     it('respects limit', async () => {

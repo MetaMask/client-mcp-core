@@ -2013,6 +2013,62 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes cdp with --target android-webview and --url-filter', async () => {
+    await routeCommand(
+      'cdp',
+      [
+        'Runtime.evaluate',
+        '{"expression":"1+1"}',
+        '--target',
+        'android-webview',
+        '--url-filter',
+        'test-dapp',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          params: { expression: '1+1' },
+          target: 'android-webview',
+          urlFilter: 'test-dapp',
+        }),
+      }),
+    );
+  });
+
+  it('routes cdp with --target hermes', async () => {
+    await routeCommand(
+      'cdp',
+      ['Runtime.evaluate', '--target', 'hermes'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          target: 'hermes',
+        }),
+      }),
+    );
+  });
+
+  it('exits when cdp --target is invalid', async () => {
+    await expect(
+      routeCommand(
+        'cdp',
+        ['Runtime.evaluate', '--target', 'bogus'],
+        3000,
+      ),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('--target must be'),
+    );
+  });
+
   it('routes scroll-to-element with a11y ref', async () => {
     await routeCommand('scroll-to-element', ['e1'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(

@@ -714,6 +714,22 @@ export const cdpInputSchema = z.object({
       'Mobile only: override the expected app bundle identifier. Ignored on browser.',
     )
     .optional(),
+  target: z
+    .enum(['hermes', 'android-webview'])
+    .default('hermes')
+    .describe(
+      'Mobile only: CDP target. "hermes" (default) drives the React Native ' +
+        'JS runtime via Metro; "android-webview" drives a debuggable in-app ' +
+        'Android WebView via adb (DOM/Page/Network available). Ignored on browser.',
+    ),
+  urlFilter: z
+    .string()
+    .min(1)
+    .describe(
+      'android-webview only: select the WebView page whose URL contains this ' +
+        'substring when multiple pages are open.',
+    )
+    .optional(),
 });
 
 export const hermesTargetsInputSchema = z.object({
@@ -741,7 +757,9 @@ export const scrollToElementInputSchema = targetSelectionSchema.and(
   z.object({
     direction: z
       .enum(['up', 'down'])
-      .describe('Scroll direction to reveal the target element')
+      .describe(
+        'Finger swipe direction to perform while searching (swipe up scrolls content down)',
+      )
       .optional(),
     maxAttempts: z
       .number()
@@ -761,20 +779,20 @@ export const deviceSwipeInputSchema = z.object({
     .number()
     .int()
     .min(0)
-    .describe('Start X coordinate for the swipe gesture')
+    .describe('Start X coordinate for the swipe gesture, in logical points')
     .optional(),
   startY: z
     .number()
     .int()
     .min(0)
-    .describe('Start Y coordinate for the swipe gesture')
+    .describe('Start Y coordinate for the swipe gesture, in logical points')
     .optional(),
   distance: z
     .number()
     .int()
     .min(1)
     .max(10000)
-    .describe('Swipe distance in pixels')
+    .describe('Swipe distance in logical points')
     .optional(),
 });
 

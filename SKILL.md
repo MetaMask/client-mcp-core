@@ -549,9 +549,9 @@ mm mock-network requests [--limit <n>]
 | ------------- | ------------------------------------------ |
 | `--limit <n>` | Maximum number of recent records to return |
 
-#### `mm cdp <method> [params-json] [--timeout <ms>] [--metro-port <p>] [--app-id <id>]`
+#### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
-Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below).
+Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`).
 
 ```bash
 # Browser
@@ -559,8 +559,11 @@ mm cdp Runtime.evaluate '{"expression":"document.title"}'
 mm cdp Network.enable
 mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
 
-# Mobile (Hermes) — evaluate JS in the running app
+# Mobile (Hermes, default) — evaluate JS in the running React Native app
 mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.metamask --metro-port 8081
+
+# Mobile (Android WebView) — drive the DOM of the in-app browser
+mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\').click()"}' --target android-webview
 ```
 
 | Argument        | Description                                                                                                               |
@@ -568,17 +571,20 @@ mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.
 | `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile) |
 | `[params-json]` | Optional JSON object with method-specific parameters                                                                      |
 | `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                  |
-| `--metro-port`  | **Mobile only** — override the Metro inspector proxy port (default: 8081). Ignored on browser.                            |
-| `--app-id`      | **Mobile only** — override the expected app bundle identifier. Ignored on browser.                                        |
+| `--target`      | **Mobile only** — `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Ignored on browser.       |
+| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                         |
+| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port (default: 8081). Ignored on browser.                  |
+| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier. Ignored on browser.                             |
 
-**Browser vs Mobile (Hermes):** the same command targets different runtimes.
+**Three CDP targets:** the same command reaches different runtimes.
 
-| Aspect            | Browser (Playwright)                                                                             | Mobile (React Native Hermes)                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Target            | The page's Chrome DevTools session                                                               | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) |
-| Available domains | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, …)                                     | JS-engine subset only (`Runtime`, `Debugger`, `Log`, `HeapProfiler`) — no `DOM`/`Page`/`Network` |
-| Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               |
-| Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      |
+| Aspect            | Browser (Playwright)                                                                             | Mobile — Hermes (`--target hermes`, default)                                                      | Mobile — Android WebView (`--target android-webview`)                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Target            | The page's Chrome DevTools session                                                               | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
+| Available domains | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, …)                                     | JS-engine subset only (`Runtime`, `Debugger`, `Log`, `HeapProfiler`) — no `DOM`/`Page`/`Network` | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, `Input`)                               |
+| Use it for        | Web page DOM in the browser                                                                      | The React Native app's own JavaScript                                                            | The web page DOM inside the app's in-app browser                                                 |
+| Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` |
+| Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      | `Runtime.evaluate` nests the value at `result.result.value`                                      |
 
 Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool is categorized as **mutating** — run `describe-screen` afterward to re-sync if the call changed runtime/page state.
 
@@ -635,7 +641,7 @@ Presses a hardware/system button. Only `home`, `back`, `enter`, and `lock` are a
 
 #### `mm device-context list` / `mm device-context switch <name>`
 
-Lists available native/webview contexts, or switches the active context (e.g. `WEBVIEW_1`).
+Lists available native/webview contexts, or switches the active context. On **iOS** WebView contexts look like `WEBVIEW_1` (Appium backend). On **Android** a single `WEBVIEW` context appears whenever a debuggable in-app WebView is open; to drive that page's DOM use `mm cdp --target android-webview` (see [`mm cdp`](#mm-cdp-method-params-json---timeout-ms---target-hermesandroid-webview---url-filter-substr---metro-port-p---app-id-id)).
 
 #### `mm device-clipboard read` / `mm device-clipboard write <text>`
 
