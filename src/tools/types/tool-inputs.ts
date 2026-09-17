@@ -184,6 +184,17 @@ export type CdpInput = {
    * the Hermes debug target. Ignored on the browser platform.
    */
   appId?: string;
+  /**
+   * Mobile only: which CDP target to drive. `'hermes'` (the default) targets
+   * the React Native JS runtime via Metro; `'android-webview'` targets a
+   * debuggable in-app Android WebView via adb. Ignored on the browser platform.
+   */
+  target?: 'hermes' | 'android-webview';
+  /**
+   * `android-webview` only: select the WebView page whose URL contains this
+   * substring when multiple WebView pages are open.
+   */
+  urlFilter?: string;
 };
 
 export type HermesTargetsInput = {

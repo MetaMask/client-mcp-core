@@ -24,8 +24,11 @@ vi.mock('@metamask/device-mcp', () => ({
 // Imported AFTER vi.mock so the driver binds to the mocked device-mcp runtime.
 const { MobilePlatformDriver } = await import('./mobile-platform-driver.js');
 
-function createBackend(platform: 'ios' | 'android' = 'android'): DeviceBackend {
-  return { platform } as unknown as DeviceBackend;
+function createBackend(
+  platform: 'ios' | 'android' = 'android',
+  overrides: Partial<DeviceBackend> = {},
+): DeviceBackend {
+  return { platform, ...overrides } as unknown as DeviceBackend;
 }
 
 describe('MobilePlatformDriver hermes delegation', () => {
@@ -334,5 +337,126 @@ describe('MobilePlatformDriver hermes delegation', () => {
       );
       expect(mocks.hasAmbiguousTarget).toHaveBeenCalledWith(matchingTargets);
     });
+  });
+});
+
+describe('MobilePlatformDriver webview cdp routing', () => {
+  beforeEach(() => {
+    mocks.HermesSession.mockImplementation(() => ({
+      resolve: mocks.resolve,
+      getPinnedHermesDeviceId: mocks.getPinnedHermesDeviceId,
+      setPinnedHermesDeviceId: mocks.setPinnedHermesDeviceId,
+    }));
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('routes target "android-webview" to backend.webviewCdp and NOT Hermes', async () => {
+    const webviewCdp = vi
+      .fn()
+      .mockResolvedValue({ ok: true, result: { value: 'clicked' } });
+    const driver = new MobilePlatformDriver(
+      createBackend('android', { webviewCdp }),
+    );
+
+    const outcome = await driver.cdp({
+      method: 'Runtime.evaluate',
+      params: { expression: "document.querySelector('#x').click()" },
+      timeoutMs: 30_000,
+      target: 'android-webview',
+      urlFilter: 'test-dapp',
+    });
+
+    expect(outcome).toStrictEqual({ ok: true, result: { value: 'clicked' } });
+    expect(webviewCdp).toHaveBeenCalledWith({
+      method: 'Runtime.evaluate',
+      params: { expression: "document.querySelector('#x').click()" },
+      timeoutMs: 30_000,
+      urlFilter: 'test-dapp',
+    });
+    expect(mocks.runHermesCdp).not.toHaveBeenCalled();
+  });
+
+  it('defaults to the Hermes path when target is omitted', async () => {
+    mocks.resolve.mockReturnValue({
+      metroPort: 8081,
+      appId: 'io.metamask',
+      pinnedDeviceId: undefined,
+    });
+    mocks.getPinnedHermesDeviceId.mockReturnValue(undefined);
+    mocks.runHermesCdp.mockResolvedValue({ ok: true, result: { value: 2 } });
+    const webviewCdp = vi.fn();
+    const driver = new MobilePlatformDriver(
+      createBackend('android', { webviewCdp }),
+    );
+
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(mocks.runHermesCdp).toHaveBeenCalledTimes(1);
+    expect(webviewCdp).not.toHaveBeenCalled();
+  });
+
+  it('maps the WebView blocked-method code to MM_CDP_BLOCKED', async () => {
+    const webviewCdp = vi.fn().mockResolvedValue({
+      ok: false,
+      code: 'WEBVIEW_BLOCKED_METHOD',
+      message: 'blocked',
+    });
+    const driver = new MobilePlatformDriver(
+      createBackend('android', { webviewCdp }),
+    );
+
+    const outcome = await driver.cdp({
+      method: 'Browser.close',
+      timeoutMs: 30_000,
+      target: 'android-webview',
+    });
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.code).toBe('MM_CDP_BLOCKED');
+      expect(outcome.message).toContain('WEBVIEW_BLOCKED_METHOD');
+    }
+  });
+
+  it('maps other WebView failures to MM_CDP_FAILED', async () => {
+    const webviewCdp = vi.fn().mockResolvedValue({
+      ok: false,
+      code: 'WEBVIEW_TARGET_NOT_FOUND',
+      message: 'no page',
+    });
+    const driver = new MobilePlatformDriver(
+      createBackend('android', { webviewCdp }),
+    );
+
+    const outcome = await driver.cdp({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+      target: 'android-webview',
+    });
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.code).toBe('MM_CDP_FAILED');
+      expect(outcome.message).toContain('WEBVIEW_TARGET_NOT_FOUND');
+    }
+  });
+
+  it('returns MM_CDP_FAILED when the backend lacks webviewCdp support', async () => {
+    const driver = new MobilePlatformDriver(createBackend('android'));
+
+    const outcome = await driver.cdp({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+      target: 'android-webview',
+    });
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.code).toBe('MM_CDP_FAILED');
+      expect(outcome.message).toContain('WebView CDP is not available');
+    }
   });
 });

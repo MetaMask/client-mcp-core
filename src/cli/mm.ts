@@ -653,18 +653,32 @@ export async function routeCommand(
       const cdpMethod = args[0];
       if (!cdpMethod) {
         process.stderr.write(
-          'Usage: mm cdp <method> [params-json] [--timeout <ms>] [--metro-port <port>] [--app-id <id>]\n' +
+          'Usage: mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <port>] [--app-id <id>]\n' +
             '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\'\n' +
             '  mm cdp Network.enable\n' +
             '  mm cdp DOM.getDocument \'{"depth":2}\' --timeout 60000\n' +
             '  # mobile (Hermes): --metro-port / --app-id override the Metro target\n' +
-            '  mm cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --app-id io.metamask\n',
+            '  mm cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --app-id io.metamask\n' +
+            '  # mobile (Android WebView): drive the in-app browser DOM\n' +
+            '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\' --target android-webview\n',
         );
         process.exit(1);
       }
       const cdpTimeout = parseIntFlag(args, '--timeout');
       const cdpMetroPort = parseIntFlag(args, '--metro-port');
       const cdpAppId = parseStringFlag(args, '--app-id');
+      const cdpTarget = parseStringFlag(args, '--target');
+      const cdpUrlFilter = parseStringFlag(args, '--url-filter');
+      if (
+        cdpTarget !== undefined &&
+        cdpTarget !== 'hermes' &&
+        cdpTarget !== 'android-webview'
+      ) {
+        process.stderr.write(
+          'Error: --target must be "hermes" or "android-webview"\n',
+        );
+        process.exit(1);
+      }
       const cdpParamsRaw =
         args[1] !== undefined && !args[1].startsWith('--')
           ? args[1]
@@ -694,6 +708,8 @@ export async function routeCommand(
         ...(cdpTimeout === undefined ? {} : { timeoutMs: cdpTimeout }),
         ...(cdpMetroPort === undefined ? {} : { metroPort: cdpMetroPort }),
         ...(cdpAppId ? { appId: cdpAppId } : {}),
+        ...(cdpTarget ? { target: cdpTarget } : {}),
+        ...(cdpUrlFilter ? { urlFilter: cdpUrlFilter } : {}),
       });
       break;
     }
@@ -1677,7 +1693,7 @@ Advanced:
   mm mock-network clear
   mm mock-network list
   mm mock-network requests [--limit <n>]
-  mm cdp <method> [params-json] [--timeout <ms>] [--metro-port <p>] [--app-id <id>]
+  mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 
 Mobile (iOS/Android only):

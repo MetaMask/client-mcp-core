@@ -714,6 +714,22 @@ export const cdpInputSchema = z.object({
       'Mobile only: override the expected app bundle identifier. Ignored on browser.',
     )
     .optional(),
+  target: z
+    .enum(['hermes', 'android-webview'])
+    .default('hermes')
+    .describe(
+      'Mobile only: CDP target. "hermes" (default) drives the React Native ' +
+        'JS runtime via Metro; "android-webview" drives a debuggable in-app ' +
+        'Android WebView via adb (DOM/Page/Network available). Ignored on browser.',
+    ),
+  urlFilter: z
+    .string()
+    .min(1)
+    .describe(
+      'android-webview only: select the WebView page whose URL contains this ' +
+        'substring when multiple pages are open.',
+    )
+    .optional(),
 });
 
 export const hermesTargetsInputSchema = z.object({

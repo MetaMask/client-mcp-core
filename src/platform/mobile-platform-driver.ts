@@ -51,6 +51,10 @@ const HERMES_MULTIPLE_DEVICES_CODE = 'HERMES_MULTIPLE_DEVICES';
 // (Runtime.terminateExecution, Inspector.detached); mirror it to MM_CDP_BLOCKED
 // so the agent-facing contract matches the browser driver.
 const HERMES_BLOCKED_METHOD_CODE = 'HERMES_BLOCKED_METHOD';
+// device-mcp returns this code for the WebView destructive-method blocklist
+// (Browser.close, Target.closeTarget, etc.); mirror it to MM_CDP_BLOCKED so the
+// agent-facing contract matches the browser and Hermes drivers.
+const WEBVIEW_BLOCKED_METHOD_CODE = 'WEBVIEW_BLOCKED_METHOD';
 
 /**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
@@ -435,18 +439,35 @@ export class MobilePlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * Send a raw Chrome DevTools Protocol command to the app's React Native
-   * Hermes JS runtime via Metro's inspector proxy. Hermes exposes only the
-   * JS-engine CDP subset (Runtime, Debugger, Log, HeapProfiler) — there is no
-   * DOM/Page/Network domain. Works on both iOS and Android; only the default
-   * appId differs by platform.
+   * Send a raw Chrome DevTools Protocol command to a mobile CDP target.
    *
-   * @param input - The CDP method, params, timeout, and optional Metro port /
-   * appId overrides.
-   * @returns A discriminated outcome carrying the raw CDP result or an error,
-   * with the underlying device-mcp `HERMES_*` code preserved in the message.
+   * Two targets are supported, selected by `input.target`:
+   * - `'hermes'` (default): the app's React Native Hermes JS runtime via
+   *   Metro's inspector proxy. Exposes only the JS-engine CDP subset (Runtime,
+   *   Debugger, Log, HeapProfiler) — no DOM/Page/Network. Works on iOS and
+   *   Android. This path is unchanged and is what local development relies on.
+   * - `'android-webview'`: a debuggable in-app Android WebView via adb. Exposes
+   *   the full Chrome surface (Runtime, DOM, Page, Network, Input). Android
+   *   only.
+   *
+   * @param input - The CDP method, params, timeout, and optional target /
+   * Metro / appId / urlFilter overrides.
+   * @returns A discriminated outcome carrying the raw CDP result or an error.
    */
   async cdp(input: CdpInput): Promise<CdpOutcome> {
+    if (input.target === 'android-webview') {
+      return this.#webviewCdp(input);
+    }
+    return this.#hermesCdp(input);
+  }
+
+  /**
+   * Drives the React Native Hermes JS runtime via Metro. Unchanged behavior.
+   *
+   * @param input - The CDP command input.
+   * @returns A discriminated CDP outcome.
+   */
+  async #hermesCdp(input: CdpInput): Promise<CdpOutcome> {
     const session = this.#hermesSession;
     const resolved = session.resolve({
       metroPort: input.metroPort,
@@ -475,6 +496,43 @@ export class MobilePlatformDriver implements IPlatformDriver {
       ok: false,
       code:
         outcome.code === HERMES_BLOCKED_METHOD_CODE
+          ? ErrorCodes.MM_CDP_BLOCKED
+          : ErrorCodes.MM_CDP_FAILED,
+      message: `[${outcome.code}] ${outcome.message}`,
+    };
+  }
+
+  /**
+   * Drives a debuggable in-app Android WebView via the device-mcp backend.
+   *
+   * @param input - The CDP command input, honoring an optional urlFilter.
+   * @returns A discriminated CDP outcome.
+   */
+  async #webviewCdp(input: CdpInput): Promise<CdpOutcome> {
+    if (!this.#backend.webviewCdp) {
+      return {
+        ok: false,
+        code: ErrorCodes.MM_CDP_FAILED,
+        message:
+          'WebView CDP is not available on this session. It requires an ' +
+          'Android (adb) device with a debuggable in-app WebView.',
+      };
+    }
+
+    const outcome = await this.#backend.webviewCdp({
+      method: input.method,
+      params: input.params,
+      timeoutMs: input.timeoutMs,
+      urlFilter: input.urlFilter,
+    });
+
+    if (outcome.ok) {
+      return { ok: true, result: outcome.result };
+    }
+    return {
+      ok: false,
+      code:
+        outcome.code === WEBVIEW_BLOCKED_METHOD_CODE
           ? ErrorCodes.MM_CDP_BLOCKED
           : ErrorCodes.MM_CDP_FAILED,
       message: `[${outcome.code}] ${outcome.message}`,
