@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.0]
 
-### Uncategorized
+### Added
 
 - chore: add android cdp ([#46](https://github.com/MetaMask/client-mcp-core/pull/46))
+
+### Fixed
+
 - fix: report mobile element geometry and viewport visibility ([#45](https://github.com/MetaMask/client-mcp-core/pull/45))
 
 ## [0.8.0]
