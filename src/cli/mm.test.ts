@@ -2040,11 +2040,7 @@ describe('routeCommand', () => {
   });
 
   it('routes cdp with --target hermes', async () => {
-    await routeCommand(
-      'cdp',
-      ['Runtime.evaluate', '--target', 'hermes'],
-      3000,
-    );
+    await routeCommand('cdp', ['Runtime.evaluate', '--target', 'hermes'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'http://127.0.0.1:3000/tool/cdp',
       expect.objectContaining({
@@ -2058,11 +2054,7 @@ describe('routeCommand', () => {
 
   it('exits when cdp --target is invalid', async () => {
     await expect(
-      routeCommand(
-        'cdp',
-        ['Runtime.evaluate', '--target', 'bogus'],
-        3000,
-      ),
+      routeCommand('cdp', ['Runtime.evaluate', '--target', 'bogus'], 3000),
     ).rejects.toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining('--target must be'),
