@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The mobile a11y snapshot no longer computes the ancestor-role `path` on Android, emitting an empty `path` for every node instead. Android `path` values were widget class names (e.g. `android.widget.FrameLayout`) that dominated the `describe-screen` payload with no targeting value (mobile targeting is by a11y `ref` or `testId`). iOS and browser behavior are unchanged. ([#44](https://github.com/MetaMask/client-mcp-core/pull/44))
+
 ## [0.8.0]
 
 ### Added
