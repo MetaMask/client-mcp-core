@@ -172,6 +172,12 @@ export async function main(): Promise<void> {
 
   if (command === 'launch') {
     const launchArgs = parseLaunchArgs(args.slice(1));
+    if (typeof launchArgs.extensionPath === 'string') {
+      launchArgs.extensionPath = path.resolve(
+        worktreeRoot,
+        launchArgs.extensionPath,
+      );
+    }
     await sendRequest(daemonState.port, 'POST', '/launch', launchArgs);
     return;
   }

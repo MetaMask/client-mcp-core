@@ -2751,6 +2751,82 @@ describe('main', () => {
     process.argv = origArgv;
   });
 
+  it('resolves a relative extension path from the worktree root', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const originalProject = process.env.MM_PROJECT;
+    process.env.MM_PROJECT = '/mock/worktree';
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--extension-path', 'dist/chrome'];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({
+          extensionPath: path.resolve('/mock/worktree', 'dist/chrome'),
+        }),
+      }),
+    );
+
+    process.argv = origArgv;
+    process.env.MM_PROJECT = originalProject;
+  });
+
+  it('preserves an absolute extension path', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const extensionPath = path.resolve('/custom-extension');
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--extension-path', extensionPath];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({ extensionPath }),
+      }),
+    );
+
+    process.argv = origArgv;
+  });
+
   it('routes cleanup command through discoverDaemon', async () => {
     const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
       await import('../server/daemon-state.js');
