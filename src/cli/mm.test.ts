@@ -675,13 +675,28 @@ describe('printHelp', () => {
 
 describe('resolveRuntime', () => {
   it('returns node for node runtime', () => {
-    expect(resolveRuntime('/root', 'node')).toBe('node');
+    expect(resolveRuntime('/root', 'node')).toStrictEqual({
+      command: 'node',
+      shell: false,
+    });
   });
 
-  it('returns bin path when runtime exists', () => {
+  it('returns bin path without shell when runtime exists', () => {
     vi.mocked(existsSync).mockReturnValue(true);
-    const result = resolveRuntime('/root', 'tsx');
-    expect(result).toBe(path.join('/root', 'node_modules', '.bin', 'tsx'));
+    const result = resolveRuntime('/root', 'tsx', 'linux');
+    expect(result).toStrictEqual({
+      command: path.join('/root', 'node_modules', '.bin', 'tsx'),
+      shell: false,
+    });
+  });
+
+  it('returns the Windows command shim and enables a shell', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+
+    expect(resolveRuntime('/root', 'tsx', 'win32')).toStrictEqual({
+      command: path.join('/root', 'node_modules', '.bin', 'tsx.cmd'),
+      shell: true,
+    });
   });
 
   it('exits when runtime binary not found', () => {
@@ -2924,6 +2939,7 @@ describe('handleServe', () => {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
       cwd: '/root',
+      shell: false,
     });
     expect(stdoutSpy).toHaveBeenCalledWith(
       'Daemon started on port 4000 (PID 456)\n',
@@ -3179,6 +3195,7 @@ describe('autoStartDaemon', () => {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
       cwd: '/root',
+      shell: false,
     });
     expect(releaseStartupLock).toHaveBeenCalledWith('/root');
     expect(result).toStrictEqual(mockState);

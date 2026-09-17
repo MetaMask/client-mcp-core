@@ -49,6 +49,11 @@ type DaemonConfig = {
   runtime: string;
 };
 
+type RuntimeCommand = {
+  command: string;
+  shell: boolean;
+};
+
 /**
  * Extracts and consumes the `--project <path>` flag from argv, returning
  * the remaining args and the extracted project path (if any).
@@ -1181,12 +1186,13 @@ export async function autoStartDaemon(
     }
 
     const config = await readDaemonConfig(worktreeRoot);
-    const runtimeBin = resolveRuntime(worktreeRoot, config.runtime);
+    const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
-    const child = spawn(runtimeBin, [config.daemonPath], {
+    const child = spawn(runtimeCommand.command, [config.daemonPath], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
       cwd: worktreeRoot,
+      shell: runtimeCommand.shell,
     });
     child.unref();
 
@@ -1219,13 +1225,14 @@ export async function handleServe(
   }
 
   const config = await readDaemonConfig(worktreeRoot);
-  const runtimeBin = resolveRuntime(worktreeRoot, config.runtime);
+  const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
   if (background) {
-    const child = spawn(runtimeBin, [config.daemonPath], {
+    const child = spawn(runtimeCommand.command, [config.daemonPath], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
       cwd: worktreeRoot,
+      shell: runtimeCommand.shell,
     });
     child.unref();
 
@@ -1236,9 +1243,10 @@ export async function handleServe(
     return;
   }
 
-  const child = spawn(runtimeBin, [config.daemonPath], {
+  const child = spawn(runtimeCommand.command, [config.daemonPath], {
     stdio: 'inherit',
     cwd: worktreeRoot,
+    shell: runtimeCommand.shell,
   });
 
   await new Promise<void>((resolve) => {
@@ -1364,21 +1372,31 @@ export async function readDaemonConfig(
  *
  * @param worktreeRoot - The git worktree root directory.
  * @param runtime - The runtime name from configuration.
- * @returns The absolute path to the runtime binary.
+ * @param platform - Platform used to resolve package-manager command shims.
+ * @returns Spawn metadata for the runtime binary.
  */
-export function resolveRuntime(worktreeRoot: string, runtime: string): string {
+export function resolveRuntime(
+  worktreeRoot: string,
+  runtime: string,
+  platform = process.platform,
+): RuntimeCommand {
   if (runtime === 'node') {
-    return 'node';
+    return { command: 'node', shell: false };
   }
 
-  const binPath = path.join(worktreeRoot, 'node_modules', '.bin', runtime);
+  const binPath = path.join(
+    worktreeRoot,
+    'node_modules',
+    '.bin',
+    platform === 'win32' ? `${runtime}.cmd` : runtime,
+  );
   if (!existsSync(binPath)) {
     process.stderr.write(
       `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
     );
     process.exit(1);
   }
-  return binPath;
+  return { command: binPath, shell: platform === 'win32' };
 }
 
 /**
