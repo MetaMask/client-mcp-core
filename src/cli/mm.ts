@@ -53,8 +53,34 @@ type DaemonConfig = {
 
 type RuntimeCommand = {
   command: string;
-  shell: boolean;
+  getArgs: (daemonPath: string) => string[];
+  windowsVerbatimArguments?: boolean;
 };
+
+/**
+ * Escapes an executable path for use in a cmd.exe command string.
+ *
+ * @param command - The executable path to escape.
+ * @returns The escaped executable path.
+ */
+function escapeWindowsCommand(command: string): string {
+  return command.replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1');
+}
+
+/**
+ * Escapes an argument for a cmd.exe command string.
+ *
+ * @param argument - The argument to escape.
+ * @returns The escaped and quoted argument.
+ */
+function escapeWindowsArgument(argument: string): string {
+  const escapedArgument = argument
+    .replace(/(?=(\\+?)?)\1"/gu, '$1$1\\"')
+    .replace(/(?=(\\+?)?)\1$/gu, '$1$1');
+  return `"${escapedArgument}"`
+    .replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1')
+    .replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1');
+}
 
 /**
  * Extracts and consumes the `--project <path>` flag from argv, returning
@@ -1196,12 +1222,16 @@ export async function autoStartDaemon(
     const config = await readDaemonConfig(worktreeRoot);
     const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
-    const child = spawn(runtimeCommand.command, [config.daemonPath], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      cwd: worktreeRoot,
-      shell: runtimeCommand.shell,
-    });
+    const child = spawn(
+      runtimeCommand.command,
+      runtimeCommand.getArgs(config.daemonPath),
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        cwd: worktreeRoot,
+        windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
+      },
+    );
     child.unref();
 
     return await waitForDaemon(worktreeRoot);
@@ -1236,12 +1266,16 @@ export async function handleServe(
   const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
   if (background) {
-    const child = spawn(runtimeCommand.command, [config.daemonPath], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      cwd: worktreeRoot,
-      shell: runtimeCommand.shell,
-    });
+    const child = spawn(
+      runtimeCommand.command,
+      runtimeCommand.getArgs(config.daemonPath),
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        cwd: worktreeRoot,
+        windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
+      },
+    );
     child.unref();
 
     const state = await waitForDaemon(worktreeRoot);
@@ -1251,11 +1285,15 @@ export async function handleServe(
     return;
   }
 
-  const child = spawn(runtimeCommand.command, [config.daemonPath], {
-    stdio: 'inherit',
-    cwd: worktreeRoot,
-    shell: runtimeCommand.shell,
-  });
+  const child = spawn(
+    runtimeCommand.command,
+    runtimeCommand.getArgs(config.daemonPath),
+    {
+      stdio: 'inherit',
+      cwd: worktreeRoot,
+      windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
+    },
+  );
 
   await new Promise<void>((resolve) => {
     child.on('exit', (code) => {
@@ -1389,22 +1427,43 @@ export function resolveRuntime(
   platform = process.platform,
 ): RuntimeCommand {
   if (runtime === 'node') {
-    return { command: 'node', shell: false };
+    return { command: 'node', getArgs: (daemonPath) => [daemonPath] };
   }
 
-  const binPath = path.join(
-    worktreeRoot,
-    'node_modules',
-    '.bin',
-    platform === 'win32' ? `${runtime}.cmd` : runtime,
-  );
+  if (platform === 'win32') {
+    const binPath = path.win32.join(
+      worktreeRoot,
+      'node_modules',
+      '.bin',
+      `${runtime}.cmd`,
+    );
+    if (!existsSync(binPath)) {
+      process.stderr.write(
+        `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
+      );
+      process.exit(1);
+    }
+
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      getArgs: (daemonPath) => [
+        '/d',
+        '/s',
+        '/c',
+        `"${escapeWindowsCommand(binPath)} ${escapeWindowsArgument(daemonPath)}"`,
+      ],
+      windowsVerbatimArguments: true,
+    };
+  }
+
+  const binPath = path.join(worktreeRoot, 'node_modules', '.bin', runtime);
   if (!existsSync(binPath)) {
     process.stderr.write(
       `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
     );
     process.exit(1);
   }
-  return { command: binPath, shell: platform === 'win32' };
+  return { command: binPath, getArgs: (daemonPath) => [daemonPath] };
 }
 
 /**

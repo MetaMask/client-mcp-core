@@ -54,7 +54,10 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, existsSync: vi.fn(() => true) };
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+  };
 });
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -675,10 +678,12 @@ describe('printHelp', () => {
 
 describe('resolveRuntime', () => {
   it('returns node for node runtime', () => {
-    expect(resolveRuntime('/root', 'node')).toStrictEqual({
+    const result = resolveRuntime('/root', 'node');
+    expect(result).toStrictEqual({
       command: 'node',
-      shell: false,
+      getArgs: expect.any(Function),
     });
+    expect(result.getArgs('./daemon.ts')).toStrictEqual(['./daemon.ts']);
   });
 
   it('returns bin path without shell when runtime exists', () => {
@@ -686,17 +691,85 @@ describe('resolveRuntime', () => {
     const result = resolveRuntime('/root', 'tsx', 'linux');
     expect(result).toStrictEqual({
       command: path.join('/root', 'node_modules', '.bin', 'tsx'),
-      shell: false,
+      getArgs: expect.any(Function),
     });
+    expect(result.getArgs('./daemon.ts')).toStrictEqual(['./daemon.ts']);
   });
 
-  it('returns the Windows command shim and enables a shell', () => {
+  it('runs a Windows runtime shim through cmd.exe with quoted arguments', () => {
     vi.mocked(existsSync).mockReturnValue(true);
 
     expect(resolveRuntime('/root', 'tsx', 'win32')).toStrictEqual({
-      command: path.join('/root', 'node_modules', '.bin', 'tsx.cmd'),
-      shell: true,
+      command: process.env.ComSpec ?? 'cmd.exe',
+      getArgs: expect.any(Function),
+      windowsVerbatimArguments: true,
     });
+    expect(
+      resolveRuntime('/root', 'tsx', 'win32').getArgs('./daemon.ts'),
+    ).toStrictEqual([
+      '/d',
+      '/s',
+      '/c',
+      '"\\root\\node_modules\\.bin\\tsx.cmd ^^^"./daemon.ts^^^""',
+    ]);
+  });
+
+  it('uses the configured Windows command processor', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    const originalComSpec = process.env.ComSpec;
+    process.env.ComSpec = 'C:\\Windows\\System32\\cmd.exe';
+
+    try {
+      expect(resolveRuntime('/root', 'tsx', 'win32')).toMatchObject({
+        command: 'C:\\Windows\\System32\\cmd.exe',
+      });
+    } finally {
+      if (originalComSpec === undefined) {
+        delete process.env.ComSpec;
+      } else {
+        process.env.ComSpec = originalComSpec;
+      }
+    }
+  });
+
+  it('preserves Windows project paths containing spaces', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    const runtime = resolveRuntime(
+      'C:\\Users\\Jane Doe\\project',
+      'tsx',
+      'win32',
+    );
+
+    expect(runtime.getArgs('test/e2e/daemon.ts')).toStrictEqual([
+      '/d',
+      '/s',
+      '/c',
+      '"C:\\Users\\Jane^ Doe\\project\\node_modules\\.bin\\tsx.cmd ^^^"test/e2e/daemon.ts^^^""',
+    ]);
+  });
+
+  it('supports a Windows runtime alias provided by a native package', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+
+    expect(
+      resolveRuntime('/root', 'swc-node', 'win32').getArgs('daemon.ts'),
+    ).toStrictEqual([
+      '/d',
+      '/s',
+      '/c',
+      '"\\root\\node_modules\\.bin\\swc-node.cmd ^^^"daemon.ts^^^""',
+    ]);
+  });
+
+  it('exits when a Windows runtime command shim is missing', () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+
+    expect(() => resolveRuntime('/root', 'tsx', 'win32')).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Runtime 'tsx' not found at"),
+    );
   });
 
   it('exits when runtime binary not found', () => {
@@ -2790,7 +2863,11 @@ describe('main', () => {
     );
 
     process.argv = origArgv;
-    process.env.MM_PROJECT = originalProject;
+    if (originalProject === undefined) {
+      delete process.env.MM_PROJECT;
+    } else {
+      process.env.MM_PROJECT = originalProject;
+    }
   });
 
   it('preserves an absolute extension path', async () => {
@@ -3017,7 +3094,6 @@ describe('handleServe', () => {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
       cwd: '/root',
-      shell: false,
     });
     expect(stdoutSpy).toHaveBeenCalledWith(
       'Daemon started on port 4000 (PID 456)\n',
@@ -3273,7 +3349,6 @@ describe('autoStartDaemon', () => {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
       cwd: '/root',
-      shell: false,
     });
     expect(releaseStartupLock).toHaveBeenCalledWith('/root');
     expect(result).toStrictEqual(mockState);
