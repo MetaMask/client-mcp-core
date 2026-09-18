@@ -28,7 +28,9 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
 const AUTO_START_COMMANDS = new Set(['launch', 'serve']);
 
 const DAEMON_POLL_INTERVAL_MS = 200;
-const DAEMON_POLL_MAX_ATTEMPTS = 50; // 50 * 200ms = 10s
+const DAEMON_START_TIMEOUT_MS = 30_000;
+const DAEMON_POLL_MAX_ATTEMPTS =
+  DAEMON_START_TIMEOUT_MS / DAEMON_POLL_INTERVAL_MS;
 const SEND_MAX_RETRIES = 3;
 const SEND_RETRY_BASE_DELAY_MS = 200;
 const CONFIG_MODULE_NAME = 'mm-client-cli';
@@ -1421,7 +1423,9 @@ export async function waitForDaemon(
       return state;
     }
   }
-  throw new Error('Daemon failed to start within 10 seconds');
+  throw new Error(
+    `Daemon failed to start within ${DAEMON_START_TIMEOUT_MS / 1000} seconds`,
+  );
 }
 
 /**

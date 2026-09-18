@@ -2629,12 +2629,14 @@ describe('waitForDaemon', () => {
 
     vi.useFakeTimers();
     const promise = waitForDaemon('/root').catch((error: Error) => error);
-    for (let i = 0; i < 55; i++) {
+    for (let i = 0; i < 155; i++) {
       await vi.advanceTimersByTimeAsync(200);
     }
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect((result as Error).message).toContain('Daemon failed to start');
+    expect((result as Error).message).toBe(
+      'Daemon failed to start within 30 seconds',
+    );
     vi.useRealTimers();
   });
 });
