@@ -73,7 +73,7 @@ The design is **consumer-agnostic**: the core handles protocol, tooling, and kno
 
 ## Installation
 
-As a project dependency (the CLI is available via `npx mm` or `yarn mm`):
+As a project dependency, run the CLI through your package manager. It does not put a bare `mm` command on your shell `PATH`:
 
 ```bash
 yarn add @metamask/client-mcp-core
@@ -86,6 +86,16 @@ npm install -g @metamask/client-mcp-core
 ```
 
 The global CLI can target any project via `--project` or `MM_PROJECT` (see [Project Targeting](#project-targeting)).
+
+Use the invocation that matches your installation:
+
+```bash
+# Project dependency
+yarn mm launch
+
+# Global installation
+mm launch
+```
 
 ## Getting Started
 
@@ -145,6 +155,8 @@ mm describe-screen     # get element references
 mm click e3            # interact using a11y refs
 mm cleanup --shutdown  # stop browser and daemon
 ```
+
+Use `yarn mm` in place of `mm` when the CLI is installed as a project dependency.
 
 If running from outside the project directory (e.g., a parent folder containing multiple repos):
 

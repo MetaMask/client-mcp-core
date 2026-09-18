@@ -54,7 +54,10 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, existsSync: vi.fn(() => true) };
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+  };
 });
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -675,13 +678,98 @@ describe('printHelp', () => {
 
 describe('resolveRuntime', () => {
   it('returns node for node runtime', () => {
-    expect(resolveRuntime('/root', 'node')).toBe('node');
+    const result = resolveRuntime('/root', 'node');
+    expect(result).toStrictEqual({
+      command: 'node',
+      getArgs: expect.any(Function),
+    });
+    expect(result.getArgs('./daemon.ts')).toStrictEqual(['./daemon.ts']);
   });
 
-  it('returns bin path when runtime exists', () => {
+  it('returns bin path without shell when runtime exists', () => {
     vi.mocked(existsSync).mockReturnValue(true);
-    const result = resolveRuntime('/root', 'tsx');
-    expect(result).toBe(path.join('/root', 'node_modules', '.bin', 'tsx'));
+    const result = resolveRuntime('/root', 'tsx', 'linux');
+    expect(result).toStrictEqual({
+      command: path.join('/root', 'node_modules', '.bin', 'tsx'),
+      getArgs: expect.any(Function),
+    });
+    expect(result.getArgs('./daemon.ts')).toStrictEqual(['./daemon.ts']);
+  });
+
+  it('runs a Windows runtime shim through cmd.exe with quoted arguments', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+
+    expect(resolveRuntime('/root', 'tsx', 'win32')).toStrictEqual({
+      command: process.env.ComSpec ?? 'cmd.exe',
+      getArgs: expect.any(Function),
+      windowsVerbatimArguments: true,
+    });
+    expect(
+      resolveRuntime('/root', 'tsx', 'win32').getArgs('./daemon.ts'),
+    ).toStrictEqual([
+      '/d',
+      '/s',
+      '/c',
+      '"\\root\\node_modules\\.bin\\tsx.cmd ^^^"./daemon.ts^^^""',
+    ]);
+  });
+
+  it('uses the configured Windows command processor', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    const originalComSpec = process.env.ComSpec;
+    process.env.ComSpec = 'C:\\Windows\\System32\\cmd.exe';
+
+    try {
+      expect(resolveRuntime('/root', 'tsx', 'win32')).toMatchObject({
+        command: 'C:\\Windows\\System32\\cmd.exe',
+      });
+    } finally {
+      if (originalComSpec === undefined) {
+        delete process.env.ComSpec;
+      } else {
+        process.env.ComSpec = originalComSpec;
+      }
+    }
+  });
+
+  it('preserves Windows project paths containing spaces', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    const runtime = resolveRuntime(
+      'C:\\Users\\Jane Doe\\project',
+      'tsx',
+      'win32',
+    );
+
+    expect(runtime.getArgs('test/e2e/daemon.ts')).toStrictEqual([
+      '/d',
+      '/s',
+      '/c',
+      '"C:\\Users\\Jane^ Doe\\project\\node_modules\\.bin\\tsx.cmd ^^^"test/e2e/daemon.ts^^^""',
+    ]);
+  });
+
+  it('supports a Windows runtime alias provided by a native package', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+
+    expect(
+      resolveRuntime('/root', 'swc-node', 'win32').getArgs('daemon.ts'),
+    ).toStrictEqual([
+      '/d',
+      '/s',
+      '/c',
+      '"\\root\\node_modules\\.bin\\swc-node.cmd ^^^"daemon.ts^^^""',
+    ]);
+  });
+
+  it('exits when a Windows runtime command shim is missing', () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+
+    expect(() => resolveRuntime('/root', 'tsx', 'win32')).toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Runtime 'tsx' not found at"),
+    );
   });
 
   it('exits when runtime binary not found', () => {
@@ -2614,12 +2702,14 @@ describe('waitForDaemon', () => {
 
     vi.useFakeTimers();
     const promise = waitForDaemon('/root').catch((error: Error) => error);
-    for (let i = 0; i < 55; i++) {
+    for (let i = 0; i < 155; i++) {
       await vi.advanceTimersByTimeAsync(200);
     }
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect((result as Error).message).toContain('Daemon failed to start');
+    expect((result as Error).message).toBe(
+      'Daemon failed to start within 30 seconds',
+    );
     vi.useRealTimers();
   });
 });
@@ -2731,6 +2821,86 @@ describe('main', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'http://127.0.0.1:3000/launch',
       expect.objectContaining({ method: 'POST' }),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('resolves a relative extension path from the worktree root', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const originalProject = process.env.MM_PROJECT;
+    process.env.MM_PROJECT = '/mock/worktree';
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--extension-path', 'dist/chrome'];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({
+          extensionPath: path.resolve('/mock/worktree', 'dist/chrome'),
+        }),
+      }),
+    );
+
+    process.argv = origArgv;
+    if (originalProject === undefined) {
+      delete process.env.MM_PROJECT;
+    } else {
+      process.env.MM_PROJECT = originalProject;
+    }
+  });
+
+  it('preserves an absolute extension path', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const extensionPath = path.resolve('/custom-extension');
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--extension-path', extensionPath];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({ extensionPath }),
+      }),
     );
 
     process.argv = origArgv;

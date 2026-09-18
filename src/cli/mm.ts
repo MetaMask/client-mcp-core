@@ -28,7 +28,9 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
 const AUTO_START_COMMANDS = new Set(['launch', 'serve']);
 
 const DAEMON_POLL_INTERVAL_MS = 200;
-const DAEMON_POLL_MAX_ATTEMPTS = 50; // 50 * 200ms = 10s
+const DAEMON_START_TIMEOUT_MS = 30_000;
+const DAEMON_POLL_MAX_ATTEMPTS =
+  DAEMON_START_TIMEOUT_MS / DAEMON_POLL_INTERVAL_MS;
 const SEND_MAX_RETRIES = 3;
 const SEND_RETRY_BASE_DELAY_MS = 200;
 const CONFIG_MODULE_NAME = 'mm-client-cli';
@@ -48,6 +50,37 @@ type DaemonConfig = {
   daemonPath: string;
   runtime: string;
 };
+
+type RuntimeCommand = {
+  command: string;
+  getArgs: (daemonPath: string) => string[];
+  windowsVerbatimArguments?: boolean;
+};
+
+/**
+ * Escapes an executable path for use in a cmd.exe command string.
+ *
+ * @param command - The executable path to escape.
+ * @returns The escaped executable path.
+ */
+function escapeWindowsCommand(command: string): string {
+  return command.replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1');
+}
+
+/**
+ * Escapes an argument for a cmd.exe command string.
+ *
+ * @param argument - The argument to escape.
+ * @returns The escaped and quoted argument.
+ */
+function escapeWindowsArgument(argument: string): string {
+  const escapedArgument = argument
+    .replace(/(?=(\\+?)?)\1"/gu, '$1$1\\"')
+    .replace(/(?=(\\+?)?)\1$/gu, '$1$1');
+  return `"${escapedArgument}"`
+    .replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1')
+    .replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1');
+}
 
 /**
  * Extracts and consumes the `--project <path>` flag from argv, returning
@@ -167,6 +200,12 @@ export async function main(): Promise<void> {
 
   if (command === 'launch') {
     const launchArgs = parseLaunchArgs(args.slice(1));
+    if (typeof launchArgs.extensionPath === 'string') {
+      launchArgs.extensionPath = path.resolve(
+        worktreeRoot,
+        launchArgs.extensionPath,
+      );
+    }
     await sendRequest(daemonState.port, 'POST', '/launch', launchArgs);
     return;
   }
@@ -1181,13 +1220,18 @@ export async function autoStartDaemon(
     }
 
     const config = await readDaemonConfig(worktreeRoot);
-    const runtimeBin = resolveRuntime(worktreeRoot, config.runtime);
+    const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
-    const child = spawn(runtimeBin, [config.daemonPath], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      cwd: worktreeRoot,
-    });
+    const child = spawn(
+      runtimeCommand.command,
+      runtimeCommand.getArgs(config.daemonPath),
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        cwd: worktreeRoot,
+        windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
+      },
+    );
     child.unref();
 
     return await waitForDaemon(worktreeRoot);
@@ -1219,14 +1263,19 @@ export async function handleServe(
   }
 
   const config = await readDaemonConfig(worktreeRoot);
-  const runtimeBin = resolveRuntime(worktreeRoot, config.runtime);
+  const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
   if (background) {
-    const child = spawn(runtimeBin, [config.daemonPath], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      cwd: worktreeRoot,
-    });
+    const child = spawn(
+      runtimeCommand.command,
+      runtimeCommand.getArgs(config.daemonPath),
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        cwd: worktreeRoot,
+        windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
+      },
+    );
     child.unref();
 
     const state = await waitForDaemon(worktreeRoot);
@@ -1236,10 +1285,15 @@ export async function handleServe(
     return;
   }
 
-  const child = spawn(runtimeBin, [config.daemonPath], {
-    stdio: 'inherit',
-    cwd: worktreeRoot,
-  });
+  const child = spawn(
+    runtimeCommand.command,
+    runtimeCommand.getArgs(config.daemonPath),
+    {
+      stdio: 'inherit',
+      cwd: worktreeRoot,
+      windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
+    },
+  );
 
   await new Promise<void>((resolve) => {
     child.on('exit', (code) => {
@@ -1364,11 +1418,42 @@ export async function readDaemonConfig(
  *
  * @param worktreeRoot - The git worktree root directory.
  * @param runtime - The runtime name from configuration.
- * @returns The absolute path to the runtime binary.
+ * @param platform - Platform used to resolve package-manager command shims.
+ * @returns Spawn metadata for the runtime binary.
  */
-export function resolveRuntime(worktreeRoot: string, runtime: string): string {
+export function resolveRuntime(
+  worktreeRoot: string,
+  runtime: string,
+  platform = process.platform,
+): RuntimeCommand {
   if (runtime === 'node') {
-    return 'node';
+    return { command: 'node', getArgs: (daemonPath) => [daemonPath] };
+  }
+
+  if (platform === 'win32') {
+    const binPath = path.win32.join(
+      worktreeRoot,
+      'node_modules',
+      '.bin',
+      `${runtime}.cmd`,
+    );
+    if (!existsSync(binPath)) {
+      process.stderr.write(
+        `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
+      );
+      process.exit(1);
+    }
+
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      getArgs: (daemonPath) => [
+        '/d',
+        '/s',
+        '/c',
+        `"${escapeWindowsCommand(binPath)} ${escapeWindowsArgument(daemonPath)}"`,
+      ],
+      windowsVerbatimArguments: true,
+    };
   }
 
   const binPath = path.join(worktreeRoot, 'node_modules', '.bin', runtime);
@@ -1378,7 +1463,7 @@ export function resolveRuntime(worktreeRoot: string, runtime: string): string {
     );
     process.exit(1);
   }
-  return binPath;
+  return { command: binPath, getArgs: (daemonPath) => [daemonPath] };
 }
 
 /**
@@ -1397,7 +1482,9 @@ export async function waitForDaemon(
       return state;
     }
   }
-  throw new Error('Daemon failed to start within 10 seconds');
+  throw new Error(
+    `Daemon failed to start within ${DAEMON_START_TIMEOUT_MS / 1000} seconds`,
+  );
 }
 
 /**
