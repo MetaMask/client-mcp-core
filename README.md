@@ -143,7 +143,7 @@ export default {
 };
 ```
 
-The `daemon` field tells the CLI where the daemon entry point lives. The `runtime` field specifies the TypeScript runner (defaults to `tsx`).
+The `daemon` field tells the CLI where the daemon entry point lives. The `runtime` field supports `tsx` (the default) and `node`. For `tsx`, the CLI resolves the project's installed `tsx/cli` module and launches it through Node.
 
 The CLI uses [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig) for config discovery, so you can also use `mm-client-cli.config.js`, `.mm-client-clirc.json`, or other supported formats.
 

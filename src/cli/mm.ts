@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { cosmiconfig } from 'cosmiconfig';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 
 import pkg from '../../package.json';
@@ -34,6 +34,7 @@ const DAEMON_POLL_MAX_ATTEMPTS =
 const SEND_MAX_RETRIES = 3;
 const SEND_RETRY_BASE_DELAY_MS = 200;
 const CONFIG_MODULE_NAME = 'mm-client-cli';
+const SUPPORTED_RUNTIMES = new Set(['node', 'tsx']);
 
 /**
  * Configuration shape for mm-client-cli config files.
@@ -42,45 +43,19 @@ const CONFIG_MODULE_NAME = 'mm-client-cli';
 export type MmClientCliConfig = {
   /** Path to the daemon entry point (TypeScript or JavaScript file). */
   daemon: string;
-  /** TypeScript runner to use. Defaults to 'tsx'. */
-  runtime?: string;
+  /** Runtime used to start the daemon. Defaults to 'tsx'. */
+  runtime?: 'node' | 'tsx';
 };
 
 type DaemonConfig = {
   daemonPath: string;
-  runtime: string;
+  runtime: 'node' | 'tsx';
 };
 
 type RuntimeCommand = {
   command: string;
   getArgs: (daemonPath: string) => string[];
-  windowsVerbatimArguments?: boolean;
 };
-
-/**
- * Escapes an executable path for use in a cmd.exe command string.
- *
- * @param command - The executable path to escape.
- * @returns The escaped executable path.
- */
-function escapeWindowsCommand(command: string): string {
-  return command.replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1');
-}
-
-/**
- * Escapes an argument for a cmd.exe command string.
- *
- * @param argument - The argument to escape.
- * @returns The escaped and quoted argument.
- */
-function escapeWindowsArgument(argument: string): string {
-  const escapedArgument = argument
-    .replace(/(?=(\\+?)?)\1"/gu, '$1$1\\"')
-    .replace(/(?=(\\+?)?)\1$/gu, '$1$1');
-  return `"${escapedArgument}"`
-    .replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1')
-    .replace(/([()\][%!^"`<>&|;, *?])/gu, '^$1');
-}
 
 /**
  * Extracts and consumes the `--project <path>` flag from argv, returning
@@ -1229,7 +1204,6 @@ export async function autoStartDaemon(
         detached: true,
         stdio: ['ignore', 'ignore', 'ignore'],
         cwd: worktreeRoot,
-        windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
       },
     );
     child.unref();
@@ -1273,7 +1247,6 @@ export async function handleServe(
         detached: true,
         stdio: ['ignore', 'ignore', 'ignore'],
         cwd: worktreeRoot,
-        windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
       },
     );
     child.unref();
@@ -1291,7 +1264,6 @@ export async function handleServe(
     {
       stdio: 'inherit',
       cwd: worktreeRoot,
-      windowsVerbatimArguments: runtimeCommand.windowsVerbatimArguments,
     },
   );
 
@@ -1407,63 +1379,55 @@ export async function readDaemonConfig(
     process.exit(1);
   }
 
+  const runtime = config.runtime ?? 'tsx';
+  if (!SUPPORTED_RUNTIMES.has(runtime)) {
+    process.stderr.write(
+      `Error: Unsupported runtime '${runtime}'. Supported runtimes are 'node' and 'tsx'.\n`,
+    );
+    process.exit(1);
+  }
+
   return {
     daemonPath: config.daemon,
-    runtime: config.runtime ?? 'tsx',
+    runtime,
   };
 }
 
 /**
- * Resolves the runtime binary path for spawning the daemon.
+ * Resolves the supported runtime command for spawning the daemon.
  *
  * @param worktreeRoot - The git worktree root directory.
  * @param runtime - The runtime name from configuration.
- * @param platform - Platform used to resolve package-manager command shims.
  * @returns Spawn metadata for the runtime binary.
  */
 export function resolveRuntime(
   worktreeRoot: string,
-  runtime: string,
-  platform = process.platform,
+  runtime: 'node' | 'tsx',
 ): RuntimeCommand {
   if (runtime === 'node') {
     return { command: 'node', getArgs: (daemonPath) => [daemonPath] };
   }
 
-  if (platform === 'win32') {
-    const binPath = path.win32.join(
-      worktreeRoot,
-      'node_modules',
-      '.bin',
-      `${runtime}.cmd`,
-    );
-    if (!existsSync(binPath)) {
+  if (runtime === 'tsx') {
+    try {
+      const requireFromProject = createRequire(
+        path.join(worktreeRoot, 'package.json'),
+      );
+      const tsxCli = requireFromProject.resolve('tsx/cli');
+
+      return {
+        command: process.execPath,
+        getArgs: (daemonPath) => [tsxCli, daemonPath],
+      };
+    } catch {
       process.stderr.write(
-        `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
+        `Error: Runtime 'tsx' is not installed in ${worktreeRoot}. Install it or set "mm.runtime" in package.json.\n`,
       );
       process.exit(1);
     }
-
-    return {
-      command: process.env.ComSpec ?? 'cmd.exe',
-      getArgs: (daemonPath) => [
-        '/d',
-        '/s',
-        '/c',
-        `"${escapeWindowsCommand(binPath)} ${escapeWindowsArgument(daemonPath)}"`,
-      ],
-      windowsVerbatimArguments: true,
-    };
   }
 
-  const binPath = path.join(worktreeRoot, 'node_modules', '.bin', runtime);
-  if (!existsSync(binPath)) {
-    process.stderr.write(
-      `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
-    );
-    process.exit(1);
-  }
-  return { command: binPath, getArgs: (daemonPath) => [daemonPath] };
+  throw new Error('Unsupported runtime');
 }
 
 /**
