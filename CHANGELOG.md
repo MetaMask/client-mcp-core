@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.0]
 
-### Uncategorized
+### Fixed
 
 - fix(cli): support Windows project daemon launches ([#48](https://github.com/MetaMask/client-mcp-core/pull/48))
+- Support only runtime: 'tsx' and runtime: 'node'; reject unsupported runtime configuration with a clear error ([#48](https://github.com/MetaMask/client-mcp-core/pull/48))
 
 ## [0.9.0]
 
