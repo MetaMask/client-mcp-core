@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { cosmiconfig } from 'cosmiconfig';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 
 import pkg from '../../package.json';
@@ -28,10 +28,13 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
 const AUTO_START_COMMANDS = new Set(['launch', 'serve']);
 
 const DAEMON_POLL_INTERVAL_MS = 200;
-const DAEMON_POLL_MAX_ATTEMPTS = 50; // 50 * 200ms = 10s
+const DAEMON_START_TIMEOUT_MS = 30_000;
+const DAEMON_POLL_MAX_ATTEMPTS =
+  DAEMON_START_TIMEOUT_MS / DAEMON_POLL_INTERVAL_MS;
 const SEND_MAX_RETRIES = 3;
 const SEND_RETRY_BASE_DELAY_MS = 200;
 const CONFIG_MODULE_NAME = 'mm-client-cli';
+const SUPPORTED_RUNTIMES = new Set(['node', 'tsx']);
 
 /**
  * Configuration shape for mm-client-cli config files.
@@ -40,13 +43,18 @@ const CONFIG_MODULE_NAME = 'mm-client-cli';
 export type MmClientCliConfig = {
   /** Path to the daemon entry point (TypeScript or JavaScript file). */
   daemon: string;
-  /** TypeScript runner to use. Defaults to 'tsx'. */
-  runtime?: string;
+  /** Runtime used to start the daemon. Defaults to 'tsx'. */
+  runtime?: 'node' | 'tsx';
 };
 
 type DaemonConfig = {
   daemonPath: string;
-  runtime: string;
+  runtime: 'node' | 'tsx';
+};
+
+type RuntimeCommand = {
+  command: string;
+  getArgs: (daemonPath: string) => string[];
 };
 
 /**
@@ -167,6 +175,12 @@ export async function main(): Promise<void> {
 
   if (command === 'launch') {
     const launchArgs = parseLaunchArgs(args.slice(1));
+    if (typeof launchArgs.extensionPath === 'string') {
+      launchArgs.extensionPath = path.resolve(
+        worktreeRoot,
+        launchArgs.extensionPath,
+      );
+    }
     await sendRequest(daemonState.port, 'POST', '/launch', launchArgs);
     return;
   }
@@ -1181,13 +1195,17 @@ export async function autoStartDaemon(
     }
 
     const config = await readDaemonConfig(worktreeRoot);
-    const runtimeBin = resolveRuntime(worktreeRoot, config.runtime);
+    const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
-    const child = spawn(runtimeBin, [config.daemonPath], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      cwd: worktreeRoot,
-    });
+    const child = spawn(
+      runtimeCommand.command,
+      runtimeCommand.getArgs(config.daemonPath),
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        cwd: worktreeRoot,
+      },
+    );
     child.unref();
 
     return await waitForDaemon(worktreeRoot);
@@ -1219,14 +1237,18 @@ export async function handleServe(
   }
 
   const config = await readDaemonConfig(worktreeRoot);
-  const runtimeBin = resolveRuntime(worktreeRoot, config.runtime);
+  const runtimeCommand = resolveRuntime(worktreeRoot, config.runtime);
 
   if (background) {
-    const child = spawn(runtimeBin, [config.daemonPath], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      cwd: worktreeRoot,
-    });
+    const child = spawn(
+      runtimeCommand.command,
+      runtimeCommand.getArgs(config.daemonPath),
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        cwd: worktreeRoot,
+      },
+    );
     child.unref();
 
     const state = await waitForDaemon(worktreeRoot);
@@ -1236,10 +1258,14 @@ export async function handleServe(
     return;
   }
 
-  const child = spawn(runtimeBin, [config.daemonPath], {
-    stdio: 'inherit',
-    cwd: worktreeRoot,
-  });
+  const child = spawn(
+    runtimeCommand.command,
+    runtimeCommand.getArgs(config.daemonPath),
+    {
+      stdio: 'inherit',
+      cwd: worktreeRoot,
+    },
+  );
 
   await new Promise<void>((resolve) => {
     child.on('exit', (code) => {
@@ -1353,32 +1379,55 @@ export async function readDaemonConfig(
     process.exit(1);
   }
 
+  const runtime = config.runtime ?? 'tsx';
+  if (!SUPPORTED_RUNTIMES.has(runtime)) {
+    process.stderr.write(
+      `Error: Unsupported runtime '${runtime}'. Supported runtimes are 'node' and 'tsx'.\n`,
+    );
+    process.exit(1);
+  }
+
   return {
     daemonPath: config.daemon,
-    runtime: config.runtime ?? 'tsx',
+    runtime,
   };
 }
 
 /**
- * Resolves the runtime binary path for spawning the daemon.
+ * Resolves the supported runtime command for spawning the daemon.
  *
  * @param worktreeRoot - The git worktree root directory.
  * @param runtime - The runtime name from configuration.
- * @returns The absolute path to the runtime binary.
+ * @returns Spawn metadata for the runtime binary.
  */
-export function resolveRuntime(worktreeRoot: string, runtime: string): string {
+export function resolveRuntime(
+  worktreeRoot: string,
+  runtime: 'node' | 'tsx',
+): RuntimeCommand {
   if (runtime === 'node') {
-    return 'node';
+    return { command: 'node', getArgs: (daemonPath) => [daemonPath] };
   }
 
-  const binPath = path.join(worktreeRoot, 'node_modules', '.bin', runtime);
-  if (!existsSync(binPath)) {
-    process.stderr.write(
-      `Error: Runtime '${runtime}' not found at ${binPath}. Install it or set "mm.runtime" in package.json.\n`,
-    );
-    process.exit(1);
+  if (runtime === 'tsx') {
+    try {
+      const requireFromProject = createRequire(
+        path.join(worktreeRoot, 'package.json'),
+      );
+      const tsxCli = requireFromProject.resolve('tsx/cli');
+
+      return {
+        command: process.execPath,
+        getArgs: (daemonPath) => [tsxCli, daemonPath],
+      };
+    } catch {
+      process.stderr.write(
+        `Error: Runtime 'tsx' is not installed in ${worktreeRoot}. Install it or set "mm.runtime" in package.json.\n`,
+      );
+      process.exit(1);
+    }
   }
-  return binPath;
+
+  throw new Error('Unsupported runtime');
 }
 
 /**
@@ -1397,7 +1446,9 @@ export async function waitForDaemon(
       return state;
     }
   }
-  throw new Error('Daemon failed to start within 10 seconds');
+  throw new Error(
+    `Daemon failed to start within ${DAEMON_START_TIMEOUT_MS / 1000} seconds`,
+  );
 }
 
 /**

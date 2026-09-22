@@ -3,8 +3,8 @@
 /* eslint-disable n/no-sync */
 /* eslint-disable require-atomic-updates */
 import { cosmiconfig } from 'cosmiconfig';
-import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { MockInstance } from 'vitest';
@@ -52,11 +52,6 @@ vi.mock('node:child_process', () => ({
   }),
 }));
 
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, existsSync: vi.fn(() => true) };
-});
-
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
@@ -66,6 +61,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     readFile: vi.fn(),
   };
 });
+
+vi.mock('node:module', () => ({
+  createRequire: vi.fn(),
+}));
 
 vi.mock('../server/daemon-state.js', () => ({
   readDaemonState: vi.fn(async () => null),
@@ -87,6 +86,8 @@ vi.mock('cosmiconfig', () => ({
 let exitSpy: MockInstance;
 let stderrSpy: MockInstance;
 let stdoutSpy: MockInstance;
+const mockCreateRequire = vi.mocked(createRequire);
+const mockResolveRuntime = vi.fn();
 
 // eslint-disable-next-line vitest/require-top-level-describe
 beforeEach(() => {
@@ -101,6 +102,10 @@ beforeEach(() => {
   }) as never);
   stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  mockResolveRuntime.mockReturnValue('/mock/worktree/node_modules/tsx/cli.mjs');
+  mockCreateRequire.mockReturnValue({
+    resolve: mockResolveRuntime,
+  } as never);
 });
 
 // eslint-disable-next-line vitest/require-top-level-describe
@@ -675,20 +680,61 @@ describe('printHelp', () => {
 
 describe('resolveRuntime', () => {
   it('returns node for node runtime', () => {
-    expect(resolveRuntime('/root', 'node')).toBe('node');
+    const result = resolveRuntime('/root', 'node');
+    expect(result).toStrictEqual({
+      command: 'node',
+      getArgs: expect.any(Function),
+    });
+    expect(result.getArgs('./daemon.ts')).toStrictEqual(['./daemon.ts']);
   });
 
-  it('returns bin path when runtime exists', () => {
-    vi.mocked(existsSync).mockReturnValue(true);
+  it('runs tsx through Node using the project-local CLI module', () => {
     const result = resolveRuntime('/root', 'tsx');
-    expect(result).toBe(path.join('/root', 'node_modules', '.bin', 'tsx'));
+    expect(result).toStrictEqual({
+      command: process.execPath,
+      getArgs: expect.any(Function),
+    });
+    expect(mockCreateRequire).toHaveBeenCalledWith(
+      path.join('/root', 'package.json'),
+    );
+    expect(mockResolveRuntime).toHaveBeenCalledWith('tsx/cli');
+    expect(result.getArgs('./daemon.ts')).toStrictEqual([
+      '/mock/worktree/node_modules/tsx/cli.mjs',
+      './daemon.ts',
+    ]);
   });
 
-  it('exits when runtime binary not found', () => {
-    vi.mocked(existsSync).mockReturnValue(false);
+  it('runs tsx without a shell for Windows project paths containing spaces', () => {
+    mockResolveRuntime.mockReturnValue(
+      'C:\\Users\\Jane Doe\\project\\node_modules\\tsx\\dist\\cli.mjs',
+    );
+
+    const runtime = resolveRuntime('C:\\Users\\Jane Doe\\project', 'tsx');
+
+    expect(runtime).toStrictEqual({
+      command: process.execPath,
+      getArgs: expect.any(Function),
+    });
+    expect(runtime.getArgs('test/e2e/daemon.ts')).toStrictEqual([
+      'C:\\Users\\Jane Doe\\project\\node_modules\\tsx\\dist\\cli.mjs',
+      'test/e2e/daemon.ts',
+    ]);
+  });
+
+  it('exits when tsx is not installed in the project', () => {
+    mockResolveRuntime.mockImplementation(() => {
+      throw new Error('Cannot find module');
+    });
+
     expect(() => resolveRuntime('/root', 'tsx')).toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Runtime 'tsx' not found"),
+      expect.stringContaining("Runtime 'tsx' is not installed in /root"),
+    );
+  });
+
+  it('throws for an invalid runtime value', () => {
+    expect(() => resolveRuntime('/root', 'invalid' as never)).toThrowError(
+      'Unsupported runtime',
     );
   });
 });
@@ -801,6 +847,21 @@ describe('readDaemonConfig', () => {
     const result = await readDaemonConfig('/project');
 
     expect(result.runtime).toBe('tsx');
+  });
+
+  it('exits when the configured runtime is unsupported', async () => {
+    mockSearch.mockResolvedValue({
+      config: { daemon: './daemon.ts', runtime: 'swc-node' },
+      filepath: '/mock/worktree/mm-client-cli.config.ts',
+      isEmpty: false,
+    });
+
+    await expect(readDaemonConfig('/mock/worktree')).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      "Error: Unsupported runtime 'swc-node'. Supported runtimes are 'node' and 'tsx'.\n",
+    );
   });
 
   it('exits when no config file is found', async () => {
@@ -2614,12 +2675,14 @@ describe('waitForDaemon', () => {
 
     vi.useFakeTimers();
     const promise = waitForDaemon('/root').catch((error: Error) => error);
-    for (let i = 0; i < 55; i++) {
+    for (let i = 0; i < 155; i++) {
       await vi.advanceTimersByTimeAsync(200);
     }
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect((result as Error).message).toContain('Daemon failed to start');
+    expect((result as Error).message).toBe(
+      'Daemon failed to start within 30 seconds',
+    );
     vi.useRealTimers();
   });
 });
@@ -2731,6 +2794,86 @@ describe('main', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'http://127.0.0.1:3000/launch',
       expect.objectContaining({ method: 'POST' }),
+    );
+
+    process.argv = origArgv;
+  });
+
+  it('resolves a relative extension path from the worktree root', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const originalProject = process.env.MM_PROJECT;
+    process.env.MM_PROJECT = '/mock/worktree';
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--extension-path', 'dist/chrome'];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({
+          extensionPath: path.resolve('/mock/worktree', 'dist/chrome'),
+        }),
+      }),
+    );
+
+    process.argv = origArgv;
+    if (originalProject === undefined) {
+      delete process.env.MM_PROJECT;
+    } else {
+      process.env.MM_PROJECT = originalProject;
+    }
+  });
+
+  it('preserves an absolute extension path', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const extensionPath = path.resolve('/custom-extension');
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--extension-path', extensionPath];
+
+    await main();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({ extensionPath }),
+      }),
     );
 
     process.argv = origArgv;
@@ -2893,7 +3036,6 @@ describe('handleServe', () => {
 
     vi.mocked(readDaemonState).mockResolvedValueOnce(null);
 
-    vi.mocked(existsSync).mockReturnValue(true);
     mockSearch.mockResolvedValueOnce({
       config: { daemon: './daemon.ts', runtime: 'node' },
       filepath: '/root/mm-client-cli.config.ts',
@@ -2943,7 +3085,6 @@ describe('handleServe', () => {
     vi.mocked(readDaemonState).mockResolvedValueOnce(staleState);
     vi.mocked(isDaemonAlive).mockResolvedValueOnce(false);
 
-    vi.mocked(existsSync).mockReturnValue(true);
     mockSearch.mockResolvedValueOnce({
       config: { daemon: './d.ts', runtime: 'node' },
       filepath: '/root/mm-client-cli.config.ts',
@@ -3148,7 +3289,6 @@ describe('autoStartDaemon', () => {
     vi.mocked(acquireStartupLock).mockResolvedValueOnce(true);
     vi.mocked(readDaemonState).mockResolvedValueOnce(null);
 
-    vi.mocked(existsSync).mockReturnValue(true);
     mockSearch.mockResolvedValueOnce({
       config: { daemon: './daemon.ts', runtime: 'node' },
       filepath: '/root/mm-client-cli.config.ts',

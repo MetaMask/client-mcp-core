@@ -124,7 +124,8 @@ export function generateNonce(): string {
 /**
  * Acquires an exclusive startup lock for the worktree.
  * Uses O_CREAT | O_EXCL to atomically create the lock file — if it already
- * exists, checks whether the lock is stale (dead PID or older than 30s)
+ * exists, checks whether the lock is stale (a dead PID or an old lock without
+ * a valid PID)
  * and reclaims it if so.
  *
  * @param worktreeRoot - Absolute path to the git worktree root.
@@ -161,7 +162,7 @@ export async function acquireStartupLock(
  * Checks whether a lock file is stale by examining PID liveness and file age.
  *
  * @param lockPath - Absolute path to the lock file.
- * @returns true if the lock holder is dead or the file is older than LOCK_STALE_MS.
+ * @returns true if the lock holder is dead or the lock is old without a valid PID.
  */
 async function isLockStale(lockPath: string): Promise<boolean> {
   try {
@@ -170,13 +171,9 @@ async function isLockStale(lockPath: string): Promise<boolean> {
       fs.stat(lockPath),
     ]);
 
-    const ageMs = Date.now() - stat.mtimeMs;
-    if (ageMs > LOCK_STALE_MS) {
-      return true;
-    }
-
-    const pid = parseInt(content.trim(), 10);
-    if (!isNaN(pid)) {
+    const pidText = content.trim();
+    if (/^[1-9]\d*$/u.test(pidText)) {
+      const pid = Number(pidText);
       try {
         process.kill(pid, 0);
         return false;
@@ -185,7 +182,7 @@ async function isLockStale(lockPath: string): Promise<boolean> {
       }
     }
 
-    return false;
+    return Date.now() - stat.mtimeMs > LOCK_STALE_MS;
   } catch {
     return false;
   }

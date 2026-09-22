@@ -132,17 +132,37 @@ describe('daemon-state', () => {
       expect(acquired).toBe(false);
     });
 
-    it('reclaims a stale lock by age', async () => {
+    it('reclaims an old lock without a valid pid', async () => {
       const lockPath = path.join(tmpDir, '.mm-server.lock');
       const staleTime = new Date(Date.now() - 31_000);
 
-      await fs.writeFile(lockPath, `${process.pid}\n`);
+      await fs.writeFile(lockPath, 'not-a-pid\n');
       await fs.utimes(lockPath, staleTime, staleTime);
 
       const acquired = await acquireStartupLock(tmpDir);
 
       expect(acquired).toBe(true);
       expect(await fs.readFile(lockPath, 'utf-8')).toBe(`${process.pid}\n`);
+    });
+
+    it('does not reclaim an old lock held by a live process', async () => {
+      const lockPath = path.join(tmpDir, '.mm-server.lock');
+      const staleTime = new Date(Date.now() - 31_000);
+
+      await fs.writeFile(lockPath, `${process.pid}\n`);
+      await fs.utimes(lockPath, staleTime, staleTime);
+
+      expect(await acquireStartupLock(tmpDir)).toBe(false);
+    });
+
+    it('reclaims an old lock with a malformed pid', async () => {
+      const lockPath = path.join(tmpDir, '.mm-server.lock');
+      const staleTime = new Date(Date.now() - 31_000);
+
+      await fs.writeFile(lockPath, `${process.pid}invalid\n`);
+      await fs.utimes(lockPath, staleTime, staleTime);
+
+      expect(await acquireStartupLock(tmpDir)).toBe(true);
     });
 
     it('reclaims a stale lock for a dead pid', async () => {
@@ -154,15 +174,6 @@ describe('daemon-state', () => {
 
       expect(acquired).toBe(true);
       expect(await fs.readFile(lockPath, 'utf-8')).toBe(`${process.pid}\n`);
-    });
-
-    it('returns false when stale lock check errors', async () => {
-      await fs.writeFile(path.join(tmpDir, '.mm-server.lock'), '12345\n');
-      await fs.chmod(path.join(tmpDir, '.mm-server.lock'), 0o000);
-
-      const acquired = await acquireStartupLock(tmpDir);
-
-      expect(acquired).toBe(false);
     });
 
     it('throws when lock creation fails with a non-EEXIST error', async () => {

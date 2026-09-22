@@ -511,6 +511,9 @@ describe('interaction', () => {
     it('types text into element by CSS selector', async () => {
       const locator = createMockLocator();
       const context = createMockContext();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
 
       vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
         locator as any,
