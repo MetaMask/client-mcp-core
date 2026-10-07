@@ -6,6 +6,7 @@ import { cosmiconfig } from 'cosmiconfig';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import { Readable } from 'node:stream';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { MockInstance } from 'vitest';
 
@@ -19,6 +20,7 @@ import {
   parseIntFlag,
   parseStringFlag,
   parseLaunchArgs,
+  readSelfOnboardingPhrase,
   printHelp,
   resolveRuntime,
   sendRequest,
@@ -433,6 +435,41 @@ describe('normalizeMockNetworkAddPayload', () => {
   });
 });
 
+const RECOVERY_PHRASE = Array.from({ length: 12 }, () => 'abandon').join(' ');
+
+describe('readSelfOnboardingPhrase', () => {
+  it('returns a normalized 12 word phrase from stdin', async () => {
+    expect(
+      await readSelfOnboardingPhrase(Readable.from([`${RECOVERY_PHRASE}\n`])),
+    ).toBe(RECOVERY_PHRASE);
+  });
+
+  it('refuses a terminal and does not echo the phrase', async () => {
+    const source = Readable.from([RECOVERY_PHRASE]);
+    Object.defineProperty(source, 'isTTY', { value: true });
+
+    await expect(readSelfOnboardingPhrase(source)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --self-onboarding requires the secret recovery phrase on stdin\n',
+    );
+    const written = stderrSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join('');
+    expect(written).not.toContain(RECOVERY_PHRASE);
+  });
+
+  it('refuses a phrase that is not 12 or 24 words without echoing it', async () => {
+    await expect(
+      readSelfOnboardingPhrase(Readable.from(['one two three\n'])),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: self-onboarding requires a 12 or 24 word secret recovery phrase\n',
+    );
+  });
+});
+
 describe('parseLaunchArgs', () => {
   it('returns empty object for no args', () => {
     expect(parseLaunchArgs([])).toStrictEqual({});
@@ -440,6 +477,15 @@ describe('parseLaunchArgs', () => {
 
   it('parses --force flag', () => {
     expect(parseLaunchArgs(['--force'])).toStrictEqual({ force: true });
+  });
+
+  it('parses --self-onboarding without reading a phrase from argv', () => {
+    expect(
+      parseLaunchArgs(['--self-onboarding', '--context', 'prod']),
+    ).toStrictEqual({
+      selfOnboarding: true,
+      context: 'prod',
+    });
   });
 
   it('parses --state value', () => {

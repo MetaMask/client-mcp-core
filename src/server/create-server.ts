@@ -355,7 +355,8 @@ export function createServer(config: ServerConfig): ServerInstance {
         return;
       }
 
-      const target = extractTargetFromInput(validatedInput);
+      const recordedInput = omitLaunchSecret(validatedInput);
+      const target = extractTargetFromInput(recordedInput);
       const screenshotInfo = extractScreenshotInfo(toolName, toolResult);
 
       let executionContext: 'e2e' | 'prod' | undefined;
@@ -368,7 +369,7 @@ export function createServer(config: ServerConfig): ServerInstance {
       await knowledgeStore.recordStep({
         sessionId,
         toolName,
-        input: validatedInput as Record<string, unknown>,
+        input: recordedInput as Record<string, unknown>,
         target,
         outcome,
         observation:
@@ -863,6 +864,22 @@ export function createServer(config: ServerConfig): ServerInstance {
   };
 
   return instance;
+}
+
+/**
+ * Removes the secret recovery phrase from a launch payload before it is
+ * written to the knowledge store.
+ *
+ * @param input - The tool input about to be recorded.
+ * @returns A shallow copy without `srp`, or the original value when it is not an object.
+ */
+function omitLaunchSecret(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null || !('srp' in input)) {
+    return input;
+  }
+  const copy = { ...(input as Record<string, unknown>) };
+  delete copy.srp;
+  return copy;
 }
 
 /**

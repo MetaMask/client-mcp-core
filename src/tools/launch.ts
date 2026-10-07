@@ -57,7 +57,10 @@ export async function launchTool(
 
     return createToolSuccess({
       ...result,
-      ...(isProdMode && { prerequisites: PROD_MODE_PREREQUISITES }),
+      ...(isProdMode &&
+        input.selfOnboarding !== true && {
+          prerequisites: PROD_MODE_PREREQUISITES,
+        }),
     });
   } catch (error) {
     const message = extractErrorMessage(error);
