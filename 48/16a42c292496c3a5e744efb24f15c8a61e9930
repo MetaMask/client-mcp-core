@@ -1,0 +1,39 @@
+src/server/recorded-secrets.test.ts
+  s_4d25cbeab5ddd5::t_9e53e9ae52a2cd 155-159,163-173
+  s_4d25cbeab5ddd5::t_71c0e87ed40328 255-259
+  s_4d25cbeab5ddd5::t_037e5effd81fce 10,14-15,17,24-25,28,31,35,40-42,44-48,50,56-57,61-64,71-72,81,87-93,100,102-103,108-110,116,119,125-126,143,153-154,160-162,174,177-178,180-181,195,206-208,212-213,215,218-219,230,235-236,244-245,252-253
+  s_4d25cbeab5ddd5::t_f66bbbc4e961c8 52,58-60,67-70,94-97,104-107,120,127,132,137-141,145-147,149-152,182-185,188,216-217,221-223,233,237-239,260-262
+  s_4d25cbeab5ddd5::t_14498b1899ba65 254
+  s_4d25cbeab5ddd5::t_afd7927ae0f7a2 112-114,196-205
+src/knowledge-store/utils/redaction.test.ts
+  s_4d25cbeab5ddd5::t_c032460dc76f65 441-445
+  s_4d25cbeab5ddd5::t_f66bbbc4e961c8 177-180,185-194,196-202,205-206,213-225,232,234-259,264-265,267-292,307-311,313,323-330,332-341,345-364,366-395,399-418,422-425,427-433,437,455,461-463,469-473,490-491,506,508-511
+  s_4d25cbeab5ddd5::t_ecc4af30af383c 226,231,260-263,314-322
+  s_4d25cbeab5ddd5::t_9e53e9ae52a2cd 297,398,426,434-436,439-440,446-451,454,456-460,465-468,474-489
+  s_4d25cbeab5ddd5::t_33d1b9421a4736 195
+  s_4d25cbeab5ddd5::t_71c0e87ed40328 203-204
+  s_4d25cbeab5ddd5::t_037e5effd81fce 3-8,168-176,181-184,207-212,233,266,293-296,298,306,312,331,342-344,396-397,419-421,438,452-453,492-505,507,512
+  s_4d25cbeab5ddd5::t_a2bdafb0692c97 227-230
+  s_4d25cbeab5ddd5::t_29391273de2af6 299-305,365,464
+  s_4d25cbeab5ddd5::t_82a6ef20e1b8ef 513
+src/knowledge-store/knowledge-store.test.ts
+  s_4d25cbeab5ddd5::t_44bfc5456eb2ae 337,349
+  s_4d25cbeab5ddd5::t_ecc4af30af383c 320-322,329-336,338-340,346-348
+  s_4d25cbeab5ddd5::t_febd9d1f1a8c75 319,323-328,341-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4816a42c292496c3a5e744efb24f15c8a61e9930",
+  "prompts": {},
+  "sessions": {
+    "s_4d25cbeab5ddd5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec99146e8ffeeZHQS9n94aEnun",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
