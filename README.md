@@ -458,7 +458,7 @@ The `KnowledgeStore` provides cross-session learning by recording every tool exe
 - **Session Metadata**: Sessions are tagged with goals, flow tags, and free-form tags for filtering.
 - **Prior Knowledge**: Before tool execution, the store can generate context from historical sessions — similar steps, suggested actions, and patterns to avoid — based on the current screen state.
 - **Search**: Token-based search with synonym expansion across sessions, scored by relevance to screen, URL, test IDs, and a11y nodes.
-- **Sensitive Data Handling**: Input text for password fields and other sensitive inputs is automatically redacted.
+- **Sensitive Data Handling**: Input text for password fields and other sensitive inputs is automatically redacted. Recorded `clipboard` and `device_clipboard` text and all CDP `params` are replaced with `[REDACTED]`, including within `run_steps`. Echoes in the same step's error messages/details, tool targets, observations, and artifact paths are also scrubbed. Raw input strings of at least eight characters match substrings; shorter strings match whole values only. JSON-escaped echoes use the original raw string length to select the matching policy. Structural step metadata and diagnostic error codes are preserved. Tools and HTTP responses retain the original values.
 
 Knowledge artifacts are stored on disk at `test-artifacts/llm-knowledge/` organized by session ID.
 

@@ -31,10 +31,7 @@ import type {
   PriorKnowledgeTarget,
 } from '../tools/types';
 import { generateFilesafeTimestamp, debugWarn } from '../utils';
-import {
-  isSensitiveField,
-  SENSITIVE_FIELD_PATTERNS,
-} from './utils/redaction.js';
+import { isSensitiveField, redactRecordedSecrets } from './utils/redaction.js';
 
 const KNOWLEDGE_ROOT = 'test-artifacts/llm-knowledge';
 const SCHEMA_VERSION = 1;
@@ -419,7 +416,14 @@ export class KnowledgeStore {
     const filename = `${filesafeTimestamp}-${params.toolName}.json`;
     const filepath = path.join(stepsDir, filename);
 
-    await fs.writeFile(filepath, JSON.stringify(stepRecord, null, 2));
+    await fs.writeFile(
+      filepath,
+      JSON.stringify(
+        redactRecordedSecrets(stepRecord, sanitizedInput.redactedValues),
+        null,
+        2,
+      ),
+    );
 
     return filepath;
   }
@@ -800,37 +804,72 @@ export class KnowledgeStore {
      * Length of redacted text
      */
     textLength?: number;
+    /**
+     * Original values to scrub if echoed elsewhere in the step
+     */
+    redactedValues: unknown[];
   } {
     if (!input) {
-      return {};
+      return { redactedValues: [] };
     }
 
     const sanitized: Record<string, unknown> = {};
     let textRedacted = false;
     let textLength: number | undefined;
 
-    const typeToolName = 'type';
+    const redactedValues: unknown[] = [];
 
     for (const [key, value] of Object.entries(input)) {
-      if (toolName === typeToolName && key === 'text') {
+      if (
+        (['clipboard', 'device_clipboard', 'device-clipboard'].includes(
+          toolName,
+        ) &&
+          key === 'text') ||
+        (toolName === 'cdp' && key === 'params')
+      ) {
+        sanitized[key] = '[REDACTED]';
+        redactedValues.push(value);
+        textRedacted = true;
+        if (typeof value === 'string') {
+          textLength = value.length;
+        }
+      } else if (
+        toolName === 'run_steps' &&
+        key === 'steps' &&
+        Array.isArray(value)
+      ) {
+        const steps = value as {
+          tool: string;
+          args?: Record<string, unknown>;
+        }[];
+        const sanitizedSteps = [];
+        for (const step of steps) {
+          const nested = this.#sanitizeInput(step.tool, step.args);
+          sanitizedSteps.push({ ...step, args: nested.input });
+          redactedValues.push(...nested.redactedValues);
+          textRedacted ||= Boolean(nested.textRedacted);
+        }
+        sanitized[key] = sanitizedSteps;
+      } else if (toolName === 'type' && key === 'text') {
         const textValue = String(value);
         const targetTestId = input.testId as string | undefined;
         const targetSelector = input.selector as string | undefined;
 
         const isSensitive =
           isSensitiveField(targetTestId ?? '') ||
-          isSensitiveField(targetSelector ?? '') ||
-          SENSITIVE_FIELD_PATTERNS.some((p: RegExp) => p.test(key));
+          isSensitiveField(targetSelector ?? '');
 
         if (isSensitive) {
           textRedacted = true;
           textLength = textValue.length;
           sanitized[key] = '[REDACTED]';
+          redactedValues.push(value);
         } else {
           sanitized[key] = value;
         }
       } else if (isSensitiveField(key)) {
         sanitized[key] = '[REDACTED]';
+        redactedValues.push(value);
       } else {
         sanitized[key] = value;
       }
@@ -840,6 +879,7 @@ export class KnowledgeStore {
       input: sanitized,
       textRedacted: textRedacted || undefined,
       textLength,
+      redactedValues,
     };
   }
 
