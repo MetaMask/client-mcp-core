@@ -316,6 +316,37 @@ describe('core', () => {
       expect(writtenData.tool.input.text).toBe('[REDACTED]');
     });
 
+    it('preserves ordinary text and redacts sensitive echoes without mutating supplied data', async () => {
+      const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+      const params = {
+        sessionId: 'mm-synthetic',
+        toolName: 'type',
+        input: {
+          testId: 'recipient',
+          text: '0x1234',
+          apiKey: 'synthetic-api-key',
+        },
+        outcome: {
+          ok: false,
+          error: { code: 'EXAMPLE', message: 'echo synthetic-api-key' },
+        },
+        observation: createObservation(),
+      };
+      const original = structuredClone(params);
+      await store.recordStep(params);
+
+      const written = JSON.parse(
+        vi.mocked(fs.writeFile).mock.calls[0][1] as string,
+      );
+      expect(written.tool.input).toStrictEqual({
+        testId: 'recipient',
+        text: '0x1234',
+        apiKey: '[REDACTED]',
+      });
+      expect(written.outcome.error.message).toBe('echo [REDACTED]');
+      expect(params).toStrictEqual(original);
+    });
+
     it('records step with target information', async () => {
       const store = new KnowledgeStore({
         rootDir: '/test/knowledge',
