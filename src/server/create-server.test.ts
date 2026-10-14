@@ -534,6 +534,32 @@ describe('createServer integration', () => {
     expect(body.ok).toBe(true);
   });
 
+  it('omits the recovery phrase from the recorded launch step', async () => {
+    const { KnowledgeStore } =
+      await import('../knowledge-store/knowledge-store.js');
+    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
+      recordStep: ReturnType<typeof vi.fn>;
+    };
+    mockStore.recordStep.mockClear();
+    const srp = Array.from({ length: 12 }, () => 'abandon').join(' ');
+
+    await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selfOnboarding: true, srp }),
+    });
+
+    expect(mockStore.recordStep).toHaveBeenCalled();
+    const recorded = mockStore.recordStep.mock.calls[0][0] as {
+      input: Record<string, unknown>;
+    };
+    expect(recorded.input.selfOnboarding).toBe(true);
+    expect(recorded.input).not.toHaveProperty('srp');
+    expect(JSON.stringify(mockStore.recordStep.mock.calls)).not.toContain(
+      'abandon',
+    );
+  });
+
   it('pOST /cleanup delegates to session manager', async () => {
     const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
       method: 'POST',

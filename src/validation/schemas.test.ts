@@ -545,6 +545,12 @@ describe('launchInputSchema', () => {
       expect(message).not.toContain('abandon');
     }
   });
+
+  it('rejects self-onboarding without a phrase', () => {
+    const result = launchInputSchema.safeParse({ selfOnboarding: true });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('device tool schemas', () => {

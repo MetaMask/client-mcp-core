@@ -444,6 +444,14 @@ describe('readSelfOnboardingPhrase', () => {
     ).toBe(RECOVERY_PHRASE);
   });
 
+  it('reads the phrase from Buffer chunks', async () => {
+    expect(
+      await readSelfOnboardingPhrase(
+        Readable.from([Buffer.from(`${RECOVERY_PHRASE}\n`)]),
+      ),
+    ).toBe(RECOVERY_PHRASE);
+  });
+
   it('refuses a terminal and does not echo the phrase', async () => {
     const source = Readable.from([RECOVERY_PHRASE]);
     Object.defineProperty(source, 'isTTY', { value: true });
@@ -2843,6 +2851,51 @@ describe('main', () => {
     );
 
     process.argv = origArgv;
+  });
+
+  it('sends the stdin recovery phrase with a self-onboarding launch', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const origArgv = process.argv;
+    const origStdin = Object.getOwnPropertyDescriptor(process, 'stdin');
+    process.argv = ['node', 'mm', 'launch', '--self-onboarding'];
+    Object.defineProperty(process, 'stdin', {
+      value: Readable.from([`${RECOVERY_PHRASE}\n`]),
+      configurable: true,
+    });
+
+    try {
+      await main();
+    } finally {
+      process.argv = origArgv;
+      if (origStdin) {
+        Object.defineProperty(process, 'stdin', origStdin);
+      }
+    }
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({ selfOnboarding: true, srp: RECOVERY_PHRASE }),
+      }),
+    );
   });
 
   it('resolves a relative extension path from the worktree root', async () => {
