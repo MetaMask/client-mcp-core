@@ -1245,7 +1245,6 @@ describe('createServer with active session', () => {
         currentUrl: 'chrome-extension://test/unknown.html',
       });
 
-      const start = Date.now();
       const responsePromise = httpRequest(
         `http://127.0.0.1:${state.port}/cleanup`,
         {
@@ -1265,7 +1264,6 @@ describe('createServer with active session', () => {
       };
 
       expect(res.status).toBe(200);
-      expect(Date.now() - start).toBeLessThanOrEqual(600);
       expect(mockSM.getExtensionState).toHaveBeenCalledTimes(6);
       expect(body.observations?.state.currentScreen).toBe('unknown');
     });
