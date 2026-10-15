@@ -236,31 +236,78 @@ describe('core', () => {
   });
 
   describe('recordStep', () => {
-    it('creates steps directory and writes step file', async () => {
-      const store = new KnowledgeStore({
-        rootDir: '/test/knowledge',
-      });
-      const outcome: StepRecordOutcome = { ok: true };
-      const observation = createObservation();
+    it.each([
+      { sessionId: 'session-step-001', toolName: 'click' },
+      {
+        sessionId: 'custom_prefix-20261015-123456-001',
+        toolName: 'device-clipboard',
+      },
+      { sessionId: 'custom.session_001', toolName: 'get_state' },
+    ])(
+      'creates steps directory and writes step file for $toolName',
+      async ({ sessionId, toolName }) => {
+        const store = new KnowledgeStore({
+          rootDir: '/test/knowledge',
+        });
+        const outcome: StepRecordOutcome = { ok: true };
+        const observation = createObservation();
 
-      const result = await store.recordStep({
-        sessionId: 'session-step-001',
-        toolName: 'click',
-        input: { testId: 'send-button' },
-        outcome,
-        observation,
-        durationMs: 150,
-      });
+        const result = await store.recordStep({
+          sessionId,
+          toolName,
+          input: { testId: 'send-button' },
+          outcome,
+          observation,
+          durationMs: 150,
+        });
 
-      expect(fs.mkdir).toHaveBeenCalledWith(
-        path.join('/test/knowledge', 'session-step-001', 'steps'),
-        { recursive: true },
-      );
-      expect(fs.writeFile).toHaveBeenCalled();
-      expect(result).toContain('session-step-001');
-      expect(result).toContain('steps');
-      expect(result).toContain('click.json');
-    });
+        expect(fs.mkdir).toHaveBeenCalledWith(
+          path.join('/test/knowledge', sessionId, 'steps'),
+          { recursive: true },
+        );
+        expect(fs.writeFile).toHaveBeenCalledWith(result, expect.any(String));
+        expect(path.dirname(result)).toBe(
+          path.join('/test/knowledge', sessionId, 'steps'),
+        );
+        expect(path.basename(result)).toMatch(/^\d{8}-\d{6}-\d{3}-/u);
+        expect(result).toContain(`-${toolName}.json`);
+      },
+    );
+
+    it.each([
+      '',
+      '.',
+      '..',
+      '../escape',
+      'nested/name',
+      '/absolute',
+      '..\\escape',
+      'C:\\escape',
+      'name\0suffix',
+      'name\n',
+    ])(
+      'rejects unsafe path component %j before filesystem I/O',
+      async (value) => {
+        const store = new KnowledgeStore({ rootDir: '/test/knowledge' });
+
+        for (const name of ['sessionId', 'toolName'] as const) {
+          await expect(
+            store.recordStep({
+              sessionId: 'mm-session',
+              toolName: 'click',
+              [name]: value,
+              outcome: { ok: true },
+              observation: createObservation(),
+            }),
+          ).rejects.toThrowError(
+            `Invalid ${name}: expected a safe filename component`,
+          );
+        }
+
+        expect(fs.mkdir).not.toHaveBeenCalled();
+        expect(fs.writeFile).not.toHaveBeenCalled();
+      },
+    );
 
     it('records step with screenshot artifact', async () => {
       const store = new KnowledgeStore({

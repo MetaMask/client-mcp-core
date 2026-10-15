@@ -36,6 +36,23 @@ import { isSensitiveField, redactRecordedSecrets } from './utils/redaction.js';
 const KNOWLEDGE_ROOT = 'test-artifacts/llm-knowledge';
 const SCHEMA_VERSION = 1;
 
+/**
+ * Reject unsafe recording path components before filesystem operations.
+ *
+ * @param value - Session ID or tool name used in a recording path
+ * @param name - Component name for the validation error
+ */
+function assertSafeRecordingComponent(value: string, name: string): void {
+  if (
+    value.length === 0 ||
+    value === '.' ||
+    value === '..' ||
+    /[^a-zA-Z0-9_.-]/u.test(value)
+  ) {
+    throw new Error(`Invalid ${name}: expected a safe filename component`);
+  }
+}
+
 const PRIOR_KNOWLEDGE_CONFIG = {
   /** Look back 48 hours for related sessions - balances recency with having enough data */
   windowHours: 48,
@@ -346,6 +363,8 @@ export class KnowledgeStore {
    * @param params.screenshotDimensions.height - Screenshot height in pixels
    * @param params.context - Execution context (e2e or prod)
    * @returns Path to the recorded step file
+   * @throws If sessionId or toolName is empty, is '.' or '..', or contains
+   * characters other than letters, digits, dots, underscores, or hyphens
    */
   async recordStep(params: {
     sessionId: string;
@@ -368,6 +387,9 @@ export class KnowledgeStore {
     };
     context?: 'e2e' | 'prod';
   }): Promise<string> {
+    assertSafeRecordingComponent(params.sessionId, 'sessionId');
+    assertSafeRecordingComponent(params.toolName, 'toolName');
+
     const timestamp = new Date();
     const filesafeTimestamp = generateFilesafeTimestamp(timestamp);
 
