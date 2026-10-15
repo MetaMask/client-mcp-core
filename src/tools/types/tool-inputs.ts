@@ -38,6 +38,16 @@ export type LaunchInput = {
   resetAppData?: boolean;
   /** Mobile only: bypass the consumer app-identity compatibility guard (dangerous). */
   allowFoxCodeMismatch?: boolean;
+  /**
+   * Complete onboarding inside the launcher with the secret recovery phrase
+   * supplied on stdin. The phrase is not accepted as a flag.
+   */
+  selfOnboarding?: boolean;
+  /**
+   * Secret recovery phrase for `selfOnboarding`. Present only on the launch
+   * request body. Callers must not log or persist this field.
+   */
+  srp?: string;
 };
 
 export type CleanupInput = {

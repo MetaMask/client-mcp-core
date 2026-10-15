@@ -523,6 +523,34 @@ describe('launchInputSchema', () => {
       false,
     );
   });
+
+  it('accepts self-onboarding with a 12 word phrase and omits the phrase from the error', () => {
+    const phrase = Array.from({ length: 12 }, () => 'abandon').join(' ');
+    const accepted = launchInputSchema.safeParse({
+      selfOnboarding: true,
+      srp: phrase,
+    });
+    expect(accepted.success).toBe(true);
+
+    const rejected = launchInputSchema.safeParse({
+      selfOnboarding: true,
+      srp: phrase.split(' ').slice(0, 3).join(' '),
+    });
+    expect(rejected.success).toBe(false);
+    if (!rejected.success) {
+      const message = rejected.error.issues
+        .map((issue) => issue.message)
+        .join(' ');
+      expect(message).toContain('12 or 24 word');
+      expect(message).not.toContain('abandon');
+    }
+  });
+
+  it('rejects self-onboarding without a phrase', () => {
+    const result = launchInputSchema.safeParse({ selfOnboarding: true });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('device tool schemas', () => {

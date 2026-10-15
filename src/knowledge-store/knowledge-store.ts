@@ -812,7 +812,26 @@ export class KnowledgeStore {
     const typeToolName = 'type';
 
     for (const [key, value] of Object.entries(input)) {
-      if (toolName === typeToolName && key === 'text') {
+      if (toolName === 'run_steps' && key === 'steps' && Array.isArray(value)) {
+        const steps: unknown[] = [];
+        for (const step of value as unknown[]) {
+          const { tool, args } = (step ?? {}) as {
+            tool?: unknown;
+            args?: unknown;
+          };
+          if (typeof tool !== 'string' || typeof args !== 'object') {
+            steps.push(step);
+            continue;
+          }
+          const stepSanitized = this.#sanitizeInput(
+            tool,
+            args as Record<string, unknown> | undefined,
+          );
+          textRedacted ||= stepSanitized.textRedacted === true;
+          steps.push({ ...(step as object), args: stepSanitized.input });
+        }
+        sanitized[key] = steps;
+      } else if (toolName === typeToolName && key === 'text') {
         const textValue = String(value);
         const targetTestId = input.testId as string | undefined;
         const targetSelector = input.selector as string | undefined;
