@@ -1,5 +1,11 @@
-import type { PriorKnowledgeTarget } from '../../tools/types/knowledge.js';
-import type { StepRecord } from '../../tools/types/step-record.js';
+import type {
+  PriorKnowledgeTarget,
+  PriorKnowledgeV1,
+} from '../../tools/types/knowledge.js';
+import type {
+  StepRecord,
+  StepRecordObservation,
+} from '../../tools/types/step-record.js';
 
 export const SENSITIVE_FIELD_PATTERNS = [
   /password/iu,
@@ -22,6 +28,240 @@ export function isSensitiveField(fieldName: string): boolean {
   return SENSITIVE_FIELD_PATTERNS.some((pattern) => pattern.test(fieldName));
 }
 
+const REDACTED = '[REDACTED]';
+const MIN_SUBSTRING_LENGTH = 8;
+
+type SecretMatches = {
+  wholeValues: Set<string>;
+  substrings: Set<string>;
+};
+
+type SecretRedactor = {
+  text: (value: string) => string;
+  value: <Value>(value: Value, redactKeys?: boolean) => Value;
+};
+
+/**
+ * Collect raw and JSON-escaped strings using the raw length for both variants.
+ *
+ * @param value - A secret or nested collection of secrets.
+ * @param matches - Whole-value and substring matches to populate.
+ */
+function collectSecretMatches(value: unknown, matches: SecretMatches): void {
+  if (typeof value === 'string' && value.length > 0) {
+    const bucket =
+      value.length < MIN_SUBSTRING_LENGTH
+        ? matches.wholeValues
+        : matches.substrings;
+    bucket.add(value);
+    bucket.add(JSON.stringify(value).slice(1, -1));
+  } else if (Array.isArray(value)) {
+    value.forEach((entry) => collectSecretMatches(entry, matches));
+  } else if (value && typeof value === 'object') {
+    Object.values(value).forEach((entry) =>
+      collectSecretMatches(entry, matches),
+    );
+  }
+}
+
+/**
+ * Copy nested values while redacting strings. Dates and non-string leaves survive.
+ *
+ * @param value - The value to copy.
+ * @param redactText - The string-matching policy.
+ * @param redactKeys - Whether object keys also contain free text (error details).
+ * @returns The redacted value.
+ */
+function redactNestedValue<Value>(
+  value: Value,
+  redactText: SecretRedactor['text'],
+  redactKeys: boolean,
+): Value {
+  if (typeof value === 'string') {
+    return redactText(value) as Value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) =>
+      redactNestedValue(entry, redactText, redactKeys),
+    ) as Value;
+  }
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        redactKeys ? redactText(key) : key,
+        redactNestedValue(entry, redactText, redactKeys),
+      ]),
+    ) as Value;
+  }
+  return value;
+}
+
+/**
+ * Build matching once per record, independent of which record fields use it.
+ *
+ * @param redactedValues - Input values omitted from the recorded input.
+ * @returns A redactor, or undefined when there are no nonempty secret strings.
+ */
+function createSecretRedactor(
+  redactedValues: unknown[],
+): SecretRedactor | undefined {
+  const matches: SecretMatches = {
+    wholeValues: new Set(),
+    substrings: new Set(),
+  };
+  redactedValues.forEach((value) => collectSecretMatches(value, matches));
+  if (matches.wholeValues.size === 0 && matches.substrings.size === 0) {
+    return undefined;
+  }
+
+  const sortedSubstrings = [...matches.substrings].sort(
+    (first, second) => second.length - first.length,
+  );
+  // Match existing markers first, then longer secrets before their prefixes.
+  const pattern = new RegExp(
+    [REDACTED, ...sortedSubstrings]
+      .map((secret) => secret.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'))
+      .join('|'),
+    'gu',
+  );
+  /**
+   * Redact whole-value matches before replacing embedded longer secrets.
+   *
+   * @param value - Text that may echo a secret.
+   * @returns The redacted text.
+   */
+  function redactText(value: string): string {
+    if (matches.wholeValues.has(value)) {
+      return REDACTED;
+    }
+    return value.replace(pattern, REDACTED);
+  }
+  return {
+    text: redactText,
+    value: (value, redactKeys = false) =>
+      redactNestedValue(value, redactText, redactKeys),
+  };
+}
+
+/**
+ * Redact a suggested target's text while keeping its type and accessibility role.
+ *
+ * @param target - The suggested target.
+ * @param redactor - The secret-matching operations.
+ * @returns A redacted target.
+ */
+function redactKnowledgeTarget(
+  target: PriorKnowledgeTarget,
+  redactor: SecretRedactor,
+): PriorKnowledgeTarget {
+  if (target.type === 'a11yHint') {
+    return {
+      ...target,
+      value: { ...target.value, name: redactor.text(target.value.name) },
+    };
+  }
+  return { ...target, value: redactor.text(target.value) };
+}
+
+/**
+ * Redact historical free text, retaining session IDs, timestamps, and diagnostics.
+ *
+ * @param knowledge - The prior knowledge attached to an observation.
+ * @param redactor - The secret-matching operations.
+ * @returns A redacted copy of the prior knowledge.
+ */
+function redactPriorKnowledge(
+  knowledge: PriorKnowledgeV1,
+  redactor: SecretRedactor,
+): PriorKnowledgeV1 {
+  const sanitized: PriorKnowledgeV1 = {
+    ...knowledge,
+    query: {
+      ...knowledge.query,
+      usedFilters: redactor.value(knowledge.query.usedFilters),
+    },
+    relatedSessions: knowledge.relatedSessions.map((session) => ({
+      ...session,
+      goal: redactor.value(session.goal),
+    })),
+    similarSteps: knowledge.similarSteps.map((step) => {
+      const sanitizedStep = {
+        ...step,
+        screen: redactor.text(step.screen),
+        snippet: redactor.text(step.snippet),
+        target: redactor.value(step.target),
+      };
+      if (step.a11yHint) {
+        sanitizedStep.a11yHint = {
+          ...step.a11yHint,
+          name: redactor.text(step.a11yHint.name),
+        };
+      }
+      return sanitizedStep;
+    }),
+    suggestedNextActions: knowledge.suggestedNextActions.map((action) => ({
+      ...action,
+      rationale: redactor.text(action.rationale),
+      preferredTarget: redactKnowledgeTarget(action.preferredTarget, redactor),
+      fallbackTargets: action.fallbackTargets?.map((target) =>
+        redactKnowledgeTarget(target, redactor),
+      ),
+    })),
+  };
+  if (knowledge.avoid) {
+    sanitized.avoid = knowledge.avoid.map((item) => ({
+      ...item,
+      rationale: redactor.text(item.rationale),
+      target: redactor.value(item.target),
+    }));
+  }
+  return sanitized;
+}
+
+/**
+ * Redact observation text while retaining accessibility refs, roles, and tags.
+ *
+ * @param observation - The post-execution observation.
+ * @param redactor - The secret-matching operations.
+ * @returns A redacted copy of the observation.
+ */
+function redactObservation(
+  observation: StepRecordObservation,
+  redactor: SecretRedactor,
+): StepRecordObservation {
+  const state = { ...redactor.value(observation.state) };
+  if (observation.state.activeTab) {
+    state.activeTab = {
+      ...redactor.value(observation.state.activeTab),
+      role: observation.state.activeTab.role,
+    };
+  }
+
+  const sanitized: StepRecordObservation = {
+    ...observation,
+    state,
+    testIds: observation.testIds.map((item) => ({
+      ...item,
+      testId: redactor.text(item.testId),
+      text: redactor.value(item.text),
+    })),
+    a11y: {
+      ...observation.a11y,
+      nodes: observation.a11y.nodes.map((node) => ({
+        ...node,
+        name: redactor.text(node.name),
+        path: redactor.value(node.path),
+        testId: redactor.value(node.testId),
+        textContent: redactor.value(node.textContent),
+      })),
+    },
+  };
+  if (observation.a11y.diff) {
+    sanitized.a11y.diff = redactor.value(observation.a11y.diff);
+  }
+  return sanitized;
+}
+
 /**
  * Remove raw and JSON-escaped echoes from errors, targets, observations, and
  * artifact paths. Strings shorter than eight characters match whole values
@@ -35,166 +275,40 @@ export function redactRecordedSecrets(
   record: StepRecord,
   redactedValues: unknown[],
 ): StepRecord {
-  const wholeValues = new Set<string>();
-  const substrings = new Set<string>();
-  const collectStrings = (value: unknown): void => {
-    if (typeof value === 'string' && value.length > 0) {
-      const matches = value.length < 8 ? wholeValues : substrings;
-      matches.add(value);
-      matches.add(JSON.stringify(value).slice(1, -1));
-    } else if (Array.isArray(value)) {
-      value.forEach(collectStrings);
-    } else if (value && typeof value === 'object') {
-      Object.values(value).forEach(collectStrings);
-    }
-  };
-  redactedValues.forEach(collectStrings);
-
-  if (wholeValues.size === 0 && substrings.size === 0) {
+  const redactor = createSecretRedactor(redactedValues);
+  if (!redactor) {
     return record;
   }
-  const sortedSubstrings = [...substrings].sort(
-    (first, second) => second.length - first.length,
-  );
-  // Match existing markers first so their contents are never redacted again.
-  const pattern = new RegExp(
-    ['[REDACTED]', ...sortedSubstrings]
-      .map((secret) => secret.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'))
-      .join('|'),
-    'gu',
-  );
-  const redactString = (value: string): string => {
-    if (wholeValues.has(value)) {
-      return '[REDACTED]';
-    }
-    return value.replace(pattern, '[REDACTED]');
-  };
-  const redactValue = <Value>(value: Value, redactKeys = false): Value => {
-    if (typeof value === 'string') {
-      return redactString(value) as Value;
-    }
-    if (Array.isArray(value)) {
-      return value.map((entry) => redactValue(entry, redactKeys)) as Value;
-    }
-    if (value && typeof value === 'object' && !(value instanceof Date)) {
-      return Object.fromEntries(
-        Object.entries(value).map(([key, entry]) => [
-          redactKeys ? redactString(key) : key,
-          redactValue(entry, redactKeys),
-        ]),
-      ) as Value;
-    }
-    return value;
-  };
   const { error } = record.outcome;
   const screenshot = record.artifacts?.screenshot;
-  const { observation } = record;
-  const { priorKnowledge } = observation;
-  const redactTarget = (target: PriorKnowledgeTarget): PriorKnowledgeTarget => {
-    if (target.type === 'a11yHint') {
-      return {
-        ...target,
-        value: { ...target.value, name: redactString(target.value.name) },
-      };
-    }
-    return { ...target, value: redactString(target.value) };
-  };
+  const { priorKnowledge } = record.observation;
   const sanitized: StepRecord = {
     ...record,
     tool: { ...record.tool },
     outcome: { ...record.outcome },
-    observation: {
-      ...observation,
-      state: {
-        ...redactValue(observation.state),
-        ...(observation.state.activeTab
-          ? {
-              activeTab: {
-                ...redactValue(observation.state.activeTab),
-                role: observation.state.activeTab.role,
-              },
-            }
-          : {}),
-      },
-      testIds: observation.testIds.map((item) => ({
-        ...item,
-        testId: redactString(item.testId),
-        text: redactValue(item.text),
-      })),
-      a11y: {
-        ...observation.a11y,
-        nodes: observation.a11y.nodes.map((node) => ({
-          ...node,
-          name: redactString(node.name),
-          path: redactValue(node.path),
-          testId: redactValue(node.testId),
-          textContent: redactValue(node.textContent),
-        })),
-        ...(observation.a11y.diff
-          ? { diff: redactValue(observation.a11y.diff) }
-          : {}),
-      },
-    },
+    observation: redactObservation(record.observation, redactor),
   };
   if (record.tool.target) {
-    sanitized.tool.target = redactValue(record.tool.target);
+    sanitized.tool.target = redactor.value(record.tool.target);
   }
   if (error) {
     sanitized.outcome.error = {
       ...error,
-      message: redactValue(error.message),
-      details: redactValue(error.details, true),
+      message: redactor.value(error.message),
+      details: redactor.value(error.details, true),
     };
   }
   if (screenshot) {
     sanitized.artifacts = {
       ...record.artifacts,
-      screenshot: { ...screenshot, path: redactValue(screenshot.path) },
+      screenshot: { ...screenshot, path: redactor.value(screenshot.path) },
     };
   }
   if (priorKnowledge) {
-    sanitized.observation.priorKnowledge = {
-      ...priorKnowledge,
-      query: {
-        ...priorKnowledge.query,
-        usedFilters: redactValue(priorKnowledge.query.usedFilters),
-      },
-      relatedSessions: priorKnowledge.relatedSessions.map((session) => ({
-        ...session,
-        goal: redactValue(session.goal),
-      })),
-      similarSteps: priorKnowledge.similarSteps.map((step) => ({
-        ...step,
-        screen: redactString(step.screen),
-        snippet: redactString(step.snippet),
-        target: redactValue(step.target),
-        ...(step.a11yHint
-          ? {
-              a11yHint: {
-                ...step.a11yHint,
-                name: redactString(step.a11yHint.name),
-              },
-            }
-          : {}),
-      })),
-      suggestedNextActions: priorKnowledge.suggestedNextActions.map(
-        (action) => ({
-          ...action,
-          rationale: redactString(action.rationale),
-          preferredTarget: redactTarget(action.preferredTarget),
-          fallbackTargets: action.fallbackTargets?.map(redactTarget),
-        }),
-      ),
-      ...(priorKnowledge.avoid
-        ? {
-            avoid: priorKnowledge.avoid.map((item) => ({
-              ...item,
-              rationale: redactString(item.rationale),
-              target: redactValue(item.target),
-            })),
-          }
-        : {}),
-    };
+    sanitized.observation.priorKnowledge = redactPriorKnowledge(
+      priorKnowledge,
+      redactor,
+    );
   }
   return sanitized;
 }
