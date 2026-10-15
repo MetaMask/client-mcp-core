@@ -1,0 +1,23 @@
+src/knowledge-store/utils/redaction.ts
+  s_4d25cbeab5ddd5::t_f6796230838215 284,308-311
+  s_4d25cbeab5ddd5::t_d9039aba81fa93 1-8,31-43,45-60,64-100,103,105,107-110,113-114,116-117,120,122,134-135,137,139-142,144-209,211-231,240-241,243-281,289,292,297-298,304
+  s_4d25cbeab5ddd5::t_4728a225e76cc7 232-239,242
+  s_4d25cbeab5ddd5::t_4fb7e200827660 61-63,112,133,138
+  s_4d25cbeab5ddd5::t_b971142d50b254 130-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c1188575df1b52c132b364027a9092dcfb2dba27",
+  "prompts": {},
+  "sessions": {
+    "s_4d25cbeab5ddd5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec99146e8ffeeZHQS9n94aEnun",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
