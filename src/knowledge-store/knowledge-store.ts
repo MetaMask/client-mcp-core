@@ -37,20 +37,19 @@ const KNOWLEDGE_ROOT = 'test-artifacts/llm-knowledge';
 const SCHEMA_VERSION = 1;
 
 /**
- * Reject unsafe recording path components before filesystem operations.
+ * Parse a recording path component without rewriting invalid names.
  *
  * @param value - Session ID or tool name used in a recording path
  * @param name - Component name for the validation error
+ * @returns The validated filename component
  */
-function assertSafeRecordingComponent(value: string, name: string): void {
-  if (
-    value.length === 0 ||
-    value === '.' ||
-    value === '..' ||
-    /[^a-zA-Z0-9_.-]/u.test(value)
-  ) {
+function parseRecordingComponent(value: string, name: string): string {
+  const component = /[a-zA-Z0-9_.-]+/u.exec(value)?.[0];
+  // Accept only a match covering the entire input, never a truncated name.
+  if (component !== value || component === '.' || component === '..') {
     throw new Error(`Invalid ${name}: expected a safe filename component`);
   }
+  return component;
 }
 
 const PRIOR_KNOWLEDGE_CONFIG = {
@@ -387,31 +386,27 @@ export class KnowledgeStore {
     };
     context?: 'e2e' | 'prod';
   }): Promise<string> {
-    assertSafeRecordingComponent(params.sessionId, 'sessionId');
-    assertSafeRecordingComponent(params.toolName, 'toolName');
+    const sessionId = parseRecordingComponent(params.sessionId, 'sessionId');
+    const toolName = parseRecordingComponent(params.toolName, 'toolName');
 
     const timestamp = new Date();
     const filesafeTimestamp = generateFilesafeTimestamp(timestamp);
 
-    const sessionDir = path.join(this.#knowledgeRoot, params.sessionId);
+    const sessionDir = path.join(this.#knowledgeRoot, sessionId);
     const stepsDir = path.join(sessionDir, 'steps');
     await fs.mkdir(stepsDir, { recursive: true });
 
-    const sanitizedInput = this.#sanitizeInput(params.toolName, params.input);
-    const labels = this.#computeLabels(
-      params.toolName,
-      params.target,
-      params.outcome,
-    );
+    const sanitizedInput = this.#sanitizeInput(toolName, params.input);
+    const labels = this.#computeLabels(toolName, params.target, params.outcome);
 
     const stepRecord: StepRecord = {
       schemaVersion: SCHEMA_VERSION,
       timestamp: timestamp.toISOString(),
-      sessionId: params.sessionId,
+      sessionId,
       context: params.context,
       environment: this.#getEnvironmentInfo(),
       tool: {
-        name: params.toolName,
+        name: toolName,
         input: sanitizedInput.input,
         target: params.target,
         textRedacted: sanitizedInput.textRedacted,
@@ -435,7 +430,7 @@ export class KnowledgeStore {
       };
     }
 
-    const filename = `${filesafeTimestamp}-${params.toolName}.json`;
+    const filename = `${filesafeTimestamp}-${toolName}.json`;
     const filepath = path.join(stepsDir, filename);
 
     await fs.writeFile(
