@@ -838,18 +838,25 @@ export class KnowledgeStore {
         key === 'steps' &&
         Array.isArray(value)
       ) {
-        const steps = value as {
-          tool: string;
-          args?: Record<string, unknown>;
-        }[];
-        const sanitizedSteps = [];
-        for (const step of steps) {
-          const nested = this.#sanitizeInput(step.tool, step.args);
-          sanitizedSteps.push({ ...step, args: nested.input });
-          redactedValues.push(...nested.redactedValues);
-          textRedacted ||= Boolean(nested.textRedacted);
+        const steps: unknown[] = [];
+        for (const step of value as unknown[]) {
+          const { tool, args } = (step ?? {}) as {
+            tool?: unknown;
+            args?: unknown;
+          };
+          if (typeof tool !== 'string' || typeof args !== 'object') {
+            steps.push(step);
+            continue;
+          }
+          const stepSanitized = this.#sanitizeInput(
+            tool,
+            args as Record<string, unknown> | undefined,
+          );
+          redactedValues.push(...stepSanitized.redactedValues);
+          textRedacted ||= stepSanitized.textRedacted === true;
+          steps.push({ ...(step as object), args: stepSanitized.input });
         }
-        sanitized[key] = sanitizedSteps;
+        sanitized[key] = steps;
       } else if (toolName === 'type' && key === 'text') {
         const textValue = String(value);
         const targetTestId = input.testId as string | undefined;

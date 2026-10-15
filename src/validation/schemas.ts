@@ -140,148 +140,184 @@ export const buildInputSchema = z.object({
     .describe('Force rebuild even if a build already exists'),
 });
 
-export const launchInputSchema = z.object({
-  autoBuild: z
-    .boolean()
-    .default(true)
-    .describe('Automatically run build if extension is not found'),
-  context: z
-    .enum(['e2e', 'prod'])
-    .describe(
-      'Environment context to use for this session. ' +
-        'Sets the context before launching so you can start in prod mode directly: ' +
-        'mm launch --context prod --state onboarding',
-    )
-    .optional(),
-  stateMode: z
-    .enum(['default', 'onboarding', 'custom'])
-    .default('default')
-    .describe(
-      'Wallet state mode: ' +
-        'default = pre-onboarded wallet with 25 ETH, ' +
-        'onboarding = fresh wallet requiring setup, ' +
-        'custom = use provided fixture',
-    ),
-  fixturePreset: z
-    .string()
-    .min(1)
-    .describe(
-      'Name of preset fixture (e.g., withMultipleAccounts, withERC20Tokens). ' +
-        'Only used when stateMode=custom.',
-    )
-    .optional(),
-  fixture: z
-    .record(z.string(), z.unknown())
-    .describe('Direct fixture object for stateMode=custom')
-    .optional(),
-  ports: z
-    .object({
-      anvil: z
-        .number()
-        .int()
-        .min(1)
-        .max(65535)
-        .describe('Port for Anvil local chain (default: 8545)')
-        .optional(),
-      fixtureServer: z
-        .number()
-        .int()
-        .min(1)
-        .max(65535)
-        .describe('Port for fixture server (default: 12345)')
-        .optional(),
-    })
-    .optional(),
-  slowMo: z
-    .number()
-    .int()
-    .min(0)
-    .max(10000)
-    .default(0)
-    .describe('Slow down Playwright actions by N milliseconds (for debugging)'),
-  extensionPath: z
-    .string()
-    .describe('Custom path to built extension directory')
-    .optional(),
-  goal: z
-    .string()
-    .describe('Goal or task description for this session (for knowledge store)')
-    .optional(),
-  flowTags: z
-    .array(z.string())
-    .describe(
-      'Flow tags for categorization (e.g., ["send"], ["swap", "confirmation"]). ' +
-        'Used for cross-session knowledge retrieval.',
-    )
-    .optional(),
-  tags: z
-    .array(z.string())
-    .describe('Free-form tags for ad-hoc filtering')
-    .optional(),
-  seedContracts: z
-    .array(z.enum(smartContractNames))
-    .describe('Smart contracts to deploy on launch (before extension loads)')
-    .optional(),
-  force: z
-    .boolean()
-    .default(false)
-    .describe('Force replace an existing active session (runs cleanup first)'),
-  platform: z
-    .enum(['browser', 'ios', 'android'])
-    .default('browser')
-    .describe(
-      'Target platform: browser (default), ios, or android. ' +
-        'Mobile platforms require @metamask/device-mcp.',
-    ),
-  deviceId: z
-    .string()
-    .min(1)
-    .describe(
-      'Explicit device ID for mobile platforms (iOS UDID or Android serial). ' +
-        'When omitted, auto-detects if exactly one device is connected.',
-    )
-    .optional(),
-  appBundlePath: z
-    .string()
-    .min(1)
-    .describe(
-      'Mobile only: path to the app artifact to install before launching ' +
-        '(iOS `.app` bundle or Android `.apk`). When omitted, the consumer ' +
-        'decides how to resolve the app (typically reusing the installed one).',
-    )
-    .optional(),
-  metroPort: z
-    .number()
-    .int()
-    .min(1)
-    .max(65535)
-    .describe(
-      'Mobile only: Metro bundler / inspector proxy port for watch-mode ' +
-        'attach and Hermes CDP (development builds only).',
-    )
-    .optional(),
-  reinstall: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Mobile only: uninstall and reinstall the app before launching. ' +
-        'DESTRUCTIVE — discards the existing app container.',
-    ),
-  resetAppData: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Mobile only: clear app data/container before launching. ' +
-        'DESTRUCTIVE — discards existing wallet state.',
-    ),
-  allowFoxCodeMismatch: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Mobile only: bypass the consumer app-identity (fox_code) compatibility ' +
-        'guard. DANGEROUS — may render existing wallet/keychain data unreadable.',
-    ),
-});
+export const launchInputSchema = z
+  .object({
+    autoBuild: z
+      .boolean()
+      .default(true)
+      .describe('Automatically run build if extension is not found'),
+    context: z
+      .enum(['e2e', 'prod'])
+      .describe(
+        'Environment context to use for this session. ' +
+          'Sets the context before launching so you can start in prod mode directly: ' +
+          'mm launch --context prod --state onboarding',
+      )
+      .optional(),
+    stateMode: z
+      .enum(['default', 'onboarding', 'custom'])
+      .default('default')
+      .describe(
+        'Wallet state mode: ' +
+          'default = pre-onboarded wallet with 25 ETH, ' +
+          'onboarding = fresh wallet requiring setup, ' +
+          'custom = use provided fixture',
+      ),
+    fixturePreset: z
+      .string()
+      .min(1)
+      .describe(
+        'Name of preset fixture (e.g., withMultipleAccounts, withERC20Tokens). ' +
+          'Only used when stateMode=custom.',
+      )
+      .optional(),
+    fixture: z
+      .record(z.string(), z.unknown())
+      .describe('Direct fixture object for stateMode=custom')
+      .optional(),
+    ports: z
+      .object({
+        anvil: z
+          .number()
+          .int()
+          .min(1)
+          .max(65535)
+          .describe('Port for Anvil local chain (default: 8545)')
+          .optional(),
+        fixtureServer: z
+          .number()
+          .int()
+          .min(1)
+          .max(65535)
+          .describe('Port for fixture server (default: 12345)')
+          .optional(),
+      })
+      .optional(),
+    slowMo: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .default(0)
+      .describe(
+        'Slow down Playwright actions by N milliseconds (for debugging)',
+      ),
+    extensionPath: z
+      .string()
+      .describe('Custom path to built extension directory')
+      .optional(),
+    goal: z
+      .string()
+      .describe(
+        'Goal or task description for this session (for knowledge store)',
+      )
+      .optional(),
+    flowTags: z
+      .array(z.string())
+      .describe(
+        'Flow tags for categorization (e.g., ["send"], ["swap", "confirmation"]). ' +
+          'Used for cross-session knowledge retrieval.',
+      )
+      .optional(),
+    tags: z
+      .array(z.string())
+      .describe('Free-form tags for ad-hoc filtering')
+      .optional(),
+    seedContracts: z
+      .array(z.enum(smartContractNames))
+      .describe('Smart contracts to deploy on launch (before extension loads)')
+      .optional(),
+    force: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Force replace an existing active session (runs cleanup first)',
+      ),
+    platform: z
+      .enum(['browser', 'ios', 'android'])
+      .default('browser')
+      .describe(
+        'Target platform: browser (default), ios, or android. ' +
+          'Mobile platforms require @metamask/device-mcp.',
+      ),
+    deviceId: z
+      .string()
+      .min(1)
+      .describe(
+        'Explicit device ID for mobile platforms (iOS UDID or Android serial). ' +
+          'When omitted, auto-detects if exactly one device is connected.',
+      )
+      .optional(),
+    appBundlePath: z
+      .string()
+      .min(1)
+      .describe(
+        'Mobile only: path to the app artifact to install before launching ' +
+          '(iOS `.app` bundle or Android `.apk`). When omitted, the consumer ' +
+          'decides how to resolve the app (typically reusing the installed one).',
+      )
+      .optional(),
+    metroPort: z
+      .number()
+      .int()
+      .min(1)
+      .max(65535)
+      .describe(
+        'Mobile only: Metro bundler / inspector proxy port for watch-mode ' +
+          'attach and Hermes CDP (development builds only).',
+      )
+      .optional(),
+    reinstall: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Mobile only: uninstall and reinstall the app before launching. ' +
+          'DESTRUCTIVE — discards the existing app container.',
+      ),
+    resetAppData: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Mobile only: clear app data/container before launching. ' +
+          'DESTRUCTIVE — discards existing wallet state.',
+      ),
+    allowFoxCodeMismatch: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Mobile only: bypass the consumer app-identity (fox_code) compatibility ' +
+          'guard. DANGEROUS — may render existing wallet/keychain data unreadable.',
+      ),
+    selfOnboarding: z
+      .boolean()
+      .optional()
+      .describe(
+        'Complete onboarding in-process. The secret recovery phrase is read from stdin, not from a flag.',
+      ),
+    srp: z
+      .string()
+      .optional()
+      .describe(
+        'Secret recovery phrase carried on the launch body for self-onboarding. Never log this value.',
+      ),
+  })
+  .superRefine((value, ctx) => {
+    if (value.selfOnboarding !== true) {
+      return;
+    }
+    const words = (value.srp ?? '')
+      .trim()
+      .split(/\s+/u)
+      .filter((word) => word.length > 0);
+    if (words.length !== 12 && words.length !== 24) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'self-onboarding requires a 12 or 24 word secret recovery phrase',
+        path: ['srp'],
+      });
+    }
+  });
 
 export const cleanupInputSchema = z.object({
   sessionId: z

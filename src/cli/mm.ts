@@ -4,6 +4,7 @@ import { execSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import type { Readable } from 'node:stream';
 
 import pkg from '../../package.json';
 import {
@@ -180,6 +181,9 @@ export async function main(): Promise<void> {
         worktreeRoot,
         launchArgs.extensionPath,
       );
+    }
+    if (launchArgs.selfOnboarding === true) {
+      launchArgs.srp = await readSelfOnboardingPhrase(process.stdin);
     }
     await sendRequest(daemonState.port, 'POST', '/launch', launchArgs);
     return;
@@ -1554,6 +1558,42 @@ export function normalizeMockNetworkAddPayload(
 }
 
 /**
+ * Reads the secret recovery phrase for `mm launch --self-onboarding`.
+ * A terminal stdin is refused. The phrase is returned as 12 or 24
+ * single-spaced words and is never written to a process stream.
+ *
+ * @param source - The stream carrying the phrase. Production uses `process.stdin`.
+ * @returns The normalized secret recovery phrase.
+ */
+export async function readSelfOnboardingPhrase(
+  source: Readable,
+): Promise<string> {
+  if ('isTTY' in source && source.isTTY === true) {
+    process.stderr.write(
+      'Error: --self-onboarding requires the secret recovery phrase on stdin\n',
+    );
+    process.exit(1);
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of source) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  const words = Buffer.concat(chunks)
+    .toString('utf8')
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => word.length > 0);
+  if (words.length !== 12 && words.length !== 24) {
+    process.stderr.write(
+      'Error: self-onboarding requires a 12 or 24 word secret recovery phrase\n',
+    );
+    process.exit(1);
+  }
+  return words.join(' ');
+}
+
+/**
  * Parses launch command arguments into a key-value object.
  *
  * @param args - The raw CLI arguments after the command name.
@@ -1575,6 +1615,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     '--reinstall',
     '--reset-app-data',
     '--allow-fox-code-mismatch',
+    '--self-onboarding',
   ]);
 
   for (let i = 0; i < args.length; i++) {
@@ -1666,6 +1707,8 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
       result.resetAppData = true;
     } else if (arg === '--allow-fox-code-mismatch') {
       result.allowFoxCodeMismatch = true;
+    } else if (arg === '--self-onboarding') {
+      result.selfOnboarding = true;
     } else if (arg.startsWith('--') && !knownFlags.has(arg)) {
       process.stderr.write(`Warning: unknown launch flag '${arg}'\n`);
     }
@@ -1690,8 +1733,9 @@ Environment Variables:
                       Falls back to the current git worktree root.
 
 Lifecycle:
-  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios|android] [--device-id <id>]
+  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios|android] [--device-id <id>]
   mm launch --platform ios|android [--device-id <id>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
+  mm launch --self-onboarding reads the secret recovery phrase from stdin.
   mm cleanup [--shutdown]
   mm status
   mm stop [--force]
