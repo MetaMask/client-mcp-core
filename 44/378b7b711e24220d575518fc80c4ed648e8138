@@ -1,0 +1,45 @@
+src/knowledge-store/knowledge-store.ts
+  s_4d25cbeab5ddd5::t_d770b8ead82219 855
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 841-854,856-857,859
+src/knowledge-store/knowledge-store.test.ts
+  s_4d25cbeab5ddd5::t_d770b8ead82219 390-393,404-406,412-416,420-421,426-429
+  s_4d25cbeab5ddd5::t_fa324701fadab4 394-403,407-411,417-419,422-425
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 350-389
+  s_4d25cbeab5ddd5::t_cacedc292f4059 430
+src/server/create-server.test.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 537-562
+src/server/create-server.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 358-359,372,869-882
+  s_4d25cbeab5ddd5::t_7cbedeae8242de 883-884
+src/tools/launch.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 60-63
+src/tools/types/tool-inputs.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 41-50
+vitest.config.mts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 38-41
+src/cli/mm.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 7,185-187,1560-1595,1618,1710-1711,1736,1738
+src/validation/schemas.test.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 526-553
+src/validation/schemas.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 143-320
+src/cli/mm.test.ts
+  s_4d25cbeab5ddd5::t_9b5e07505d48eb 9,23,438-480,490-498,2856-2899
+  s_4d25cbeab5ddd5::t_c4748c96b5d3da 2900
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "44378b7b711e24220d575518fc80c4ed648e8138",
+  "prompts": {},
+  "sessions": {
+    "s_4d25cbeab5ddd5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec99146e8ffeeZHQS9n94aEnun",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
