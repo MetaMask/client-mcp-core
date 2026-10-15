@@ -316,6 +316,48 @@ describe('core', () => {
       expect(writtenData.tool.input.text).toBe('[REDACTED]');
     });
 
+    it('sanitizes sensitive fields inside run_steps steps', async () => {
+      const store = new KnowledgeStore({
+        rootDir: '/test/knowledge',
+      });
+      const srp = Array.from({ length: 12 }, () => 'abandon').join(' ');
+
+      await store.recordStep({
+        sessionId: 'session-step-003b',
+        toolName: 'run_steps',
+        input: {
+          steps: [
+            { tool: 'launch', args: { selfOnboarding: true, srp } },
+            {
+              tool: 'type',
+              args: { testId: 'password-input', text: 'my-secret-password' },
+            },
+            { tool: 'click', args: { testId: 'confirm-btn' } },
+            { tool: 'get_state' },
+          ],
+        },
+        outcome: { ok: true },
+        observation: createObservation(),
+      });
+
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      const written = writeCall[1] as string;
+      const writtenData = JSON.parse(written);
+
+      expect(writtenData.tool.input.steps).toStrictEqual([
+        { tool: 'launch', args: { selfOnboarding: true, srp: '[REDACTED]' } },
+        {
+          tool: 'type',
+          args: { testId: 'password-input', text: '[REDACTED]' },
+        },
+        { tool: 'click', args: { testId: 'confirm-btn' } },
+        { tool: 'get_state' },
+      ]);
+      expect(writtenData.tool.textRedacted).toBe(true);
+      expect(written).not.toContain('abandon');
+      expect(written).not.toContain('my-secret-password');
+    });
+
     it('records step with target information', async () => {
       const store = new KnowledgeStore({
         rootDir: '/test/knowledge',
