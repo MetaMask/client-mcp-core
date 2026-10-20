@@ -551,6 +551,40 @@ describe('launchInputSchema', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('accepts a self-onboarding vault password of at least 8 characters', () => {
+    const phrase = Array.from({ length: 12 }, () => 'abandon').join(' ');
+    const result = launchInputSchema.safeParse({
+      selfOnboarding: true,
+      srp: phrase,
+      password: 'eight-ch',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a short vault password without echoing it', () => {
+    const phrase = Array.from({ length: 12 }, () => 'abandon').join(' ');
+    const result = launchInputSchema.safeParse({
+      selfOnboarding: true,
+      srp: phrase,
+      password: 'tiny',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const message = result.error.issues
+        .map((issue) => issue.message)
+        .join(' ');
+      expect(message).not.toContain('tiny');
+    }
+  });
+
+  it('rejects a vault password without self-onboarding', () => {
+    const result = launchInputSchema.safeParse({ password: 'eight-ch' });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('device tool schemas', () => {

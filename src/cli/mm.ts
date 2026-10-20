@@ -183,7 +183,7 @@ export async function main(): Promise<void> {
       );
     }
     if (launchArgs.selfOnboarding === true) {
-      launchArgs.srp = await readSelfOnboardingPhrase(process.stdin);
+      Object.assign(launchArgs, await readSelfOnboardingInput(process.stdin));
     }
     await sendRequest(daemonState.port, 'POST', '/launch', launchArgs);
     return;
@@ -1557,17 +1557,21 @@ export function normalizeMockNetworkAddPayload(
   return { rule: payload };
 }
 
+const MIN_VAULT_PASSWORD_LENGTH = 8;
+
 /**
- * Reads the secret recovery phrase for `mm launch --self-onboarding`.
- * A terminal stdin is refused. The phrase is returned as 12 or 24
- * single-spaced words and is never written to a process stream.
+ * Reads the input for `mm launch --self-onboarding` from stdin: the secret
+ * recovery phrase on the first line and an optional vault password on the
+ * second. A terminal stdin is refused. The phrase is returned as 12 or 24
+ * single-spaced words; the password is returned verbatim. Neither is ever
+ * written to a process stream.
  *
- * @param source - The stream carrying the phrase. Production uses `process.stdin`.
- * @returns The normalized secret recovery phrase.
+ * @param source - The stream carrying the input. Production uses `process.stdin`.
+ * @returns The normalized phrase, plus the password when one was supplied.
  */
-export async function readSelfOnboardingPhrase(
+export async function readSelfOnboardingInput(
   source: Readable,
-): Promise<string> {
+): Promise<{ srp: string; password?: string }> {
   if ('isTTY' in source && source.isTTY === true) {
     process.stderr.write(
       'Error: --self-onboarding requires the secret recovery phrase on stdin\n',
@@ -1579,8 +1583,19 @@ export async function readSelfOnboardingPhrase(
   for await (const chunk of source) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
-  const words = Buffer.concat(chunks)
-    .toString('utf8')
+  const lines = Buffer.concat(chunks).toString('utf8').split(/\r?\n/u);
+  while (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  const [phraseLine = '', password = '', ...extra] = lines;
+  if (extra.length > 0) {
+    process.stderr.write(
+      'Error: self-onboarding stdin takes the phrase and an optional password line only\n',
+    );
+    process.exit(1);
+  }
+
+  const words = phraseLine
     .trim()
     .split(/\s+/u)
     .filter((word) => word.length > 0);
@@ -1590,7 +1605,18 @@ export async function readSelfOnboardingPhrase(
     );
     process.exit(1);
   }
-  return words.join(' ');
+  const srp = words.join(' ');
+
+  if (password === '') {
+    return { srp };
+  }
+  if (password.length < MIN_VAULT_PASSWORD_LENGTH) {
+    process.stderr.write(
+      `Error: self-onboarding password must be at least ${MIN_VAULT_PASSWORD_LENGTH} characters\n`,
+    );
+    process.exit(1);
+  }
+  return { srp, password };
 }
 
 /**
@@ -1735,7 +1761,8 @@ Environment Variables:
 Lifecycle:
   mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios|android] [--device-id <id>]
   mm launch --platform ios|android [--device-id <id>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
-  mm launch --self-onboarding reads the secret recovery phrase from stdin.
+  mm launch --self-onboarding reads the secret recovery phrase from stdin,
+    and an optional vault password from the next line.
   mm cleanup [--shutdown]
   mm status
   mm stop [--force]

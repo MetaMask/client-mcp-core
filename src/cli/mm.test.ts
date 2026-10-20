@@ -20,7 +20,7 @@ import {
   parseIntFlag,
   parseStringFlag,
   parseLaunchArgs,
-  readSelfOnboardingPhrase,
+  readSelfOnboardingInput,
   printHelp,
   resolveRuntime,
   sendRequest,
@@ -437,26 +437,58 @@ describe('normalizeMockNetworkAddPayload', () => {
 
 const RECOVERY_PHRASE = Array.from({ length: 12 }, () => 'abandon').join(' ');
 
-describe('readSelfOnboardingPhrase', () => {
+const VAULT_PASSWORD = 'cGFzc3dvcmQtZ2VuZXJhdGVkLXZhbHVl';
+
+describe('readSelfOnboardingInput', () => {
   it('returns a normalized 12 word phrase from stdin', async () => {
     expect(
-      await readSelfOnboardingPhrase(Readable.from([`${RECOVERY_PHRASE}\n`])),
-    ).toBe(RECOVERY_PHRASE);
+      await readSelfOnboardingInput(Readable.from([`${RECOVERY_PHRASE}\n`])),
+    ).toStrictEqual({ srp: RECOVERY_PHRASE });
+  });
+
+  it('normalizes extra spaces within the phrase line', async () => {
+    expect(
+      await readSelfOnboardingInput(
+        Readable.from([`  ${RECOVERY_PHRASE.replace(/ /gu, '   ')}  \n`]),
+      ),
+    ).toStrictEqual({ srp: RECOVERY_PHRASE });
   });
 
   it('reads the phrase from Buffer chunks', async () => {
     expect(
-      await readSelfOnboardingPhrase(
+      await readSelfOnboardingInput(
         Readable.from([Buffer.from(`${RECOVERY_PHRASE}\n`)]),
       ),
-    ).toBe(RECOVERY_PHRASE);
+    ).toStrictEqual({ srp: RECOVERY_PHRASE });
+  });
+
+  it('reads the vault password from the second line verbatim', async () => {
+    expect(
+      await readSelfOnboardingInput(
+        Readable.from([`${RECOVERY_PHRASE}\n`, ` ${VAULT_PASSWORD} \n`]),
+      ),
+    ).toStrictEqual({ srp: RECOVERY_PHRASE, password: ` ${VAULT_PASSWORD} ` });
+  });
+
+  it('accepts CRLF line endings', async () => {
+    expect(
+      await readSelfOnboardingInput(
+        Readable.from([`${RECOVERY_PHRASE}\r\n${VAULT_PASSWORD}\r\n`]),
+      ),
+    ).toStrictEqual({ srp: RECOVERY_PHRASE, password: VAULT_PASSWORD });
+  });
+
+  it('treats an empty second line as no password', async () => {
+    expect(
+      await readSelfOnboardingInput(Readable.from([`${RECOVERY_PHRASE}\n\n`])),
+    ).toStrictEqual({ srp: RECOVERY_PHRASE });
   });
 
   it('refuses a terminal and does not echo the phrase', async () => {
     const source = Readable.from([RECOVERY_PHRASE]);
     Object.defineProperty(source, 'isTTY', { value: true });
 
-    await expect(readSelfOnboardingPhrase(source)).rejects.toThrowError(
+    await expect(readSelfOnboardingInput(source)).rejects.toThrowError(
       'process.exit',
     );
     expect(stderrSpy).toHaveBeenCalledWith(
@@ -470,11 +502,41 @@ describe('readSelfOnboardingPhrase', () => {
 
   it('refuses a phrase that is not 12 or 24 words without echoing it', async () => {
     await expect(
-      readSelfOnboardingPhrase(Readable.from(['one two three\n'])),
+      readSelfOnboardingInput(Readable.from(['one two three\n'])),
     ).rejects.toThrowError('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: self-onboarding requires a 12 or 24 word secret recovery phrase\n',
     );
+  });
+
+  it('refuses a password shorter than 8 characters without echoing it', async () => {
+    await expect(
+      readSelfOnboardingInput(Readable.from([`${RECOVERY_PHRASE}\nshort\n`])),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: self-onboarding password must be at least 8 characters\n',
+    );
+    const written = stderrSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join('');
+    expect(written).not.toContain('short\n');
+    expect(written).not.toContain(RECOVERY_PHRASE);
+  });
+
+  it('refuses input beyond the password line without echoing it', async () => {
+    await expect(
+      readSelfOnboardingInput(
+        Readable.from([`${RECOVERY_PHRASE}\n${VAULT_PASSWORD}\nextra\n`]),
+      ),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: self-onboarding stdin takes the phrase and an optional password line only\n',
+    );
+    const written = stderrSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join('');
+    expect(written).not.toContain(VAULT_PASSWORD);
+    expect(written).not.toContain(RECOVERY_PHRASE);
   });
 });
 
@@ -2894,6 +2956,55 @@ describe('main', () => {
       'http://127.0.0.1:3000/launch',
       expect.objectContaining({
         body: JSON.stringify({ selfOnboarding: true, srp: RECOVERY_PHRASE }),
+      }),
+    );
+  });
+
+  it('sends the stdin vault password with a self-onboarding launch', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    const mockState = {
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: { anvil: 8545, fixture: 8546, mock: 8547 },
+    };
+    vi.mocked(readDaemonState).mockResolvedValueOnce(mockState);
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: 'launched' }),
+    } as Response);
+
+    const origArgv = process.argv;
+    const origStdin = Object.getOwnPropertyDescriptor(process, 'stdin');
+    process.argv = ['node', 'mm', 'launch', '--self-onboarding'];
+    Object.defineProperty(process, 'stdin', {
+      value: Readable.from([`${RECOVERY_PHRASE}\n${VAULT_PASSWORD}\n`]),
+      configurable: true,
+    });
+
+    try {
+      await main();
+    } finally {
+      process.argv = origArgv;
+      if (origStdin) {
+        Object.defineProperty(process, 'stdin', origStdin);
+      }
+    }
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/launch',
+      expect.objectContaining({
+        body: JSON.stringify({
+          selfOnboarding: true,
+          srp: RECOVERY_PHRASE,
+          password: VAULT_PASSWORD,
+        }),
       }),
     );
   });
