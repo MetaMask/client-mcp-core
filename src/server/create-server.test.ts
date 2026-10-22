@@ -534,7 +534,7 @@ describe('createServer integration', () => {
     expect(body.ok).toBe(true);
   });
 
-  it('omits the recovery phrase from the recorded launch step', async () => {
+  it('omits the recovery phrase and vault password from the recorded launch step', async () => {
     const { KnowledgeStore } =
       await import('../knowledge-store/knowledge-store.js');
     const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
@@ -542,11 +542,12 @@ describe('createServer integration', () => {
     };
     mockStore.recordStep.mockClear();
     const srp = Array.from({ length: 12 }, () => 'abandon').join(' ');
+    const password = 'vault-password-sentinel';
 
     await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selfOnboarding: true, srp }),
+      body: JSON.stringify({ selfOnboarding: true, srp, password }),
     });
 
     expect(mockStore.recordStep).toHaveBeenCalled();
@@ -555,9 +556,10 @@ describe('createServer integration', () => {
     };
     expect(recorded.input.selfOnboarding).toBe(true);
     expect(recorded.input).not.toHaveProperty('srp');
-    expect(JSON.stringify(mockStore.recordStep.mock.calls)).not.toContain(
-      'abandon',
-    );
+    expect(recorded.input).not.toHaveProperty('password');
+    const serialized = JSON.stringify(mockStore.recordStep.mock.calls);
+    expect(serialized).not.toContain('abandon');
+    expect(serialized).not.toContain(password);
   });
 
   it('pOST /cleanup delegates to session manager', async () => {

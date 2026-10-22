@@ -300,9 +300,23 @@ export const launchInputSchema = z
       .describe(
         'Secret recovery phrase carried on the launch body for self-onboarding. Never log this value.',
       ),
+    password: z
+      .string()
+      .min(8, 'self-onboarding password must be at least 8 characters')
+      .optional()
+      .describe(
+        'Vault password for self-onboarding, read from stdin after the phrase. Never log this value.',
+      ),
   })
   .superRefine((value, ctx) => {
     if (value.selfOnboarding !== true) {
+      if (value.password !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'password is only accepted with self-onboarding',
+          path: ['password'],
+        });
+      }
       return;
     }
     const words = (value.srp ?? '')

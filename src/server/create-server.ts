@@ -867,18 +867,23 @@ export function createServer(config: ServerConfig): ServerInstance {
 }
 
 /**
- * Removes the secret recovery phrase from a launch payload before it is
- * written to the knowledge store.
+ * Removes the secret recovery phrase and vault password from a launch payload
+ * before it is written to the knowledge store.
  *
  * @param input - The tool input about to be recorded.
- * @returns A shallow copy without `srp`, or the original value when it is not an object.
+ * @returns A shallow copy without `srp` or `password`, or the original value when it carries neither.
  */
 function omitLaunchSecret(input: unknown): unknown {
-  if (typeof input !== 'object' || input === null || !('srp' in input)) {
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    !('srp' in input || 'password' in input)
+  ) {
     return input;
   }
   const copy = { ...(input as Record<string, unknown>) };
   delete copy.srp;
+  delete copy.password;
   return copy;
 }
 

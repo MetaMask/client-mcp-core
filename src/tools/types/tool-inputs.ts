@@ -48,6 +48,12 @@ export type LaunchInput = {
    * request body. Callers must not log or persist this field.
    */
   srp?: string;
+  /**
+   * Vault password for `selfOnboarding`. Present only on the launch request
+   * body; the launcher falls back to its default when omitted. Callers must
+   * not log or persist this field.
+   */
+  password?: string;
 };
 
 export type CleanupInput = {
