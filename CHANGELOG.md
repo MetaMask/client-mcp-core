@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.12.0]
 
-### Uncategorized
+### Added
 
 - feat: accept a vault password for self-onboarding ([#55](https://github.com/MetaMask/client-mcp-core/pull/55))
+
+### Fixed
+
 - fix: redact clipboard and CDP secrets in recorded steps (AIENG-228) ([#52](https://github.com/MetaMask/client-mcp-core/pull/52))
 - fix: flaky test due to clock assertion ([#53](https://github.com/MetaMask/client-mcp-core/pull/53))
 
