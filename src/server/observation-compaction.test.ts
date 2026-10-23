@@ -8,7 +8,7 @@ import {
   observationCompactionDeps,
 } from './observation-compaction.js';
 import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
-import type { StepRecordObservation } from '../tools/types/step-record.js';
+import type { StepRecordObservation } from '../tools/types/observation.js';
 
 function createNode(
   ref: string,

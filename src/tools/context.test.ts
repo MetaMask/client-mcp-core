@@ -23,7 +23,6 @@ function createMockContext(
     page: {} as ToolContext['page'],
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
   } as unknown as ToolContext;
 }
 

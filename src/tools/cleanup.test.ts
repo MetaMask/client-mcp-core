@@ -16,7 +16,6 @@ function createMockContext(hasActive = false): ToolContext {
     page: {},
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
   } as unknown as ToolContext;
 }
 

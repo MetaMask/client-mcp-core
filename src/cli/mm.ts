@@ -618,28 +618,6 @@ export async function routeCommand(
       });
       break;
     }
-    case 'knowledge-search':
-      if (!args[0]) {
-        process.stderr.write('Usage: mm knowledge-search <query>\n');
-        process.exit(1);
-      }
-      await sendRequest(port, 'POST', '/tool/knowledge_search', {
-        query: args[0],
-      });
-      break;
-    case 'knowledge-last':
-      await sendRequest(port, 'POST', '/tool/knowledge_last', {});
-      break;
-    case 'knowledge-sessions':
-      await sendRequest(port, 'POST', '/tool/knowledge_sessions', {});
-      break;
-    case 'knowledge-summarize': {
-      const summarizeSession = parseStringFlag(args, '--session');
-      await sendRequest(port, 'POST', '/tool/knowledge_summarize', {
-        ...(summarizeSession ? { scope: { sessionId: summarizeSession } } : {}),
-      });
-      break;
-    }
     case 'run-steps':
       if (!args[0]) {
         process.stderr.write(
@@ -1641,9 +1619,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     '--context',
     '--state',
     '--extension-path',
-    '--goal',
     '--force',
-    '--flow-tags',
     '--platform',
     '--device-id',
     '--app-bundle',
@@ -1681,22 +1657,6 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
         process.exit(1);
       }
       result.extensionPath = args[i];
-    } else if (arg === '--goal') {
-      i += 1;
-      if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write('Error: --goal requires a value\n');
-        process.exit(1);
-      }
-      result.goal = args[i];
-    } else if (arg === '--flow-tags') {
-      i += 1;
-      if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write(
-          'Error: --flow-tags requires a comma-separated value\n',
-        );
-        process.exit(1);
-      }
-      result.flowTags = args[i].split(',').map((tag) => tag.trim());
     } else if (arg === '--platform') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
@@ -1769,7 +1729,7 @@ Environment Variables:
                       Falls back to the current git worktree root.
 
 Lifecycle:
-  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios|android] [--device-id <id>]
+  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--force] [--platform browser|ios|android] [--device-id <id>]
   mm launch --platform ios|android [--device-id <id>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
   mm launch --self-onboarding reads the secret recovery phrase from stdin,
     and an optional vault password from the next line.
@@ -1804,12 +1764,6 @@ State & Context:
   mm get-state
   mm get-context
   mm set-context <e2e|prod>
-
-Knowledge:
-  mm knowledge-search <query>
-  mm knowledge-last
-  mm knowledge-sessions
-  mm knowledge-summarize [--session <id>]
 
 Contracts (E2E only):
   mm seed-contract <name> [--hardfork <fork>]

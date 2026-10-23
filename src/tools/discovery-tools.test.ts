@@ -42,8 +42,6 @@ function createMockContext(
       schemaVersion: 1,
       sessionId: 'test-session-123',
       createdAt: '2026-02-04T00:00:00.000Z',
-      goal: 'Test discovery',
-      flowTags: ['discovery'],
       tags: [],
       launch: {
         stateMode: 'default',
@@ -56,7 +54,6 @@ function createMockContext(
     page,
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
     driver: hasActive
       ? new PlaywrightPlatformDriver(() => page, sessionManager as any)
       : undefined,

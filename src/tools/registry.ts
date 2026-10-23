@@ -34,12 +34,6 @@ import {
   typeTool,
   waitForTool,
 } from './interaction.js';
-import {
-  knowledgeLastTool,
-  knowledgeSearchTool,
-  knowledgeSessionsTool,
-  knowledgeSummarizeTool,
-} from './knowledge.js';
 import { launchTool } from './launch.js';
 import { mockNetworkTool } from './mock-network.js';
 import {
@@ -81,10 +75,6 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['type', typeTool],
   ['wait_for', waitForTool],
   ['get_text', getTextTool],
-  ['knowledge_last', knowledgeLastTool],
-  ['knowledge_search', knowledgeSearchTool],
-  ['knowledge_summarize', knowledgeSummarizeTool],
-  ['knowledge_sessions', knowledgeSessionsTool],
   ['seed_contract', seedContractTool],
   ['seed_contracts', seedContractsTool],
   ['get_contract_address', getContractAddressTool],
@@ -151,10 +141,6 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   screen_recording: 'readonly',
   device_logs: 'readonly',
   generate_locators: 'readonly',
-  knowledge_last: 'readonly',
-  knowledge_search: 'readonly',
-  knowledge_summarize: 'readonly',
-  knowledge_sessions: 'readonly',
   get_text: 'readonly',
   get_state: 'readonly',
   get_context: 'readonly',
