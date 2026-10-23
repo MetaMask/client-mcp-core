@@ -107,7 +107,7 @@ export async function accessibilitySnapshotTool(
 }
 
 /**
- * Captures a full screen description including state, test IDs, a11y, and prior knowledge.
+ * Captures a full screen description including state, test IDs, a11y, and an optional screenshot.
  *
  * @param input - The describe-screen options including screenshot flags.
  * @param context - The tool execution context.

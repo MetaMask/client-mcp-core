@@ -166,7 +166,7 @@ describe('core', () => {
   });
 
   describe('exported helpers', () => {
-    it('createDefaultObservation returns base observation without prior knowledge', () => {
+    it('createDefaultObservation returns base observation with defaults', () => {
       const state: ExtensionState = {
         isLoaded: true,
         currentUrl: 'chrome-extension://test/home.html',
