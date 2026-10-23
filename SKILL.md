@@ -17,7 +17,7 @@ mm cleanup --shutdown      # 5. Clean up when done
 **Critical rules:**
 
 - **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — they change after every action.
-- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `state`, `testIds`, and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need `priorKnowledge` or screenshots.
+- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `state`, `testIds`, and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need the full tree or screenshots.
 - **One target per command.** Specify exactly ONE of: a11y ref (`e5`), testId, or CSS selector.
 - **Errors are structured.** Check the `error.code` field to decide recovery strategy (see Error Codes below).
 
@@ -32,7 +32,7 @@ Tool responses include different data based on the tool's category:
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                               | Data is already in `result`                    |
 | **Batch**     | run_steps                                                                                                                                                                                                                                       | Controlled by `includeObservations` param      |
 
-**Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
+**Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
 
 **Diff-Based Observations:** After the first mutating tool call sets a baseline, subsequent mutations return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
 
@@ -73,7 +73,7 @@ You can use the `ref` values from `observations.a11y.nodes` for the next interac
 
 - Use `observations.state` for quick checks (screen name, loading status, balance, etc.)
 - Use `observations.a11y.nodes` with the compact refs for the next interaction
-- Call `describe-screen` only when you need the full tree or `priorKnowledge`
+- Call `describe-screen` only when you need the full tree
 
 ```bash
 mm click e3                 # mutating: response includes fresh observations
@@ -83,7 +83,6 @@ mm type e1 "0.01"           # use ref from previous response
 
 Call `describe-screen` explicitly when you need:
 
-- `priorKnowledge` (historical actions for this screen)
 - A screenshot via `includeScreenshot`
 - Full context after unexpected navigation
 - The complete, unfiltered a11y tree (e.g., all options in a dropdown)
@@ -197,7 +196,6 @@ mm serve [--background]
 - **Active tab**: the currently focused tab's role and URL (if tracked)
 - **Test IDs**: visible `data-testid` attributes with text previews
 - **A11y tree**: interactive elements with deterministic refs (`e1`, `e2`, ...)
-- **Prior knowledge**: suggested actions from past sessions on this screen
 
 ```
 mm describe-screen
@@ -240,7 +238,7 @@ Useful when you know a `testId` value and want to verify it exists. Prefer `desc
 
 #### `mm accessibility-snapshot`
 
-Captures just the trimmed accessibility tree with deterministic refs. Lighter than `describe-screen` (no state, no prior knowledge, no test IDs).
+Captures just the trimmed accessibility tree with deterministic refs. Lighter than `describe-screen` (no state, no test IDs).
 
 ```
 mm accessibility-snapshot [--root <selector>]
@@ -678,20 +676,10 @@ Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a targ
 | Method           | Format              | Stability                       | When to use                                          |
 | ---------------- | ------------------- | ------------------------------- | ---------------------------------------------------- |
 | **a11y ref**     | `e1`, `e2`, ...     | Ephemeral (per describe-screen) | Default — use refs from the latest `describe-screen` |
-| **testId**       | `data-testid` value | Stable across sessions          | When you know the testId from prior knowledge        |
+| **testId**       | `data-testid` value | Stable across sessions          | When you know the testId from earlier output         |
 | **CSS selector** | Any CSS selector    | Fragile                         | Last resort fallback                                 |
 
 **Prefer a11y refs.** They come directly from the accessibility tree and map to ARIA selectors, making them the most reliable for the current screen state.
-
-## Prior Knowledge
-
-When you call `describe-screen`, the response may include a `priorKnowledge` section with:
-
-- **`similarSteps`**: Past tool invocations on the same screen with confidence scores
-- **`suggestedNextActions`**: Ranked actions based on historical success (e.g., "click confirm button")
-- **`avoid`**: Targets that frequently fail on this screen — skip these
-
-Use prior knowledge to guide your actions, but always verify against the current a11y tree.
 
 ## Error Codes
 
@@ -825,18 +813,6 @@ mm cleanup --shutdown
 # Or use --project per command
 mm --project ../metamask-extension launch
 mm --project ../metamask-extension describe-screen
-```
-
-### Using Prior Knowledge
-
-```bash
-mm launch --state default --goal "Test send flow" --flow-tags send
-mm describe-screen
-# Response includes priorKnowledge.suggestedNextActions:
-# [{ action: "click", preferredTarget: { type: "testId", value: "send-button" }, confidence: 0.85 }]
-# Use the suggestion but verify the target exists in the current a11y tree
-mm click e3
-mm cleanup --shutdown
 ```
 
 ## Project-Specific Commands

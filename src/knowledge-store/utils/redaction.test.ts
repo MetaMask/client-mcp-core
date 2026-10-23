@@ -296,13 +296,6 @@ describe('redactRecordedSecrets', () => {
     const echo = `echo ${secret}; ${JSON.stringify(secret)}`;
     const redactedEcho = 'echo [REDACTED]; "[REDACTED]"';
     const record = stepRecord();
-    const historyMetadata = {
-      sessionId: record.sessionId,
-      timestamp: record.timestamp,
-      tool: 'cdp',
-      labels: ['interaction'],
-      confidence: 1,
-    };
     record.tool.target = { selector: echo, testId: echo, a11yRef: echo };
     record.outcome.error = {
       code: 'MM_CDP_FAILED',
@@ -340,59 +333,6 @@ describe('redactRecordedSecrets', () => {
         },
       ],
       diff: { added: [echo], removed: [echo], unchanged: 2 },
-    };
-    observation.priorKnowledge = {
-      schemaVersion: 1,
-      generatedAt: record.timestamp,
-      query: {
-        windowHours: 48,
-        usedFlowTags: ['onboarding'],
-        usedFilters: { screen: echo },
-        candidateSessions: 1,
-        candidateSteps: 1,
-      },
-      relatedSessions: [
-        {
-          sessionId: record.sessionId,
-          createdAt: record.timestamp,
-          goal: echo,
-          flowTags: ['onboarding'],
-          tags: ['test'],
-        },
-      ],
-      similarSteps: [
-        {
-          ...historyMetadata,
-          screen: echo,
-          snippet: echo,
-          target: { testId: echo },
-          a11yHint: { role: 'button', name: echo },
-        },
-      ],
-      suggestedNextActions: [
-        {
-          rank: 1,
-          action: 'type',
-          rationale: echo,
-          confidence: 1,
-          preferredTarget: {
-            type: 'a11yHint',
-            value: { role: 'button', name: echo },
-          },
-          fallbackTargets: [
-            { type: 'testId', value: echo },
-            { type: 'selector', value: echo },
-          ],
-        },
-      ],
-      avoid: [
-        {
-          rationale: echo,
-          target: { selector: echo },
-          errorCode: 'EXAMPLE',
-          frequency: 1,
-        },
-      ],
     };
     const original = structuredClone(record);
     // Intentional exact matches prove structural metadata survives redaction.
@@ -448,47 +388,6 @@ describe('redactRecordedSecrets', () => {
       a11y: {
         nodes: [{ ref: 'e2', role: 'button', name: redactedEcho }],
         diff: { added: [redactedEcho], removed: [redactedEcho], unchanged: 2 },
-      },
-      priorKnowledge: {
-        generatedAt: record.timestamp,
-        query: { usedFilters: { screen: redactedEcho } },
-        relatedSessions: [
-          {
-            sessionId: record.sessionId,
-            createdAt: record.timestamp,
-            goal: redactedEcho,
-          },
-        ],
-        similarSteps: [
-          {
-            ...historyMetadata,
-            screen: redactedEcho,
-            snippet: redactedEcho,
-            target: { testId: redactedEcho },
-            a11yHint: { role: 'button', name: redactedEcho },
-          },
-        ],
-        suggestedNextActions: [
-          {
-            action: 'type',
-            rationale: redactedEcho,
-            preferredTarget: {
-              type: 'a11yHint',
-              value: { role: 'button', name: redactedEcho },
-            },
-            fallbackTargets: [
-              { type: 'testId', value: redactedEcho },
-              { type: 'selector', value: redactedEcho },
-            ],
-          },
-        ],
-        avoid: [
-          {
-            errorCode: 'EXAMPLE',
-            rationale: redactedEcho,
-            target: { selector: redactedEcho },
-          },
-        ],
       },
     });
     expect(record).toStrictEqual(original);
