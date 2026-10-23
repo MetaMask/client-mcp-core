@@ -79,7 +79,6 @@ function createContextWithDriver(driver: IPlatformDriver): ToolContext {
     page: page as any,
     refMap: new Map(),
     workflowContext: {} as any,
-    knowledgeStore: {} as any,
     toolRegistry: new Map(),
     driver,
   } as unknown as ToolContext;
@@ -94,7 +93,6 @@ function createContextWithoutDriver(): ToolContext {
     page: page as any,
     refMap: new Map(),
     workflowContext: {} as any,
-    knowledgeStore: {} as any,
     toolRegistry: new Map(),
     driver: undefined,
   } as unknown as ToolContext;
@@ -430,7 +428,6 @@ describe('tool delegation to context.driver', () => {
         page: {} as any,
         refMap: new Map(),
         workflowContext: {} as any,
-        knowledgeStore: {} as any,
         toolRegistry: new Map(),
         driver,
       } as unknown as ToolContext;
@@ -528,7 +525,6 @@ describe('tool delegation to context.driver', () => {
         page: {} as any,
         refMap: new Map(),
         workflowContext: {} as any,
-        knowledgeStore: {} as any,
         toolRegistry: new Map(),
         driver,
       } as unknown as ToolContext;

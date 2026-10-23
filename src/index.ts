@@ -23,10 +23,8 @@ export type {
 } from './server/session-manager.js';
 
 // Core Components
-export * from './knowledge-store/knowledge-store.js';
 export * from './tools/utils/discovery.js';
 export * from './validation/schemas.js';
-export * from './knowledge-store/tokenization.js';
 
 // Types
 export * from './tools/types';
@@ -41,6 +39,7 @@ export * from './server/request-queue.js';
 export * from './server/port-allocator.js';
 export * from './server/daemon-state.js';
 export * from './server/create-server.js';
+export * from './server/session-metadata.js';
 
 // Utils
 export * from './utils';

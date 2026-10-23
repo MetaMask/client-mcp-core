@@ -1,5 +1,5 @@
 import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
-import type { StepRecordObservation } from '../tools/types/step-record.js';
+import type { StepRecordObservation } from '../tools/types/observation.js';
 import { OPTION_COLLAPSE_MIN_COUNT } from '../tools/utils/constants.js';
 
 const OPTION_RANGE_PATTERN =
