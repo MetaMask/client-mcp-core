@@ -85,6 +85,10 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     expect(getToolCategory('describe_screen')).toBe('discovery');
   });
 
+  it('getToolCategory returns cdp for cdp', () => {
+    expect(getToolCategory('cdp')).toBe('cdp');
+  });
+
   it('getToolCategory returns batch for run_steps', () => {
     expect(getToolCategory('run_steps')).toBe('batch');
   });
