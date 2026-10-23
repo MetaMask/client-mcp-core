@@ -45,6 +45,30 @@ export type ToolResponse<T = unknown> =
   | { ok: false; error: { code: string; message: string } };
 
 /**
+ * Server-side timing of one tool request, in whole milliseconds.
+ *
+ * Phases that did not run (for example `toolMs` for a validation error) are 0.
+ * `totalMs` is always at least `queueMs + toolMs + observationMs`.
+ */
+export type ToolResponseTiming = {
+  /** Time from enqueue until the queued task started (waiting for earlier requests). */
+  queueMs: number;
+  /** Time spent inside the tool function. */
+  toolMs: number;
+  /** Time spent collecting the post-tool observation (0 when skipped). */
+  observationMs: number;
+  /** Time from request received until the response was sent. */
+  totalMs: number;
+};
+
+/**
+ * Metadata attached to every `/tool/*`, `/launch` and `/cleanup` response body.
+ */
+export type ToolResponseMeta = {
+  timing: ToolResponseTiming;
+};
+
+/**
  * Standalone tool function signature.
  *
  * Tool functions receive parameters and a context, and return a ToolResponse.

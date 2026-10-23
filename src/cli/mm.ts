@@ -1094,8 +1094,9 @@ export async function sendRequest(
     try {
       const data = await daemonFetch(port, method, requestPath, body, timeout);
 
-      const result = data.result ?? data;
-      const observations = data.observations as
+      const { meta, ...rest } = data;
+      const result = rest.result ?? rest;
+      const observations = rest.observations as
         | Record<string, unknown>
         | undefined;
       let output: unknown = result;
@@ -1105,6 +1106,15 @@ export async function sendRequest(
             ? (result as Record<string, unknown>)
             : { result };
         output = { ...base, observations };
+      }
+      if (meta !== undefined && typeof output !== 'string') {
+        const base =
+          typeof output === 'object' &&
+          output !== null &&
+          !Array.isArray(output)
+            ? (output as Record<string, unknown>)
+            : { result: output };
+        output = { ...base, meta };
       }
       if (typeof output === 'string') {
         process.stdout.write(`${output}\n`);
