@@ -1,0 +1,34 @@
+src/server/create-server.ts
+  s_71bbccb6358d9b::t_e19d630531c3a8 77-78,80-82,92-94,96,98,102-104,116-117,119-124,126-128,130-148
+  s_71bbccb6358d9b::t_1c4ae7ed3a8d7a 473
+src/tools/registry.ts
+  s_71bbccb6358d9b::t_bca0452b5de914 107-123,126,173-174
+src/tools/registry.test.ts
+  s_71bbccb6358d9b::t_e1c64434b2e1bd 88-91
+SKILL.md
+  s_71bbccb6358d9b::t_f36da5b56c0c96 28-34
+  s_71bbccb6358d9b::t_2c13db9640d098 48
+README.md
+  s_71bbccb6358d9b::t_ed08d4397db85c 372,528
+  s_71bbccb6358d9b::t_90d5efdf329ce4 380
+  s_71bbccb6358d9b::t_76c462defd0824 376-379,381-430,628
+src/server/create-server.test.ts
+  s_71bbccb6358d9b::t_6da59edb425807 170-175,178-179,234-237,892,907-908,1015,1031,1034-1035,1038,1054,1057-1058,1156-1197,1633-1634,1655,1702
+  s_71bbccb6358d9b::t_544f4e84fe4ad6 1604-1632,1635-1654,1656-1701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74b9819d26e4e1ff63b5a9be675a4b3cefd94e68",
+  "prompts": {},
+  "sessions": {
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
