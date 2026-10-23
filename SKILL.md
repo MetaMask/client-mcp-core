@@ -4,6 +4,8 @@ You control a browser extension through the `mm` CLI. Every command talks to a l
 
 If you are running outside the target project directory, use `--project <path>` or set the `MM_PROJECT` environment variable to point at the project root. All commands accept `--project` before the command name (e.g., `mm --project ../metamask-extension launch`).
 
+All commands also accept the global `--observe none|diff|full` flag to choose the observation returned after the call (see Observation Behavior). The CLI consumes `--observe <level>` anywhere in the command line, so to type the literal text `--observe` use `run-steps` or the HTTP API.
+
 ## Core Loop
 
 ```
@@ -17,25 +19,41 @@ mm cleanup --shutdown      # 5. Clean up when done
 **Critical rules:**
 
 - **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — they change after every action.
-- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `state`, `testIds`, and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need the full tree or screenshots.
+- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `testIds` and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need the full tree or screenshots, and `get-state` when you need app state (observations carry none).
 - **One target per command.** Specify exactly ONE of: a11y ref (`e5`), testId, or CSS selector.
 - **Errors are structured.** Check the `error.code` field to decide recovery strategy (see Error Codes below).
 
 ## Observation Behavior
 
-Tool responses include different data based on the tool's category:
+Every tool accepts an `observe` level (CLI: global `--observe <level>` flag; HTTP / `run_steps`: an `observe` field in the input):
 
-| Category      | Examples                                                                                                                                                                                                                                   | Observations in response?                      |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                            | No — faster response                           |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                          | Data is already in `result`                    |
-| **CDP**       | cdp                                                                                                                                                                                                                                        | No — raw result only                           |
-| **Batch**     | run_steps                                                                                                                                                                                                                                  | Controlled by `includeObservations` param      |
+| Level  | Response                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------ |
+| `none` | No `observations`, no collection cost (`meta.timing.observationMs` is 0). Fastest.         |
+| `diff` | Only what changed since the previous observation (see Diff-Based Observations below).      |
+| `full` | The whole compacted screen (`a11y` + `testIds`), no diff. Use after navigation or a modal. |
 
-**Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
+The default depends on the tool's category:
 
-**Diff-Based Observations:** After the first mutating tool call sets a baseline, subsequent mutations return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
+| Category      | Examples                                                                                                                                                                                                                                   | Default `observe` |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
+| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                            | `none`            |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                            | `none`            |
+| **CDP**       | cdp                                                                                                                                                                                                                                        | `none`            |
+| **Batch**     | run_steps                                                                                                                                                                                                                                  | `diff`            |
+
+```bash
+mm click e3 --observe none     # chaining clicks: skip the observation
+mm navigate-home --observe full  # after navigation: get the whole screen
+mm get-state --observe full    # a read that also returns an observation
+```
+
+Observations contain `testIds` and `a11y` only — no app `state`. Call `mm get-state` for state.
+
+**Observation Compaction:** Observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
+
+**Diff-Based Observations:** After the first observation sets a baseline, later calls at level `diff` return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
 
 ```json
 {
@@ -45,18 +63,17 @@ Tool responses include different data based on the tool's category:
 }
 ```
 
-The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next mutation returns a full compact observation (no `diff` field). When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
+The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next observation is a full compact one (no `diff` field). A `full` observation also becomes the new baseline; `none` leaves the baseline unchanged. When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
 
 ### Using inline observations (mutating tools)
 
-After a mutating action, the response includes fresh screen state:
+After a mutating action, the response includes fresh screen data:
 
 ```json
 {
   "ok": true,
   "result": { ... },
   "observations": {
-    "state": { "screen": "send", "url": "...", "balance": "1.5 ETH" },
     "testIds": ["send-amount-input", "send-button"],
     "a11y": {
       "nodes": [
@@ -72,8 +89,8 @@ You can use the `ref` values from `observations.a11y.nodes` for the next interac
 
 **Quick reference:**
 
-- Use `observations.state` for quick checks (screen name, loading status, balance, etc.)
 - Use `observations.a11y.nodes` with the compact refs for the next interaction
+- Call `get-state` for app state (screen, account, network, balance)
 - Call `describe-screen` only when you need the full tree
 
 ```bash
@@ -88,15 +105,9 @@ Call `describe-screen` explicitly when you need:
 - Full context after unexpected navigation
 - The complete, unfiltered a11y tree (e.g., all options in a dropdown)
 
-### `run_steps` and `includeObservations`
+### `run_steps` and `observe`
 
-The `run_steps` tool collects observations once after all steps complete. Control inclusion with the `includeObservations` parameter:
-
-| Value             | Behavior                                      |
-| ----------------- | --------------------------------------------- |
-| `'all'` (default) | Always include final state observations       |
-| `'none'`          | Never include observations (fastest response) |
-| `'failures'`      | Include observations only if any step failed  |
+The `run_steps` tool collects one observation after all steps complete. A top-level `observe` sets its level (default `diff`). Without one, the `observe` in the last executed step's `args` is used; `observe` on other steps is ignored. (`includeObservations` was removed; to react to failures, check `summary.ok`.)
 
 ```json
 {
@@ -104,7 +115,7 @@ The `run_steps` tool collects observations once after all steps complete. Contro
     { "tool": "click", "args": { "a11yRef": "e3" } },
     { "tool": "type", "args": { "a11yRef": "e5", "text": "0.01" } }
   ],
-  "includeObservations": "failures"
+  "observe": "none"
 }
 ```
 
@@ -129,7 +140,7 @@ mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-
 | `--extension-path <path>` | Override the extension build directory                          |
 | `--force`                 | Replace an existing active session                              |
 
-Returns: `sessionId`, `extensionId`, `state` (current extension state).
+Returns: `sessionId`, `extensionId`, `state` (current extension state; on mobile it is partial: `source: "stub"` and only the fields that were read, e.g. `isLoaded`, `extensionId`).
 
 #### `mm cleanup`
 
@@ -380,7 +391,7 @@ Returns extension state and tracked tabs without the full a11y tree.
 mm get-state
 ```
 
-Returns: `state` (extension state) and `tabs` (active + tracked tabs with roles and URLs).
+Returns: `state` (extension state) and `tabs` (active + tracked tabs with roles and URLs). This is the only way to read app state — observations do not include it. On mobile the state is partial (`source: "stub"`): usually only `isLoaded` and `extensionId`; fields that were not read from the app (`isUnlocked`, `currentScreen`, account, network, balance) are omitted, not guessed.
 
 #### `mm get-context`
 
@@ -447,7 +458,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. The `includeObservations` param controls whether final-state observations appear in the response: `'all'` (default), `'none'`, or `'failures'` (only on partial failure). Use `batchTimeoutMs` to set an overall deadline — if exceeded, remaining steps are marked as skipped and partial results are returned immediately. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` to set an overall deadline — if exceeded, remaining steps are marked as skipped and partial results are returned immediately. The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
@@ -547,7 +558,7 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 | Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`                |
 | Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      | `Runtime.evaluate` nests the value at `result.result.value`                                                     |
 
-Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool is categorized as **mutating** — run `describe-screen` afterward to re-sync if the call changed runtime/page state.
+Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
 #### `mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]`
 

@@ -9,8 +9,7 @@ import type { ServerInstance } from './create-server.js';
 import {
   createServer,
   buildResponseBody,
-  shouldCollectObservations,
-  shouldIncludeObservationsInResponse,
+  resolveObserveLevel,
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
 import pkg from '../../package.json';
@@ -154,7 +153,7 @@ describe('buildResponseBody', () => {
 
   it('merges observations into result', () => {
     const result = { ok: true };
-    const obs = { state: {}, testIds: [], a11y: { nodes: [] } };
+    const obs = { testIds: [], a11y: { nodes: [] } };
     expect(buildResponseBody(result, obs as any)).toStrictEqual({
       ok: true,
       observations: obs,
@@ -162,127 +161,117 @@ describe('buildResponseBody', () => {
   });
 });
 
-describe('shouldCollectObservations', () => {
-  it('returns true for mutating', () => {
-    expect(shouldCollectObservations('mutating')).toBe(true);
-  });
-
-  it('returns false for readonly', () => {
-    expect(shouldCollectObservations('readonly')).toBe(false);
-  });
-
-  it('returns false for discovery', () => {
-    expect(shouldCollectObservations('discovery')).toBe(false);
-  });
-
-  it('returns false for cdp', () => {
-    expect(shouldCollectObservations('cdp')).toBe(false);
-  });
-
-  it('returns true for batch with default policy', () => {
-    expect(shouldCollectObservations('batch')).toBe(true);
-  });
-
-  it("returns true for batch with 'all' policy", () => {
-    expect(
-      shouldCollectObservations('batch', { includeObservations: 'all' }),
-    ).toBe(true);
-  });
-
-  it("returns false for batch with 'none' policy", () => {
-    expect(
-      shouldCollectObservations('batch', { includeObservations: 'none' }),
-    ).toBe(false);
-  });
-
-  it("returns true for batch with 'failures' policy", () => {
-    expect(
-      shouldCollectObservations('batch', { includeObservations: 'failures' }),
-    ).toBe(true);
-  });
-});
-
-describe('shouldIncludeObservationsInResponse', () => {
-  const okResult: ToolResponse = { ok: true, result: {} };
-  const failResult: ToolResponse = {
-    ok: false,
-    error: { code: 'ERR', message: 'fail' },
-  };
-  const summaryFailResult: ToolResponse = {
+describe('resolveObserveLevel', () => {
+  const batchResult = (steps: { skipped?: boolean }[]): ToolResponse => ({
     ok: true,
-    result: { summary: { ok: false } },
-  };
+    result: {
+      steps: steps.map((step) => ({
+        tool: 'click',
+        ok: true,
+        meta: { durationMs: 0, timestamp: '', skipped: step.skipped },
+      })),
+      summary: { ok: true },
+    },
+  });
 
-  it('returns true for mutating', () => {
-    expect(shouldIncludeObservationsInResponse('mutating', okResult)).toBe(
-      true,
+  it.each([
+    ['mutating', 'diff'],
+    ['readonly', 'none'],
+    ['discovery', 'none'],
+    ['cdp', 'none'],
+    ['batch', 'diff'],
+  ] as const)('defaults %s to %s', (category, expected) => {
+    expect(resolveObserveLevel(category)).toBe(expected);
+    expect(resolveObserveLevel(category, {})).toBe(expected);
+  });
+
+  it.each([
+    ['mutating', 'none'],
+    ['mutating', 'diff'],
+    ['mutating', 'full'],
+    ['readonly', 'none'],
+    ['readonly', 'diff'],
+    ['readonly', 'full'],
+    ['discovery', 'none'],
+    ['discovery', 'diff'],
+    ['discovery', 'full'],
+    ['cdp', 'none'],
+    ['cdp', 'diff'],
+    ['cdp', 'full'],
+    ['batch', 'none'],
+    ['batch', 'diff'],
+    ['batch', 'full'],
+  ] as const)('honours an explicit level on %s: %s', (category, level) => {
+    expect(resolveObserveLevel(category, { observe: level })).toBe(level);
+  });
+
+  it('ignores an invalid observe value', () => {
+    expect(resolveObserveLevel('mutating', { observe: 'bogus' })).toBe('diff');
+    expect(resolveObserveLevel('readonly', { observe: 'bogus' })).toBe('none');
+  });
+
+  it('uses the last executed step observe for run_steps', () => {
+    const input = {
+      steps: [
+        { tool: 'click', args: { observe: 'none' } },
+        { tool: 'click', args: { observe: 'full' } },
+      ],
+    };
+    expect(resolveObserveLevel('batch', input, batchResult([{}, {}]))).toBe(
+      'full',
     );
   });
 
-  it('returns false for readonly', () => {
-    expect(shouldIncludeObservationsInResponse('readonly', okResult)).toBe(
-      false,
+  it('ignores observe on steps other than the last executed one', () => {
+    const input = {
+      steps: [{ tool: 'click', args: { observe: 'none' } }, { tool: 'click' }],
+    };
+    expect(resolveObserveLevel('batch', input, batchResult([{}, {}]))).toBe(
+      'diff',
     );
   });
 
-  it('returns false for discovery', () => {
-    expect(shouldIncludeObservationsInResponse('discovery', okResult)).toBe(
-      false,
-    );
+  it('uses the last executed step when run_steps stopped early', () => {
+    const input = {
+      steps: [
+        { tool: 'click', args: { observe: 'full' } },
+        { tool: 'click', args: { observe: 'none' } },
+      ],
+    };
+    expect(resolveObserveLevel('batch', input, batchResult([{}]))).toBe('full');
   });
 
-  it('returns false for cdp', () => {
-    expect(shouldIncludeObservationsInResponse('cdp', okResult)).toBe(false);
-  });
-
-  it("returns true for batch with 'all' (default)", () => {
-    expect(shouldIncludeObservationsInResponse('batch', okResult, {})).toBe(
-      true,
-    );
-  });
-
-  it("returns false for batch with 'none'", () => {
-    expect(
-      shouldIncludeObservationsInResponse('batch', okResult, {
-        includeObservations: 'none',
-      }),
-    ).toBe(false);
-  });
-
-  it("returns true for batch with 'failures' when tool failed", () => {
-    expect(
-      shouldIncludeObservationsInResponse('batch', failResult, {
-        includeObservations: 'failures',
-      }),
-    ).toBe(true);
-  });
-
-  it("returns true for batch with 'failures' when summary.ok is false", () => {
-    expect(
-      shouldIncludeObservationsInResponse('batch', summaryFailResult, {
-        includeObservations: 'failures',
-      }),
-    ).toBe(true);
-  });
-
-  it("returns false for batch with 'failures' when tool succeeded", () => {
-    const batchOk: ToolResponse = {
-      ok: true,
-      result: { summary: { ok: true } },
+  it('does not count steps skipped by batchTimeoutMs', () => {
+    const input = {
+      steps: [
+        { tool: 'click', args: { observe: 'none' } },
+        { tool: 'click', args: { observe: 'full' } },
+      ],
     };
     expect(
-      shouldIncludeObservationsInResponse('batch', batchOk, {
-        includeObservations: 'failures',
-      }),
-    ).toBe(false);
+      resolveObserveLevel('batch', input, batchResult([{}, { skipped: true }])),
+    ).toBe('none');
   });
 
-  it("returns false for batch with 'failures' when summary is missing", () => {
-    expect(
-      shouldIncludeObservationsInResponse('batch', okResult, {
-        includeObservations: 'failures',
-      }),
-    ).toBe(false);
+  it('prefers the top-level run_steps observe over the last step', () => {
+    const input = {
+      observe: 'none',
+      steps: [{ tool: 'click', args: { observe: 'full' } }],
+    };
+    expect(resolveObserveLevel('batch', input, batchResult([{}]))).toBe('none');
+  });
+
+  it('defaults run_steps to diff when the batch failed or has no steps', () => {
+    const input = { steps: [{ tool: 'click', args: { observe: 'full' } }] };
+    const failed: ToolResponse = {
+      ok: false,
+      error: { code: 'ERR', message: 'fail' },
+    };
+    expect(resolveObserveLevel('batch', input, failed)).toBe('diff');
+    expect(resolveObserveLevel('batch', input, { ok: true, result: {} })).toBe(
+      'diff',
+    );
+    expect(resolveObserveLevel('batch', input, batchResult([]))).toBe('diff');
   });
 });
 
@@ -823,7 +812,7 @@ describe('createServer with active session', () => {
     expect(body.observations).toBeUndefined();
   });
 
-  it('mutating tool response includes observations with state, testIds, a11y', async () => {
+  it('mutating tool response includes observations with testIds and a11y but no state', async () => {
     const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -831,12 +820,12 @@ describe('createServer with active session', () => {
     });
     const body = (await res.json()) as {
       ok: boolean;
-      observations?: { state: unknown; testIds: unknown[]; a11y: unknown };
+      observations?: Record<string, unknown>;
     };
 
     expect(res.status).toBe(200);
     expect(body.observations).toBeDefined();
-    expect(body.observations?.state).toBeDefined();
+    expect(body.observations).not.toHaveProperty('state');
     expect(body.observations?.testIds).toBeDefined();
     expect(body.observations?.a11y).toBeDefined();
   });
@@ -927,99 +916,39 @@ describe('createServer with active session', () => {
     expect(collectA11ySpy).toHaveBeenCalled();
   });
 
-  describe('post-mutation state recheck', () => {
-    it('resolves immediately when getExtensionState returns a known screen', async () => {
-      mockSM.getExtensionState.mockReset();
-      mockSM.getExtensionState.mockResolvedValue({
-        isLoaded: true,
-        currentScreen: 'home',
-        currentUrl: 'chrome-extension://test/home.html',
-      });
-
+  describe('observation without app state', () => {
+    it('does not call getExtensionState when observing a mutating tool', async () => {
       const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      const body = (await res.json()) as {
-        ok: boolean;
-        observations?: { state: { currentScreen?: string } };
-      };
+      const body = (await res.json()) as { observations?: unknown };
 
       expect(res.status).toBe(200);
-      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
-      expect(body.observations?.state.currentScreen).toBe('home');
+      expect(body.observations).toBeDefined();
+      expect(mockSM.getExtensionState).not.toHaveBeenCalled();
     });
 
-    it("retries when first call returns 'unknown', resolves on second call", async () => {
-      mockSM.getExtensionState.mockReset();
-      mockSM.getExtensionState
-        .mockResolvedValueOnce({
-          isLoaded: true,
-          currentScreen: 'unknown',
-          currentUrl: 'chrome-extension://test/unknown.html',
-        })
-        .mockResolvedValueOnce({
-          isLoaded: true,
-          currentScreen: 'home',
-          currentUrl: 'chrome-extension://test/home.html',
-        });
-
-      const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const body = (await res.json()) as {
-        ok: boolean;
-        observations?: { state: { currentScreen?: string } };
-      };
-
-      expect(res.status).toBe(200);
-      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(2);
-      expect(body.observations?.state.currentScreen).toBe('home');
-    });
-
-    it("retries up to deadline and returns 'unknown' if all calls return 'unknown'", async () => {
-      vi.useFakeTimers();
-      mockSM.getExtensionState.mockReset();
-      mockSM.getExtensionState.mockResolvedValue({
-        isLoaded: true,
-        currentScreen: 'unknown',
-        currentUrl: 'chrome-extension://test/unknown.html',
-      });
-
-      const responsePromise = httpRequest(
-        `http://127.0.0.1:${state.port}/cleanup`,
+    it('does not call getExtensionState when observing run_steps', async () => {
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}/tool/run_steps`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            steps: [{ tool: 'get_context', args: {} }],
+          }),
         },
       );
-
-      await vi.advanceTimersByTimeAsync(500);
-      vi.useRealTimers();
-
-      const res = await responsePromise;
-      const body = (await res.json()) as {
-        ok: boolean;
-        observations?: { state: { currentScreen?: string } };
-      };
+      const body = (await res.json()) as { observations?: unknown };
 
       expect(res.status).toBe(200);
-      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(6);
-      expect(body.observations?.state.currentScreen).toBe('unknown');
+      expect(body.observations).toBeDefined();
+      expect(mockSM.getExtensionState).not.toHaveBeenCalled();
     });
 
     it('collects no observation for readonly tool category', async () => {
-      mockSM.getExtensionState.mockReset();
-      mockSM.getExtensionState.mockResolvedValue({
-        isLoaded: true,
-        currentScreen: 'unknown',
-        currentUrl: 'chrome-extension://test/unknown.html',
-      });
-
       const res = await httpRequest(
         `http://127.0.0.1:${state.port}/tool/get_context`,
         {
@@ -1032,17 +961,9 @@ describe('createServer with active session', () => {
 
       expect(res.status).toBe(200);
       expect(body.observations).toBeUndefined();
-      expect(mockSM.getExtensionState).not.toHaveBeenCalled();
     });
 
     it('collects no observation for discovery tool category', async () => {
-      mockSM.getExtensionState.mockReset();
-      mockSM.getExtensionState.mockResolvedValue({
-        isLoaded: true,
-        currentScreen: 'unknown',
-        currentUrl: 'chrome-extension://test/unknown.html',
-      });
-
       const res = await httpRequest(
         `http://127.0.0.1:${state.port}/tool/list_testids`,
         {
@@ -1055,30 +976,134 @@ describe('createServer with active session', () => {
 
       expect(res.status).toBe(200);
       expect(body.observations).toBeUndefined();
-      expect(mockSM.getExtensionState).not.toHaveBeenCalled();
     });
+  });
 
-    it('does not recheck for batch tool category', async () => {
-      mockSM.getExtensionState.mockReset();
-      mockSM.getExtensionState.mockResolvedValue({
-        isLoaded: true,
-        currentScreen: 'unknown',
-        currentUrl: 'chrome-extension://test/unknown.html',
-      });
+  describe('observe level', () => {
+    type ObservedBody = {
+      ok: boolean;
+      result?: Record<string, unknown>;
+      observations?: Record<string, unknown>;
+      meta?: { timing: { observationMs: number } };
+    };
 
+    const post = async (
+      urlPath: string,
+      requestBody: unknown,
+    ): Promise<{ status: number; body: ObservedBody }> => {
       const res = await httpRequest(
-        `http://127.0.0.1:${state.port}/tool/run_steps`,
+        `http://127.0.0.1:${state.port}${urlPath}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            steps: [{ tool: 'get_context', args: {} }],
-          }),
+          body: JSON.stringify(requestBody),
         },
       );
+      return { status: res.status, body: (await res.json()) as ObservedBody };
+    };
 
-      expect(res.status).toBe(200);
-      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+    it('click with observe none returns no observations and observationMs 0', async () => {
+      const { collectTestIds } = await import('../tools/utils/discovery.js');
+      vi.mocked(collectTestIds).mockClear();
+
+      const { status, body } = await post('/tool/click', {
+        a11yRef: 'e1',
+        observe: 'none',
+      });
+
+      expect(status).toBe(200);
+      expect(body.observations).toBeUndefined();
+      expect(body.meta?.timing.observationMs).toBe(0);
+      expect(collectTestIds).not.toHaveBeenCalled();
+    });
+
+    it('get_state with observe full includes an observation without state', async () => {
+      mockSM.getPlatformDriver.mockReturnValue({
+        getPlatform: () => 'browser',
+        getAppState: vi.fn().mockResolvedValue({
+          isLoaded: true,
+          extensionId: 'test-ext',
+        }),
+      });
+
+      const { status, body } = await post('/tool/get_state', {
+        observe: 'full',
+      });
+
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.result).toHaveProperty('state');
+      expect(body.observations).toBeDefined();
+      expect(body.observations).not.toHaveProperty('state');
+      expect(body.meta?.timing.observationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('get_state with observe diff includes an observation', async () => {
+      const { body } = await post('/tool/get_state', { observe: 'diff' });
+
+      expect(body.observations).toBeDefined();
+    });
+
+    it('cdp with observe full waits for animations and returns an observation', async () => {
+      const page = {
+        waitForLoadState: vi.fn(async () => undefined),
+        waitForFunction: vi.fn(async () => undefined),
+      };
+      mockSM.getPage.mockReturnValue(page as never);
+      mockSM.getPlatformDriver.mockReturnValue({
+        getPlatform: () => 'browser',
+        cdp: vi.fn().mockResolvedValue({ ok: true, result: { value: 2 } }),
+      });
+
+      const { body } = await post('/tool/cdp', {
+        method: 'Runtime.evaluate',
+        observe: 'full',
+      });
+
+      expect(body.ok).toBe(true);
+      expect(body.observations).toBeDefined();
+      expect(page.waitForFunction).toHaveBeenCalled();
+    });
+
+    it('get_state with observe full does not wait for animations', async () => {
+      const page = {
+        waitForLoadState: vi.fn(async () => undefined),
+        waitForFunction: vi.fn(async () => undefined),
+        url: () => '',
+      };
+      mockSM.getPage.mockReturnValue(page as never);
+
+      const { body } = await post('/tool/get_state', { observe: 'full' });
+
+      expect(body.observations).toBeDefined();
+      expect(page.waitForFunction).not.toHaveBeenCalled();
+    });
+
+    it('does not pass observe to the tool handler', async () => {
+      await post('/launch', { force: true, observe: 'none' });
+
+      expect(mockSM.launch).toHaveBeenCalledWith(
+        expect.not.objectContaining({ observe: expect.anything() }),
+      );
+    });
+
+    it('honours observe in the /cleanup body', async () => {
+      const { status, body } = await post('/cleanup', { observe: 'none' });
+
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.observations).toBeUndefined();
+      expect(body.meta?.timing.observationMs).toBe(0);
+    });
+
+    it('rejects an invalid observe level', async () => {
+      const { status, body } = await post('/tool/click', {
+        a11yRef: 'e1',
+        observe: 'everything',
+      });
+
+      expect(status).toBe(400);
+      expect(body.ok).toBe(false);
     });
   });
 
@@ -1139,11 +1164,9 @@ describe('createServer with active session', () => {
         async () =>
           new Promise((resolve) => setTimeout(() => resolve(true), 60)),
       );
-      mockSM.getExtensionState.mockImplementationOnce(
-        async () =>
-          new Promise((resolve) =>
-            setTimeout(() => resolve({ isLoaded: true, currentUrl: '' }), 60),
-          ),
+      const { collectTestIds } = await import('../tools/utils/discovery.js');
+      vi.mocked(collectTestIds).mockImplementationOnce(
+        async () => new Promise((resolve) => setTimeout(() => resolve([]), 60)),
       );
 
       const { body } = await post('/cleanup');
@@ -1180,11 +1203,9 @@ describe('createServer with active session', () => {
     );
 
     it('reports observationMs above 0 for mutating tools', async () => {
-      mockSM.getExtensionState.mockImplementationOnce(
-        async () =>
-          new Promise((resolve) =>
-            setTimeout(() => resolve({ isLoaded: true, currentUrl: '' }), 20),
-          ),
+      const { collectTestIds } = await import('../tools/utils/discovery.js');
+      vi.mocked(collectTestIds).mockImplementationOnce(
+        async () => new Promise((resolve) => setTimeout(() => resolve([]), 20)),
       );
 
       const { body } = await post('/cleanup');
@@ -1740,7 +1761,166 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations?.a11y.nodes).toHaveLength(10);
   });
 
-  it('batch with includeObservations=all returns compact observations', async () => {
+  describe('observe levels on a second mutation', () => {
+    type CompactBody = {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          nodes: unknown[];
+          diff?: { added: string[]; removed: string[]; unchanged: number };
+        };
+      };
+    };
+
+    const post = async (
+      urlPath: string,
+      requestBody: unknown,
+    ): Promise<CompactBody> => {
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}${urlPath}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+      );
+      return (await res.json()) as CompactBody;
+    };
+
+    beforeEach(async () => {
+      const { collectTrimmedA11ySnapshot } =
+        await import('../tools/utils/discovery.js');
+      vi.mocked(collectTrimmedA11ySnapshot)
+        .mockResolvedValueOnce({
+          nodes: initialButtons as never,
+          refMap: new Map(),
+        })
+        .mockResolvedValueOnce({
+          nodes: changedButtons as never,
+          refMap: new Map(),
+        });
+    });
+
+    afterEach(async () => {
+      // Drop queued snapshots a test did not consume.
+      const { collectTrimmedA11ySnapshot } =
+        await import('../tools/utils/discovery.js');
+      vi.mocked(collectTrimmedA11ySnapshot).mockReset();
+    });
+
+    it('diff returns only the changes', async () => {
+      await post('/tool/click', { a11yRef: 'e1' });
+      const body = await post('/tool/click', {
+        a11yRef: 'e1',
+        observe: 'diff',
+      });
+
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: ['e3'],
+        removed: ['e2'],
+        unchanged: 1,
+      });
+      expect(body.observations?.a11y.nodes).toHaveLength(1);
+    });
+
+    it('full returns the whole screen with no diff', async () => {
+      await post('/tool/click', { a11yRef: 'e1' });
+      const body = await post('/tool/click', {
+        a11yRef: 'e1',
+        observe: 'full',
+      });
+
+      expect(body.observations?.a11y.diff).toBeUndefined();
+      expect(body.observations?.a11y.nodes).toStrictEqual(changedButtons);
+    });
+
+    it('full still moves the diff baseline', async () => {
+      const { collectTrimmedA11ySnapshot } =
+        await import('../tools/utils/discovery.js');
+      vi.mocked(collectTrimmedA11ySnapshot).mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      });
+
+      await post('/tool/click', { a11yRef: 'e1' });
+      await post('/tool/click', { a11yRef: 'e1', observe: 'full' });
+      const body = await post('/tool/click', { a11yRef: 'e1' });
+
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: ['e2'],
+        removed: ['e3'],
+        unchanged: 1,
+      });
+    });
+
+    it('none does not move the diff baseline', async () => {
+      const { collectTrimmedA11ySnapshot } =
+        await import('../tools/utils/discovery.js');
+      vi.mocked(collectTrimmedA11ySnapshot).mockClear();
+
+      await post('/tool/click', { a11yRef: 'e1' });
+      await post('/tool/click', { a11yRef: 'e1', observe: 'none' });
+      const body = await post('/tool/click', { a11yRef: 'e1' });
+
+      // The `none` call collected nothing, so the second snapshot (changed
+      // buttons) is diffed against the first one.
+      expect(vi.mocked(collectTrimmedA11ySnapshot)).toHaveBeenCalledTimes(2);
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: ['e3'],
+        removed: ['e2'],
+        unchanged: 1,
+      });
+    });
+
+    it('run_steps with top-level observe full returns no diff', async () => {
+      await post('/tool/click', { a11yRef: 'e1' });
+      const body = await post('/tool/run_steps', {
+        steps: [{ tool: 'get_context' }],
+        observe: 'full',
+      });
+
+      expect(body.observations?.a11y.diff).toBeUndefined();
+      expect(body.observations?.a11y.nodes).toStrictEqual(changedButtons);
+    });
+
+    it('run_steps uses the last step observe when there is no top-level one', async () => {
+      await post('/tool/click', { a11yRef: 'e1' });
+      const body = await post('/tool/run_steps', {
+        steps: [
+          { tool: 'get_context', args: { observe: 'none' } },
+          { tool: 'get_context', args: { observe: 'full' } },
+        ],
+      });
+
+      expect(body.observations?.a11y.diff).toBeUndefined();
+      expect(body.observations?.a11y.nodes).toStrictEqual(changedButtons);
+    });
+
+    it('run_steps with last step observe none omits observations', async () => {
+      const body = await post('/tool/run_steps', {
+        steps: [{ tool: 'get_context', args: { observe: 'none' } }],
+      });
+
+      expect(body.ok).toBe(true);
+      expect(body.observations).toBeUndefined();
+    });
+
+    it('run_steps top-level observe wins over the last step', async () => {
+      await post('/tool/click', { a11yRef: 'e1' });
+      const body = await post('/tool/run_steps', {
+        steps: [{ tool: 'get_context', args: { observe: 'full' } }],
+        observe: 'diff',
+      });
+
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: ['e3'],
+        removed: ['e2'],
+        unchanged: 1,
+      });
+    });
+  });
+
+  it('batch without observe returns compact observations', async () => {
     const res = await httpRequest(
       `http://127.0.0.1:${state.port}/tool/run_steps`,
       {
@@ -1748,7 +1928,6 @@ describe('observation compaction in HTTP responses', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           steps: [{ tool: 'get_state' }],
-          includeObservations: 'all',
         }),
       },
     );
@@ -1762,7 +1941,7 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations?.a11y.nodes).toHaveLength(3);
   });
 
-  it('batch with includeObservations=none omits observations', async () => {
+  it('batch with observe none omits observations', async () => {
     const res = await httpRequest(
       `http://127.0.0.1:${state.port}/tool/run_steps`,
       {
@@ -1770,7 +1949,7 @@ describe('observation compaction in HTTP responses', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           steps: [{ tool: 'get_state' }],
-          includeObservations: 'none',
+          observe: 'none',
         }),
       },
     );
@@ -1820,14 +1999,8 @@ describe('createServer observation driver freshness after launch', () => {
       getPlatform: vi.fn().mockReturnValue('ios'),
       getAppState: vi.fn().mockResolvedValue({
         isLoaded: true,
-        currentUrl: '',
         extensionId: 'io.metamask',
-        isUnlocked: true,
-        currentScreen: 'unknown',
-        accountAddress: null,
-        networkName: null,
-        chainId: null,
-        balance: null,
+        source: 'stub',
       }),
       getTestIds: vi.fn().mockResolvedValue([]),
       getAccessibilityTree: vi
@@ -1870,18 +2043,19 @@ describe('createServer observation driver freshness after launch', () => {
     });
     const body = (await res.json()) as {
       ok: boolean;
-      observations?: { state: unknown };
+      observations?: Record<string, unknown>;
     };
 
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-    // The mobile driver's getAppState should have been called for
-    // observation collection, NOT the Playwright path (which would
-    // fail since there's no browser page).
-    expect(mobileDriver.getAppState).toHaveBeenCalled();
+    // The mobile driver should have been used for observation collection,
+    // NOT the Playwright path (which would fail since there's no browser
+    // page). Observations no longer read app state.
+    expect(mobileDriver.getAppState).not.toHaveBeenCalled();
     expect(mobileDriver.getTestIds).toHaveBeenCalled();
     expect(mobileDriver.getAccessibilityTree).toHaveBeenCalled();
     expect(body.observations).toBeDefined();
+    expect(body.observations).not.toHaveProperty('state');
   });
 
   it('blocks browser-only tools on a mobile platform', async () => {
