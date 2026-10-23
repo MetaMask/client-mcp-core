@@ -19,7 +19,7 @@ export const ANIMATION_SETTLE_TIMEOUT_MS = 3_000;
 /** Maximum interval between idle-shutdown checks */
 export const MAX_IDLE_CHECK_INTERVAL_MS = 60_000;
 
-/** Hard timeout for post-tool observation collection (getExtensionState, testIds, a11y) */
+/** Hard timeout for post-tool observation collection (testIds, a11y) */
 export const OBSERVATION_TIMEOUT_MS = 8_000;
 
 /** Timeout for graceful HTTP server close during daemon shutdown */

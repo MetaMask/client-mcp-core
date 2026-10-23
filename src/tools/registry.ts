@@ -105,15 +105,15 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
 ]);
 
 /**
- * Tool categories decide whether the daemon collects an observation after the
- * tool runs (see `shouldCollectObservations` in `server/create-server.ts`):
+ * Tool categories set the default `observe` level, which decides whether the
+ * daemon collects an observation after the tool runs (see
+ * `resolveObserveLevel` in `server/create-server.ts`). An explicit `observe`
+ * in the input always wins.
  *
- * - `mutating`: changes the UI; an observation is collected and returned.
- * - `readonly` / `discovery`: reads only; no observation.
- * - `cdp`: raw CDP calls; mostly reads (`Runtime.evaluate`), so no observation
- *   (until a per-call `observe` level lets the caller ask for one).
- * - `batch`: `run_steps`; one observation after the batch unless
- *   `includeObservations` is `'none'`.
+ * - `mutating`: changes the UI; default `'diff'`.
+ * - `readonly` / `discovery`: reads only; default `'none'`.
+ * - `cdp`: raw CDP calls; mostly reads (`Runtime.evaluate`), default `'none'`.
+ * - `batch`: `run_steps`; one observation after the batch, default `'diff'`.
  */
 export type ToolCategory =
   | 'mutating'

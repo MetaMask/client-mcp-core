@@ -857,22 +857,27 @@ describe('MobilePlatformDriver', () => {
   });
 
   describe('getAppState', () => {
-    it('returns ExtensionState with mobile defaults for running app', async () => {
+    it('returns only what it knows for a running app, marked as a stub', async () => {
       const driver = new MobilePlatformDriver(createMockBackend());
 
       const state = await driver.getAppState();
 
       expect(state).toStrictEqual({
         isLoaded: true,
-        currentUrl: '',
         extensionId: 'io.metamask',
-        isUnlocked: true,
-        currentScreen: 'unknown',
-        accountAddress: null,
-        networkName: null,
-        chainId: null,
-        balance: null,
+        source: 'stub',
       });
+      for (const unknownField of [
+        'currentUrl',
+        'isUnlocked',
+        'currentScreen',
+        'accountAddress',
+        'networkName',
+        'chainId',
+        'balance',
+      ]) {
+        expect(state).not.toHaveProperty(unknownField);
+      }
     });
 
     it('returns isLoaded true for Appium foreground state code', async () => {
@@ -887,7 +892,7 @@ describe('MobilePlatformDriver', () => {
       const state = await driver.getAppState();
 
       expect(state.isLoaded).toBe(true);
-      expect(state.isUnlocked).toBe(true);
+      expect(state).not.toHaveProperty('isUnlocked');
     });
 
     it('returns isLoaded false for non-running app', async () => {
@@ -902,7 +907,7 @@ describe('MobilePlatformDriver', () => {
       const state = await driver.getAppState();
 
       expect(state.isLoaded).toBe(false);
-      expect(state.isUnlocked).toBe(false);
+      expect(state).not.toHaveProperty('isUnlocked');
     });
 
     it('uses custom bundleId', async () => {

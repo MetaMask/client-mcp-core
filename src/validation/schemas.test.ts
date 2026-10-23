@@ -28,6 +28,11 @@ import {
   screenRecordingInputSchema,
   deviceLogsInputSchema,
   generateLocatorsInputSchema,
+  observeLevelSchema,
+  omitObserve,
+  runStepsInputSchema,
+  toolSchemas,
+  withObserve,
 } from './schemas.js';
 
 describe('switchToTabInputSchema', () => {
@@ -815,5 +820,113 @@ describe('device tool schemas', () => {
 
       expect(result.success).toBe(true);
     });
+  });
+});
+
+describe('observe field', () => {
+  it('accepts none, diff and full', () => {
+    for (const level of ['none', 'diff', 'full']) {
+      expect(observeLevelSchema.safeParse(level).success).toBe(true);
+    }
+    expect(observeLevelSchema.safeParse('all').success).toBe(false);
+  });
+
+  it('is accepted by every tool schema', () => {
+    const minimalInputs: Record<string, Record<string, unknown>> = {
+      launch: {},
+      navigate: { screen: 'home' },
+      switch_to_tab: { role: 'dapp' },
+      close_tab: { role: 'dapp' },
+      click: { testId: 'btn' },
+      type: { testId: 'input', text: 'hi' },
+      wait_for: { testId: 'btn' },
+      get_text: { testId: 'btn' },
+      seed_contract: { contractName: 'hst' },
+      seed_contracts: { contracts: ['hst'] },
+      get_contract_address: { contractName: 'hst' },
+      run_steps: { steps: [{ tool: 'click' }] },
+      set_context: { context: 'e2e' },
+      clipboard: { action: 'read' },
+      cdp: { method: 'Runtime.evaluate' },
+      mock_network: { action: 'list' },
+      scroll_to_element: { testId: 'row' },
+      device_swipe: { direction: 'up' },
+      long_press: { testId: 'row' },
+      tap_coordinates: { x: 1, y: 1 },
+      dismiss_alert: { accept: true },
+      open_app: { bundleId: 'io.metamask' },
+      close_app: { bundleId: 'io.metamask' },
+      press_button: { button: 'home' },
+      device_context: { action: 'list' },
+      device_clipboard: { action: 'read' },
+      screen_recording: { action: 'stop' },
+    };
+
+    for (const [name, schema] of Object.entries(toolSchemas)) {
+      const input = { ...(minimalInputs[name] ?? {}), observe: 'full' };
+      const parsed = schema.safeParse(input);
+      expect({ name, success: parsed.success }).toStrictEqual({
+        name,
+        success: true,
+      });
+      expect((parsed.data as { observe?: string }).observe).toBe('full');
+
+      const invalid = schema.safeParse({ ...input, observe: 'bogus' });
+      expect({ name, success: invalid.success }).toStrictEqual({
+        name,
+        success: false,
+      });
+    }
+  });
+
+  it('keeps defaults and the inner refine checks', () => {
+    const click = toolSchemas.click.safeParse({
+      testId: 'btn',
+      observe: 'none',
+    });
+    expect(click.data).toStrictEqual({
+      testId: 'btn',
+      timeoutMs: 15000,
+      observe: 'none',
+    });
+
+    expect(
+      toolSchemas.click.safeParse({ testId: 'a', selector: 'b' }).success,
+    ).toBe(false);
+    expect(
+      toolSchemas.device_context.safeParse({
+        action: 'switch',
+        observe: 'none',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('withObserve adds an optional observe field', () => {
+    const schema = withObserve(runStepsInputSchema);
+    expect(schema.safeParse({ steps: [{ tool: 'click' }] }).success).toBe(true);
+  });
+
+  it('omitObserve removes observe and leaves other values alone', () => {
+    expect(omitObserve({ testId: 'btn', observe: 'full' })).toStrictEqual({
+      testId: 'btn',
+    });
+    const withoutObserve = { testId: 'btn' };
+    expect(omitObserve(withoutObserve)).toBe(withoutObserve);
+    expect(omitObserve(null)).toBeNull();
+    expect(omitObserve('text')).toBe('text');
+    const list = [{ observe: 'full' }];
+    expect(omitObserve(list)).toBe(list);
+  });
+});
+
+describe('runStepsInputSchema includeObservations', () => {
+  it('rejects the removed includeObservations field with a hint', () => {
+    const parsed = toolSchemas.run_steps.safeParse({
+      steps: [{ tool: 'get_state' }],
+      includeObservations: 'none',
+    });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toContain('use observe');
   });
 });

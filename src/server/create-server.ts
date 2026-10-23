@@ -24,6 +24,8 @@ import {
 import type { ToolCategory } from '../tools/registry.js';
 import { createDefaultObservation } from '../tools/types/observation.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
+import type { RunStepsInput } from '../tools/types/tool-inputs.js';
+import type { RunStepsResult } from '../tools/types/tool-outputs.js';
 import {
   ANIMATION_SETTLE_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_TIMEOUT_MS,
@@ -43,8 +45,12 @@ import type {
 } from '../types/http.js';
 import { extractErrorMessage } from '../utils/errors.js';
 import { computeTimeoutBudget } from '../utils/timeout-budget.js';
-import type { ToolName } from '../validation/schemas.js';
-import { toolSchemas } from '../validation/schemas.js';
+import type { ObserveLevel, ToolName } from '../validation/schemas.js';
+import {
+  observeLevelSchema,
+  omitObserve,
+  toolSchemas,
+} from '../validation/schemas.js';
 
 export type ServerInstance = {
   start(): Promise<DaemonState>;
@@ -74,78 +80,77 @@ export function buildResponseBody(
 }
 
 /**
- * Whether to collect an observation (state, test IDs, a11y tree) after a tool
- * runs. Only tools that change the UI pay for it:
+ * Reads a valid `observe` level from an input payload.
  *
- * - `mutating`: yes.
- * - `batch` (`run_steps`): yes, unless `includeObservations` is `'none'`.
- * - `readonly`, `discovery`, `cdp`: no.
- *
- * @param category - The tool category to check.
- * @param validatedInput - The validated input payload (checked for batch policy).
- * @returns True if observations should be collected.
+ * @param input - The input payload.
+ * @returns The level, or undefined when absent or invalid.
  */
-export function shouldCollectObservations(
-  category: ToolCategory,
-  validatedInput?: Record<string, unknown>,
-): boolean {
-  if (category === 'mutating') {
-    return true;
+function readObserveLevel(input: unknown): ObserveLevel | undefined {
+  if (typeof input !== 'object' || input === null) {
+    return undefined;
   }
-  if (category === 'batch') {
-    return batchObservationPolicy(validatedInput) !== 'none';
-  }
-  return false;
+  const parsed = observeLevelSchema.safeParse(
+    (input as { observe?: unknown }).observe,
+  );
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**
- * Whether to include the collected observation in the HTTP response. Never
- * true when {@link shouldCollectObservations} is false. For `run_steps` with
- * `includeObservations: 'failures'`, only failed batches include it.
- *
- * @param category - The tool category.
- * @param toolResult - The result returned by the tool.
- * @param validatedInput - The validated input payload (used for batch policy).
- * @returns True if observations should be included in the response.
- */
-export function shouldIncludeObservationsInResponse(
-  category: ToolCategory,
-  toolResult: ToolResponse,
-  validatedInput?: Record<string, unknown>,
-): boolean {
-  if (!shouldCollectObservations(category, validatedInput)) {
-    return false;
-  }
-  if (
-    category === 'batch' &&
-    batchObservationPolicy(validatedInput) === 'failures'
-  ) {
-    if (!toolResult.ok) {
-      return true;
-    }
-    const result = toolResult.result as Record<string, unknown>;
-    const summary = result?.summary as Record<string, unknown> | undefined;
-    return summary !== undefined && !summary.ok;
-  }
-  return true;
-}
-
-/**
- * Reads the `run_steps` observation policy.
+ * Finds the `observe` level of the last step that `run_steps` executed.
+ * Steps skipped by `batchTimeoutMs` do not count.
  *
  * @param validatedInput - The validated `run_steps` input.
- * @returns The policy, `'all'` by default.
+ * @param toolResult - The `run_steps` result.
+ * @returns The last executed step's level, or undefined when it has none.
  */
-function batchObservationPolicy(
+function lastExecutedStepObserveLevel(
   validatedInput: Record<string, unknown> | undefined,
-): 'all' | 'none' | 'failures' {
-  return (
-    (
-      validatedInput as
-        | { includeObservations?: 'all' | 'none' | 'failures' }
-        | undefined
-    )?.includeObservations ?? 'all'
-  );
+  toolResult: ToolResponse | undefined,
+): ObserveLevel | undefined {
+  if (!toolResult?.ok) {
+    return undefined;
+  }
+  const steps = (validatedInput as Partial<RunStepsInput> | undefined)?.steps;
+  const results = (toolResult.result as Partial<RunStepsResult> | undefined)
+    ?.steps;
+  if (!Array.isArray(steps) || !Array.isArray(results)) {
+    return undefined;
+  }
+  const executed = results.filter((step) => step.meta?.skipped !== true);
+  return readObserveLevel(steps[executed.length - 1]?.args);
+}
+
+/**
+ * Resolves the observation level for a tool call. An explicit `observe` in
+ * the input wins. Otherwise:
+ *
+ * - `mutating`: `'diff'`.
+ * - `batch` (`run_steps`): the `observe` of the last executed step, else
+ * `'diff'`. Other per-step `observe` values are ignored.
+ * - `readonly`, `discovery`, `cdp`: `'none'`.
+ *
+ * @param category - The tool category.
+ * @param validatedInput - The validated input payload.
+ * @param toolResult - The tool result (used by `run_steps` to find the last
+ * executed step).
+ * @returns The observation level.
+ */
+export function resolveObserveLevel(
+  category: ToolCategory,
+  validatedInput?: Record<string, unknown>,
+  toolResult?: ToolResponse,
+): ObserveLevel {
+  const explicit = readObserveLevel(validatedInput);
+  if (explicit) {
+    return explicit;
+  }
+  if (category === 'mutating') {
+    return 'diff';
+  }
+  if (category === 'batch') {
+    return lastExecutedStepObserveLevel(validatedInput, toolResult) ?? 'diff';
+  }
+  return 'none';
 }
 
 /**
@@ -341,21 +346,16 @@ export function createServer(config: ServerConfig): ServerInstance {
 
     try {
       timer.markEnqueued();
-      const { toolResult, observations } = await queue.enqueue(
+      const { toolResult, observeLevel, observations } = await queue.enqueue(
         async () => {
           timer.markTaskStart();
           const context = buildToolContext(currentWorkflowContext);
-          const result = await tool(validatedInput, context);
+          const result = await tool(omitObserve(validatedInput), context);
           timer.markToolEnd();
 
+          const level = resolveObserveLevel(category, inputRecord, result);
           let obs: StepRecordObservation | undefined;
-          if (
-            shouldCollectObservations(
-              category,
-              validatedInput as Record<string, unknown>,
-            ) &&
-            config.sessionManager.hasActiveSession()
-          ) {
+          if (level !== 'none' && config.sessionManager.hasActiveSession()) {
             timer.markObservationStart();
             try {
               obs = await Promise.race([
@@ -373,19 +373,21 @@ export function createServer(config: ServerConfig): ServerInstance {
                     currentDriver &&
                     currentDriver.getPlatform() !== 'browser'
                   ) {
-                    const state = await currentDriver.getAppState();
                     const testIds = await currentDriver.getTestIds(
                       OBSERVATION_TESTID_LIMIT,
                     );
                     const { nodes, refMap: newRefMap } =
                       await currentDriver.getAccessibilityTree();
                     config.sessionManager.setRefMap(newRefMap);
-                    return createDefaultObservation(state, testIds, nodes);
+                    return createDefaultObservation(testIds, nodes);
                   }
 
                   const page = config.sessionManager.getPage();
 
-                  if (category === 'mutating') {
+                  // Tools that may change the screen (mutating, batch, and a
+                  // cdp call that asked for an observation) wait for the page
+                  // to settle first.
+                  if (category !== 'readonly' && category !== 'discovery') {
                     await page
                       .waitForLoadState('domcontentloaded')
                       .catch(() => undefined);
@@ -406,28 +408,6 @@ export function createServer(config: ServerConfig): ServerInstance {
                       )
                       .catch(() => undefined);
                   }
-                  let state = await config.sessionManager.getExtensionState();
-
-                  if (
-                    category === 'mutating' &&
-                    state.currentScreen === 'unknown'
-                  ) {
-                    const RECHECK_DEADLINE_MS = 500;
-                    const RECHECK_INTERVAL_MS = 100;
-                    const deadline = Date.now() + RECHECK_DEADLINE_MS;
-
-                    while (Date.now() < deadline) {
-                      await new Promise<void>((resolve) =>
-                        setTimeout(resolve, RECHECK_INTERVAL_MS),
-                      );
-                      const rechecked =
-                        await config.sessionManager.getExtensionState();
-                      if (rechecked.currentScreen !== 'unknown') {
-                        state = rechecked;
-                        break;
-                      }
-                    }
-                  }
                   const testIds = await collectTestIds(
                     page,
                     OBSERVATION_TESTID_LIMIT,
@@ -435,7 +415,7 @@ export function createServer(config: ServerConfig): ServerInstance {
                   const { nodes, refMap: newRefMap } =
                     await collectTrimmedA11ySnapshot(page);
                   config.sessionManager.setRefMap(newRefMap);
-                  return createDefaultObservation(state, testIds, nodes);
+                  return createDefaultObservation(testIds, nodes);
                 })(),
                 new Promise<undefined>((resolve) =>
                   setTimeout(() => resolve(undefined), OBSERVATION_TIMEOUT_MS),
@@ -447,20 +427,23 @@ export function createServer(config: ServerConfig): ServerInstance {
             timer.markObservationEnd();
           }
 
-          return { toolResult: result, observations: obs };
+          return {
+            toolResult: result,
+            observeLevel: level,
+            observations: obs,
+          };
         },
         queueTimeoutMs ? { timeoutMs: queueTimeoutMs } : undefined,
       );
 
-      const includeInResponse = shouldIncludeObservationsInResponse(
-        category,
-        toolResult,
-        validatedInput as Record<string, unknown>,
-      );
-      const responseObservations =
-        includeInResponse && observations
-          ? compactObservation(observations, lastObservation)
-          : undefined;
+      // 'full' skips the diff but is still option-collapsed, like the first
+      // observation of a session.
+      const responseObservations = observations
+        ? compactObservation(
+            observations,
+            observeLevel === 'full' ? null : lastObservation,
+          )
+        : undefined;
       res.json(
         withMeta(
           buildResponseBody(toolResult, responseObservations),
@@ -498,8 +481,10 @@ export function createServer(config: ServerConfig): ServerInstance {
     await executeTool('launch', req.body, res);
   });
 
-  app.post('/cleanup', async (_req, res) => {
-    await executeTool('cleanup', {}, res);
+  app.post('/cleanup', async (req, res) => {
+    // Only `observe` is read from the body; other fields are ignored.
+    const observe = (req.body as { observe?: unknown } | undefined)?.observe;
+    await executeTool('cleanup', observe === undefined ? {} : { observe }, res);
   });
 
   app.post(

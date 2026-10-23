@@ -246,7 +246,6 @@ export function diffObservation(
   }
 
   return {
-    state: current.state,
     testIds: current.testIds,
     a11y: {
       nodes: changedOrNewNodes,
