@@ -1,0 +1,66 @@
+src/tools/types/observation.ts
+  s_52fe78e9c38c4d::t_c5e0dcc8007bd2 4-6
+src/platform/mobile-platform-driver.ts
+  s_52fe78e9c38c4d::t_29b400014f5bc6 242-246,256
+src/tools/registry.ts
+  s_52fe78e9c38c4d::t_53fc267e1d23e0 108-111,113-116
+src/cli/mm.ts
+  s_52fe78e9c38c4d::t_aad79501973bc8 219,222-223
+  s_52fe78e9c38c4d::t_c1d113ff88f1b3 1802,1807-1809
+  s_52fe78e9c38c4d::t_c9d7e1f7fb1a17 86-157
+  s_52fe78e9c38c4d::t_530c332d4d38fb 21
+  s_52fe78e9c38c4d::t_16861e7d506e3e 1148-1154
+src/server/create-server.ts
+  s_52fe78e9c38c4d::t_ad6a284479465d 48-50,53
+  s_52fe78e9c38c4d::t_b30430e58e2035 83,85-86,88-90,92-95,99-100,102-104,106-111,113-117,119-120,124-125,127-136,138-153
+  s_52fe78e9c38c4d::t_173ec45881ecc2 486-487
+  s_52fe78e9c38c4d::t_99a234f9705886 389-390
+  s_52fe78e9c38c4d::t_47dc2222a9df3c 432-434,439-446
+  s_52fe78e9c38c4d::t_3bfa17760c5fc8 27-28
+  s_52fe78e9c38c4d::t_27e55ef2c6e4de 358
+  s_52fe78e9c38c4d::t_c152f23e1c62a2 51-52,349,353,356,382,387-388,418,430-431,484-485
+src/capabilities/types.ts
+  s_52fe78e9c38c4d::t_f8bfd7ded03a92 48-52,55-56,58-68
+src/validation/schemas.ts
+  s_52fe78e9c38c4d::t_624ff453e1a413 5-34
+  s_52fe78e9c38c4d::t_a82596dad82ebf 35-54
+  s_52fe78e9c38c4d::t_329feeeca1656d 906-948
+README.md
+  s_52fe78e9c38c4d::t_f7aeeaa1c28f76 372,398,409,522,528-542,550-553,615-619,643
+SKILL.md
+  s_52fe78e9c38c4d::t_1edee84af9cf6c 7-8,22,28-44,46-50,52,54-56,66,70,93,108,110,118,143,394,461,561
+src/cli/mm.test.ts
+  s_52fe78e9c38c4d::t_814c6869625db9 14-15,17,177-248,863,1213-1240,3061-3094
+src/platform/mobile-platform-driver.test.ts
+  s_52fe78e9c38c4d::t_ee9cbaf27cfbd7 860,868,870-880,895,910
+src/server/create-server.test.ts
+  s_52fe78e9c38c4d::t_610f3cb77982dc 12,156,164-165,167-221,225-230,234-241,244-250,252-253,256-259,261,264-274,815,823,828,919-920,926,929-930,933-935,939-941,944,947-948,980,982-988,990-993,995,999,1002-1003,1005-1106,1167-1169,1206-1208,1764-1923,1944,1952,2003,2046,2051-2054,2058
+src/server/observation-compaction.test.ts
+  s_52fe78e9c38c4d::t_0e5dbdfd15271c 202,465,474
+src/tools/batch.test.ts
+  s_52fe78e9c38c4d::t_80a5149724d226 482,493,500,503-527
+src/tools/batch.ts
+  s_52fe78e9c38c4d::t_a8e40078800116 8,234
+src/tools/types/observation.test.ts
+  s_52fe78e9c38c4d::t_ef06936887ab59 8,14,22-24,28
+src/tools/utils/constants.ts
+  s_52fe78e9c38c4d::t_095850a448e0bd 22
+src/validation/schemas.test.ts
+  s_52fe78e9c38c4d::t_7a1327606ae9b7 31-35,825-928
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca262f05878e19cdbbc93880505adaae59f4a354",
+  "prompts": {},
+  "sessions": {
+    "s_52fe78e9c38c4d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e9603dae8ffe4Gs7ysaId81NOC",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
