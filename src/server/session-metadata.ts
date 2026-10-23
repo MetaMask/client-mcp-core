@@ -16,16 +16,18 @@ export async function writeSessionMetadata(
   artifactsDir: string,
   metadata: SessionMetadata,
 ): Promise<string> {
+  const { sessionId } = metadata;
+  const root = path.resolve(artifactsDir);
+  const sessionDir = path.resolve(root, sessionId);
   if (
-    !metadata.sessionId ||
-    metadata.sessionId.includes('/') ||
-    metadata.sessionId.includes('\\') ||
-    metadata.sessionId === '.' ||
-    metadata.sessionId === '..'
+    !sessionId ||
+    sessionId.includes('/') ||
+    sessionId.includes('\\') ||
+    path.dirname(sessionDir) !== root ||
+    path.basename(sessionDir) !== sessionId
   ) {
-    throw new Error(`Invalid session id: "${metadata.sessionId}"`);
+    throw new Error(`Invalid session id: "${sessionId}"`);
   }
-  const sessionDir = path.resolve(artifactsDir, metadata.sessionId);
   await fs.mkdir(sessionDir, { recursive: true });
   const filePath = path.join(sessionDir, 'session.json');
   await fs.writeFile(filePath, `${JSON.stringify(metadata, null, 2)}\n`);
