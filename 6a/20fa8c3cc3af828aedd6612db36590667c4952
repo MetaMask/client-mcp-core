@@ -1,0 +1,21 @@
+src/knowledge-store/knowledge-store.test.ts
+  s_71bbccb6358d9b::t_fbf0a2e4ce593b 169
+src/tools/discovery-tools.ts
+  s_71bbccb6358d9b::t_2dea04d9b23066 110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a20fa8c3cc3af828aedd6612db36590667c4952",
+  "prompts": {},
+  "sessions": {
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
