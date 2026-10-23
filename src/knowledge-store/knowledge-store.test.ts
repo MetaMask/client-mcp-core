@@ -186,46 +186,6 @@ describe('core', () => {
         testIds: [],
         a11y: { nodes: [] },
       });
-      expect(observation.priorKnowledge).toBeUndefined();
-    });
-
-    it('createDefaultObservation includes provided prior knowledge', () => {
-      const state: ExtensionState = {
-        isLoaded: true,
-        currentUrl: 'chrome-extension://test/home.html',
-        extensionId: 'test-ext',
-        isUnlocked: true,
-        currentScreen: 'home',
-        accountAddress: '0x1234',
-        networkName: 'Localhost 8545',
-        chainId: 1337,
-        balance: '25 ETH',
-      };
-      const priorKnowledge = {
-        schemaVersion: 1 as const,
-        generatedAt: '2024-01-15T10:30:00.000Z',
-        query: {
-          windowHours: 48,
-          usedFlowTags: ['send'],
-          usedFilters: { sinceHours: 48 },
-          candidateSessions: 1,
-          candidateSteps: 2,
-        },
-        relatedSessions: [],
-        similarSteps: [],
-        suggestedNextActions: [],
-      };
-
-      const observation = createDefaultObservation(
-        state,
-        [{ testId: 'send-btn', tag: 'button', visible: true }],
-        [{ ref: 'e1', role: 'button', name: 'Send', path: [] }],
-        priorKnowledge,
-      );
-
-      expect(observation.priorKnowledge).toStrictEqual(priorKnowledge);
-      expect(observation.testIds).toHaveLength(1);
-      expect(observation.a11y.nodes).toHaveLength(1);
     });
 
     it('createKnowledgeStore returns a KnowledgeStore instance', () => {

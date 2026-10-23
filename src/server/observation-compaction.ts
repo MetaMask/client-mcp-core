@@ -256,6 +256,5 @@ export function diffObservation(
         unchanged: unchangedCount,
       },
     },
-    priorKnowledge: current.priorKnowledge,
   };
 }

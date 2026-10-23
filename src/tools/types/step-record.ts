@@ -1,5 +1,4 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
-import type { PriorKnowledgeV1 } from './knowledge.js';
 import type { ExtensionState } from '../../capabilities/types.js';
 
 export const FLOW_TAGS = [
@@ -72,7 +71,6 @@ export type StepRecordObservation = {
       unchanged: number;
     };
   };
-  priorKnowledge?: PriorKnowledgeV1;
 };
 
 export type StepRecordArtifacts = {

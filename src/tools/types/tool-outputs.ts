@@ -1,5 +1,4 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
-import type { PriorKnowledgeV1 } from './knowledge.js';
 import type {
   NetworkMockRequestRecord,
   NetworkMockRouteRule,
@@ -72,7 +71,6 @@ export type DescribeScreenResult = {
     nodes: A11yNodeTrimmed[];
   };
   screenshot: ScreenshotInfo;
-  priorKnowledge?: PriorKnowledgeV1;
 };
 
 export type ScreenshotToolResult = {

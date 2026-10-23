@@ -1765,26 +1765,18 @@ export class KnowledgeStore {
  * @param state - Extension state snapshot
  * @param testIds - Array of visible test IDs
  * @param a11yNodes - Array of accessibility nodes
- * @param priorKnowledge - Optional prior knowledge from history
  * @returns Observation object for step recording
  */
 export function createDefaultObservation(
   state: ExtensionState,
   testIds: TestIdItem[] = [],
   a11yNodes: A11yNodeTrimmed[] = [],
-  priorKnowledge?: PriorKnowledgeV1,
 ): StepRecordObservation {
-  const observation: StepRecordObservation = {
+  return {
     state,
     testIds,
     a11y: { nodes: a11yNodes },
   };
-
-  if (priorKnowledge) {
-    observation.priorKnowledge = priorKnowledge;
-  }
-
-  return observation;
 }
 
 /**
