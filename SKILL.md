@@ -25,12 +25,13 @@ mm cleanup --shutdown      # 5. Clean up when done
 
 Tool responses include different data based on the tool's category:
 
-| Category      | Examples                                                                                                                                                                                                                                        | Observations in response?                      |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                                 | No — faster response                           |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                               | Data is already in `result`                    |
-| **Batch**     | run_steps                                                                                                                                                                                                                                       | Controlled by `includeObservations` param      |
+| Category      | Examples                                                                                                                                                                                                                                   | Observations in response?                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
+| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                            | No — faster response                           |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                          | Data is already in `result`                    |
+| **CDP**       | cdp                                                                                                                                                                                                                                        | No — raw result only                           |
+| **Batch**     | run_steps                                                                                                                                                                                                                                  | Controlled by `includeObservations` param      |
 
 **Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
 
@@ -44,7 +45,7 @@ Tool responses include different data based on the tool's category:
 }
 ```
 
-The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `launch`, or `cleanup` — the next mutation returns a full compact observation (no `diff` field). When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
+The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next mutation returns a full compact observation (no `diff` field). When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
 
 ### Using inline observations (mutating tools)
 
