@@ -22,6 +22,7 @@ import type {
   GetTextActionResult,
   PlatformScreenshotOptions,
   PlatformType,
+  ScreenCapture,
   WithinScope,
 } from './types.js';
 import type {
@@ -208,6 +209,33 @@ export class MobilePlatformDriver implements IPlatformDriver {
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
     const snapshot = await this.#backend.snapshot();
+    return this.#testIdsOf(snapshot.hierarchy, limit);
+  }
+
+  /**
+   * Takes one device snapshot and returns its accessibility tree and test
+   * IDs, so both describe the same screen.
+   *
+   * @returns The nodes, refMap and a test ID reader for the same snapshot.
+   */
+  async captureScreen(): Promise<ScreenCapture> {
+    const snapshot = await this.#backend.snapshot();
+    return {
+      ...normalizeSnapshot(snapshot.hierarchy),
+      getTestIds: async (limit?: number) =>
+        this.#testIdsOf(snapshot.hierarchy, limit),
+    };
+  }
+
+  /**
+   * @param hierarchy - The UIElement tree of a snapshot.
+   * @param limit - Maximum number of test IDs to return.
+   * @returns The test IDs, with visibility against the device viewport.
+   */
+  async #testIdsOf(
+    hierarchy: UIElement[],
+    limit?: number,
+  ): Promise<TestIdItem[]> {
     const items: TestIdItem[] = [];
     const max = limit ?? OBSERVATION_TESTID_LIMIT;
     let viewport: { width: number; height: number } | undefined;
@@ -217,7 +245,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
       // Without a viewport we cannot judge visibility; report everything.
       viewport = undefined;
     }
-    collectTestIds(snapshot.hierarchy, items, max, viewport);
+    collectTestIds(hierarchy, items, max, viewport);
     return items;
   }
 

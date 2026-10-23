@@ -49,6 +49,8 @@ export const ErrorCodes = {
 
   MM_TOOL_NOT_SUPPORTED_ON_PLATFORM: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM', // tool gated off the active platform (browser-only / mobile-only)
 
+  MM_REQUEST_ABORTED: 'MM_REQUEST_ABORTED', // the request timed out; the tool stopped at its next checkpoint
+
   MM_UNKNOWN_TOOL: 'MM_UNKNOWN_TOOL',
   MM_INTERNAL_ERROR: 'MM_INTERNAL_ERROR',
 } as const;

@@ -7,6 +7,7 @@ export type {
   PlatformScreenshotOptions,
   WithinScope,
   IPlatformDriver,
+  ScreenCapture,
 } from './types.js';
 
 export { PlaywrightPlatformDriver } from './playwright-driver.js';

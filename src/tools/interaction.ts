@@ -24,6 +24,7 @@ import {
   isValidTargetSelection,
 } from './utils/type-guards.js';
 import {
+  abortedResponse,
   createToolError,
   createToolSuccess,
   requireActiveSession,
@@ -56,6 +57,11 @@ function validateInteraction<TResult>(
   const missingSession = requireActiveSession<TResult>(context);
   if (missingSession) {
     return { error: missingSession };
+  }
+
+  const aborted = abortedResponse<TResult>(context);
+  if (aborted) {
+    return { error: aborted };
   }
 
   if (!context.driver) {
