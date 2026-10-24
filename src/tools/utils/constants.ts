@@ -13,6 +13,9 @@ export const DEFAULT_INTERACTION_TIMEOUT_MS = 15000;
 /** Maximum time the RequestQueue finally block waits for a hung task to settle */
 export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
 
+/** Upper bound for any queued task timeout (largest schema timeout + budget). */
+export const MAX_QUEUE_TIMEOUT_MS = 600_000;
+
 /** Timeout for waiting for CSS/Web animations to settle after a mutation */
 export const ANIMATION_SETTLE_TIMEOUT_MS = 3_000;
 

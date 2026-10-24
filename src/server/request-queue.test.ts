@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import { RequestQueue } from './request-queue.js';
+import {
+  MAX_QUEUE_TIMEOUT_MS,
+  QUEUE_SETTLE_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -231,5 +235,25 @@ describe('RequestQueue', () => {
         order.indexOf('second started'),
       );
     });
+  });
+
+  it('clamps an oversized timeout to MAX_QUEUE_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    try {
+      const queue = new RequestQueue();
+      const pending = queue
+        .enqueue(async () => new Promise<never>(() => undefined), {
+          timeoutMs: Number.MAX_SAFE_INTEGER,
+        })
+        .catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(
+        MAX_QUEUE_TIMEOUT_MS + QUEUE_SETTLE_TIMEOUT_MS,
+      );
+      expect(String(await pending)).toContain(
+        `timed out after ${MAX_QUEUE_TIMEOUT_MS}ms`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
