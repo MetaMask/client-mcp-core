@@ -34,6 +34,7 @@ import type { StepRecordObservation } from '../tools/types/observation.js';
 import type { RunStepsInput } from '../tools/types/tool-inputs.js';
 import type { RunStepsResult } from '../tools/types/tool-outputs.js';
 import {
+  ANIMATION_SETTLE_GRACE_MS,
   ANIMATION_SETTLE_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_TIMEOUT_MS,
   MAX_IDLE_CHECK_INTERVAL_MS,
@@ -47,6 +48,7 @@ import {
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
+  waitForAnimationsToSettle,
 } from '../tools/utils/discovery.js';
 import type {
   DaemonState,
@@ -415,20 +417,13 @@ export function createServer(config: ServerConfig): ServerInstance {
     if (category !== 'readonly' && category !== 'discovery') {
       await page.waitForLoadState('domcontentloaded').catch(() => undefined);
       signal.throwIfAborted();
-      await page
-        .waitForFunction(
-          async () =>
-            new Promise<boolean>((resolve) => {
-              requestAnimationFrame(() => {
-                const allSettled = document
-                  .getAnimations()
-                  .every((a: Animation) => a.playState !== 'running');
-                resolve(allSettled);
-              });
-            }),
-          { timeout: ANIMATION_SETTLE_TIMEOUT_MS },
-        )
-        .catch(() => undefined);
+      // Waits only for running, finite, in-viewport animations (infinite
+      // spinners are ignored), checked once per frame, capped at 1 s.
+      await waitForAnimationsToSettle(
+        page,
+        ANIMATION_SETTLE_TIMEOUT_MS,
+        ANIMATION_SETTLE_GRACE_MS,
+      );
       signal.throwIfAborted();
     }
     const testIds = await collectTestIds(page, OBSERVATION_TESTID_LIMIT);
