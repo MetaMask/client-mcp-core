@@ -1509,6 +1509,19 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 });
 
+/**
+ * `waitForTarget` passes the time left until its deadline, which can be a
+ * few ms below the budget on a slow runner.
+ *
+ * @param budgetMs - The timeout given to `waitForTarget`.
+ * @returns An asymmetric matcher for a timeout in (budget - 100, budget].
+ */
+function expectRemaining(budgetMs: number): number {
+  return expect.toSatisfy(
+    (value: number) => value <= budgetMs && value > budgetMs - 100,
+  ) as unknown as number;
+}
+
 describe('exact ref selectors', () => {
   /**
    * Builds a flat CDP AX node list: one `main` root with the given children.
@@ -1590,7 +1603,7 @@ describe('exact ref selectors', () => {
     expect(waitPage.locator).toHaveBeenCalledWith('button:nth-of-type(2)');
     expect(locator.waitFor).toHaveBeenCalledWith({
       state: 'visible',
-      timeout: 5000,
+      timeout: expectRemaining(5000),
     });
   });
 
@@ -2146,7 +2159,7 @@ describe('waitForTarget', () => {
 
     expect(mockLocator.waitFor).toHaveBeenCalledWith({
       state: 'visible',
-      timeout: 5000,
+      timeout: expectRemaining(5000),
     });
   });
 
@@ -2214,7 +2227,7 @@ describe('waitForTarget', () => {
     expect(parentLocator.first).toHaveBeenCalled();
     expect(firstParentLocator.waitFor).toHaveBeenCalledWith({
       state: 'visible',
-      timeout: 5000,
+      timeout: expectRemaining(5000),
     });
     expect(firstParentLocator.locator).toHaveBeenCalledWith(
       '[data-testid="end-accessory"]',
@@ -2295,7 +2308,7 @@ describe('waitForTarget', () => {
     expect(refLocator.and).toHaveBeenCalledWith(descendants);
     expect(contained.waitFor).toHaveBeenCalledWith({
       state: 'visible',
-      timeout: expect.any(Number),
+      timeout: expectRemaining(5000),
     });
     expect(result).toBe(contained);
   });
@@ -2349,7 +2362,7 @@ describe('waitForTarget', () => {
     expect(contained.count).not.toHaveBeenCalled();
     expect(firstRef.waitFor).toHaveBeenCalledWith({
       state: 'attached',
-      timeout: expect.any(Number),
+      timeout: expectRemaining(5000),
     });
     expect(contained.waitFor).toHaveBeenCalled();
     expect(result).toBe(contained);
