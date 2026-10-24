@@ -16,8 +16,24 @@ export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
 /** Upper bound for any queued task timeout (largest schema timeout + budget). */
 export const MAX_QUEUE_TIMEOUT_MS = 600_000;
 
-/** Timeout for waiting for CSS/Web animations to settle after a mutation */
-export const ANIMATION_SETTLE_TIMEOUT_MS = 3_000;
+/**
+ * Cap on the wait for animations to settle after a mutating browser call.
+ * Only running, finite animations of elements in the viewport are waited
+ * for; infinite ones (spinners, the fox, skeleton shimmer) are ignored.
+ */
+export const ANIMATION_SETTLE_TIMEOUT_MS = 1_000;
+
+/**
+ * Extra time the daemon gives the in-page animation wait before it stops
+ * waiting itself (covers a page whose timers are throttled or frozen).
+ */
+export const ANIMATION_SETTLE_GRACE_MS = 250;
+
+/**
+ * Cap on the in-page testId collection call. After it, collection falls
+ * back to per-element locator calls.
+ */
+export const TESTID_COLLECT_TIMEOUT_MS = 5_000;
 
 /** Maximum interval between idle-shutdown checks */
 export const MAX_IDLE_CHECK_INTERVAL_MS = 60_000;
