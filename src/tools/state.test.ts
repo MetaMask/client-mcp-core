@@ -45,7 +45,6 @@ function createMockContext(
     page: activePage,
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
     driver: hasSession
       ? new PlaywrightPlatformDriver(
           () => activePage as any,

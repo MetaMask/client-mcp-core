@@ -55,7 +55,6 @@ function createMockContext(
       },
       contractSeeding: workflowCapability,
     },
-    knowledgeStore: {} as ToolContext['knowledgeStore'],
     toolRegistry: new Map(),
   } as unknown as ToolContext;
 }

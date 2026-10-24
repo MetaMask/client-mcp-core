@@ -1,8 +1,6 @@
 export {
   createMockSessionManager,
-  createMockKnowledgeStore,
   type MockSessionManagerOptions,
-  type MockKnowledgeStoreOptions,
 } from './mock-factories.js';
 
 export {

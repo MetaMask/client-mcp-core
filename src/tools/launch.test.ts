@@ -26,9 +26,6 @@ function createMockContext(
     page: {} as ToolContext['page'],
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {
-      writeSessionMetadata: vi.fn().mockResolvedValue('test-session-123'),
-    },
   } as unknown as ToolContext;
 }
 
@@ -151,8 +148,6 @@ describe('launchTool', () => {
         fixturePreset: 'test-preset',
         autoBuild: false,
         slowMo: 100,
-        goal: 'Test send flow',
-        flowTags: ['send', 'transaction'],
         tags: ['smoke-test'],
         seedContracts: ['hst', 'nfts'],
         ports: {

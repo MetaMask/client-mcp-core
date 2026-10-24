@@ -73,7 +73,6 @@ function createMockContext(
         extensionName: 'MetaMask',
       },
     },
-    knowledgeStore: {},
     toolRegistry: new Map(),
   } as unknown as ToolContext;
 }

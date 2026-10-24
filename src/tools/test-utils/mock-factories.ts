@@ -11,13 +11,11 @@
 import { vi } from 'vitest';
 
 import type { ExtensionState } from '../../capabilities/types.js';
-import type { KnowledgeStore } from '../../knowledge-store/knowledge-store.js';
 import type {
   TrackedPage,
   SessionLaunchResult,
 } from '../../server/session-manager.js';
-import type { SessionState } from '../types/session.js';
-import type { SessionMetadata } from '../types/step-record.js';
+import type { SessionMetadata, SessionState } from '../types/session.js';
 
 /**
  * Options for customizing mock session manager behavior
@@ -32,16 +30,6 @@ export type MockSessionManagerOptions = {
   extensionState?: ExtensionState;
   refMap?: Map<string, string>;
   environmentMode?: 'e2e' | 'prod';
-};
-
-/**
- * Options for customizing mock knowledge store behavior
- */
-export type MockKnowledgeStoreOptions = {
-  lastSteps?: Record<string, unknown>[];
-  searchResults?: Record<string, unknown>[];
-  sessionSummary?: Record<string, unknown>;
-  sessions?: Record<string, unknown>[];
 };
 
 /**
@@ -147,33 +135,5 @@ export function createMockSessionManager(
       capabilities: { available: [] },
       canSwitchContext: !(options.hasActive ?? false),
     }),
-  };
-}
-
-/**
- * Create a fresh mock KnowledgeStore instance.
- *
- * Returns an in-memory mock with sensible defaults.
- * Each call creates fresh vi.fn() mocks.
- *
- * @param options - Customize mock behavior
- * @returns Fresh KnowledgeStore mock
- */
-export function createMockKnowledgeStore(
-  options: MockKnowledgeStoreOptions = {},
-): Partial<KnowledgeStore> {
-  return {
-    recordStep: vi.fn().mockResolvedValue(undefined),
-    getLastSteps: vi.fn().mockResolvedValue(options.lastSteps ?? []),
-    searchSteps: vi.fn().mockResolvedValue(options.searchResults ?? []),
-    summarizeSession: vi.fn().mockResolvedValue(
-      options.sessionSummary ?? {
-        sessionId: 'test-session-123',
-        stepCount: 0,
-        recipe: [],
-      },
-    ),
-    listSessions: vi.fn().mockResolvedValue(options.sessions ?? []),
-    writeSessionMetadata: vi.fn().mockResolvedValue('test-session-123'),
   };
 }

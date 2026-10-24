@@ -15,11 +15,6 @@ import {
 } from './response-timing.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
-import type { ExtensionState } from '../capabilities/types.js';
-import {
-  KnowledgeStore,
-  createDefaultObservation,
-} from '../knowledge-store/knowledge-store.js';
 import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import {
   toolRegistry,
@@ -27,11 +22,8 @@ import {
   checkPlatformGate,
 } from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
-import type {
-  StepRecordObservation,
-  StepRecordOutcome,
-  StepRecordTool,
-} from '../tools/types/step-record.js';
+import { createDefaultObservation } from '../tools/types/observation.js';
+import type { StepRecordObservation } from '../tools/types/observation.js';
 import {
   ANIMATION_SETTLE_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_TIMEOUT_MS,
@@ -54,116 +46,10 @@ import { computeTimeoutBudget } from '../utils/timeout-budget.js';
 import type { ToolName } from '../validation/schemas.js';
 import { toolSchemas } from '../validation/schemas.js';
 
-/**
- * Extracts target selection fields from a tool's validated input.
- * Interaction tools (click, type, wait_for) include a11yRef, testId, or selector.
- *
- * @param input - The validated tool input.
- * @returns The target info for knowledge recording, or undefined if not applicable.
- */
-export function extractTargetFromInput(
-  input: unknown,
-): StepRecordTool['target'] | undefined {
-  if (typeof input !== 'object' || input === null) {
-    return undefined;
-  }
-  const obj = input as Record<string, unknown>;
-  const a11yRef = typeof obj.a11yRef === 'string' ? obj.a11yRef : undefined;
-  const testId = typeof obj.testId === 'string' ? obj.testId : undefined;
-  const selector = typeof obj.selector === 'string' ? obj.selector : undefined;
-  if (!a11yRef && !testId && !selector) {
-    return undefined;
-  }
-  return { a11yRef, testId, selector };
-}
-
-/**
- * Extracts screenshot artifact metadata from a successful tool result.
- * Applies to `screenshot` and `describe_screen` tools.
- *
- * @param toolName - The name of the tool that produced the result.
- * @param toolResult - The raw result from the tool execution.
- * @returns Screenshot path and dimensions, or undefined if not applicable.
- */
-export function extractScreenshotInfo(
-  toolName: string,
-  toolResult: unknown,
-):
-  | { path: string; dimensions?: { width: number; height: number } }
-  | undefined {
-  if (toolName !== 'screenshot' && toolName !== 'describe_screen') {
-    return undefined;
-  }
-  if (typeof toolResult !== 'object' || toolResult === null) {
-    return undefined;
-  }
-  const result = toolResult as Record<string, unknown>;
-  if (
-    !result.ok ||
-    typeof result.result !== 'object' ||
-    result.result === null
-  ) {
-    return undefined;
-  }
-  const data = result.result as Record<string, unknown>;
-
-  if (typeof data.path === 'string') {
-    return {
-      path: data.path,
-      ...(typeof data.width === 'number' && typeof data.height === 'number'
-        ? { dimensions: { width: data.width, height: data.height } }
-        : {}),
-    };
-  }
-
-  if (typeof data.screenshot === 'object' && data.screenshot !== null) {
-    const ss = data.screenshot as Record<string, unknown>;
-    if (typeof ss.path === 'string') {
-      return {
-        path: ss.path,
-        ...(typeof ss.width === 'number' && typeof ss.height === 'number'
-          ? { dimensions: { width: ss.width, height: ss.height } }
-          : {}),
-      };
-    }
-  }
-
-  return undefined;
-}
-
 export type ServerInstance = {
   start(): Promise<DaemonState>;
   stop(): Promise<void>;
 };
-
-/**
- * Extracts a structured outcome from a raw tool result for knowledge recording.
- *
- * @param toolResult - The raw result returned by a tool function.
- * @returns A normalized outcome with ok status and optional error details.
- */
-export function extractToolOutcome(toolResult: unknown): {
-  ok: boolean;
-  error?: { code: string; message: string };
-} {
-  if (
-    typeof toolResult !== 'object' ||
-    toolResult === null ||
-    !('ok' in toolResult)
-  ) {
-    return { ok: true };
-  }
-
-  const typed = toolResult as {
-    ok: boolean;
-    error?: { code: string; message: string };
-  };
-  if (typed.ok) {
-    return { ok: true };
-  }
-
-  return typed.error ? { ok: false, error: typed.error } : { ok: false };
-}
 
 /**
  * Merges a tool result with observation data into the HTTP response body.
@@ -190,9 +76,9 @@ export function buildResponseBody(
 /**
  * Whether to run Playwright observation collection for this tool invocation.
  *
- * Observations are always collected for the knowledge store, regardless of
- * whether they appear in the HTTP response. The only exception is batch
- * with `'none'` policy, which skips collection entirely for best performance.
+ * Observations are collected for every tool, whether or not they appear in
+ * the HTTP response (they also feed the next response's diff). The only
+ * exception is batch with `'none'` policy, which skips collection entirely.
  *
  * @param category - The tool category to check.
  * @param validatedInput - The validated input payload (checked for batch policy).
@@ -257,7 +143,6 @@ export function createServer(config: ServerConfig): ServerInstance {
   const app = express();
   const queue = new RequestQueue(config.requestTimeoutMs);
   const nonce = randomUUID();
-  const knowledgeStore = config.knowledgeStore ?? new KnowledgeStore();
 
   let httpServer: http.Server | null = null;
   let worktreeRoot = '';
@@ -337,71 +222,14 @@ export function createServer(config: ServerConfig): ServerInstance {
           : new Map<string, string>();
       },
       workflowContext: wfCtx,
-      knowledgeStore,
       toolRegistry,
       driver,
     };
   }
 
   /**
-   * Records a tool execution step to the knowledge store.
-   * Failures are silently caught — recording must never block tool responses.
-   *
-   * @param toolName - The registered tool name.
-   * @param validatedInput - The validated input payload.
-   * @param outcome - The tool execution outcome.
-   * @param observation - The post-execution observation snapshot.
-   * @param toolResult - The raw tool result (for screenshot extraction).
-   * @param startTime - The epoch timestamp when execution started.
-   */
-  async function recordToolStep(
-    toolName: string,
-    validatedInput: unknown,
-    outcome: StepRecordOutcome,
-    observation: StepRecordObservation | undefined,
-    toolResult: unknown,
-    startTime: number,
-  ): Promise<void> {
-    try {
-      const sessionId = config.sessionManager.getSessionId();
-      if (!sessionId) {
-        return;
-      }
-
-      const recordedInput = omitLaunchSecret(validatedInput);
-      const target = extractTargetFromInput(recordedInput);
-      const screenshotInfo = extractScreenshotInfo(toolName, toolResult);
-
-      let executionContext: 'e2e' | 'prod' | undefined;
-      try {
-        executionContext = config.sessionManager.getEnvironmentMode();
-      } catch {
-        // session manager may not support environment mode
-      }
-
-      await knowledgeStore.recordStep({
-        sessionId,
-        toolName,
-        input: recordedInput as Record<string, unknown>,
-        target,
-        outcome,
-        observation:
-          observation ?? createDefaultObservation({} as ExtensionState),
-        durationMs: Date.now() - startTime,
-        ...(screenshotInfo ? { screenshotPath: screenshotInfo.path } : {}),
-        ...(screenshotInfo?.dimensions
-          ? { screenshotDimensions: screenshotInfo.dimensions }
-          : {}),
-        context: executionContext,
-      });
-    } catch {
-      // non-fatal: recording failure must not block tool responses
-    }
-  }
-
-  /**
    * Shared tool executor — validates input, runs through the queue,
-   * records knowledge steps, and collects observations.
+   * and collects observations.
    *
    * @param toolName - The registered tool name to execute.
    * @param rawInput - The unvalidated input payload from the request body.
@@ -476,7 +304,6 @@ export function createServer(config: ServerConfig): ServerInstance {
       validatedInput = parsed.data;
     }
 
-    const startTime = Date.now();
     const currentWorkflowContext = workflowContext;
 
     const category = getToolCategory(toolName);
@@ -610,15 +437,6 @@ export function createServer(config: ServerConfig): ServerInstance {
         queueTimeoutMs ? { timeoutMs: queueTimeoutMs } : undefined,
       );
 
-      await recordToolStep(
-        toolName,
-        validatedInput,
-        extractToolOutcome(toolResult),
-        observations,
-        toolResult,
-        startTime,
-      );
-
       const includeInResponse = shouldIncludeObservationsInResponse(
         category,
         toolResult,
@@ -645,21 +463,6 @@ export function createServer(config: ServerConfig): ServerInstance {
         lastObservation = observations;
       }
     } catch (error) {
-      await recordToolStep(
-        toolName,
-        validatedInput,
-        {
-          ok: false,
-          error: {
-            code: 'TOOL_EXECUTION_FAILED',
-            message: extractErrorMessage(error),
-          },
-        },
-        undefined,
-        undefined,
-        startTime,
-      );
-
       res.status(500).json(
         withMeta(
           {
@@ -916,27 +719,6 @@ export function createServer(config: ServerConfig): ServerInstance {
   };
 
   return instance;
-}
-
-/**
- * Removes the secret recovery phrase and vault password from a launch payload
- * before it is written to the knowledge store.
- *
- * @param input - The tool input about to be recorded.
- * @returns A shallow copy without `srp` or `password`, or the original value when it carries neither.
- */
-function omitLaunchSecret(input: unknown): unknown {
-  if (
-    typeof input !== 'object' ||
-    input === null ||
-    !('srp' in input || 'password' in input)
-  ) {
-    return input;
-  }
-  const copy = { ...(input as Record<string, unknown>) };
-  delete copy.srp;
-  delete copy.password;
-  return copy;
 }
 
 /**

@@ -23,7 +23,6 @@ function createMockContext(
       schemaVersion: 1,
       sessionId: 'test-session-123',
       createdAt: new Date().toISOString(),
-      flowTags: [],
       tags: [],
       launch: { stateMode: 'default' },
     },
@@ -36,7 +35,6 @@ function createMockContext(
     page: {},
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
   } as unknown as ToolContext;
 }
 
