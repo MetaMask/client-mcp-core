@@ -104,10 +104,26 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['generate_locators', generateLocatorsTool],
 ]);
 
-export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
+/**
+ * Tool categories decide whether the daemon collects an observation after the
+ * tool runs (see `shouldCollectObservations` in `server/create-server.ts`):
+ *
+ * - `mutating`: changes the UI; an observation is collected and returned.
+ * - `readonly` / `discovery`: reads only; no observation.
+ * - `cdp`: raw CDP calls; mostly reads (`Runtime.evaluate`), so no observation
+ *   (until a per-call `observe` level lets the caller ask for one).
+ * - `batch`: `run_steps`; one observation after the batch unless
+ *   `includeObservations` is `'none'`.
+ */
+export type ToolCategory =
+  | 'mutating'
+  | 'readonly'
+  | 'discovery'
+  | 'cdp'
+  | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (26)
+  // MUTATING (25)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
@@ -121,7 +137,6 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   wait_for_notification: 'mutating',
   seed_contract: 'mutating',
   seed_contracts: 'mutating',
-  cdp: 'mutating',
   mock_network: 'mutating',
   scroll_to_element: 'mutating',
   device_swipe: 'mutating',
@@ -155,6 +170,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   list_testids: 'discovery',
   accessibility_snapshot: 'discovery',
   screenshot: 'discovery',
+  // CDP (1)
+  cdp: 'cdp',
   // BATCH (1)
   run_steps: 'batch',
 };
