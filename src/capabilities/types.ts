@@ -45,16 +45,29 @@ export type ScreenshotResult = {
 
 export type ScreenName = string;
 
+/**
+ * App state returned by `get_state` and `launch`. Fields the platform cannot
+ * read are omitted rather than guessed (for example, the mobile driver only
+ * knows whether the app is running).
+ */
 export type ExtensionState = {
   isLoaded: boolean;
-  currentUrl: string;
+  /** Omitted on platforms with no URL concept (mobile). */
+  currentUrl?: string;
   extensionId: string;
-  isUnlocked: boolean;
-  currentScreen: ScreenName;
-  accountAddress: string | null;
-  networkName: string | null;
-  chainId: number | null;
-  balance: string | null;
+  isUnlocked?: boolean;
+  currentScreen?: ScreenName;
+  accountAddress?: string | null;
+  networkName?: string | null;
+  chainId?: number | null;
+  balance?: string | null;
+  /**
+   * `'stub'` when the state is partial: fields that were not read from the
+   * app are omitted (for example, the mobile driver only knows `isLoaded`
+   * and `extensionId`; a consumer may add fields it did read). Absent when
+   * the state was fully read.
+   */
+  source?: 'stub';
   activeTab?: {
     role: string;
     url: string;

@@ -7,6 +7,7 @@ import {
   isBrowserOnlyTool,
   isMobileOnlyTool,
 } from './registry.js';
+import { toolSchemas } from '../validation/schemas.js';
 
 describe('toolRegistry', () => {
   it('has expected tool entries', () => {
@@ -57,6 +58,12 @@ describe('toolRegistry', () => {
 });
 
 describe('TOOL_CATEGORIES and getToolCategory', () => {
+  it('every key in toolRegistry has an input schema', () => {
+    for (const key of toolRegistry.keys()) {
+      expect(Object.hasOwn(toolSchemas, key)).toBe(true);
+    }
+  });
+
   it('every key in toolRegistry exists in TOOL_CATEGORIES', () => {
     for (const key of toolRegistry.keys()) {
       expect(TOOL_CATEGORIES).toHaveProperty(key);

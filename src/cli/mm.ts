@@ -18,6 +18,8 @@ import {
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
 import { computeTimeoutBudget } from '../utils/timeout-budget.js';
+import { observeLevelSchema } from '../validation/schemas.js';
+import type { ObserveLevel } from '../validation/schemas.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
@@ -82,6 +84,78 @@ export function extractProjectFlag(argv: string[]): {
   return { args: remaining, projectPath: value };
 }
 
+const OBSERVE_LEVELS: readonly ObserveLevel[] = observeLevelSchema.options;
+
+/**
+ * Extracts and consumes the global `--observe <none|diff|full>` flag from
+ * argv, returning the remaining args and the level (if any).
+ *
+ * @param argv - Raw CLI arguments (after the node/script entries).
+ * @returns The remaining arguments and the optional observe level.
+ */
+export function extractObserveFlag(argv: string[]): {
+  args: string[];
+  observe: ObserveLevel | undefined;
+} {
+  const idx = argv.indexOf('--observe');
+  if (idx < 0) {
+    return { args: argv, observe: undefined };
+  }
+  const value = argv[idx + 1];
+  if (!OBSERVE_LEVELS.includes(value as ObserveLevel)) {
+    process.stderr.write(
+      `Error: --observe requires one of: ${OBSERVE_LEVELS.join(', ')}\n`,
+    );
+    process.exit(1);
+  }
+  const remaining = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
+  return { args: remaining, observe: value as ObserveLevel };
+}
+
+let globalObserveLevel: ObserveLevel | undefined;
+
+/**
+ * Sets the `--observe` level that {@link sendRequest} adds to every tool,
+ * `/launch` and `/cleanup` request body.
+ *
+ * @param level - The level, or undefined to send none (daemon default).
+ */
+export function setObserveLevel(level: ObserveLevel | undefined): void {
+  globalObserveLevel = level;
+}
+
+/**
+ * Adds the global `--observe` level to a request body. Only POST requests to
+ * `/tool/*`, `/launch` and `/cleanup` with a plain-object body get it, and an
+ * `observe` already in the body (e.g. in `run-steps` JSON) is kept.
+ *
+ * @param method - The HTTP method.
+ * @param requestPath - The URL path.
+ * @param body - The request body.
+ * @returns The body, with `observe` added when it applies.
+ */
+export function applyObserveLevel(
+  method: string,
+  requestPath: string,
+  body: unknown,
+): unknown {
+  if (
+    globalObserveLevel === undefined ||
+    method !== 'POST' ||
+    !(
+      requestPath.startsWith('/tool/') ||
+      requestPath === '/launch' ||
+      requestPath === '/cleanup'
+    ) ||
+    typeof body !== 'object' ||
+    body === null ||
+    Array.isArray(body)
+  ) {
+    return body;
+  }
+  return { observe: globalObserveLevel, ...(body as Record<string, unknown>) };
+}
+
 /**
  * Resolves the target project root directory using the following precedence:
  *   1. `--project <path>` CLI flag
@@ -143,9 +217,11 @@ export async function resolveWorktreeRoot(
  * CLI entry point that parses arguments and routes to the appropriate handler.
  */
 export async function main(): Promise<void> {
-  const { args: remainingArgs, projectPath } = extractProjectFlag(
+  const { args: projectlessArgs, projectPath } = extractProjectFlag(
     process.argv.slice(2),
   );
+  const { args: remainingArgs, observe } = extractObserveFlag(projectlessArgs);
+  setObserveLevel(observe);
 
   if (
     remainingArgs.length === 0 ||
@@ -1070,7 +1146,13 @@ export async function sendRequest(
     }
 
     try {
-      const data = await daemonFetch(port, method, requestPath, body, timeout);
+      const data = await daemonFetch(
+        port,
+        method,
+        requestPath,
+        applyObserveLevel(method, requestPath, body),
+        timeout,
+      );
 
       const { meta, ...rest } = data;
       const result = rest.result ?? rest;
@@ -1718,11 +1800,14 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
 export function printHelp(): void {
   process.stdout.write(`mm — MetaMask CLI
 
-Usage: mm [--project <path>] <command> [options]
+Usage: mm [--project <path>] [--observe <level>] <command> [options]
 
 Global Options:
   --project <path>    Target a specific project directory (absolute or relative).
                       Overrides MM_PROJECT and git-based discovery.
+  --observe <level>   Observation returned after the call: none | diff | full.
+                      Default: diff for mutating commands and run-steps,
+                      none for reads, discovery and cdp.
 
 Environment Variables:
   MM_PROJECT          Default project directory when --project is not provided.
