@@ -1,0 +1,44 @@
+src/tools/utils/in-page.test.ts
+  s_7cb64f2602b56c::t_528fc778918817 1-681
+  s_7cb64f2602b56c::t_b69693616ea984 682-690
+src/tools/utils/in-page.ts
+  s_7cb64f2602b56c::t_e127d9c3800b80 1,9-12
+  s_7cb64f2602b56c::t_59317a8a9e5a0e 175-188
+  s_7cb64f2602b56c::t_fbe75649c2a3f1 2-8,13-174,189-232
+src/server/create-server.ts
+  s_7cb64f2602b56c::t_d19af179d0d7e7 420-426
+  s_7cb64f2602b56c::t_5d8b00f2f52f71 37
+  s_7cb64f2602b56c::t_1313bd010861f4 51
+src/tools/utils/constants.ts
+  s_7cb64f2602b56c::t_962636cf4510b3 19-30
+src/tools/utils/discovery.ts
+  s_7cb64f2602b56c::t_a9bdc5198f27ca 170-172,176-177,185-195,197-203,205-232
+  s_7cb64f2602b56c::t_481d106303736d 3,5-10
+src/tools/utils/cdp.test.ts
+  s_7cb64f2602b56c::t_0b03e6ff5d161a 1-182,185-186,188-192,194,199,203-230
+  s_7cb64f2602b56c::t_33e508ce555614 183-184,187,193,195-198,200-202
+src/tools/utils/cdp.ts
+  s_7cb64f2602b56c::t_e8c94034636ebc 3-5,25,114,119-121,123-139,154,167
+  s_7cb64f2602b56c::t_24aa365e2748a5 152
+  s_7cb64f2602b56c::t_c4b80295989023 26-113,115-118,122,140-151,153,155-166,168-173
+src/server/create-server.test.ts
+  s_7cb64f2602b56c::t_03ef8ac60e17f0 18,38,1055,1072,1076,1086
+src/tools/utils/discovery.test.ts
+  s_7cb64f2602b56c::t_915233e7c2b56d 20,23-24,149-151,175-176,274-277,279-293,382,386,388,392-404,406-412,415-416,418,420-423,426,428,433-435,438-441,443,446-449,451,454,456-465,468,471-477,483,485-496,498,500-509,512,514,517-518,520-545
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10cf9b6dd7b2e63202937b67c8b9202ab31ccc46",
+  "prompts": {},
+  "sessions": {
+    "s_7cb64f2602b56c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e92dd436effe4t98SFZyf14V28",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
