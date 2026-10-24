@@ -12,13 +12,17 @@ import type { Page, Locator } from '@playwright/test';
 import { describe, it, expect, vi } from 'vitest';
 
 import type { RawA11yNode } from '../types';
+import { TESTID_COLLECT_TIMEOUT_MS } from './constants.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
   parseAriaSnapshotYaml,
   resolveTarget,
+  waitForAnimationsToSettle,
   waitForTarget,
 } from './discovery.js';
+import { collectTestIdsInPage } from './in-page.js';
+import type { InPageTestIdItem } from './in-page.js';
 
 type MockAXProperty = {
   name: string;
@@ -143,7 +147,9 @@ function createDomNode(
 
 function createMockPage(
   options: {
-    testIds?: { testId: string; visible: boolean; text?: string }[];
+    testIds?: InPageTestIdItem[];
+    isolatedWorldError?: Error;
+    isolatedWorldException?: string;
     a11ySnapshot?: string | null;
     axNodes?: MockAXNode[];
     partialAxNodes?: MockAXNode[];
@@ -163,10 +169,17 @@ function createMockPage(
     resolveNodeErrorIds?: Set<number>;
     testIdBySelector?: Record<string, string | null>;
     textBySelector?: Record<string, string | null>;
+    locatorTestIds?: {
+      testId: string | null;
+      visible: boolean;
+      text?: string;
+    }[];
   } = {},
 ): Page {
   const {
     testIds = [],
+    isolatedWorldError,
+    isolatedWorldException,
     a11ySnapshot = null,
     axNodes,
     partialAxNodes,
@@ -179,6 +192,7 @@ function createMockPage(
     resolveNodeErrorIds = new Set<number>(),
     testIdBySelector = {},
     textBySelector = {},
+    locatorTestIds = [],
   } = options;
 
   const resolvedAxNodes =
@@ -264,7 +278,26 @@ function createMockPage(
               }
               return { object: { objectId: `obj-${backendNodeId}` } };
             }
+            case 'Page.getFrameTree':
+              return { frameTree: { frame: { id: 'main-frame' } } };
+            case 'Page.createIsolatedWorld':
+              return { executionContextId: 7 };
             case 'Runtime.callFunctionOn': {
+              if (params?.executionContextId !== undefined) {
+                if (isolatedWorldError) {
+                  throw isolatedWorldError;
+                }
+                if (isolatedWorldException) {
+                  return {
+                    result: { type: 'undefined' },
+                    exceptionDetails: {
+                      text: 'Uncaught',
+                      exception: { description: isolatedWorldException },
+                    },
+                  };
+                }
+                return { result: { value: testIds } };
+              }
               const objectId = params?.objectId;
               const backendNodeId = Number(
                 String(objectId).replace('obj-', ''),
@@ -283,12 +316,6 @@ function createMockPage(
     detach: vi.fn().mockResolvedValue(undefined),
   };
 
-  const mockLocators = testIds.map((item) => ({
-    getAttribute: vi.fn().mockResolvedValue(item.testId),
-    isVisible: vi.fn().mockResolvedValue(item.visible),
-    textContent: vi.fn().mockResolvedValue(item.text ?? ''),
-  }));
-
   return {
     mockCdpSession,
     waitForLoadState: vi.fn().mockResolvedValue(undefined),
@@ -298,7 +325,13 @@ function createMockPage(
     locator: vi.fn((selector: string) => {
       if (selector === '[data-testid]') {
         return {
-          all: vi.fn().mockResolvedValue(mockLocators),
+          all: vi.fn().mockResolvedValue(
+            locatorTestIds.map((item) => ({
+              getAttribute: vi.fn().mockResolvedValue(item.testId),
+              isVisible: vi.fn().mockResolvedValue(item.visible),
+              textContent: vi.fn().mockResolvedValue(item.text ?? null),
+            })),
+          ),
         };
       }
       if (selector.startsWith('[data-testid="')) {
@@ -364,166 +397,190 @@ function createMockLocator(
 }
 
 describe('collectTestIds', () => {
-  it('collects visible test IDs from page', async () => {
+  it('collects test IDs with one isolated-world call', async () => {
     const page = createMockPage({
       testIds: [
         { testId: 'button-1', visible: true, text: 'Click me' },
-        { testId: 'input-1', visible: true, text: '' },
+        { testId: 'input-1', visible: false, text: '' },
+      ],
+    }) as MockPageWithCdpSession;
+
+    const result = await collectTestIds(page);
+
+    expect(result).toStrictEqual([
+      { testId: 'button-1', tag: 'element', text: 'Click me', visible: true },
+      { testId: 'input-1', tag: 'element', text: '', visible: false },
+    ]);
+    const calls = page.mockCdpSession.send.mock.calls.filter(
+      ([method]) => method === 'Runtime.callFunctionOn',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toMatchObject({
+      executionContextId: 7,
+      arguments: [{ value: 150 }, { value: 100 }],
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    expect(calls[0][1].functionDeclaration).toContain(
+      collectTestIdsInPage.toString(),
+    );
+    expect(page.mockCdpSession.send).toHaveBeenCalledWith(
+      'Page.createIsolatedWorld',
+      { frameId: 'main-frame', worldName: '__mm_client_mcp_core__' },
+    );
+  });
+
+  it('passes the limit to the page', async () => {
+    const page = createMockPage() as MockPageWithCdpSession;
+
+    await collectTestIds(page, 2);
+
+    expect(page.mockCdpSession.send).toHaveBeenCalledWith(
+      'Runtime.callFunctionOn',
+      expect.objectContaining({ arguments: [{ value: 2 }, { value: 100 }] }),
+    );
+  });
+
+  it('maps a null text to undefined', async () => {
+    const page = createMockPage({
+      testIds: [{ testId: 'no-text', visible: true, text: null }],
+    });
+
+    const result = await collectTestIds(page);
+
+    expect(result).toStrictEqual([
+      { testId: 'no-text', tag: 'element', text: undefined, visible: true },
+    ]);
+  });
+
+  it('falls back to locators when the CDP call fails', async () => {
+    const page = createMockPage({
+      isolatedWorldError: new Error('Target closed'),
+      locatorTestIds: [
+        { testId: 'a', visible: true, text: '  Hello  ' },
+        { testId: null, visible: true },
+        { testId: 'b', visible: false },
       ],
     });
 
-    const result = await collectTestIds(page);
-
-    expect(result).toHaveLength(2);
-    expect(result[0]).toStrictEqual({
-      testId: 'button-1',
-      tag: 'element',
-      text: 'Click me',
-      visible: true,
-    });
-    expect(result[1]).toStrictEqual({
-      testId: 'input-1',
-      tag: 'element',
-      text: '',
-      visible: true,
-    });
+    expect(await collectTestIds(page)).toStrictEqual([
+      { testId: 'a', tag: 'element', text: 'Hello', visible: true },
+      { testId: 'b', tag: 'element', text: undefined, visible: false },
+    ]);
+    expect(page.locator).toHaveBeenCalledWith('[data-testid]');
   });
 
-  it('respects limit parameter', async () => {
+  it('falls back to locators when the page function throws', async () => {
     const page = createMockPage({
-      testIds: [
-        { testId: 'item-1', visible: true },
-        { testId: 'item-2', visible: true },
-        { testId: 'item-3', visible: true },
-      ],
+      isolatedWorldException: 'TypeError: boom',
+      locatorTestIds: [{ testId: 'a', visible: true, text: 'A' }],
     });
 
-    const result = await collectTestIds(page, 2);
-
-    expect(result).toHaveLength(2);
+    expect(await collectTestIds(page)).toStrictEqual([
+      { testId: 'a', tag: 'element', text: 'A', visible: true },
+    ]);
   });
 
-  it('handles invisible elements', async () => {
+  it('falls back to locators when the in-page call times out', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = createMockPage({
+        locatorTestIds: [{ testId: 'slow', visible: true, text: 'S' }],
+      }) as MockPageWithCdpSession;
+      page.mockCdpSession.send.mockImplementation(async (method: string) => {
+        if (method === 'Page.getFrameTree') {
+          return { frameTree: { frame: { id: 'f' } } };
+        }
+        if (method === 'Page.createIsolatedWorld') {
+          return { executionContextId: 3 };
+        }
+        return new Promise(() => undefined);
+      });
+
+      const pending = collectTestIds(page);
+      let result: unknown;
+      pending.then((value) => (result = value)).catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(TESTID_COLLECT_TIMEOUT_MS - 1);
+      expect(result).toBeUndefined();
+      expect(page.locator).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await pending).toStrictEqual([
+        { testId: 'slow', tag: 'element', text: 'S', visible: true },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('respects the limit and per-element errors in the locator fallback', async () => {
     const page = createMockPage({
-      testIds: [
-        { testId: 'visible', visible: true },
-        { testId: 'hidden', visible: false },
-      ],
+      isolatedWorldError: new Error('Target closed'),
     });
-
-    const result = await collectTestIds(page);
-
-    expect(result).toHaveLength(2);
-    expect(result[0].visible).toBe(true);
-    expect(result[1].visible).toBe(false);
-  });
-
-  it('handles elements without test IDs', async () => {
-    const mockLocators = [
+    const locators = [
       {
-        getAttribute: vi.fn().mockResolvedValue(null),
-        isVisible: vi.fn().mockResolvedValue(true),
-        textContent: vi.fn().mockResolvedValue(''),
-      },
-    ];
-
-    const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      locator: vi.fn().mockReturnValue({
-        all: vi.fn().mockResolvedValue(mockLocators),
-      }),
-    } as unknown as Page;
-
-    const result = await collectTestIds(page);
-
-    expect(result).toHaveLength(0);
-  });
-
-  it('handles errors during collection', async () => {
-    const mockLocators = [
-      {
-        getAttribute: vi.fn().mockRejectedValue(new Error('Element detached')),
-        isVisible: vi.fn().mockResolvedValue(true),
-        textContent: vi.fn().mockResolvedValue(''),
+        getAttribute: vi.fn().mockRejectedValue(new Error('detached')),
+        isVisible: vi.fn(),
+        textContent: vi.fn(),
       },
       {
-        getAttribute: vi.fn().mockResolvedValue('valid-id'),
-        isVisible: vi.fn().mockResolvedValue(true),
-        textContent: vi.fn().mockResolvedValue('Valid'),
-      },
-    ];
-
-    const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      locator: vi.fn().mockReturnValue({
-        all: vi.fn().mockResolvedValue(mockLocators),
-      }),
-    } as unknown as Page;
-
-    const result = await collectTestIds(page);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].testId).toBe('valid-id');
-  });
-
-  it('truncates long text content', async () => {
-    const longText = 'a'.repeat(300);
-    const page = createMockPage({
-      testIds: [{ testId: 'long-text', visible: true, text: longText }],
-    });
-
-    const result = await collectTestIds(page);
-
-    expect(result[0].text?.length).toBeLessThanOrEqual(200);
-  });
-
-  it('handles isVisible rejection gracefully', async () => {
-    const mockLocators = [
-      {
-        getAttribute: vi.fn().mockResolvedValue('btn-1'),
+        getAttribute: vi.fn().mockResolvedValue('a'),
         isVisible: vi.fn().mockRejectedValue(new Error('detached')),
-        textContent: vi.fn().mockResolvedValue('OK'),
-      },
-    ];
-
-    const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      locator: vi.fn().mockReturnValue({
-        all: vi.fn().mockResolvedValue(mockLocators),
-      }),
-    } as unknown as Page;
-
-    const result = await collectTestIds(page);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].visible).toBe(false);
-  });
-
-  it('handles textContent rejection gracefully', async () => {
-    const mockLocators = [
-      {
-        getAttribute: vi.fn().mockResolvedValue('btn-1'),
-        isVisible: vi.fn().mockResolvedValue(true),
         textContent: vi.fn().mockRejectedValue(new Error('detached')),
       },
+      {
+        getAttribute: vi.fn().mockResolvedValue('b'),
+        isVisible: vi.fn().mockResolvedValue(true),
+        textContent: vi.fn().mockResolvedValue('x'.repeat(300)),
+      },
+      {
+        getAttribute: vi.fn().mockResolvedValue('c'),
+        isVisible: vi.fn(),
+        textContent: vi.fn(),
+      },
     ];
+    vi.mocked(page.locator).mockReturnValue({
+      all: vi.fn().mockResolvedValue(locators),
+    } as unknown as Locator);
 
-    const page = {
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      locator: vi.fn().mockReturnValue({
-        all: vi.fn().mockResolvedValue(mockLocators),
-      }),
-    } as unknown as Page;
+    expect(await collectTestIds(page, 2)).toStrictEqual([
+      { testId: 'a', tag: 'element', text: undefined, visible: false },
+      { testId: 'b', tag: 'element', text: 'x'.repeat(100), visible: true },
+    ]);
+    expect(locators[3].getAttribute).not.toHaveBeenCalled();
+  });
 
-    const result = await collectTestIds(page);
+  it('returns an empty array when the locator fallback fails too', async () => {
+    const page = createMockPage({
+      isolatedWorldError: new Error('Target closed'),
+    });
+    vi.mocked(page.locator).mockReturnValue({
+      all: vi.fn().mockRejectedValue(new Error('Target closed')),
+    } as unknown as Locator);
 
-    expect(result).toHaveLength(1);
-    expect(result[0].text).toBeUndefined();
+    expect(await collectTestIds(page)).toStrictEqual([]);
+  });
+
+  it('returns an empty array when the page returns nothing', async () => {
+    const page = createMockPage({
+      testIds: undefined as unknown as InPageTestIdItem[],
+    }) as MockPageWithCdpSession;
+    page.mockCdpSession.send.mockImplementation(async (method: string) => {
+      if (method === 'Page.getFrameTree') {
+        return { frameTree: { frame: { id: 'f' } } };
+      }
+      if (method === 'Page.createIsolatedWorld') {
+        return { executionContextId: 1 };
+      }
+      return { result: {} };
+    });
+
+    expect(await collectTestIds(page)).toStrictEqual([]);
   });
 
   it('handles page load state failure', async () => {
     const page = createMockPage({
-      testIds: [{ testId: 'test-1', visible: true }],
+      testIds: [{ testId: 'test-1', visible: true, text: '' }],
     });
     vi.spyOn(page, 'waitForLoadState').mockRejectedValue(
       new Error('Load failed'),
@@ -532,6 +589,70 @@ describe('collectTestIds', () => {
     const result = await collectTestIds(page);
 
     expect(result).toHaveLength(1);
+  });
+});
+
+describe('waitForAnimationsToSettle', () => {
+  it('runs the settle loop in the isolated world with the timeout', async () => {
+    const page = createMockPage() as MockPageWithCdpSession;
+    page.mockCdpSession.send.mockImplementation(async (method: string) => {
+      if (method === 'Page.getFrameTree') {
+        return { frameTree: { frame: { id: 'f' } } };
+      }
+      if (method === 'Page.createIsolatedWorld') {
+        return { executionContextId: 3 };
+      }
+      return { result: { value: true } };
+    });
+
+    expect(await waitForAnimationsToSettle(page, 1_000, 250)).toBe(true);
+
+    const call = page.mockCdpSession.send.mock.calls.find(
+      ([method]) => method === 'Runtime.callFunctionOn',
+    );
+    expect(call?.[1]).toMatchObject({
+      executionContextId: 3,
+      arguments: [{ value: 1_000 }],
+      awaitPromise: true,
+    });
+    expect(call?.[1].functionDeclaration).toContain('getAnimations');
+    expect(call?.[1].functionDeclaration).toContain('requestAnimationFrame');
+  });
+
+  it('returns false when the CDP call fails', async () => {
+    const page = createMockPage({
+      isolatedWorldError: new Error('Target closed'),
+    });
+
+    expect(await waitForAnimationsToSettle(page, 1_000, 250)).toBe(false);
+  });
+
+  it('stops waiting after the timeout plus grace', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = createMockPage() as MockPageWithCdpSession;
+      page.mockCdpSession.send.mockImplementation(async (method: string) => {
+        if (method === 'Page.getFrameTree') {
+          return { frameTree: { frame: { id: 'f' } } };
+        }
+        if (method === 'Page.createIsolatedWorld') {
+          return { executionContextId: 3 };
+        }
+        return new Promise(() => undefined);
+      });
+
+      const pending = waitForAnimationsToSettle(page, 1_000, 250);
+      await vi.advanceTimersByTimeAsync(1_249);
+      let settled: boolean | undefined;
+      pending.then((value) => (settled = value)).catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await pending).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
