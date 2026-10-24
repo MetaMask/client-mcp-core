@@ -261,8 +261,11 @@ export function createServer(config: ServerConfig): ServerInstance {
     res: express.Response,
   ): Promise<void> {
     const timer = new RequestTimer(requestStartOf(res));
-    const tool = toolRegistry.get(toolName);
-    if (!tool) {
+    // Only names registered in the tool registry may be dispatched.
+    const tool = toolRegistry.has(toolName)
+      ? toolRegistry.get(toolName)
+      : undefined;
+    if (typeof tool !== 'function') {
       res.status(404).json(
         withMeta(
           {
