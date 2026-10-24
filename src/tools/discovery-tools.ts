@@ -10,9 +10,11 @@ import type {
 import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
 import {
+  abortedResponse,
   createToolError,
   createToolSuccess,
   requireActiveSession,
+  setToolRefMap,
 } from './utils.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
@@ -61,10 +63,9 @@ export async function listTestIdsTool(
 
   const limit = input.limit ?? DEFAULT_TESTID_LIMIT;
 
+  // The result has no refs, so the refMap is left as it is.
   try {
     const items = await driver.getTestIds(limit);
-    const { refMap } = await driver.getAccessibilityTree();
-    context.sessionManager.setRefMap(refMap);
     return createToolSuccess({ items });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);
@@ -95,10 +96,8 @@ export async function accessibilitySnapshotTool(
   const { driver } = driverResult;
 
   try {
-    const { nodes, refMap } = await driver.getAccessibilityTree(
-      input.rootSelector,
-    );
-    context.sessionManager.setRefMap(refMap);
+    const tree = await driver.getAccessibilityTree(input.rootSelector);
+    const { nodes } = setToolRefMap(context, tree.refMap, tree.nodes);
     return createToolSuccess({ nodes });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);
@@ -129,10 +128,20 @@ export async function describeScreenTool(
 
   try {
     const state = await driver.getAppState();
-    const testIds = await driver.getTestIds(DEFAULT_TESTID_LIMIT);
-    const { nodes, refMap } = await driver.getAccessibilityTree();
-
-    context.sessionManager.setRefMap(refMap);
+    // Mobile: one device snapshot for both the test IDs and the tree, when
+    // the driver supports it.
+    const screen = driver.captureScreen
+      ? await driver.captureScreen()
+      : undefined;
+    const testIds = screen
+      ? await screen.getTestIds(DEFAULT_TESTID_LIMIT)
+      : await driver.getTestIds(DEFAULT_TESTID_LIMIT);
+    const aborted = abortedResponse<DescribeScreenResult>(context);
+    if (aborted) {
+      return aborted;
+    }
+    const tree = screen ?? (await driver.getAccessibilityTree());
+    const { nodes } = setToolRefMap(context, tree.refMap, tree.nodes);
 
     const trackedPages = context.sessionManager.getTrackedPages();
     let activeTab: DescribeScreenResult['activeTab'];

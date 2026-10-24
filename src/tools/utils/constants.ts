@@ -13,6 +13,9 @@ export const DEFAULT_INTERACTION_TIMEOUT_MS = 15000;
 /** Maximum time the RequestQueue finally block waits for a hung task to settle */
 export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
 
+/** Upper bound for any queued task timeout (largest schema timeout + budget). */
+export const MAX_QUEUE_TIMEOUT_MS = 600_000;
+
 /** Timeout for waiting for CSS/Web animations to settle after a mutation */
 export const ANIMATION_SETTLE_TIMEOUT_MS = 3_000;
 
@@ -21,6 +24,29 @@ export const MAX_IDLE_CHECK_INTERVAL_MS = 60_000;
 
 /** Hard timeout for post-tool observation collection (testIds, a11y) */
 export const OBSERVATION_TIMEOUT_MS = 8_000;
+
+/**
+ * Mobile observation settle: after a mutating or batch tool, when a snapshot
+ * still shows the last screen the agent received or a busy element, wait
+ * this long and take the snapshot again.
+ */
+export const MOBILE_SETTLE_MS = 300;
+
+/**
+ * Mobile observation settle: no wait starts that would end later than this
+ * after the first snapshot (waits and snapshots both count).
+ */
+export const MOBILE_SETTLE_MAX_MS = 2_000;
+
+/** Mobile observation settle: maximum number of extra snapshots. */
+export const MOBILE_SETTLE_MAX_SNAPSHOTS = 3;
+
+/**
+ * Mobile observation settle: extra snapshots allowed because the screen
+ * still equals the last screen the agent received (no busy element). Busy
+ * screens are retried up to `MOBILE_SETTLE_MAX_SNAPSHOTS`.
+ */
+export const MOBILE_SETTLE_UNCHANGED_RETRIES = 1;
 
 /** Timeout for graceful HTTP server close during daemon shutdown */
 export const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;

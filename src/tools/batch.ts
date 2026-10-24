@@ -1,7 +1,11 @@
 import { checkPlatformGate } from './registry.js';
 import type { RunStepsInput, RunStepsResult, StepResult } from './types';
 import { ErrorCodes } from './types';
-import { createToolError, createToolSuccess } from './utils.js';
+import {
+  abortedResponse,
+  createToolError,
+  createToolSuccess,
+} from './utils.js';
 import type { ToolContext, ToolFunction, ToolResponse } from '../types/http.js';
 import { extractErrorMessage } from '../utils';
 import type { ToolName } from '../validation/schemas.js';
@@ -125,6 +129,10 @@ export async function runStepsTool(
     : undefined;
 
   for (const stepInput of stepInputs) {
+    const aborted = abortedResponse<RunStepsResult>(context);
+    if (aborted) {
+      return aborted;
+    }
     if (batchDeadline && Date.now() > batchDeadline) {
       const remainingIndex = stepInputs.indexOf(stepInput);
       for (const remaining of stepInputs.slice(remainingIndex)) {

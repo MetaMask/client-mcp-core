@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { IPlatformDriver } from '../platform/types.js';
 import type { ISessionManager } from '../server/session-manager.js';
+import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
 
 /**
  * Context passed to standalone tool functions.
@@ -29,6 +30,25 @@ export type ToolContext = {
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
   /** Platform driver for cross-platform element interaction (browser, iOS, Android) */
   driver?: IPlatformDriver;
+  /**
+   * Aborted when the request times out. Tools check it between steps and
+   * stop. Absent when the context was not built by the daemon.
+   */
+  signal?: AbortSignal;
+  /**
+   * Sets the refMap for this request. A write from a request that timed out
+   * or was replaced by a newer request is dropped. Pass the nodes the map
+   * was built from: refs are then renumbered so elements the agent already
+   * holds keep their refs, and the returned `refMap` and `nodes` carry the
+   * refs that were written. Return those to the agent, not the input.
+   * Absent when the context was not built by the daemon; fall back to
+   * `sessionManager.setRefMap`. (In the daemon, `sessionManager.setRefMap`
+   * is routed here too, without nodes.)
+   */
+  setRefMap?: (
+    map: Map<string, string>,
+    nodes?: A11yNodeTrimmed[],
+  ) => { refMap: Map<string, string>; nodes?: A11yNodeTrimmed[] };
 };
 
 /**

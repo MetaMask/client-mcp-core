@@ -854,4 +854,34 @@ describe('runStepsTool', () => {
       expect(hermesTargetsHandler).toHaveBeenCalled();
     }
   });
+
+  it('stops before the next step when the request is aborted', async () => {
+    const controller = new AbortController();
+    const clickHandler = vi.fn().mockImplementation(async () => {
+      controller.abort();
+      return { ok: true, result: 'clicked' };
+    });
+    const context = {
+      ...createMockContext({
+        toolRegistry: new Map([['click', clickHandler]]),
+      }),
+      signal: controller.signal,
+    } as ToolContext;
+
+    const result = await runStepsTool(
+      {
+        steps: [
+          { tool: 'click', args: { testId: 'a' } },
+          { tool: 'click', args: { testId: 'b' } },
+        ],
+      },
+      context,
+    );
+
+    expect(clickHandler).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_REQUEST_ABORTED);
+    }
+  });
 });

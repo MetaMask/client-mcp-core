@@ -392,7 +392,8 @@ describe('tool delegation to context.driver', () => {
 
       expect(result.ok).toBe(true);
       expect(driver.getTestIds).toHaveBeenCalledOnce();
-      expect(driver.getAccessibilityTree).toHaveBeenCalledOnce();
+      // Its result has no refs, so it does not read the a11y tree.
+      expect(driver.getAccessibilityTree).not.toHaveBeenCalled();
     });
 
     it('accessibilitySnapshotTool delegates to driver.getAccessibilityTree', async () => {
