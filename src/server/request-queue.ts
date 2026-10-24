@@ -1,4 +1,7 @@
-import { QUEUE_SETTLE_TIMEOUT_MS } from '../tools/utils/constants.js';
+import {
+  MAX_QUEUE_TIMEOUT_MS,
+  QUEUE_SETTLE_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 import { debugWarn } from '../utils';
 
 /**
@@ -42,7 +45,14 @@ export class RequestQueue {
     const prev = this.#queue;
     this.#queue = next;
     await prev;
-    const effectiveTimeout = options?.timeoutMs ?? this.#timeoutMs;
+    // Clamp caller-supplied timeouts (they come from request bodies).
+    let effectiveTimeout = options?.timeoutMs ?? this.#timeoutMs;
+    if (!(effectiveTimeout > 0)) {
+      effectiveTimeout = this.#timeoutMs;
+    }
+    if (effectiveTimeout > MAX_QUEUE_TIMEOUT_MS) {
+      effectiveTimeout = MAX_QUEUE_TIMEOUT_MS;
+    }
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fnPromise = fn(controller.signal);
