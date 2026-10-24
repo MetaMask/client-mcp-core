@@ -9,6 +9,8 @@
  */
 
 import type { Page, Locator } from '@playwright/test';
+import { createRequire } from 'node:module';
+import * as path from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 
 import type { RawA11yNode } from '../types';
@@ -18,6 +20,7 @@ import {
   collectTrimmedA11ySnapshot,
   parseAriaSnapshotYaml,
   resolveTarget,
+  UNREACHABLE_REF_SELECTOR,
   waitForAnimationsToSettle,
   waitForTarget,
 } from './discovery.js';
@@ -681,8 +684,8 @@ describe('collectTrimmedA11ySnapshot', () => {
       name: 'Cancel',
       path: [],
     });
-    expect(result.refMap.get('e1')).toBe('role=button[name="Submit"]');
-    expect(result.refMap.get('e2')).toBe('role=button[name="Cancel"]');
+    expect(result.refMap.get('e1')).toBe('role=button[name="Submit" s]');
+    expect(result.refMap.get('e2')).toBe('role=button[name="Cancel" s]');
   });
 
   it('detaches CDP session on success', async () => {
@@ -764,7 +767,9 @@ describe('collectTrimmedA11ySnapshot', () => {
 
     const result = await collectTrimmedA11ySnapshot(page);
 
-    expect(result.refMap.get('e1')).toBe('role=button[name="Say \\"Hello\\""]');
+    expect(result.refMap.get('e1')).toBe(
+      'role=button[name="Say \\"Hello\\"" s]',
+    );
   });
 
   it('handles empty accessibility tree', async () => {
@@ -938,10 +943,12 @@ describe('collectTrimmedA11ySnapshot', () => {
       role: 'button',
       name: 'Submit',
     });
-    expect(result.refMap.has('e1')).toBe(true);
-    expect(result.refMap.has('e2')).toBe(true);
-    expect(result.refMap.has('e3')).toBe(true);
-    expect(result.refMap.has('e4')).toBe(true);
+    // Each collapsed member keeps its own ref. Without DOM selectors they
+    // share the role selector, so an action on one fails in strict mode.
+    expect([1, 2, 3, 4].map((i) => result.refMap.get(`e${i}`))).toStrictEqual(
+      [0, 1, 2, 3].map(() => 'role=button[name="maskicon" s]'),
+    );
+    expect(result.refMap.get('e5')).toBe('role=button[name="Submit" s]');
   });
 
   it('does not collapse nodes with same role and name but different paths', async () => {
@@ -992,10 +999,10 @@ describe('collectTrimmedA11ySnapshot', () => {
     const page = createMockPage({
       a11ySnapshot: a11yTree,
       testIdBySelector: {
-        'role=button[name="x"]': 'action-button',
+        'role=button[name="x" s]': 'action-button',
       },
       textBySelector: {
-        'role=button[name="x"]': 'Click me',
+        'role=button[name="x" s]': 'Click me',
       },
     });
 
@@ -1011,7 +1018,7 @@ describe('collectTrimmedA11ySnapshot', () => {
     const page = createMockPage({
       a11ySnapshot: a11yTree,
       textBySelector: {
-        'role=button[name="maskicon"]': 'maskicon',
+        'role=button[name="maskicon" s]': 'maskicon',
       },
     });
 
@@ -1409,9 +1416,9 @@ describe('collectTrimmedA11ySnapshot', () => {
     const result = await collectTrimmedA11ySnapshot(page);
 
     expect(result.nodes).toHaveLength(3);
-    expect(result.refMap.get('e1')).toBe('role=button[name="Submit"]');
-    expect(result.refMap.get('e2')).toBe('role=link[name="Home"]');
-    expect(result.refMap.get('e3')).toBe('role=heading[name="Title"]');
+    expect(result.refMap.get('e1')).toBe('role=button[name="Submit" s]');
+    expect(result.refMap.get('e2')).toBe('role=link[name="Home" s]');
+    expect(result.refMap.get('e3')).toBe('role=heading[name="Title" s]');
 
     const resolveNodeCalls = mockCdpSession.send.mock.calls.filter(
       (call) => call[0] === 'DOM.resolveNode',
@@ -1454,7 +1461,7 @@ describe('collectTrimmedA11ySnapshot', () => {
     const result = await collectTrimmedA11ySnapshot(page);
 
     expect(result.nodes).toHaveLength(2);
-    expect(result.refMap.get('e1')).toBe('role=button[name="OK"]');
+    expect(result.refMap.get('e1')).toBe('role=button[name="OK" s]');
     expect(result.refMap.get('e2')).toBe('[data-testid="menu-action"]');
 
     const resolveNodeCalls = mockCdpSession.send.mock.calls.filter(
@@ -1502,6 +1509,570 @@ describe('collectTrimmedA11ySnapshot', () => {
   });
 });
 
+describe('exact ref selectors', () => {
+  /**
+   * Builds a flat CDP AX node list: one `main` root with the given children.
+   *
+   * @param children - The child nodes (role, name, optional backend id).
+   * @returns The AX nodes.
+   */
+  function flatTree(
+    children: { role: string; name?: string; backendDOMNodeId?: number }[],
+  ): MockAXNode[] {
+    return [
+      {
+        nodeId: 'root',
+        ignored: false,
+        role: { type: 'role', value: 'main' },
+        childIds: children.map((_, index) => `c${index}`),
+      },
+      ...children.map(
+        (child, index): MockAXNode => ({
+          nodeId: `c${index}`,
+          ignored: false,
+          role: { type: 'role', value: child.role },
+          ...(child.name === undefined
+            ? {}
+            : { name: { type: 'string', value: child.name } }),
+          parentId: 'root',
+          backendDOMNodeId: child.backendDOMNodeId ?? 1000 + index,
+        }),
+      ),
+    ];
+  }
+
+  it('keeps the plain role selector for duplicates without a DOM selector, so strict mode fails (AC1)', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Send' },
+        { role: 'button', name: 'Send' },
+      ]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes.map((node) => node.ref)).toStrictEqual(['e1', 'e2']);
+    // No nth index: AX order and Playwright order can differ.
+    expect(result.refMap.get('e1')).toBe('role=button[name="Send" s]');
+    expect(result.refMap.get('e2')).toBe('role=button[name="Send" s]');
+  });
+
+  it('resolves each duplicate ref to its own DOM selector (AC1)', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Send', backendDOMNodeId: 1 },
+        { role: 'link', name: 'Send', backendDOMNodeId: 2 },
+        { role: 'button', name: 'Send', backendDOMNodeId: 3 },
+      ]),
+      domSelectorsByBackendId: {
+        1: 'button:nth-of-type(1)',
+        3: 'button:nth-of-type(2)',
+      },
+    });
+    const { refMap } = await collectTrimmedA11ySnapshot(page);
+    vi.mocked(page.locator).mockClear();
+
+    await resolveTarget(page, 'a11yRef', 'e1', refMap);
+    await resolveTarget(page, 'a11yRef', 'e3', refMap);
+
+    expect(vi.mocked(page.locator).mock.calls).toStrictEqual([
+      ['button:nth-of-type(1)'],
+      ['button:nth-of-type(2)'],
+    ]);
+    // Another role is another group: unique, no DOM lookup.
+    expect(refMap.get('e2')).toBe('role=link[name="Send" s]');
+
+    const locator = createMockLocator();
+    const waitPage = {
+      locator: vi.fn().mockReturnValue(locator),
+    } as unknown as Page;
+    await waitForTarget(waitPage, 'a11yRef', 'e3', refMap, 5000);
+    expect(waitPage.locator).toHaveBeenCalledWith('button:nth-of-type(2)');
+    expect(locator.waitFor).toHaveBeenCalledWith({
+      state: 'visible',
+      timeout: 5000,
+    });
+  });
+
+  // Playwright's role= engine already matches a quoted name exactly and
+  // case-sensitively; this documents that refs rely on it ("Send" and "Send
+  // max" are different selectors, so neither needs a DOM selector or nth).
+  it('keeps different names in different selectors, without nth (AC2)', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Send' },
+        { role: 'button', name: 'Send max' },
+      ]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.refMap.get('e1')).toBe('role=button[name="Send" s]');
+    expect(result.refMap.get('e2')).toBe('role=button[name="Send max" s]');
+  });
+
+  it('gives each duplicate a DOM selector when one can be built', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Send', backendDOMNodeId: 1 },
+        { role: 'button', name: 'Send max', backendDOMNodeId: 2 },
+        { role: 'button', name: 'Send', backendDOMNodeId: 3 },
+      ]),
+      domSelectorsByBackendId: {
+        1: '[data-testid="send-a"]',
+        2: '[data-testid="send-max"]',
+        3: '#send-b',
+      },
+    });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: '[data-testid="send-a"]',
+      e2: 'role=button[name="Send max" s]',
+      e3: '#send-b',
+    });
+    // Only duplicates pay for a DOM lookup.
+    const resolved = mockCdpSession.send.mock.calls
+      .filter(([method]) => method === 'DOM.resolveNode')
+      .map(([, params]) => (params as { backendNodeId: number }).backendNodeId);
+    expect(resolved.sort()).toStrictEqual([1, 3]);
+  });
+
+  it('keeps the plain role selector for duplicates whose DOM selector cannot be built', async () => {
+    const page = createMockPage({
+      axNodes: [
+        ...flatTree([
+          { role: 'button', name: 'OK', backendDOMNodeId: 1 },
+          { role: 'button', name: 'OK', backendDOMNodeId: 2 },
+          { role: 'button', name: 'OK', backendDOMNodeId: 3 },
+        ]),
+        {
+          nodeId: 'no-backend',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'OK' },
+          parentId: 'root',
+        },
+      ].map((node) =>
+        node.nodeId === 'root'
+          ? { ...node, childIds: [...(node.childIds ?? []), 'no-backend'] }
+          : node,
+      ),
+      // 1: unique selector; 2: no unique selector (null); 3: resolve fails.
+      domSelectorsByBackendId: { 1: '#ok-1' },
+      resolveNodeErrorIds: new Set([3]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    // No unique selector, resolve failure (e.g. navigation mid-snapshot),
+    // no backend node: the role selector matches the whole group, so an
+    // action fails in strict mode instead of clicking another member.
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: '#ok-1',
+      e2: 'role=button[name="OK" s]',
+      e3: 'role=button[name="OK" s]',
+      e4: 'role=button[name="OK" s]',
+    });
+  });
+
+  it('marks a duplicate inside a closed shadow root unreachable and skips its enrichment', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Send', backendDOMNodeId: 1 },
+        { role: 'button', name: 'Send', backendDOMNodeId: 2 },
+      ]),
+      domSelectorsByBackendId: { 1: UNREACHABLE_REF_SELECTOR, 2: 'button' },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: UNREACHABLE_REF_SELECTOR,
+      e2: 'button',
+    });
+    expect(page.locator).not.toHaveBeenCalledWith(UNREACHABLE_REF_SELECTOR);
+  });
+
+  it('gives duplicates of a scoped snapshot DOM selectors without the root prefix', async () => {
+    const page = createMockPage({
+      queryAxTreeNodes: [
+        {
+          nodeId: 'scoped-root',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          childIds: ['ok-1', 'ok-2'],
+          backendDOMNodeId: 200,
+        },
+        {
+          nodeId: 'ok-1',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'OK' },
+          parentId: 'scoped-root',
+          backendDOMNodeId: 201,
+        },
+        {
+          nodeId: 'ok-2',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'OK' },
+          parentId: 'scoped-root',
+          backendDOMNodeId: 202,
+        },
+      ],
+      selectorNodes: { '.modal': { nodeId: 7, backendNodeId: 200 } },
+      domSelectorsByBackendId: { 201: '#ok-1' },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page, '.modal');
+
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: '#ok-1',
+      e2: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
+    });
+  });
+
+  it('runs DOM selector lookups concurrently, at most 16 at a time', async () => {
+    const count = 40;
+    const page = createMockPage({
+      axNodes: flatTree(
+        Array.from({ length: count }, (_, index) => ({
+          role: 'button',
+          name: 'Send',
+          backendDOMNodeId: index + 1,
+        })),
+      ),
+      domSelectorsByBackendId: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          index + 1,
+          `#send-${index + 1}`,
+        ]),
+      ),
+    });
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+    const send = mockCdpSession.send.getMockImplementation() as (
+      method: string,
+      params?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mockCdpSession.send.mockImplementation(
+      async (method: string, params?: Record<string, unknown>) => {
+        if (method !== 'DOM.resolveNode') {
+          return send(method, params);
+        }
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight -= 1;
+        return send(method, params);
+      },
+    );
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(maxInFlight).toBe(16);
+    expect(result.refMap.size).toBe(count);
+    expect(result.refMap.get('e1')).toBe('#send-1');
+    expect(result.refMap.get(`e${count}`)).toBe(`#send-${count}`);
+  });
+
+  it('escapes backslashes and quotes and normalizes whitespace in names', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Say "hi"' },
+        { role: 'button', name: 'C:\\path\\' },
+        { role: 'button', name: '  Line 1\n\tLine 2  ' },
+        { role: 'button', name: 'Line 1 Line 2' },
+        { role: 'link', name: 'a >> b' },
+      ]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.refMap.get('e1')).toBe('role=button[name="Say \\"hi\\"" s]');
+    expect(result.refMap.get('e2')).toBe(
+      'role=button[name="C:\\\\path\\\\" s]',
+    );
+    // Same normalized name → same elements in Playwright → one selector.
+    expect(result.refMap.get('e3')).toBe('role=button[name="Line 1 Line 2" s]');
+    expect(result.refMap.get('e4')).toBe('role=button[name="Line 1 Line 2" s]');
+    expect(result.refMap.get('e5')).toBe('role=link[name="a >> b" s]');
+  });
+
+  it('matches only an empty accessible name for unnamed nodes', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button' },
+        { role: 'button', name: '' },
+        { role: 'button', name: 'Close' },
+      ]),
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.refMap.get('e1')).toBe('role=button[name="" s]');
+    expect(result.refMap.get('e2')).toBe('role=button[name="" s]');
+    expect(result.refMap.get('e3')).toBe('role=button[name="Close" s]');
+  });
+
+  it('keeps identical text= fallback selectors strict, without nth', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'generic', name: 'Account 1', backendDOMNodeId: 1 },
+        { role: 'generic', name: 'Account 1', backendDOMNodeId: 2 },
+        { role: 'generic', name: 'Say "hi" \\o/', backendDOMNodeId: 3 },
+        { role: 'generic', name: 'Account 1', backendDOMNodeId: 4 },
+      ]),
+      domSelectorsByBackendId: { 4: '[data-testid="account-1"]' },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    // text= also matches wrappers of the text: an nth index could point at
+    // another element, so an ambiguous text ref fails in strict mode.
+    expect(result.refMap.get('e1')).toBe('text="Account 1"');
+    expect(result.refMap.get('e2')).toBe('text="Account 1"');
+    expect(result.refMap.get('e3')).toBe('text="Say \\"hi\\" \\\\o/"');
+    expect(result.refMap.get('e4')).toBe('[data-testid="account-1"]');
+  });
+
+  it('prefixes role and text selectors of a scoped snapshot with the root', async () => {
+    const page = createMockPage({
+      queryAxTreeNodes: [
+        {
+          nodeId: 'scoped-root',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          childIds: ['ok-1', 'ok-2', 'label', 'item'],
+          backendDOMNodeId: 200,
+        },
+        ...flatTree([
+          { role: 'button', name: 'OK' },
+          { role: 'button', name: 'OK' },
+          { role: 'generic', name: 'Fee', backendDOMNodeId: 1 },
+          { role: 'generic', name: 'Row', backendDOMNodeId: 2 },
+        ])
+          .slice(1)
+          .map((node, index) => ({
+            ...node,
+            nodeId: ['ok-1', 'ok-2', 'label', 'item'][index],
+            parentId: 'scoped-root',
+          })),
+      ],
+      selectorNodes: { ' .modal ': { nodeId: 7, backendNodeId: 200 } },
+      domSelectorsByBackendId: { 2: '#row' },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page, ' .modal ');
+
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
+      e2: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
+      e3: 'css=.modal >> nth=0 >> text="Fee"',
+      e4: '#row',
+    });
+  });
+
+  it('maps the scope root itself to the root selector', async () => {
+    const page = createMockPage({
+      queryAxTreeNodes: [
+        {
+          nodeId: 'dialog',
+          ignored: false,
+          role: { type: 'role', value: 'dialog' },
+          name: { type: 'string', value: 'Confirm' },
+          childIds: ['close'],
+          backendDOMNodeId: 70,
+        },
+        {
+          nodeId: 'close',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'Close' },
+          parentId: 'dialog',
+          backendDOMNodeId: 71,
+        },
+      ],
+      selectorNodes: { '[role="dialog"]': { nodeId: 7, backendNodeId: 70 } },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page, '[role="dialog"]');
+
+    expect(result.refMap.get('e1')).toBe('css=[role="dialog"] >> nth=0');
+    expect(result.refMap.get('e2')).toBe(
+      'css=[role="dialog"] >> nth=0 >> role=button[name="Close" s]',
+    );
+  });
+
+  it('keeps relatives of the root page-wide in the getPartialAXTree fallback', async () => {
+    const page = createMockPage({
+      queryAxTreeError: new Error('queryAXTree unavailable'),
+      partialAxNodes: [
+        {
+          nodeId: 'ancestor',
+          ignored: false,
+          role: { type: 'role', value: 'dialog' },
+          name: { type: 'string', value: 'Wallet' },
+          childIds: ['sibling', 'scoped-root'],
+          backendDOMNodeId: 60,
+        },
+        {
+          nodeId: 'sibling',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'OK' },
+          parentId: 'ancestor',
+          backendDOMNodeId: 61,
+        },
+        {
+          nodeId: 'scoped-root',
+          ignored: false,
+          role: { type: 'role', value: 'generic' },
+          parentId: 'ancestor',
+          childIds: ['inner'],
+          backendDOMNodeId: 70,
+        },
+        {
+          nodeId: 'inner',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'OK' },
+          parentId: 'scoped-root',
+          backendDOMNodeId: 71,
+        },
+      ],
+      selectorNodes: { '.modal': { nodeId: 7, backendNodeId: 70 } },
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page, '.modal');
+
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: 'role=dialog[name="Wallet" s]',
+      e2: 'role=button[name="OK" s]',
+      e3: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
+    });
+  });
+
+  describe('Playwright selector parser round-trip', () => {
+    type AttributePart = {
+      name: string;
+      op: string;
+      value: unknown;
+      caseSensitive: boolean;
+    };
+    type SelectorParser = {
+      parseSelector: (selector: string) => {
+        parts: { name: string; source: string }[];
+      };
+      parseAttributeSelector: (
+        selector: string,
+        allowUnquotedStrings: boolean,
+      ) => { name: string; attributes: AttributePart[] };
+    };
+
+    // playwright-core does not export its selector parser; load the
+    // internal file the injected script is built from (resolved through
+    // `playwright`). The path is not public API: skip these tests when a
+    // playwright-core version moves it.
+    const requireFromRoot = createRequire(
+      path.join(process.cwd(), 'package.json'),
+    );
+    const requireFromPlaywright = createRequire(
+      requireFromRoot.resolve('playwright/package.json'),
+    );
+    const parserPath = path.join(
+      path.dirname(
+        requireFromPlaywright.resolve('playwright-core/package.json'),
+      ),
+      'lib/utils/isomorphic/selectorParser.js',
+    );
+    let parser: SelectorParser | undefined;
+    try {
+      parser = requireFromPlaywright(parserPath) as SelectorParser;
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'MODULE_NOT_FOUND') {
+        throw error;
+      }
+    }
+    const parserMissing = parser === undefined;
+
+    it
+      .skipIf(parserMissing)
+      .each([
+        'Send',
+        'Send max',
+        'Say "hi"',
+        'C:\\path\\',
+        '\\"',
+        'a >> b',
+        'Ünïcode ✓',
+        '',
+      ])(
+      'parses the role selector for %j back to the exact name (internal playwright-core selectorParser)',
+      async (name) => {
+        const page = createMockPage({
+          queryAxTreeNodes: flatTree([
+            { role: 'button', name },
+            { role: 'button', name },
+          ]),
+          selectorNodes: { '.modal': { nodeId: 7, backendNodeId: 70 } },
+        });
+
+        const { refMap } = await collectTrimmedA11ySnapshot(page, '.modal');
+        const { parts } = (parser as SelectorParser).parseSelector(
+          refMap.get('e2') as string,
+        );
+
+        expect(parts.map((part) => part.name)).toStrictEqual([
+          'css',
+          'nth',
+          'role',
+        ]);
+        expect(parts[0].source).toBe('.modal');
+        const role = (parser as SelectorParser).parseAttributeSelector(
+          parts[2].source,
+          true,
+        );
+        expect(role.name).toBe('button');
+        expect(role.attributes).toStrictEqual([
+          expect.objectContaining({
+            name: 'name',
+            op: '=',
+            value: name,
+            caseSensitive: true,
+          }),
+        ]);
+      },
+    );
+
+    it.skipIf(parserMissing)(
+      'keeps a text= selector with quotes, backslashes and >> in one part (internal playwright-core selectorParser)',
+      async () => {
+        const name = 'a >> "b" \\ c';
+        const page = createMockPage({
+          axNodes: flatTree([
+            { role: 'generic', name },
+            { role: 'generic', name },
+          ]),
+        });
+
+        const { refMap } = await collectTrimmedA11ySnapshot(page);
+        const { parts } = (parser as SelectorParser).parseSelector(
+          refMap.get('e1') as string,
+        );
+
+        expect(parts.map((part) => [part.name, part.source])).toStrictEqual([
+          ['text', '"a >> \\"b\\" \\\\ c"'],
+        ]);
+      },
+    );
+  });
+});
+
 describe('resolveTarget', () => {
   it('resolves a11yRef to selector from refMap', async () => {
     const refMap = new Map([['e1', 'role=button[name="Submit"]']]);
@@ -1531,6 +2102,18 @@ describe('resolveTarget', () => {
     await expect(
       resolveTarget(page, 'a11yRef', 'e99', refMap),
     ).rejects.toThrowError('Available refs: e1, e2');
+  });
+
+  it('throws for a ref inside a closed shadow root instead of matching another element', async () => {
+    const refMap = new Map([['e1', UNREACHABLE_REF_SELECTOR]]);
+    const page = createMockPage();
+
+    await expect(
+      resolveTarget(page, 'a11yRef', 'e1', refMap),
+    ).rejects.toThrowError(
+      'Ref e1 is inside a closed shadow root: it cannot be targeted',
+    );
+    expect(page.locator).not.toHaveBeenCalled();
   });
 
   it('resolves testId to data-testid selector', async () => {
@@ -1637,6 +2220,188 @@ describe('waitForTarget', () => {
       '[data-testid="end-accessory"]',
     );
     expect(result).toBe(childLocator);
+  });
+
+  /**
+   * Builds a page whose `e1` ref is the within parent and whose other refs
+   * resolve to `refLocator`.
+   *
+   * @param counts - Match counts of the page-wide ref locator and of the
+   * contained (`and`) locator.
+   * @param counts.ref - Page-wide matches of the ref.
+   * @param counts.contained - Matches of the ref inside the parent.
+   * @returns The page, its locators and the ref map.
+   */
+  function createWithinRefPage(counts: { ref: number; contained: number }) {
+    const refMap = new Map([
+      ['e1', '[data-testid="account-cell"]'],
+      ['e2', 'css=#list >> css=button:nth-of-type(2)'],
+    ]);
+    const contained = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(counts.contained),
+    };
+    const descendants = { kind: 'descendants' };
+    const firstParentLocator = {
+      waitFor: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn().mockReturnValue(descendants),
+    };
+    const parentLocator = {
+      first: vi.fn().mockReturnValue(firstParentLocator),
+    };
+    const firstRef = { waitFor: vi.fn().mockResolvedValue(undefined) };
+    const refLocator = {
+      and: vi.fn().mockReturnValue(contained),
+      count: vi.fn().mockResolvedValue(counts.ref),
+      first: vi.fn().mockReturnValue(firstRef),
+    };
+    const page = {
+      locator: vi.fn((selector: string) =>
+        selector === refMap.get('e1') ? parentLocator : refLocator,
+      ),
+    } as unknown as Page;
+    return {
+      page,
+      refMap,
+      contained,
+      descendants,
+      firstParentLocator,
+      refLocator,
+      firstRef,
+    };
+  }
+
+  it('resolves an a11yRef page-wide and keeps it only inside the within parent', async () => {
+    const {
+      page,
+      refMap,
+      contained,
+      descendants,
+      firstParentLocator,
+      refLocator,
+    } = createWithinRefPage({ ref: 1, contained: 1 });
+
+    const result = await waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+      type: 'a11yRef',
+      value: 'e1',
+    });
+
+    // The ref selector is unique in the document, so it is not re-applied
+    // inside the parent.
+    expect(page.locator).toHaveBeenCalledWith(
+      'css=#list >> css=button:nth-of-type(2)',
+    );
+    expect(firstParentLocator.locator).toHaveBeenCalledWith('*');
+    expect(refLocator.and).toHaveBeenCalledWith(descendants);
+    expect(contained.waitFor).toHaveBeenCalledWith({
+      state: 'visible',
+      timeout: expect.any(Number),
+    });
+    expect(result).toBe(contained);
+  });
+
+  it('fails at once when the ref is on the page but outside the within parent', async () => {
+    const { page, refMap, contained } = createWithinRefPage({
+      ref: 1,
+      contained: 0,
+    });
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+        type: 'a11yRef',
+        value: 'e1',
+      }),
+    ).rejects.toThrowError('Ref e2 is not inside the within element');
+    // Checked twice (the page can change between the two counts).
+    expect(contained.count).toHaveBeenCalledTimes(2);
+    expect(contained.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('waits instead of failing when the ref moves into the within parent between the checks', async () => {
+    const { page, refMap, contained } = createWithinRefPage({
+      ref: 1,
+      contained: 0,
+    });
+    contained.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+
+    const result = await waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+      type: 'a11yRef',
+      value: 'e1',
+    });
+
+    expect(contained.count).toHaveBeenCalledTimes(2);
+    expect(contained.waitFor).toHaveBeenCalled();
+    expect(result).toBe(contained);
+  });
+
+  it('waits for a ref that is not on the page yet instead of failing at once', async () => {
+    const { page, refMap, contained, refLocator, firstRef } =
+      createWithinRefPage({ ref: 0, contained: 0 });
+    // Not on the page at the first check; one match once it is attached.
+    refLocator.count.mockResolvedValueOnce(0).mockResolvedValue(1);
+
+    const result = await waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+      type: 'a11yRef',
+      value: 'e1',
+    });
+
+    // No containment verdict while it is not on the page: wait for it.
+    expect(contained.count).not.toHaveBeenCalled();
+    expect(firstRef.waitFor).toHaveBeenCalledWith({
+      state: 'attached',
+      timeout: expect.any(Number),
+    });
+    expect(contained.waitFor).toHaveBeenCalled();
+    expect(result).toBe(contained);
+  });
+
+  it('throws instead of narrowing an ambiguous ref to the match inside the within parent', async () => {
+    const { page, refMap, contained } = createWithinRefPage({
+      ref: 9,
+      contained: 1,
+    });
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+        type: 'a11yRef',
+        value: 'e1',
+      }),
+    ).rejects.toThrowError(
+      'Ref e2 is ambiguous (9 matches); take a new snapshot or target it by testId or selector',
+    );
+    expect(contained.count).not.toHaveBeenCalled();
+    expect(contained.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('throws when a ref that appears later is ambiguous', async () => {
+    const { page, refMap, contained, refLocator } = createWithinRefPage({
+      ref: 0,
+      contained: 1,
+    });
+    refLocator.count.mockResolvedValueOnce(0).mockResolvedValue(2);
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+        type: 'a11yRef',
+        value: 'e1',
+      }),
+    ).rejects.toThrowError('Ref e2 is ambiguous (2 matches)');
+    expect(contained.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('throws on timeout when no time is left after the within checks', async () => {
+    const { page, refMap } = createWithinRefPage({ ref: 0, contained: 0 });
+    const now = vi.spyOn(Date, 'now');
+    // deadline = 0 + 1000; parent check at 0; the ref check at 2000.
+    now.mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(2000);
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e2', refMap, 1000, {
+        type: 'a11yRef',
+        value: 'e1',
+      }),
+    ).rejects.toThrowError('Timeout 1000ms exceeded waiting for element');
+    now.mockRestore();
   });
 });
 

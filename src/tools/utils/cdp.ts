@@ -58,17 +58,25 @@ function resetIsolatedWorld(page: Page, world: IsolatedWorld): void {
 }
 
 /**
- * Calls a function once in the page's isolated world.
+ * Error thrown when the node of a backend node id cannot be resolved (it
+ * left the DOM, or the page navigated). The session and world stay valid.
+ */
+class NodeNotFoundError extends Error {}
+
+/**
+ * Runs a step on the page's cached session and isolated world, creating
+ * them on first use. On a session or world failure (closed session, world
+ * gone after a navigation), drops them so the next call starts over.
+ * Errors from the page function (`InPageError`) and unresolvable nodes
+ * (`NodeNotFoundError`) keep them.
  *
  * @param page - The page.
- * @param functionDeclaration - Source text of the function.
- * @param args - JSON arguments.
- * @returns The function's JSON result.
+ * @param step - The CDP work, given the session and world context id.
+ * @returns The step's result.
  */
-async function callOnce<TResult>(
+async function inIsolatedWorld<TResult>(
   page: Page,
-  functionDeclaration: string,
-  args: unknown[],
+  step: (session: CDPSession, executionContextId: number) => Promise<TResult>,
 ): Promise<TResult> {
   let world = isolatedWorlds.get(page);
   if (!world) {
@@ -86,29 +94,77 @@ async function callOnce<TResult>(
       );
       return executionContextId;
     })();
-    const executionContextId = await current.contextId;
-    const response = await session.send('Runtime.callFunctionOn', {
-      functionDeclaration,
-      executionContextId,
-      arguments: args.map((value) => ({ value })),
-      returnByValue: true,
-      awaitPromise: true,
-    });
-    if (response.exceptionDetails) {
-      throw new InPageError(
-        response.exceptionDetails.exception?.description ??
-          response.exceptionDetails.text,
-      );
-    }
-    return response.result.value as TResult;
+    return await step(session, await current.contextId);
   } catch (error) {
-    if (!(error instanceof InPageError)) {
+    if (
+      !(error instanceof InPageError) &&
+      !(error instanceof NodeNotFoundError)
+    ) {
       // The session closed or the world went away (navigation): start
       // over on the next call.
       resetIsolatedWorld(page, current);
     }
     throw error;
   }
+}
+
+/**
+ * Runs `inIsolatedWorld` and, after a session or world failure, once more
+ * on a new session and world.
+ *
+ * @param page - The page.
+ * @param step - The CDP work, given the session and world context id.
+ * @returns The step's result.
+ */
+async function inIsolatedWorldWithRetry<TResult>(
+  page: Page,
+  step: (session: CDPSession, executionContextId: number) => Promise<TResult>,
+): Promise<TResult> {
+  try {
+    return await inIsolatedWorld(page, step);
+  } catch (error) {
+    if (error instanceof InPageError || error instanceof NodeNotFoundError) {
+      throw error;
+    }
+    return await inIsolatedWorld(page, step);
+  }
+}
+
+type CallFunctionOnResponse = {
+  exceptionDetails?: {
+    text: string;
+    exception?: { description?: string };
+  };
+};
+
+/**
+ * Throws the page exception of a `Runtime.callFunctionOn` response.
+ *
+ * @param response - The response (`exceptionDetails` is set when the
+ * function threw).
+ */
+function throwOnException(response: CallFunctionOnResponse): void {
+  if (response.exceptionDetails) {
+    throw new InPageError(
+      response.exceptionDetails.exception?.description ??
+        response.exceptionDetails.text,
+    );
+  }
+}
+
+/**
+ * Wraps function source so it runs in the page. Tools such as esbuild/tsx
+ * with keepNames add `__name(...)` calls to function source; define it so
+ * such source still runs.
+ *
+ * @param functionDeclaration - Source text of the function.
+ * @returns The wrapped source.
+ */
+function wrapDeclaration(functionDeclaration: string): string {
+  return `function () {
+    var __name = function (fn) { return fn; };
+    return (${functionDeclaration}).apply(this, arguments);
+  }`;
 }
 
 /**
@@ -137,22 +193,21 @@ export async function callInIsolatedWorld<TResult>(
   args: unknown[] = [],
   timeoutMs?: number,
 ): Promise<TResult> {
-  // Tools such as esbuild/tsx with keepNames add `__name(...)` calls to
-  // function source; define it so such source still runs in the page.
-  const declaration = `function () {
-    var __name = function (fn) { return fn; };
-    return (${functionDeclaration}).apply(this, arguments);
-  }`;
-  const call = (async (): Promise<TResult> => {
-    try {
-      return await callOnce<TResult>(page, declaration, args);
-    } catch (error) {
-      if (error instanceof InPageError) {
-        throw error;
-      }
-      return await callOnce<TResult>(page, declaration, args);
-    }
-  })();
+  const declaration = wrapDeclaration(functionDeclaration);
+  const call = inIsolatedWorldWithRetry(
+    page,
+    async (session, executionContextId) => {
+      const response = await session.send('Runtime.callFunctionOn', {
+        functionDeclaration: declaration,
+        executionContextId,
+        arguments: args.map((value) => ({ value })),
+        returnByValue: true,
+        awaitPromise: true,
+      });
+      throwOnException(response);
+      return response.result.value as TResult;
+    },
+  );
   if (timeoutMs === undefined) {
     return call;
   }
@@ -170,4 +225,68 @@ export async function callInIsolatedWorld<TResult>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+let nodeCallCounter = 0;
+
+/**
+ * Calls a function with a DOM node as `this`, in the isolated world of the
+ * page's main frame (see `callInIsolatedWorld`), and returns its JSON
+ * result. Runs on the cached session: `DOM.resolveNode` with the world's
+ * context id, then `Runtime.callFunctionOn` on the node object, then
+ * releases the object. Backend node ids are per renderer, so ids read on
+ * another CDP session of the same page are valid here.
+ *
+ * Retries once on a new session and world after a session or world
+ * failure. Rejects without retrying when the node cannot be resolved (it
+ * left the DOM) or when the function throws in the page.
+ *
+ * @param page - The Playwright page.
+ * @param backendNodeId - The backend DOM node id of the node.
+ * @param functionDeclaration - Source text of the function (self-contained,
+ * JSON-serializable result).
+ * @returns The function's return value.
+ */
+export async function callOnNodeInIsolatedWorld<TResult>(
+  page: Page,
+  backendNodeId: number,
+  functionDeclaration: string,
+): Promise<TResult> {
+  const declaration = wrapDeclaration(functionDeclaration);
+  return inIsolatedWorldWithRetry(page, async (session, executionContextId) => {
+    nodeCallCounter += 1;
+    const objectGroup = `mm-node-${nodeCallCounter}`;
+    let objectId: string | undefined;
+    try {
+      ({
+        object: { objectId },
+      } = await session.send('DOM.resolveNode', {
+        backendNodeId,
+        executionContextId,
+        objectGroup,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/\bnode\b/iu.test(message)) {
+        throw new NodeNotFoundError(message);
+      }
+      throw error;
+    }
+    try {
+      if (!objectId) {
+        throw new NodeNotFoundError(`No object for node ${backendNodeId}`);
+      }
+      const response = await session.send('Runtime.callFunctionOn', {
+        functionDeclaration: declaration,
+        objectId,
+        returnByValue: true,
+      });
+      throwOnException(response);
+      return response.result.value as TResult;
+    } finally {
+      await session
+        .send('Runtime.releaseObjectGroup', { objectGroup })
+        .catch(() => undefined);
+    }
+  });
 }

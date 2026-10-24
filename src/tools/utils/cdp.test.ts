@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   ISOLATED_WORLD_NAME,
   callInIsolatedWorld,
+  callOnNodeInIsolatedWorld,
   withCdpSession,
 } from './cdp.js';
 
@@ -14,10 +15,17 @@ type Send = ReturnType<typeof vi.fn>;
  * Builds a page whose CDP sessions answer with `respond`.
  *
  * @param respond - Answers `Runtime.callFunctionOn`.
+ * @param resolveNode - Answers `DOM.resolveNode` (default: an object id).
  * @returns The page, the sessions it opened and their send mocks.
  */
 function createPage(
   respond: (params: Record<string, unknown>, sessionIndex: number) => unknown,
+  resolveNode: (
+    params: Record<string, unknown>,
+    sessionIndex: number,
+  ) => unknown = (params) => ({
+    object: { objectId: `obj-${String(params.backendNodeId)}` },
+  }),
 ) {
   const sessions: { send: Send; detach: Send }[] = [];
   let contextCounter = 0;
@@ -33,6 +41,10 @@ function createPage(
             return { executionContextId: contextCounter };
           case 'Runtime.callFunctionOn':
             return respond(params, sessionIndex);
+          case 'DOM.resolveNode':
+            return resolveNode(params, sessionIndex);
+          case 'Runtime.releaseObjectGroup':
+            return {};
           default:
             throw new Error(`Unexpected ${method}`);
         }
@@ -226,5 +238,119 @@ describe('callInIsolatedWorld', () => {
     const { page } = createPage(() => ({ result: { value: 'quick' } }));
 
     expect(await callInIsolatedWorld(page, '() => 1', [], 1_000)).toBe('quick');
+  });
+});
+
+describe('callOnNodeInIsolatedWorld', () => {
+  it('resolves the node in the isolated world and calls the function on it', async () => {
+    const { page, sessions } = createPage((params) => {
+      const fn = vm.runInNewContext(
+        `(${String(params.functionDeclaration)})`,
+        {},
+      );
+      return { result: { value: fn.call({ id: params.objectId }) } };
+    });
+
+    const result = await callOnNodeInIsolatedWorld<string>(
+      page,
+      42,
+      'function () { return __name(this.id, "x"); }',
+    );
+
+    expect(result).toBe('obj-42');
+    const { calls } = sessions[0].send.mock;
+    const resolve = calls.find(([method]) => method === 'DOM.resolveNode');
+    expect(resolve?.[1]).toStrictEqual({
+      backendNodeId: 42,
+      executionContextId: 1,
+      objectGroup: expect.stringMatching(/^mm-node-\d+$/u),
+    });
+    expect(calls).toContainEqual([
+      'Runtime.callFunctionOn',
+      expect.objectContaining({ objectId: 'obj-42', returnByValue: true }),
+    ]);
+    expect(calls).toContainEqual([
+      'Runtime.releaseObjectGroup',
+      { objectGroup: resolve?.[1].objectGroup },
+    ]);
+  });
+
+  it('shares the session and world with callInIsolatedWorld', async () => {
+    const { page, newCDPSession } = createPage(() => ({
+      result: { value: 1 },
+    }));
+
+    await callInIsolatedWorld(page, '() => 1');
+    await callOnNodeInIsolatedWorld(page, 1, 'function () { return 1; }');
+
+    expect(newCDPSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects without retrying when the node cannot be resolved', async () => {
+    const { page, newCDPSession, sessions } = createPage(
+      () => ({ result: { value: 1 } }),
+      () => {
+        throw new Error('No node with given id found');
+      },
+    );
+
+    await expect(
+      callOnNodeInIsolatedWorld(page, 7, 'function () { return 1; }'),
+    ).rejects.toThrowError('No node with given id found');
+    expect(newCDPSession).toHaveBeenCalledTimes(1);
+    expect(sessions[0].detach).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the node has no object', async () => {
+    const { page, sessions } = createPage(
+      () => ({ result: { value: 1 } }),
+      () => ({ object: {} }),
+    );
+
+    await expect(
+      callOnNodeInIsolatedWorld(page, 7, 'function () { return 1; }'),
+    ).rejects.toThrowError('No object for node 7');
+    expect(sessions[0].send).toHaveBeenCalledWith(
+      'Runtime.releaseObjectGroup',
+      expect.anything(),
+    );
+  });
+
+  it('starts over once on a new world after a stale context', async () => {
+    const { page, newCDPSession, sessions } = createPage(
+      () => ({ result: { value: 'fresh' } }),
+      (params, index) => {
+        if (index === 0) {
+          throw new Error('Cannot find context with specified id');
+        }
+        return { object: { objectId: `obj-${String(params.backendNodeId)}` } };
+      },
+    );
+
+    const result = await callOnNodeInIsolatedWorld(
+      page,
+      3,
+      'function () { return 1; }',
+    );
+
+    expect(result).toBe('fresh');
+    expect(newCDPSession).toHaveBeenCalledTimes(2);
+    expect(sessions[0].detach).toHaveBeenCalled();
+    expect(sessions[1].send).toHaveBeenCalledWith(
+      'DOM.resolveNode',
+      expect.objectContaining({ executionContextId: 2 }),
+    );
+  });
+
+  it('rejects without retrying when the function throws in the page', async () => {
+    const { page, newCDPSession } = createPage(() => ({
+      result: { type: 'object' },
+      exceptionDetails: { text: 'Uncaught' },
+    }));
+
+    await expect(
+      callOnNodeInIsolatedWorld(page, 1, 'function () { throw 1; }'),
+    ).rejects.toThrowError('Uncaught');
+    expect(newCDPSession).toHaveBeenCalledTimes(1);
   });
 });

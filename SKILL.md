@@ -232,7 +232,7 @@ The `testId` and `textContent` fields appear only on nodes with short or generic
 
 When 3+ consecutive identical nodes appear (same role, name, and path), they are collapsed into a summary like `… 3 more "maskicon" (refs e2–e4)` to reduce token waste. Individual refs still work for targeting.
 
-Use the `ref` value (`e3`) for click/type/get-text/wait-for commands.
+Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails (strict mode) instead of acting on another element: refs use the exact, case-sensitive name, and elements that share a role and name get a unique DOM selector, so two "Send" buttons get two refs that each click their own button. If a click fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
 #### `mm list-testids`
 
@@ -284,7 +284,7 @@ mm click --testid end-accessory --within "testid:account-list-item/0"
 mm click --testid onboarding-complete-done --timeout 60000
 ```
 
-Use `--within` to scope the target inside a parent element. Values use the format `testid:<id>`, `selector:<css>`, or a bare a11y ref (`e5`).
+Use `--within` to scope the target inside a parent element. Values use the format `testid:<id>`, `selector:<css>`, or a bare a11y ref (`e5`). With a ref target (`mm click e7 --within ...`), the ref already identifies one element, so `--within` only checks that it is inside the parent; when it is on the page but outside the parent, the command fails at once with `Ref e7 is not inside the within element`.
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 

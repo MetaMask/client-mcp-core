@@ -435,7 +435,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 
 ### Accessibility References
 
-The core uses Chrome DevTools Protocol accessibility APIs to build a deterministic reference map of interactive and meaningful accessibility nodes. Each element gets a short ref like `e1`, `e2`, etc., mapped to a Playwright-compatible selector.
+The core uses Chrome DevTools Protocol accessibility APIs to build a deterministic reference map of interactive and meaningful accessibility nodes. Each element gets a short ref like `e1`, `e2`, etc., mapped to a Playwright-compatible selector. Each browser ref resolves to exactly one element, or the action fails (strict mode) instead of acting on another element. A ref uses `role=<role>[name="<name>" s]`, which matches the exact, case-sensitive accessible name. When several elements of a snapshot share a role and name, each of them gets a selector built from its DOM node and verified unique the way Playwright matches CSS (unique `data-testid`, else unique `id`, else a path anchored at the nearest ancestor with a unique `data-testid` or `id`; elements in open shadow roots get `css=<host> >> css=<inside>`). When no such selector can be built, the ref keeps the plain role selector, so an action on it fails in strict mode; refs to elements in closed shadow roots always fail. Generic elements without a DOM selector use `text="<name>"`, which also fails when ambiguous. Role and text refs from a scoped `accessibility_snapshot` are prefixed with the root selector.
 
 Agents call `describe_screen` to get the current reference map, then use refs for interaction:
 
