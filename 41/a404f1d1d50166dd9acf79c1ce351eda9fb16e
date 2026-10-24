@@ -1,0 +1,19 @@
+src/server/create-server.test.ts
+  s_71bbccb6358d9b::t_7d1ffe370f8489 1248-1250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41a404f1d1d50166dd9acf79c1ce351eda9fb16e",
+  "prompts": {},
+  "sessions": {
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
