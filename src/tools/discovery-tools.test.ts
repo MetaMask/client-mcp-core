@@ -56,9 +56,7 @@ function createMockContext(
     page,
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {
-      generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
-    },
+    knowledgeStore: {},
     driver: hasActive
       ? new PlaywrightPlatformDriver(() => page, sessionManager as any)
       : undefined,
@@ -419,61 +417,6 @@ describe('discovery-tools', () => {
         name: 'describe-screen',
         fullPage: true,
       });
-    });
-
-    it('generates prior knowledge from context', async () => {
-      const context = createMockContext();
-      const mockTestIds: TestIdItem[] = [
-        { testId: 'send-btn', tag: 'button', visible: true },
-      ];
-      const mockNodes: A11yNodeTrimmed[] = [
-        { ref: 'e1', role: 'button', name: 'Send', path: [] },
-      ];
-      const mockPriorKnowledge = {
-        schemaVersion: 1 as const,
-        generatedAt: '2026-02-04T00:00:00.000Z',
-        query: {
-          currentScreen: 'home',
-          currentUrl: 'chrome-extension://ext-123/home.html',
-          visibleTestIds: mockTestIds,
-          a11yNodes: mockNodes,
-          currentSessionFlowTags: ['discovery'],
-        },
-        relatedSessions: [],
-        similarSteps: [],
-        suggestedNextActions: [],
-      };
-
-      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue(
-        mockTestIds,
-      );
-      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
-        {
-          nodes: mockNodes,
-          refMap: new Map([['e1', 'role=button[name="Send"]']]),
-        },
-      );
-      vi.mocked(
-        context.knowledgeStore.generatePriorKnowledge,
-      ).mockResolvedValue(mockPriorKnowledge as any);
-
-      const result = await describeScreenTool({}, context);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.result.priorKnowledge).toStrictEqual(mockPriorKnowledge);
-      }
-      expect(
-        context.knowledgeStore.generatePriorKnowledge,
-      ).toHaveBeenCalledWith(
-        expect.objectContaining({
-          currentScreen: 'home',
-          visibleTestIds: mockTestIds,
-          a11yNodes: mockNodes,
-          currentSessionFlowTags: ['discovery'],
-        }),
-        'test-session-123',
-      );
     });
 
     it('updates refMap in session manager', async () => {

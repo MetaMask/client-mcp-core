@@ -6,7 +6,6 @@ import type {
   DescribeScreenResult,
   ListTestIdsInput,
   ListTestIdsResult,
-  PriorKnowledgeContext,
 } from './types';
 import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
@@ -108,7 +107,7 @@ export async function accessibilitySnapshotTool(
 }
 
 /**
- * Captures a full screen description including state, test IDs, a11y, and prior knowledge.
+ * Captures a full screen description including state, test IDs, a11y, and an optional screenshot.
  *
  * @param input - The describe-screen options including screenshot flags.
  * @param context - The tool execution context.
@@ -165,27 +164,12 @@ export async function describeScreenTool(
       };
     }
 
-    const sessionMetadata = context.sessionManager.getSessionMetadata();
-    const priorKnowledgeContext: PriorKnowledgeContext = {
-      currentScreen: state.currentScreen,
-      currentUrl: state.currentUrl,
-      visibleTestIds: testIds,
-      a11yNodes: nodes,
-      currentSessionFlowTags: sessionMetadata?.flowTags,
-    };
-
-    const priorKnowledge = await context.knowledgeStore.generatePriorKnowledge(
-      priorKnowledgeContext,
-      context.sessionManager.getSessionId(),
-    );
-
     return createToolSuccess({
       state,
       activeTab,
       testIds: { items: testIds },
       a11y: { nodes },
       screenshot,
-      priorKnowledge,
     });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);

@@ -121,7 +121,6 @@ describe('mock-factories', () => {
       expect(typeof mock.searchSteps).toBe('function');
       expect(typeof mock.summarizeSession).toBe('function');
       expect(typeof mock.listSessions).toBe('function');
-      expect(typeof mock.generatePriorKnowledge).toBe('function');
       expect(typeof mock.writeSessionMetadata).toBe('function');
     });
 

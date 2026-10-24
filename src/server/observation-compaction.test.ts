@@ -45,9 +45,6 @@ function createObservation(
       nodes,
       ...(overrides.a11y?.diff ? { diff: overrides.a11y.diff } : {}),
     },
-    ...(overrides.priorKnowledge
-      ? { priorKnowledge: overrides.priorKnowledge }
-      : {}),
   } as StepRecordObservation;
 }
 
@@ -194,14 +191,12 @@ describe('compactObservation', () => {
   it('preserves non-a11y fields by reference while returning a new object', () => {
     const state = { connected: true };
     const testIds = [{ testId: 'submit', tag: 'button', visible: true }];
-    const priorKnowledge = { schemaVersion: 1, notes: ['cached'] };
     const observation = {
       state,
       testIds,
       a11y: {
         nodes: [createNode('e1', 'combobox'), ...createOptionRun(4, 2)],
       },
-      priorKnowledge,
     } as unknown as StepRecordObservation;
 
     const result = compactObservation(observation);
@@ -209,7 +204,6 @@ describe('compactObservation', () => {
     expect(result).not.toBe(observation);
     expect(result.state).toBe(state);
     expect(result.testIds).toBe(testIds);
-    expect(result.priorKnowledge).toBe(priorKnowledge);
     expect(result.a11y).not.toBe(observation.a11y);
     expect(result.a11y.nodes).toStrictEqual([
       observation.a11y.nodes[0],
@@ -542,20 +536,5 @@ describe('diffObservation', () => {
 
     expect(result.state).toBe(state);
     expect(result.testIds).toBe(testIds);
-  });
-
-  it('preserves the current priorKnowledge', () => {
-    const priorKnowledge = {
-      schemaVersion: 1,
-      notes: ['cached'],
-    } as unknown as StepRecordObservation['priorKnowledge'];
-    const previous = createObservation([]);
-    const current = createObservation([createNode('e1', 'button')], {
-      priorKnowledge,
-    });
-
-    const result = diffObservation(current, previous);
-
-    expect(result.priorKnowledge).toBe(priorKnowledge);
   });
 });
