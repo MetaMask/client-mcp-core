@@ -157,6 +157,74 @@ export function applyObserveLevel(
 }
 
 /**
+ * Extracts and consumes the global `--pretty` flag (every occurrence) from
+ * argv.
+ *
+ * @param argv - Raw CLI arguments (after the node/script entries).
+ * @returns The remaining arguments and whether `--pretty` was given.
+ */
+export function extractPrettyFlag(argv: string[]): {
+  args: string[];
+  pretty: boolean;
+} {
+  const args = argv.filter((arg) => arg !== '--pretty');
+  return { args, pretty: args.length !== argv.length };
+}
+
+/**
+ * Decides whether JSON output is indented. Agents read stdout through a pipe
+ * and pay for every byte, so the default there is one line per result.
+ * Precedence: `--pretty`, then `MM_PRETTY` (`1`/`true` = pretty, `0`/`false`
+ * = compact), then pretty only when stdout is a terminal.
+ *
+ * @param flag - Whether `--pretty` was given.
+ * @param env - The `MM_PRETTY` value.
+ * @param isTTY - Whether stdout is a terminal.
+ * @returns True to indent JSON output.
+ */
+export function resolvePretty(
+  flag: boolean,
+  env: string | undefined,
+  isTTY: boolean | undefined,
+): boolean {
+  if (flag) {
+    return true;
+  }
+  const value = env?.trim().toLowerCase();
+  if (value === '1' || value === 'true') {
+    return true;
+  }
+  if (value === '0' || value === 'false') {
+    return false;
+  }
+  return isTTY === true;
+}
+
+let prettyOutput = false;
+
+/**
+ * Sets whether {@link formatJsonOutput} indents JSON.
+ *
+ * @param pretty - True to indent with 2 spaces.
+ */
+export function setPrettyOutput(pretty: boolean): void {
+  prettyOutput = pretty;
+}
+
+/**
+ * Serializes a CLI result for stdout: one line by default, indented with 2
+ * spaces when pretty output is on (see {@link resolvePretty}).
+ *
+ * @param output - The value to print.
+ * @returns The JSON text, without a trailing newline.
+ */
+export function formatJsonOutput(output: unknown): string {
+  return prettyOutput
+    ? JSON.stringify(output, null, 2)
+    : JSON.stringify(output);
+}
+
+/**
  * Resolves the target project root directory using the following precedence:
  *   1. `--project <path>` CLI flag
  *   2. `MM_PROJECT` environment variable
@@ -220,8 +288,13 @@ export async function main(): Promise<void> {
   const { args: projectlessArgs, projectPath } = extractProjectFlag(
     process.argv.slice(2),
   );
-  const { args: remainingArgs, observe } = extractObserveFlag(projectlessArgs);
+  const { args: observelessArgs, observe } =
+    extractObserveFlag(projectlessArgs);
   setObserveLevel(observe);
+  const { args: remainingArgs, pretty } = extractPrettyFlag(observelessArgs);
+  setPrettyOutput(
+    resolvePretty(pretty, process.env.MM_PRETTY, process.stdout.isTTY),
+  );
 
   if (
     remainingArgs.length === 0 ||
@@ -1179,7 +1252,7 @@ export async function sendRequest(
       if (typeof output === 'string') {
         process.stdout.write(`${output}\n`);
       } else {
-        process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+        process.stdout.write(`${formatJsonOutput(output)}\n`);
       }
       return;
     } catch (error) {
@@ -1786,7 +1859,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
 export function printHelp(): void {
   process.stdout.write(`mm — MetaMask CLI
 
-Usage: mm [--project <path>] [--observe <level>] <command> [options]
+Usage: mm [--project <path>] [--observe <level>] [--pretty] <command> [options]
 
 Global Options:
   --project <path>    Target a specific project directory (absolute or relative).
@@ -1794,10 +1867,15 @@ Global Options:
   --observe <level>   Observation returned after the call: none | diff | full.
                       Default: diff for mutating commands and run-steps,
                       none for reads, discovery and cdp.
+  --pretty            Indent JSON output. Default: one line per result when
+                      stdout is not a terminal (agents, pipes), indented on a
+                      terminal.
 
 Environment Variables:
   MM_PROJECT          Default project directory when --project is not provided.
                       Falls back to the current git worktree root.
+  MM_PRETTY           1/true: indent JSON output; 0/false: one line, also on a
+                      terminal. --pretty takes precedence.
 
 Lifecycle:
   mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--force] [--platform browser|ios|android] [--device-id <id>]

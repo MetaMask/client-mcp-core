@@ -565,10 +565,12 @@ The `mm` CLI provides a unified interface for agents and developers. All command
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--project <path>`  | Target a specific project directory (absolute or relative). Overrides `MM_PROJECT` and git-based discovery.                                                                                                      |
 | `--observe <level>` | Observation to return after the call: `none`, `diff` or `full`. Sent as `observe` in every tool, `/launch` and `/cleanup` request body. Default: `diff` for mutating commands and `run-steps`, `none` otherwise. |
+| `--pretty`          | Indent JSON results with 2 spaces. Default: one line per result when stdout is not a terminal (agents, pipes, files), indented on a terminal. Consumed anywhere in the command line, like `--observe`.           |
 
 | Environment Variable | Description                                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------------------- |
 | `MM_PROJECT`         | Default project directory when `--project` is not provided. Falls back to the current git worktree root. |
+| `MM_PRETTY`          | `1`/`true`: indent JSON results; `0`/`false`: one line, also on a terminal. `--pretty` takes precedence. |
 
 ### Project Targeting
 
