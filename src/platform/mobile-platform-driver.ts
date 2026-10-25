@@ -14,6 +14,11 @@ import type {
   UIElement,
 } from '@metamask/device-mcp';
 
+import {
+  filterAppHierarchy,
+  viewportFromHierarchy,
+} from './mobile-hierarchy.js';
+import type { Viewport } from './mobile-hierarchy.js';
 import type {
   IPlatformDriver,
   TargetType,
@@ -57,6 +62,15 @@ const HERMES_BLOCKED_METHOD_CODE = 'HERMES_BLOCKED_METHOD';
 // agent-facing contract matches the browser and Hermes drivers.
 const WEBVIEW_BLOCKED_METHOD_CODE = 'WEBVIEW_BLOCKED_METHOD';
 
+/** Options of `MobilePlatformDriver`. */
+export type MobilePlatformDriverOptions = {
+  /**
+   * Remove the Expo DevLauncher "Tools" button of development builds from
+   * the accessibility tree and the test IDs. Default true.
+   */
+  excludeDevOverlay?: boolean;
+};
+
 /**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
  * Wraps DeviceBackend behind the IPlatformDriver interface so the
@@ -73,14 +87,28 @@ export class MobilePlatformDriver implements IPlatformDriver {
   // across mobile sessions (e.g. a relaunch against a different simulator).
   readonly #hermesSession: HermesSession;
 
+  readonly #excludeDevOverlay: boolean;
+
+  #windowSize: Viewport | undefined;
+
   /**
    * @param backend - The device-mcp backend to delegate to.
    * @param bundleId - The app bundle ID for getAppState calls.
+   * @param options - Driver options.
+   * @param options.excludeDevOverlay - Remove the Expo DevLauncher "Tools"
+   * button of development builds from the accessibility tree and the test
+   * IDs (default true). Android System UI (status bar, navigation bar) is
+   * always removed.
    */
-  constructor(backend: DeviceBackend, bundleId: string = DEFAULT_BUNDLE_ID) {
+  constructor(
+    backend: DeviceBackend,
+    bundleId: string = DEFAULT_BUNDLE_ID,
+    options: MobilePlatformDriverOptions = {},
+  ) {
     this.#backend = backend;
     this.#bundleId = bundleId;
     this.#hermesSession = new HermesSession({ platform: backend.platform });
+    this.#excludeDevOverlay = options.excludeDevOverlay ?? true;
   }
 
   /**
@@ -197,8 +225,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
   async getAccessibilityTree(
     _rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
-    const snapshot = await this.#backend.snapshot();
-    return normalizeSnapshot(snapshot.hierarchy);
+    const { hierarchy } = await this.#snapshotApp();
+    return normalizeSnapshot(hierarchy);
   }
 
   /**
@@ -208,8 +236,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * viewport; elements with unknown geometry are assumed visible.
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
-    const snapshot = await this.#backend.snapshot();
-    return this.#testIdsOf(snapshot.hierarchy, limit);
+    const { hierarchy, viewport } = await this.#snapshotApp();
+    return this.#testIdsOf(hierarchy, viewport, limit);
   }
 
   /**
@@ -219,34 +247,74 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @returns The nodes, refMap and a test ID reader for the same snapshot.
    */
   async captureScreen(): Promise<ScreenCapture> {
-    const snapshot = await this.#backend.snapshot();
+    const { hierarchy, viewport } = await this.#snapshotApp();
     return {
-      ...normalizeSnapshot(snapshot.hierarchy),
+      ...normalizeSnapshot(hierarchy),
       getTestIds: async (limit?: number) =>
-        this.#testIdsOf(snapshot.hierarchy, limit),
+        this.#testIdsOf(hierarchy, viewport, limit),
     };
   }
 
   /**
-   * @param hierarchy - The UIElement tree of a snapshot.
+   * Takes one device snapshot, reads the viewport from it, and removes the
+   * elements that are not part of the app (see `filterAppHierarchy`), so the
+   * tree, the refs and the test IDs all use the same filtered hierarchy.
+   *
+   * @returns The filtered hierarchy and the viewport of the snapshot.
+   */
+  async #snapshotApp(): Promise<{
+    hierarchy: UIElement[];
+    viewport: Viewport | undefined;
+  }> {
+    const snapshot = await this.#backend.snapshot();
+    const { platform } = this.#backend;
+    return {
+      hierarchy: filterAppHierarchy(snapshot.hierarchy, {
+        platform,
+        excludeDevOverlay: this.#excludeDevOverlay,
+      }),
+      viewport: viewportFromHierarchy(snapshot.hierarchy, platform),
+    };
+  }
+
+  /**
+   * @param hierarchy - The filtered UIElement tree of a snapshot.
+   * @param snapshotViewport - The viewport read from that snapshot, if any.
    * @param limit - Maximum number of test IDs to return.
    * @returns The test IDs, with visibility against the device viewport.
    */
   async #testIdsOf(
     hierarchy: UIElement[],
+    snapshotViewport: Viewport | undefined,
     limit?: number,
   ): Promise<TestIdItem[]> {
     const items: TestIdItem[] = [];
     const max = limit ?? OBSERVATION_TESTID_LIMIT;
-    let viewport: { width: number; height: number } | undefined;
-    try {
-      viewport = await this.#backend.getWindowSize();
-    } catch {
-      // Without a viewport we cannot judge visibility; report everything.
-      viewport = undefined;
-    }
+    const viewport = snapshotViewport ?? (await this.#cachedWindowSize());
     collectTestIds(hierarchy, items, max, viewport);
     return items;
+  }
+
+  /**
+   * The device window size, read from the backend once per driver (a device
+   * round trip: `idb describe` / `adb shell wm size`). Only used when a
+   * snapshot has no top-level frame to read the viewport from. A failed read
+   * is not cached. The cached size is never invalidated, so after a rotation
+   * it keeps the old orientation; snapshots with root frames (all idb and
+   * adb snapshots seen so far) do not use it.
+   *
+   * @returns The window size, or undefined when the backend cannot read it.
+   */
+  async #cachedWindowSize(): Promise<Viewport | undefined> {
+    if (!this.#windowSize) {
+      try {
+        this.#windowSize = await this.#backend.getWindowSize();
+      } catch {
+        // Without a viewport we cannot judge visibility; report everything.
+        return undefined;
+      }
+    }
+    return this.#windowSize;
   }
 
   /**
@@ -649,13 +717,15 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Generates ranked locator suggestions for every interactive element on the
-   * current screen by walking the device snapshot hierarchy. Mobile only.
+   * current screen by walking the device snapshot hierarchy, without the
+   * elements that are not part of the app (see `filterAppHierarchy`). Mobile
+   * only.
    *
    * @returns The ranked element locators.
    */
   async generateLocators(): Promise<ElementLocatorInfo[]> {
-    const snapshot = await this.#backend.snapshot();
-    return generateLocators(snapshot.hierarchy);
+    const { hierarchy } = await this.#snapshotApp();
+    return generateLocators(hierarchy);
   }
 }
 
