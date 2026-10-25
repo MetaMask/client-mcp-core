@@ -1,0 +1,40 @@
+src/tools/utils/discovery.test.ts
+  s_0038650efc70f3::t_60b0ba660f24d8 1606
+  s_4d893751054f8e::t_ebee47508bdbc9 2162,2230,2365
+  s_4d893751054f8e::t_62df925ca3e48b 2311
+  s_71bbccb6358d9b::t_4703bc3d53056a 1512-1524
+src/server/create-server.test.ts
+  s_71bbccb6358d9b::t_7d1ffe370f8489 1248-1250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e93a529e34cc3b1c65615e87bbd282a23e16f504",
+  "prompts": {},
+  "sessions": {
+    "s_0038650efc70f3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e91f1e5c3ffe2kZqn6TkhTPioz",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_4d893751054f8e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e9174ca80ffeWMDlSqayTgaG9K",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
