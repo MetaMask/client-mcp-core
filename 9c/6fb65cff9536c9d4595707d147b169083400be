@@ -1,0 +1,98 @@
+src/server/create-server.test.ts
+  s_71bbccb6358d9b::t_7d1ffe370f8489 1248-1250
+  s_45aaf64383c892::t_5a385b18f2fc8e 3084-3085,3087,3091-3092,3094,3096-3101,3105-3141,3143,3146-3147
+  s_45aaf64383c892::t_dc7438ec2d3da5 2833-2968
+  s_b366d0d395ec2e::t_2770a1c13190f8 3095,3148
+  s_71bbccb6358d9b::t_bb67cb2ceceacd 3083,3086,3088-3090,3093
+src/platform/mobile-platform-driver.ts
+  s_45aaf64383c892::t_58e8b397ea4e8b 17-18
+  s_45aaf64383c892::t_661ad88c981a33 19-21,71-73,105-107,228,239,250,316,318-319,727
+  s_45aaf64383c892::t_7076a9d5126a75 65-70
+  s_45aaf64383c892::t_41677ccf74914d 90-93,97-104
+  s_45aaf64383c892::t_3d059b265821cf 111,229,240,252,254-276,281-282,288,293,298-315,317
+  s_45aaf64383c892::t_2f13a556115e97 720-722,728
+src/server/create-server.ts
+  s_8f0d6e538151df::t_9ac5b12f23d465 354-355
+  s_b366d0d395ec2e::t_d6706c649891f0 373-374
+  s_45aaf64383c892::t_ec24e6846544ea 347-349
+  s_45aaf64383c892::t_9c0ef28aee6547 44,350-351,370,385
+  s_45aaf64383c892::t_767f0e6ed3f3e7 319-320
+src/platform/index.ts
+  s_45aaf64383c892::t_639520a3ad8639 15
+src/platform/mobile-hierarchy.ts
+  s_45aaf64383c892::t_d5bbb0b5ddda5f 89,142-178,181
+  s_45aaf64383c892::t_2b594403c63dae 1-23,27-32,34-36,38-51,55,62,65-68,70-71,75-77,79-82,84-88,95-103,108,115-120,122-127,130,132,136-141
+  s_45aaf64383c892::t_c0a8cee7ac4e90 24-26,33,37,52-54,56-61,63-64,69,72-74,78,83,91-94,104-107,109-114,121,128-129,131,133-135
+  s_45aaf64383c892::t_ada5d26caffc36 90,179-180,182-256
+src/platform/mobile-hierarchy.test.ts
+  s_45aaf64383c892::t_1f5b5094673e1a 411
+  s_45aaf64383c892::t_8f3cc63077cfee 390-392
+  s_45aaf64383c892::t_c7d9897d7ebec4 401
+  s_45aaf64383c892::t_82ea4b7fa2ea51 356
+  s_45aaf64383c892::t_4893a47642a491 395
+  s_45aaf64383c892::t_d02bf3e064b048 398
+  s_45aaf64383c892::t_00cbfe9ce84d7f 357-384,387-388,394,397
+  s_45aaf64383c892::t_5693de8a09324c 385
+  s_45aaf64383c892::t_47f9655870777f 403
+  s_45aaf64383c892::t_75c4bb38bcf6d1 409
+  s_45aaf64383c892::t_19ca581624ad68 407
+  s_45aaf64383c892::t_9183b399b4444e 578-590
+  s_45aaf64383c892::t_3081223a4d4fa2 1-355,386,389,393,396,399-400,402,404,406,408,410,412-577
+  s_45aaf64383c892::t_bce66679a0ceb4 405
+src/platform/__fixtures__/android-login-snapshot.json
+  s_45aaf64383c892::t_9a9071c1aab9a7 1-992
+SKILL.md
+  s_45aaf64383c892::t_dd27aa43232a89 54-55
+src/index.ts
+  s_45aaf64383c892::t_07c9742f4d20b8 14
+README.md
+  s_b366d0d395ec2e::t_31af2431a94b38 457
+  s_8f0d6e538151df::t_3f8b821c972ab4 456
+  s_45aaf64383c892::t_614f6b6744adbd 458
+src/tools/utils/constants.ts
+  s_45aaf64383c892::t_b2596177832f48 67-74
+src/platform/mobile-platform-driver.test.ts
+  s_45aaf64383c892::t_12cdc916fcfa13 410-413,1595
+  s_45aaf64383c892::t_21f4e15353ef41 121-409,1576-1577,1583-1585,1589
+  s_45aaf64383c892::t_24626647c68334 4,1575,1578-1582,1586-1588,1590-1594,1596
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c6fb65cff9536c9d4595707d147b169083400be",
+  "prompts": {},
+  "sessions": {
+    "s_45aaf64383c892": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e8dff62cdffeqHGyf3B88uJbqe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    },
+    "s_8f0d6e538151df": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e94b95478ffeXxbTrJ2sxsno26",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_b366d0d395ec2e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e95167b8effea5p6Xtcy5tNMcn",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
