@@ -1,0 +1,31 @@
+src/cli/mm.ts
+  s_71bbccb6358d9b::t_1f8165200504b4 159-229
+  s_71bbccb6358d9b::t_fd6358bfdae909 296-297,299
+  s_71bbccb6358d9b::t_271dfcef3cf3e3 230-231,300-302,1260,1881,1889-1891,1896-1897
+src/cli/mm.test.ts
+  s_71bbccb6358d9b::t_ba7b9cf80f7251 214-250,252-257,259-282
+  s_71bbccb6358d9b::t_217e39f6d062a0 1346-1374
+  s_71bbccb6358d9b::t_718f45a6ff9a51 938-939
+  s_71bbccb6358d9b::t_1699af0611ab87 258
+  s_71bbccb6358d9b::t_b7086727044583 3200-3201,3206,3215,3221-3283
+  s_71bbccb6358d9b::t_bf3d286b7714da 3202-3205,3207-3214,3216-3220
+  s_71bbccb6358d9b::t_0b904ca619b838 126
+  s_71bbccb6358d9b::t_3f5ec3f6b4bccc 251
+  s_71bbccb6358d9b::t_a05e5407353f9c 16,18-19,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9c7f30f8cbd81b838bfcef6fec4a1f2b1d544ee",
+  "prompts": {},
+  "sessions": {
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
