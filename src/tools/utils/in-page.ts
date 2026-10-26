@@ -511,8 +511,11 @@ export function buildUniqueSelectorInPage(this: Element): string | null {
     }
     const { host } = root as ShadowRoot;
     const hostParts = selectorParts(host);
-    const selector = hostParts === null ? null : selectorInScope(element, host);
-    return selector === null ? null : [...(hostParts as string[]), selector];
+    if (hostParts === null) {
+      return null;
+    }
+    const selector = selectorInScope(element, host);
+    return selector === null ? null : [...hostParts, selector];
   };
 
   if (!this || this.nodeType !== 1) {

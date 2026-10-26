@@ -588,8 +588,8 @@ async function collectRawAxTree(
         error,
       );
       // getPartialAXTree also returns relatives of the root (ancestors,
-      // siblings). Their scoped selectors match nothing, so a click on such
-      // a ref fails instead of hitting another element.
+      // siblings). Their role selectors stay page-wide, so ambiguous matches
+      // fail in strict mode instead of being narrowed to the root subtree.
       const result = await cdpSession.send('Accessibility.getPartialAXTree', {
         backendNodeId,
       });
