@@ -725,8 +725,7 @@ describe('waitUntilInPage', () => {
 
 describe('in-page function source', () => {
   const inPageFunctions = Object.entries(inPage).filter(
-    (entry): entry is [string, (...args: never[]) => unknown] =>
-      typeof entry[1] === 'function',
+    (entry) => typeof entry[1] === 'function',
   );
 
   it('exports the in-page functions', () => {
