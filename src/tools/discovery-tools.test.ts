@@ -37,18 +37,6 @@ function createMockContext(
   const page = createMockPage();
   const sessionManager = createMockSessionManager({
     hasActive,
-    sessionId: 'test-session-123',
-    sessionMetadata: {
-      schemaVersion: 1,
-      sessionId: 'test-session-123',
-      createdAt: '2026-02-04T00:00:00.000Z',
-      goal: 'Test discovery',
-      flowTags: ['discovery'],
-      tags: [],
-      launch: {
-        stateMode: 'default',
-      },
-    },
   });
 
   return {
