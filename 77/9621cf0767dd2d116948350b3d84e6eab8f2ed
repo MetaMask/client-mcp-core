@@ -1,0 +1,31 @@
+src/cli/mm.ts
+  s_4fa18352157b02::t_1a75cb5abcd690 1849
+src/platform/mobile-hierarchy.ts
+  s_4fa18352157b02::t_8ff4c3c51ad450 135-136,141,149-150
+src/server/create-server.test.ts
+  s_4fa18352157b02::t_09ab0696dd2a68 22,1193
+src/server/ref-store.ts
+  s_4fa18352157b02::t_766789e87451e4 230,232-233
+src/tools/utils/discovery.ts
+  s_4fa18352157b02::t_d1566cb680cf4a 591-592
+src/tools/utils/in-page.test.ts
+  s_4fa18352157b02::t_9bdb9a7480e647 729
+src/tools/utils/in-page.ts
+  s_4fa18352157b02::t_deb199267dfcc4 514-518
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "779621cf0767dd2d116948350b3d84e6eab8f2ed",
+  "prompts": {},
+  "sessions": {
+    "s_4fa18352157b02": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87e7fb7fffepNjmlYXH56BL9E",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
