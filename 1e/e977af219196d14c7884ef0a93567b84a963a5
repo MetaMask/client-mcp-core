@@ -1,0 +1,19 @@
+src/tools/utils/in-page.test.ts
+  s_52ac5f06899e8c::t_a28642b2ad1b80 728
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ee977af219196d14c7884ef0a93567b84a963a5",
+  "prompts": {},
+  "sessions": {
+    "s_52ac5f06899e8c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87d5738effeqFyCozJ5BAPYpU",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
