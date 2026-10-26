@@ -1159,7 +1159,7 @@ describe('createServer with active session', () => {
       ['cdp', '/tool/cdp', JSON.stringify({ method: 'Runtime.evaluate' })],
     ])(
       'reports observationMs 0 for %s tools with an active session',
-      async (category, urlPath, requestBody) => {
+      async (category, urlPath, requestBody?: string) => {
         if (category === 'cdp') {
           mockSM.getPlatformDriver.mockReturnValue({
             getPlatform: () => 'browser',

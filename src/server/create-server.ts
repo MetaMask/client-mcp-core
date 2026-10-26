@@ -22,6 +22,7 @@ import {
   checkPlatformGate,
 } from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
+import type { RunStepsInput } from '../tools/types';
 import { createDefaultObservation } from '../tools/types/observation.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
 import {
@@ -138,14 +139,10 @@ export function shouldIncludeObservationsInResponse(
  */
 function batchObservationPolicy(
   validatedInput: Record<string, unknown> | undefined,
-): 'all' | 'none' | 'failures' {
-  return (
-    (
-      validatedInput as
-        | { includeObservations?: 'all' | 'none' | 'failures' }
-        | undefined
-    )?.includeObservations ?? 'all'
-  );
+): NonNullable<RunStepsInput['includeObservations']> {
+  const policy =
+    validatedInput?.includeObservations as RunStepsInput['includeObservations'];
+  return policy ?? 'all';
 }
 
 /**
