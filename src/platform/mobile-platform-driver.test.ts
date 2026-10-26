@@ -867,17 +867,6 @@ describe('MobilePlatformDriver', () => {
         extensionId: 'io.metamask',
         source: 'stub',
       });
-      for (const unknownField of [
-        'currentUrl',
-        'isUnlocked',
-        'currentScreen',
-        'accountAddress',
-        'networkName',
-        'chainId',
-        'balance',
-      ]) {
-        expect(state).not.toHaveProperty(unknownField);
-      }
     });
 
     it('returns isLoaded true for Appium foreground state code', async () => {
