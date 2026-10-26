@@ -18,6 +18,7 @@ import { toolRegistry } from '../tools/registry.js';
 import type {
   DaemonState,
   ServerConfig,
+  ToolContext,
   ToolFunction,
   ToolResponse,
 } from '../types/http.js';

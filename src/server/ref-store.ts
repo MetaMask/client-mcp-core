@@ -227,13 +227,12 @@ export class RefStore {
         const tree = this.#stabilize(map, nodes);
         let { refMap } = tree;
         if (toolMap && options?.keepToolRefs !== false) {
-          const merged = new Map(toolMap);
+          refMap = new Map(toolMap);
           for (const [ref, target] of tree.refMap) {
-            if (!merged.has(ref)) {
-              merged.set(ref, target);
+            if (!refMap.has(ref)) {
+              refMap.set(ref, target);
             }
           }
-          refMap = merged;
         }
         const applied = apply('observation', refMap, tree.nodes);
         return { applied, refMap, nodes: tree.nodes };
