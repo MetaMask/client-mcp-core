@@ -1,0 +1,21 @@
+src/server/create-server.test.ts
+  s_4fa18352157b02::t_9e12157e0c7462 1185
+src/cli/mm.ts
+  s_4fa18352157b02::t_9e12157e0c7462 1776
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71091a1c46dddba59a04e96d4a8e893a33799c1c",
+  "prompts": {},
+  "sessions": {
+    "s_4fa18352157b02": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87e7fb7fffepNjmlYXH56BL9E",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
