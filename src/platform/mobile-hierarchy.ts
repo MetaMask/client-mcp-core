@@ -127,12 +127,13 @@ export function filterAppHierarchy(
       if (isDevOverlay(el, elements[index - 1], inComposeView)) {
         return;
       }
-      if (!el.children?.length) {
+      const originalChildren = el.children;
+      if (!originalChildren?.length) {
         kept.push(el);
         return;
       }
       const children = walk(
-        el.children,
+        originalChildren,
         inComposeView || el.type === ANDROID_COMPOSE_VIEW,
       );
       if (children.length === 0 && !el.identifier && !el.label && !el.value) {
@@ -140,8 +141,8 @@ export function filterAppHierarchy(
         return;
       }
       const unchanged =
-        children.length === el.children.length &&
-        children.every((child, at) => child === el.children?.[at]);
+        children.length === originalChildren.length &&
+        children.every((child, at) => child === originalChildren[at]);
       kept.push(unchanged ? el : { ...el, children });
     });
     return kept;
