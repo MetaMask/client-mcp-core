@@ -1615,20 +1615,6 @@ export async function readSelfOnboardingInput(
  */
 export function parseLaunchArgs(args: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const knownFlags = new Set([
-    '--context',
-    '--state',
-    '--extension-path',
-    '--force',
-    '--platform',
-    '--device-id',
-    '--app-bundle',
-    '--metro-port',
-    '--reinstall',
-    '--reset-app-data',
-    '--allow-fox-code-mismatch',
-    '--self-onboarding',
-  ]);
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -1705,7 +1691,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
       result.allowFoxCodeMismatch = true;
     } else if (arg === '--self-onboarding') {
       result.selfOnboarding = true;
-    } else if (arg.startsWith('--') && !knownFlags.has(arg)) {
+    } else if (arg.startsWith('--')) {
       process.stderr.write(`Warning: unknown launch flag '${arg}'\n`);
     }
   }
