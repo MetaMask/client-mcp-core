@@ -1,0 +1,19 @@
+src/server/ref-store.ts
+  s_505315be573653::t_7935d44c0c0178 230,232-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dcc7a0aae33e8f34034918d524d155e623764895",
+  "prompts": {},
+  "sessions": {
+    "s_505315be573653": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87d573a6ffeHoF8wGeoeFyzsy",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
