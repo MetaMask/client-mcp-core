@@ -545,42 +545,7 @@ describe('discovery-tools', () => {
       ['accessibility_snapshot', accessibilitySnapshotTool],
       ['describe_screen', describeScreenTool],
     ] as const)(
-      '%s sets refs through context.setRefMap and returns the written refs',
-      async (_name, tool) => {
-        const context = createMockContext();
-        const remapped: A11yNodeTrimmed[] = [{ ...nodes[0], ref: 'e7' }];
-        const setRefMap = vi.fn().mockReturnValue({
-          refMap: new Map([['e7', 'role=button[name="Go"]']]),
-          nodes: remapped,
-        });
-        const result = await tool({}, { ...context, setRefMap } as ToolContext);
-
-        expect(result.ok).toBe(true);
-        expect(setRefMap).toHaveBeenCalledWith(refMap, nodes);
-        expect(nodesOf(result)).toStrictEqual(remapped);
-        expect(context.sessionManager.setRefMap).not.toHaveBeenCalled();
-      },
-    );
-
-    it.each([
-      ['accessibility_snapshot', accessibilitySnapshotTool],
-      ['describe_screen', describeScreenTool],
-    ] as const)(
-      '%s returns the input nodes when context.setRefMap returns no nodes',
-      async (_name, tool) => {
-        const context = createMockContext();
-        const setRefMap = vi.fn().mockReturnValue({ refMap });
-        const result = await tool({}, { ...context, setRefMap } as ToolContext);
-
-        expect(nodesOf(result)).toStrictEqual(nodes);
-      },
-    );
-
-    it.each([
-      ['accessibility_snapshot', accessibilitySnapshotTool],
-      ['describe_screen', describeScreenTool],
-    ] as const)(
-      '%s falls back to sessionManager.setRefMap and returns the input unchanged',
+      '%s sets refs through sessionManager.setRefMap and returns the tree nodes',
       async (_name, tool) => {
         const context = createMockContext();
         const result = await tool({}, context);

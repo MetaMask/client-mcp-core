@@ -368,14 +368,10 @@ type ToolContext = {
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
   driver?: IPlatformDriver;
   signal?: AbortSignal; // aborted when the request times out
-  setRefMap?: (
-    map: Map<string, string>,
-    nodes?: A11yNodeTrimmed[],
-  ) => { refMap: Map<string, string>; nodes?: A11yNodeTrimmed[] };
 };
 ```
 
-Tools check `signal?.aborted` between steps and stop. Tools that build refs call `context.setRefMap(map, nodes)` (fall back to `sessionManager.setRefMap` when it is absent) and return the `nodes` it returns: the daemon may renumber refs so elements the agent already holds keep their refs. The daemon's `RefStore` drops a write from a request that timed out or was replaced by a newer one, so a cancelled call cannot overwrite the refs of later calls. In the daemon, `context.sessionManager.setRefMap` goes through the same guard (without renumbering).
+Tools check `signal?.aborted` between steps and stop. In the daemon, `context.sessionManager.setRefMap` goes through a guard (`RefStore`) that drops a write from a request that timed out or was replaced by a newer one, so a cancelled call cannot overwrite the refs of later calls.
 
 The daemon routes `POST /tool/:name` requests through the registry, applies Zod validation on inputs, executes the tool through the request queue, and captures observations (test IDs, a11y snapshot) according to the call's `observe` level (see [Observations](#observations)).
 
@@ -451,7 +447,7 @@ mm type e3 "hello"    → types into the element mapped to e3
 
 This accessibility-first approach provides reliable element targeting that survives minor UI changes.
 
-Refs stay valid while the element stays on screen. Each observation, `describe_screen` and `accessibility_snapshot` is renumbered against the last tree the agent received. Elements are matched by key (browser: role + name + testId; mobile: testId, else role + name). A key found once in each tree keeps its ref. Same key: matched in screen order (the k-th element with that key keeps the ref of the k-th element with that key in the last tree), so the many unnamed containers of a mobile screen keep their refs and an unchanged screen diffs as unchanged. When an element is inserted in the middle of a group that shares a key, the later elements of that group shift by one ref (each takes its predecessor's ref; the last gets a fresh one); elements with other keys are not affected. Other elements get fresh refs above the highest ref handed out so far, so an element that leaves the screen and comes back gets a fresh ref, and a removed ref is never reused for another element within a session (numbering restarts at `launch` and `cleanup`). Ref numbers can therefore grow within a session: new elements, options and collapsed runs get fresh refs, and do not reuse lower numbers. Options (`role: option`) and elements inside collapsed runs (`… 4 more`) are not stabilized: they always get fresh, contiguous refs so ranges (`e2–e56`) stay valid. If a tool set refs during a call (for example `describe_screen` with `observe`), the observation keeps them and adds its new refs, so every ref in the response resolves. `list_testids` does not change refs.
+Refs are numbered in tree order each time the daemon reads the screen (`describe_screen`, `accessibility_snapshot`, or an observation). The same screen gives the same refs, so an unchanged screen diffs as unchanged. When elements appear or disappear above an element, its ref can change: use the refs from the latest response. When a call returns both a tree and an observation (for example `describe_screen` with `observe`), the observation's refs are the ones that resolve. `list_testids` does not change refs.
 
 On mobile, after a mutating or batch call, the daemon may take the snapshot again after 300 ms: while it shows a busy element (a label ending in `, busy`, an Android `ProgressBar`, or an iOS `ActivityIndicator` / `ProgressIndicator` / `UIActivityIndicatorView`), and at most once when it still equals the previous screen. In total at most 3 extra snapshots and about 2 s. The test IDs come from the same snapshot as the tree. `describe_screen` on mobile also takes one snapshot for both.
 

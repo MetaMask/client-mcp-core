@@ -14,7 +14,6 @@ import {
   createToolError,
   createToolSuccess,
   requireActiveSession,
-  setToolRefMap,
 } from './utils.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
@@ -96,8 +95,10 @@ export async function accessibilitySnapshotTool(
   const { driver } = driverResult;
 
   try {
-    const tree = await driver.getAccessibilityTree(input.rootSelector);
-    const { nodes } = setToolRefMap(context, tree.refMap, tree.nodes);
+    const { nodes, refMap } = await driver.getAccessibilityTree(
+      input.rootSelector,
+    );
+    context.sessionManager.setRefMap(refMap);
     return createToolSuccess({ nodes });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);
@@ -140,8 +141,8 @@ export async function describeScreenTool(
     if (aborted) {
       return aborted;
     }
-    const tree = screen ?? (await driver.getAccessibilityTree());
-    const { nodes } = setToolRefMap(context, tree.refMap, tree.nodes);
+    const { nodes, refMap } = screen ?? (await driver.getAccessibilityTree());
+    context.sessionManager.setRefMap(refMap);
 
     const trackedPages = context.sessionManager.getTrackedPages();
     let activeTab: DescribeScreenResult['activeTab'];

@@ -75,9 +75,9 @@ type ObservedTree = {
 };
 
 /**
- * Wraps the session manager so a tool's `sessionManager.setRefMap` goes
- * through the request's RefStore handle (dropped when the request is stale
- * or aborted). Every other member is read from the real session manager;
+ * Wraps the session manager so a tool's `sessionManager.setRefMap` and
+ * `clearRefMap` go through the request's RefStore handle (dropped when the
+ * request is stale or aborted). Every other member is read from the real session manager;
  * methods are bound to it, so `this` (and private fields) work.
  *
  * @param sessionManager - The real session manager.
@@ -91,15 +91,66 @@ function routeSetRefMap(
   const setRefMap = (map: Map<string, string>): void => {
     refs.set(map);
   };
+  const clearRefMap = (): void => {
+    refs.set(new Map());
+  };
   return new Proxy(sessionManager, {
     get(target, property): unknown {
       if (property === 'setRefMap') {
         return setRefMap;
       }
+      if (property === 'clearRefMap') {
+        return clearRefMap;
+      }
       const value: unknown = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
+}
+
+/**
+ * Returns the a11y tree the agent holds after a response: the delivered
+ * observation's tree, else the tree a discovery tool returned. Launch and
+ * cleanup start or end a session, so nothing is held after them. Only called
+ * for delivered responses: a request that timed out never updates it.
+ *
+ * @param toolName - The tool name.
+ * @param toolResult - The tool response.
+ * @param observations - The delivered observation, if any.
+ * @param previous - The tree held before this response.
+ * @param rootSelector - The `rootSelector` of an `accessibility_snapshot`.
+ * @returns The tree held now, or null.
+ */
+export function screenAfterResponse(
+  toolName: string,
+  toolResult: ToolResponse,
+  observations: StepRecordObservation | undefined,
+  previous: A11yNodeTrimmed[] | null,
+  rootSelector?: unknown,
+): A11yNodeTrimmed[] | null {
+  if (toolName === 'launch' || toolName === 'cleanup') {
+    return null;
+  }
+  if (observations) {
+    // The observation is the last tree in the response.
+    return observations.a11y.nodes;
+  }
+  if (toolResult.ok) {
+    const result = toolResult.result as
+      | { nodes?: unknown; a11y?: { nodes?: unknown } }
+      | undefined;
+    let nodes: unknown;
+    if (toolName === 'accessibility_snapshot') {
+      // A rootSelector snapshot is a subtree, not the screen.
+      nodes = rootSelector === undefined ? result?.nodes : undefined;
+    } else if (toolName === 'describe_screen') {
+      nodes = result?.a11y?.nodes;
+    }
+    if (Array.isArray(nodes)) {
+      return nodes as A11yNodeTrimmed[];
+    }
+  }
+  return previous;
 }
 
 /**
@@ -207,12 +258,7 @@ export function resolveObserveLevel(
 export function createServer(config: ServerConfig): ServerInstance {
   const app = express();
   const queue = new RequestQueue(config.requestTimeoutMs);
-  const refStore = new RefStore(config.sessionManager, () => {
-    const platform = config.sessionManager.getPlatformDriver?.()?.getPlatform();
-    return platform === undefined || platform === 'browser'
-      ? 'browser'
-      : 'mobile';
-  });
+  const refStore = new RefStore(config.sessionManager);
   const nonce = randomUUID();
 
   let httpServer: http.Server | null = null;
@@ -226,6 +272,10 @@ export function createServer(config: ServerConfig): ServerInstance {
   let lastRequestTime = Date.now();
   let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
   let lastObservation: StepRecordObservation | null = null;
+  // The last a11y tree the agent received (from an observation or from
+  // describe_screen / accessibility_snapshot). The mobile settle compares
+  // against it to tell whether the screen changed yet.
+  let lastScreen: A11yNodeTrimmed[] | null = null;
 
   // Registered before the body parser so `meta.timing.totalMs` includes body
   // parsing, and so malformed-JSON errors still have a start time.
@@ -271,9 +321,8 @@ export function createServer(config: ServerConfig): ServerInstance {
    * when a tool actually reads them, avoiding throws for non-session tools.
    * `refMap` reads the session manager on each access; writes from older or
    * aborted requests never reach it (see RefStore), so it always holds the
-   * refs of this request or of the last request that completed. Both
-   * `setRefMap` and `sessionManager.setRefMap` write through the request's
-   * RefStore handle.
+   * refs of this request or of the last request that completed.
+   * `sessionManager.setRefMap` writes through the request's RefStore handle.
    *
    * @param wfCtx - The current workflow context to embed in the tool context.
    * @param signal - The request's abort signal.
@@ -307,7 +356,6 @@ export function createServer(config: ServerConfig): ServerInstance {
       toolRegistry,
       driver,
       signal,
-      setRefMap: (map, nodes) => refs.set(map, nodes),
     };
   }
 
@@ -363,9 +411,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     let screen = await captureMobile(driver);
     if (settle) {
       const settleStartedAt = Date.now();
-      const previous =
-        refStore.baselineSignature() ??
-        (lastObservation ? screenSignature(lastObservation.a11y.nodes) : null);
+      const previous = lastScreen ? screenSignature(lastScreen) : null;
       let unchangedRetries = 0;
       const shouldRetry = (nodes: A11yNodeTrimmed[]): boolean => {
         if (isScreenBusy(nodes)) {
@@ -439,9 +485,10 @@ export function createServer(config: ServerConfig): ServerInstance {
 
   /**
    * Collects the post-tool observation. Its refMap is applied through the
-   * request's RefStore handle, which renumbers refs so unchanged elements
-   * keep the refs the agent already holds, drops the write when the request
-   * is stale or aborted, and keeps refs the tool set during this request.
+   * request's RefStore handle, which drops the write when the request is
+   * stale or aborted. The observation is the last tree in the response, so
+   * its refs replace any refs the tool set: every ref the agent receives
+   * last resolves.
    *
    * @param context - The tool context of the request.
    * @param toolName - The tool name.
@@ -464,29 +511,21 @@ export function createServer(config: ServerConfig): ServerInstance {
     const driver =
       config.sessionManager.getPlatformDriver?.() ?? context.driver;
     const mobile = driver !== undefined && driver.getPlatform() !== 'browser';
-    // When the tool set refs, the baseline is the tool's tree, so elements
-    // that did not change keep the tool's refs, and the observation's other
-    // refs are added to the tool's map. run_steps: a later step may have
-    // changed the screen after a step set refs, so its observation replaces
-    // them.
-    const keepToolRefs = category !== 'batch';
-    // No settle when the tool set refs with nodes and keeps them: it already
-    // looked at the screen it returned. A refs-only write (no nodes) does
-    // not count: the tool did not read the screen.
+    // No settle when a (non-batch) tool set refs: it just read the screen.
+    // run_steps: a later step may have changed the screen after a step read
+    // it, so it still settles.
     const settle =
       (category === 'mutating' || category === 'batch') &&
       toolName !== 'launch' &&
       toolName !== 'cleanup' &&
-      !(refs.toolSawScreen && keepToolRefs);
+      !(refs.toolSetRefs && category !== 'batch');
     const tree = mobile
       ? await snapshotMobile(driver, settle, signal)
       : await snapshotBrowser(category, signal);
     signal.throwIfAborted();
 
-    const { nodes } = refs.setObservation(tree.refMap, tree.nodes, {
-      keepToolRefs,
-    });
-    return createDefaultObservation(tree.testIds, nodes);
+    refs.set(tree.refMap, 'observation');
+    return createDefaultObservation(tree.testIds, tree.nodes);
   }
 
   /**
@@ -650,14 +689,6 @@ export function createServer(config: ServerConfig): ServerInstance {
           );
           const result = await tool(omitObserve(validatedInput), context);
           timer.markToolEnd();
-          if (
-            (toolName === 'launch' || toolName === 'cleanup') &&
-            refs.isCurrent()
-          ) {
-            // A new or closed session: earlier refs are no baseline, and ref
-            // numbering starts again.
-            refStore.resetBaseline();
-          }
 
           const level = resolveObserveLevel(category, inputRecord, result);
           let obs: StepRecordObservation | undefined;
@@ -711,6 +742,15 @@ export function createServer(config: ServerConfig): ServerInstance {
       } else if (observations) {
         lastObservation = observations;
       }
+      // Updated after the response, like lastObservation: only for responses
+      // the agent received.
+      lastScreen = screenAfterResponse(
+        toolName,
+        toolResult,
+        observations,
+        lastScreen,
+        inputRecord?.rootSelector,
+      );
     } catch (error) {
       res.status(500).json(
         withMeta(
