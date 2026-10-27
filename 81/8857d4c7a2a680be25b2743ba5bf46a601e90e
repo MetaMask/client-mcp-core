@@ -1,0 +1,23 @@
+src/server/request-queue.ts
+  s_4fa18352157b02::t_a2ea7ed47ac578 8-23,37,65-68
+  s_4fa18352157b02::t_3d84b049b5ba1c 7
+src/server/request-queue.test.ts
+  s_4fa18352157b02::t_a9d1b868e16d2c 240-278,297,300
+  s_4fa18352157b02::t_95792f4156af58 279-296,298-299,301-312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "818857d4c7a2a680be25b2743ba5bf46a601e90e",
+  "prompts": {},
+  "sessions": {
+    "s_4fa18352157b02": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87e7fb7fffepNjmlYXH56BL9E",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
