@@ -1,0 +1,16 @@
+src/server/request-queue.test.ts
+  h_d6a04d82b61d5e 240-312
+src/server/request-queue.ts
+  h_d6a04d82b61d5e 7-23,37,65-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a295e4cc0f0f61999d83056b780733b96ed227d9",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
