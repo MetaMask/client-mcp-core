@@ -1,0 +1,33 @@
+src/server/ref-store.test.ts
+  s_71bbccb6358d9b::t_249487873d0392 6,26,28,35,38-41,45,50-51,55,59-60,64-67,69-72
+src/server/ref-store.ts
+  s_71bbccb6358d9b::t_31debfbc2837e8 11-12,21,24-26,28,32,40,47,67,75,78-84,86-88,90
+README.md
+  s_71bbccb6358d9b::t_19ba2e092f788d 374,450
+SKILL.md
+  s_71bbccb6358d9b::t_be19cfb11bd2f8 21,88
+src/server/create-server.test.ts
+  s_71bbccb6358d9b::t_e5ac46a371323e 1857,2161,2290,2374,2384-2385,2389,2394,2401-2403,2411-2412,2419,2422,2434-2435,2438-2439,2442-2443,2454,2457-2459,2462,2471-2482,2485,2487-2488,2670,2673,2679-2680,2814,2824,2826,2828,2831-2832
+src/server/create-server.ts
+  s_71bbccb6358d9b::t_ee0575329c6679 105-141,247,261-264,310-311,400,474-479,502-504,509,515-518,735-740
+src/tools/discovery-tools.test.ts
+  s_71bbccb6358d9b::t_35f830d4a34d95 548
+src/tools/discovery-tools.ts
+  s_71bbccb6358d9b::t_723c8679dfc973 98-101,144-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "409bafbff74800bd796ee655fd289cff40e8f3ae",
+  "prompts": {},
+  "sessions": {
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
