@@ -1,0 +1,19 @@
+src/platform/mobile-hierarchy.ts
+  s_d3c556789103e0::t_dad5897b32e265 130-131,136,144-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "784a5563aec304dfd61166d9112f5726bef7849d",
+  "prompts": {},
+  "sessions": {
+    "s_d3c556789103e0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87d57371ffeTJ0it0vny5bOAB",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
