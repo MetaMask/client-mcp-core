@@ -237,23 +237,77 @@ describe('RequestQueue', () => {
     });
   });
 
-  it('clamps an oversized timeout to MAX_QUEUE_TIMEOUT_MS', async () => {
-    vi.useFakeTimers();
-    try {
-      const queue = new RequestQueue();
-      const pending = queue
-        .enqueue(async () => new Promise<never>(() => undefined), {
-          timeoutMs: Number.MAX_SAFE_INTEGER,
-        })
-        .catch((error: unknown) => error);
-      await vi.advanceTimersByTimeAsync(
-        MAX_QUEUE_TIMEOUT_MS + QUEUE_SETTLE_TIMEOUT_MS,
-      );
-      expect(String(await pending)).toContain(
-        `timed out after ${MAX_QUEUE_TIMEOUT_MS}ms`,
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+  it.each([
+    {
+      name: 'configured timeout',
+      configuredTimeout: 25,
+      requestedTimeout: undefined,
+      expectedTimeout: 25,
+    },
+    {
+      name: 'positive override',
+      configuredTimeout: 100,
+      requestedTimeout: 25,
+      expectedTimeout: 25,
+    },
+    ...[0, -1, NaN, -Infinity].map((requestedTimeout) => ({
+      name: `invalid override ${requestedTimeout}`,
+      configuredTimeout: 25,
+      requestedTimeout,
+      expectedTimeout: 25,
+    })),
+    ...[MAX_QUEUE_TIMEOUT_MS, Number.MAX_SAFE_INTEGER, Infinity].map(
+      (requestedTimeout) => ({
+        name: `bounded override ${requestedTimeout}`,
+        configuredTimeout: 25,
+        requestedTimeout,
+        expectedTimeout: MAX_QUEUE_TIMEOUT_MS,
+      }),
+    ),
+    ...[0, -1, NaN, -Infinity].map((configuredTimeout) => ({
+      name: `invalid configured timeout ${configuredTimeout}`,
+      configuredTimeout,
+      requestedTimeout: undefined,
+      expectedTimeout: 30_000,
+    })),
+    ...[Number.MAX_SAFE_INTEGER, Infinity].map((configuredTimeout) => ({
+      name: `bounded configured timeout ${configuredTimeout}`,
+      configuredTimeout,
+      requestedTimeout: undefined,
+      expectedTimeout: MAX_QUEUE_TIMEOUT_MS,
+    })),
+  ])(
+    'bounds the timer for $name',
+    async ({ configuredTimeout, requestedTimeout, expectedTimeout }) => {
+      vi.useFakeTimers();
+      try {
+        const queue = new RequestQueue(configuredTimeout);
+        let seen: AbortSignal | undefined;
+        const pending = queue
+          .enqueue(
+            async (signal) => {
+              seen = signal;
+              return new Promise<never>(() => undefined);
+            },
+            { timeoutMs: requestedTimeout },
+          )
+          .catch((error: unknown) => error);
+        await vi.advanceTimersByTimeAsync(expectedTimeout - 1);
+        expect(seen?.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(seen?.aborted).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(QUEUE_SETTLE_TIMEOUT_MS);
+        const error = await pending;
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe(
+          `Tool execution timed out after ${expectedTimeout}ms`,
+        );
+        expect(seen?.reason).toBe(error);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });

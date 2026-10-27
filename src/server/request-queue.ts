@@ -5,6 +5,23 @@ import {
 import { debugWarn } from '../utils';
 
 /**
+ * Resolves a queue timeout within the maximum timer duration.
+ *
+ * @param timeoutMs - The requested timeout.
+ * @param fallbackMs - A positive, bounded timeout for invalid requests.
+ * @returns The bounded timeout in milliseconds.
+ */
+function clampQueueTimeout(timeoutMs: number, fallbackMs: number): number {
+  if (!(timeoutMs > 0)) {
+    return fallbackMs;
+  }
+  if (timeoutMs <= MAX_QUEUE_TIMEOUT_MS) {
+    return timeoutMs;
+  }
+  return MAX_QUEUE_TIMEOUT_MS;
+}
+
+/**
  * Async mutex for serializing concurrent tool requests.
  * Ensures only one tool executes at a time.
  */
@@ -17,7 +34,7 @@ export class RequestQueue {
    * @param timeoutMs - Maximum milliseconds a queued task may run.
    */
   constructor(timeoutMs = 30_000) {
-    this.#timeoutMs = timeoutMs;
+    this.#timeoutMs = clampQueueTimeout(timeoutMs, 30_000);
   }
 
   /**
@@ -45,14 +62,10 @@ export class RequestQueue {
     const prev = this.#queue;
     this.#queue = next;
     await prev;
-    // Clamp caller-supplied timeouts (they come from request bodies).
-    let effectiveTimeout = options?.timeoutMs ?? this.#timeoutMs;
-    if (!(effectiveTimeout > 0)) {
-      effectiveTimeout = this.#timeoutMs;
-    }
-    if (effectiveTimeout > MAX_QUEUE_TIMEOUT_MS) {
-      effectiveTimeout = MAX_QUEUE_TIMEOUT_MS;
-    }
+    const effectiveTimeout = clampQueueTimeout(
+      options?.timeoutMs ?? this.#timeoutMs,
+      this.#timeoutMs,
+    );
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fnPromise = fn(controller.signal);
