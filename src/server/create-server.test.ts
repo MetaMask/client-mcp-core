@@ -735,6 +735,8 @@ describe('createServer integration', () => {
     await server.stop();
 
     const mockSM = createMockSessionManager();
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    mockSM.getPlatformDriver.mockReturnValue({ dispose });
     const customServer = createServer(
       buildConfig({
         sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
@@ -748,6 +750,7 @@ describe('createServer integration', () => {
     try {
       await expect(customServer.start()).rejects.toThrowError(/EACCES/u);
       expect(mockSM.cleanup).toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledTimes(1);
     } finally {
       await fs.chmod(tmpDir, 0o755).catch(() => {});
     }
@@ -844,6 +847,25 @@ describe('createServer integration', () => {
   it('stop() is idempotent', async () => {
     await server.stop();
     expect(await server.stop()).toBeUndefined();
+  });
+
+  it('disposes the session driver on daemon stop even when consumer cleanup fails', async () => {
+    await server.stop();
+    const mockSM = createMockSessionManager();
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    mockSM.getPlatformDriver.mockReturnValue({ dispose });
+    mockSM.cleanup.mockRejectedValue(new Error('app close failed'));
+    const customServer = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+      }),
+    );
+    await customServer.start();
+    await customServer.stop();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(mockSM.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
+      dispose.mock.invocationCallOrder[0],
+    );
   });
 
   describe('POST /tool/:name input validation', () => {

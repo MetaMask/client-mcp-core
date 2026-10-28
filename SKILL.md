@@ -14,6 +14,8 @@ mm describe-screen         # 4. Re-describe after every action to get fresh refs
 mm cleanup --shutdown      # 5. Clean up when done
 ```
 
+Cleanup also disposes the session driver's owned resources after consumer app/session cleanup, including when cleanup fails. With a lifecycle-capable device-mcp backend, this releases its private companion and recording. `--shutdown` stops the worktree's daemon; it does not shut down a simulator or stop Metro. Independent agents should use separate worktrees/daemons and explicit device IDs.
+
 **Critical rules:**
 
 - **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — they change after every action.

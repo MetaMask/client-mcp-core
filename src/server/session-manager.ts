@@ -332,6 +332,11 @@ export type ISessionManager = {
   // Platform Driver (Optional — consumers that support mobile implement these)
   // -----------------------------------------------------------------------------
 
+  /**
+   * Return the session-owned driver, including during partial launch when possible.
+   * Core captures it before cleanup and disposes its resources afterward. Consumers
+   * must dispose drivers that fail before they can be exposed here.
+   */
   getPlatformDriver?(): IPlatformDriver | undefined;
 
   setPlatformDriver?(driver: IPlatformDriver): void;

@@ -49,6 +49,9 @@ export type WithinScope = {
 };
 
 export type IPlatformDriver = {
+  /** Release resources owned by this driver. Idempotent; does not shut down the device. */
+  dispose?(): Promise<void>;
+
   click(
     targetType: TargetType,
     targetValue: string,

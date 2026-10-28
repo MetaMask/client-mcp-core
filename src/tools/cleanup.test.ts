@@ -71,4 +71,13 @@ describe('cleanupTool', () => {
 
     expect(context.sessionManager.cleanup).toHaveBeenCalledTimes(2);
   });
+
+  it('disposes the active platform driver through the cleanup tool', async () => {
+    const context = createMockContext(true);
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    context.sessionManager.getPlatformDriver = () =>
+      ({ dispose }) as unknown as NonNullable<ToolContext['driver']>;
+    await cleanupTool({}, context);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
 });

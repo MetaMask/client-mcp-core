@@ -72,6 +72,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
   // across mobile sessions (e.g. a relaunch against a different simulator).
   readonly #hermesSession: HermesSession;
 
+  #disposing: Promise<void> | undefined;
+
   /**
    * @param backend - The device-mcp backend to delegate to.
    * @param bundleId - The app bundle ID for getAppState calls.
@@ -80,6 +82,20 @@ export class MobilePlatformDriver implements IPlatformDriver {
     this.#backend = backend;
     this.#bundleId = bundleId;
     this.#hermesSession = new HermesSession({ platform: backend.platform });
+  }
+
+  /** Release only this backend's resources; compatible with older device-mcp releases. */
+  async dispose(): Promise<void> {
+    const backend = this.#backend as DeviceBackend & {
+      dispose?(): Promise<void>;
+    };
+    this.#disposing ??= Promise.resolve()
+      .then(async () => backend.dispose?.())
+      .catch((error: unknown) => {
+        this.#disposing = undefined;
+        throw error;
+      });
+    await this.#disposing;
   }
 
   /**

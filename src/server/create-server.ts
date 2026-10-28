@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 
+import { cleanupSession } from './cleanup-session.js';
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RequestQueue } from './request-queue.js';
@@ -845,7 +846,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           });
         }
         try {
-          await config.sessionManager.cleanup();
+          await cleanupSession(config.sessionManager);
         } catch {
           // Swallow — we're already propagating startupError.
         }
@@ -897,7 +898,7 @@ export function createServer(config: ServerConfig): ServerInstance {
 
       // 4. Clean up session
       try {
-        await config.sessionManager.cleanup();
+        await cleanupSession(config.sessionManager);
       } catch (error) {
         appendLog(
           config.logFilePath,

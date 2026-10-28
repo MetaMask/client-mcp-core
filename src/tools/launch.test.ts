@@ -216,6 +216,9 @@ describe('launchTool', () => {
     it('cleans up and relaunches when force is true', async () => {
       const context = createMockContext({ hasActive: true });
       vi.spyOn(context.sessionManager, 'cleanup').mockResolvedValue(true);
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      context.sessionManager.getPlatformDriver = () =>
+        ({ dispose }) as unknown as NonNullable<ToolContext['driver']>;
 
       const result = await launchTool(
         { stateMode: 'default', force: true },
@@ -224,11 +227,40 @@ describe('launchTool', () => {
 
       expect(result.ok).toBe(true);
       expect(context.sessionManager.cleanup).toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect(dispose.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(context.sessionManager.launch).mock.invocationCallOrder[0],
+      );
       expect(context.sessionManager.launch).toHaveBeenCalled();
     });
   });
 
   describe('launch failures', () => {
+    it('disposes an exposed partial-launch driver even if consumer cleanup fails', async () => {
+      const context = createMockContext({ hasActive: false });
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      context.sessionManager.getPlatformDriver = () =>
+        ({ dispose }) as unknown as NonNullable<ToolContext['driver']>;
+      vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
+        Object.assign(new Error('device failed'), {
+          code: ErrorCodes.MM_DEPENDENCIES_MISSING,
+        }),
+      );
+      vi.spyOn(context.sessionManager, 'cleanup').mockRejectedValue(
+        new Error('cleanup failed'),
+      );
+
+      const result = await launchTool({ stateMode: 'default' }, context);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: ErrorCodes.MM_DEPENDENCIES_MISSING,
+          message: 'device failed',
+        },
+      });
+    });
+
     it('returns port conflict error for EADDRINUSE', async () => {
       const context = createMockContext({ hasActive: false });
       vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(

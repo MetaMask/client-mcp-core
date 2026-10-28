@@ -1,5 +1,6 @@
 import type { CleanupInput, CleanupResult } from './types';
 import { createToolSuccess } from './utils.js';
+import { cleanupSession } from '../server/cleanup-session.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 /**
@@ -13,7 +14,7 @@ export async function cleanupTool(
   _input: CleanupInput,
   context: ToolContext,
 ): Promise<ToolResponse<CleanupResult>> {
-  const cleanedUp = await context.sessionManager.cleanup();
+  const cleanedUp = await cleanupSession(context.sessionManager);
 
   return createToolSuccess({ cleanedUp });
 }
