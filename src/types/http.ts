@@ -32,6 +32,12 @@ export type ToolContext = {
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
   /** Platform driver for cross-platform element interaction (browser, iOS, Android) */
   driver?: IPlatformDriver;
+  /**
+   * Cleans up the session and disposes its driver through the server-owned
+   * lifecycle, so failed disposals are retried by later cleanups and by
+   * daemon stop. Absent when the context was not built by the daemon.
+   */
+  cleanupSession?: () => Promise<boolean>;
 };
 
 /**

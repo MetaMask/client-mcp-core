@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 
-import { cleanupSession } from './cleanup-session.js';
+import { DriverLifecycle } from './cleanup-session.js';
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RequestQueue } from './request-queue.js';
@@ -259,6 +259,9 @@ export function createServer(config: ServerConfig): ServerInstance {
   const queue = new RequestQueue(config.requestTimeoutMs);
   const nonce = randomUUID();
   const knowledgeStore = config.knowledgeStore ?? new KnowledgeStore();
+  // One owner for driver disposal retries across tools, stop() and rollback.
+  // Keyed by this server, not by the session manager object a caller sees.
+  const driverLifecycle = new DriverLifecycle();
 
   let httpServer: http.Server | null = null;
   let worktreeRoot = '';
@@ -341,6 +344,8 @@ export function createServer(config: ServerConfig): ServerInstance {
       knowledgeStore,
       toolRegistry,
       driver,
+      cleanupSession: async () =>
+        driverLifecycle.cleanupSession(config.sessionManager),
     };
   }
 
@@ -846,7 +851,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           });
         }
         try {
-          await cleanupSession(config.sessionManager);
+          await driverLifecycle.cleanupSession(config.sessionManager);
         } catch {
           // Swallow — we're already propagating startupError.
         }
@@ -898,7 +903,7 @@ export function createServer(config: ServerConfig): ServerInstance {
 
       // 4. Clean up session
       try {
-        await cleanupSession(config.sessionManager);
+        await driverLifecycle.cleanupSession(config.sessionManager);
       } catch (error) {
         appendLog(
           config.logFilePath,

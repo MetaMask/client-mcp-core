@@ -239,7 +239,7 @@ type ISessionManager = {
 
 ### Session-scoped device teardown
 
-Core captures `sessionManager.getPlatformDriver?.()` before calling the consumer's `cleanup()`, then calls the driver's optional `dispose()` hook. Disposal runs even when consumer cleanup fails. This applies to `mm cleanup`, forced relaunch, failed launch, daemon shutdown, and server startup rollback. A failed disposal is retained for a later cleanup attempt.
+Core captures `sessionManager.getPlatformDriver?.()` before calling the consumer's `cleanup()`, then calls the driver's optional `dispose()` hook. Disposal runs even when consumer cleanup fails. This applies to `mm cleanup`, forced relaunch, failed launch, daemon shutdown, and server startup rollback. A failed disposal is retained for a later cleanup attempt. The daemon owns that retention (one `DriverLifecycle` per `createServer`), so a later `mm cleanup`, forced relaunch, or daemon stop retries it, whatever wrapper of the session manager a tool receives. Tools reach it through `ToolContext.cleanupSession()`; without it (a context built outside the daemon), the tools fall back to retention per session-manager object.
 
 `MobilePlatformDriver.dispose()` delegates to its backend's optional `dispose()` hook. With a device-mcp version that implements private IDB companions, this stops only that backend's companion and recording. Older device-mcp versions remain compatible, but do not gain companion teardown. Adopt the device-mcp lifecycle release in the consumer after it is published; this change does not update the core dependency range.
 

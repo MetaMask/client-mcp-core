@@ -868,6 +868,75 @@ describe('createServer integration', () => {
     );
   });
 
+  describe('driver disposal retries (server-owned)', () => {
+    function flakyDriverSession(): {
+      mockSM: ReturnType<typeof createMockSessionManager>;
+      dispose: ReturnType<typeof vi.fn>;
+    } {
+      const mockSM = createMockSessionManager();
+      const dispose = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('companion stop timed out'))
+        .mockResolvedValue(undefined);
+      let driver:
+        | { dispose: typeof dispose; getPlatform: () => 'ios' }
+        | undefined = { dispose, getPlatform: () => 'ios' };
+      mockSM.hasActiveSession.mockImplementation(() => driver !== undefined);
+      mockSM.getPlatformDriver.mockImplementation(() => driver);
+      mockSM.cleanup.mockImplementation(async () => {
+        // The consumer resets its session state, dropping the driver.
+        driver = undefined;
+        return true;
+      });
+      return { mockSM, dispose };
+    }
+
+    async function postCleanup(port: number): Promise<number> {
+      const res = await httpRequest(`http://127.0.0.1:${port}/tool/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      await res.json();
+      return res.status;
+    }
+
+    it('retries a failed disposal on the next /tool/cleanup', async () => {
+      await server.stop();
+      const { mockSM, dispose } = flakyDriverSession();
+      const customServer = createServer(
+        buildConfig({
+          sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        }),
+      );
+      const started = await customServer.start();
+      try {
+        expect(await postCleanup(started.port)).toBe(500);
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(await postCleanup(started.port)).toBe(200);
+        expect(dispose).toHaveBeenCalledTimes(2);
+      } finally {
+        await customServer.stop();
+      }
+      expect(dispose).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries a failed /tool/cleanup disposal on daemon stop', async () => {
+      await server.stop();
+      const { mockSM, dispose } = flakyDriverSession();
+      const customServer = createServer(
+        buildConfig({
+          sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        }),
+      );
+      const started = await customServer.start();
+      expect(await postCleanup(started.port)).toBe(500);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await customServer.stop();
+      expect(dispose).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('POST /tool/:name input validation', () => {
     it('returns 400 for missing required field', async () => {
       const res = await httpRequest(

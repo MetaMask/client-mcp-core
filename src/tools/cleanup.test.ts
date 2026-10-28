@@ -80,4 +80,16 @@ describe('cleanupTool', () => {
     await cleanupTool({}, context);
     expect(dispose).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the server-owned cleanup when the context provides one', async () => {
+    const context = createMockContext(true);
+    const serverCleanup = vi.fn().mockResolvedValue(true);
+    const result = await cleanupTool(
+      {},
+      { ...context, cleanupSession: serverCleanup },
+    );
+    expect(serverCleanup).toHaveBeenCalledTimes(1);
+    expect(context.sessionManager.cleanup).not.toHaveBeenCalled();
+    expect(result).toStrictEqual({ ok: true, result: { cleanedUp: true } });
+  });
 });

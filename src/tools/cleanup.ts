@@ -14,7 +14,8 @@ export async function cleanupTool(
   _input: CleanupInput,
   context: ToolContext,
 ): Promise<ToolResponse<CleanupResult>> {
-  const cleanedUp = await cleanupSession(context.sessionManager);
+  const cleanedUp = await (context.cleanupSession?.() ??
+    cleanupSession(context.sessionManager));
 
   return createToolSuccess({ cleanedUp });
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { cleanupSession } from './cleanup-session.js';
+import { cleanupSession, DriverLifecycle } from './cleanup-session.js';
 import type { IPlatformDriver } from '../platform/types.js';
 import { createMockSessionManager } from '../tools/test-utils/mock-factories.js';
 
@@ -88,5 +88,44 @@ describe('cleanupSession', () => {
         expect.objectContaining({ message: 'dispose failed' }),
       ],
     });
+  });
+
+  it('retains failed disposals across per-request wrappers of one manager', async () => {
+    // The daemon hands each request a new wrapper (a Proxy on the stack) of
+    // the same session manager. Retention must not depend on that identity.
+    const lifecycle = new DriverLifecycle();
+    const dispose = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('dispose failed'))
+      .mockResolvedValue(undefined);
+    let driver = { dispose } as unknown as IPlatformDriver | undefined;
+    const manager = createMockSessionManager();
+    manager.getPlatformDriver = () => driver;
+    vi.spyOn(manager, 'cleanup').mockImplementation(async () => {
+      driver = undefined;
+      return true;
+    });
+    const wrap = (): typeof manager => new Proxy(manager, {});
+
+    await expect(lifecycle.cleanupSession(wrap())).rejects.toThrowError(
+      'dispose failed',
+    );
+    expect(lifecycle.pendingCount).toBe(1);
+    expect(await lifecycle.cleanupSession(wrap())).toBe(true);
+    expect(dispose).toHaveBeenCalledTimes(2);
+    expect(lifecycle.pendingCount).toBe(0);
+  });
+
+  it('uses the given lifecycle instead of the per-manager fallback', async () => {
+    const lifecycle = new DriverLifecycle();
+    const dispose = vi.fn().mockRejectedValueOnce(new Error('dispose failed'));
+    const manager = createMockSessionManager();
+    manager.getPlatformDriver = () =>
+      ({ dispose }) as unknown as IPlatformDriver;
+
+    await expect(cleanupSession(manager, lifecycle)).rejects.toThrowError(
+      'dispose failed',
+    );
+    expect(lifecycle.pendingCount).toBe(1);
   });
 });

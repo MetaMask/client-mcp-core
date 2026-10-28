@@ -36,11 +36,13 @@ export async function launchTool(
   context: ToolContext,
 ): Promise<ToolResponse<LaunchResult>> {
   const { sessionManager } = context;
+  const cleanup = async (): Promise<boolean> =>
+    context.cleanupSession?.() ?? cleanupSession(sessionManager);
 
   try {
     if (sessionManager.hasActiveSession()) {
       if (input.force) {
-        await cleanupSession(sessionManager);
+        await cleanup();
       } else {
         return createToolError(
           ErrorCodes.MM_SESSION_ALREADY_RUNNING,
@@ -58,7 +60,7 @@ export async function launchTool(
       .catch(async (error: unknown) => {
         // Preserve the launch error after best-effort cleanup of a partial session.
         try {
-          await cleanupSession(sessionManager);
+          await cleanup();
         } catch {
           // The original launch error is the actionable failure.
         }

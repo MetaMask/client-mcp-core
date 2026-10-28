@@ -261,6 +261,28 @@ describe('launchTool', () => {
       });
     });
 
+    it('uses the server-owned cleanup for forced and failed launches', async () => {
+      const serverCleanup = vi.fn().mockResolvedValue(true);
+      const forced = createMockContext({ hasActive: true });
+      await launchTool(
+        { stateMode: 'default', force: true },
+        { ...forced, cleanupSession: serverCleanup },
+      );
+      expect(serverCleanup).toHaveBeenCalledTimes(1);
+      expect(forced.sessionManager.cleanup).not.toHaveBeenCalled();
+
+      const failed = createMockContext({ hasActive: false });
+      vi.spyOn(failed.sessionManager, 'launch').mockRejectedValue(
+        new Error('device failed'),
+      );
+      const result = await launchTool(
+        { stateMode: 'default' },
+        { ...failed, cleanupSession: serverCleanup },
+      );
+      expect(result.ok).toBe(false);
+      expect(serverCleanup).toHaveBeenCalledTimes(2);
+    });
+
     it('returns port conflict error for EADDRINUSE', async () => {
       const context = createMockContext({ hasActive: false });
       vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
