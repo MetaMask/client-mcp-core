@@ -1,0 +1,41 @@
+vitest.config.mts
+  s_daf37610a9dbe8::t_ad9d00e104b811 38-40
+src/server/create-server.test.ts
+  s_daf37610a9dbe8::t_d1cfc4a986df8d 657-659
+  s_daf37610a9dbe8::t_1475e696d424fe 647-656,660-715
+src/types/http.ts
+  s_daf37610a9dbe8::t_8f71aed03150d8 37-42
+src/tools/cleanup.ts
+  s_daf37610a9dbe8::t_bdc8a017b368db 17-18
+src/server/create-server.ts
+  s_daf37610a9dbe8::t_bdc8a017b368db 267-269
+  s_daf37610a9dbe8::t_8f71aed03150d8 8,366-367,951,1003
+src/server/cleanup-session.ts
+  s_daf37610a9dbe8::t_852f6cfbcb808a 5,7-12,14-15,17-21,23-39,41,45-62,64-86,88
+src/tools/launch.ts
+  s_daf37610a9dbe8::t_bdc8a017b368db 39-40,45,63
+src/tools/cleanup.test.ts
+  s_daf37610a9dbe8::t_1475e696d424fe 82-93
+src/tools/launch.test.ts
+  s_daf37610a9dbe8::t_1475e696d424fe 259-280
+README.md
+  s_daf37610a9dbe8::t_ad9d00e104b811 241
+src/server/cleanup-session.test.ts
+  s_daf37610a9dbe8::t_1475e696d424fe 3,92-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29978c22f7d1b1ae1545236a5d0118c096e0f6a5",
+  "prompts": {},
+  "sessions": {
+    "s_daf37610a9dbe8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e7c4d23dcffe76TYXjnKuXeXcq",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
