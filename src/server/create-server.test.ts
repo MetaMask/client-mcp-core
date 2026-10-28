@@ -1335,6 +1335,166 @@ describe('createServer with active session', () => {
       expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('meta.timing', () => {
+    type TimedBody = {
+      ok: boolean;
+      error?: { code: string };
+      meta?: {
+        timing: {
+          queueMs: number;
+          toolMs: number;
+          observationMs: number;
+          totalMs: number;
+        };
+      };
+    };
+
+    const post = async (
+      urlPath: string,
+      body: string = JSON.stringify({}),
+    ): Promise<{ status: number; body: TimedBody }> => {
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}${urlPath}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        },
+      );
+      return { status: res.status, body: (await res.json()) as TimedBody };
+    };
+
+    const expectValidTiming = (body: TimedBody): void => {
+      const timing = body.meta?.timing;
+      expect(timing).toBeDefined();
+      for (const value of Object.values(timing ?? {})) {
+        expect(Number.isInteger(value)).toBe(true);
+        expect(value).toBeGreaterThanOrEqual(0);
+      }
+      expect(timing?.totalMs).toBeGreaterThanOrEqual(
+        (timing?.queueMs ?? 0) +
+          (timing?.toolMs ?? 0) +
+          (timing?.observationMs ?? 0),
+      );
+    };
+
+    it('adds meta.timing as the last key of a successful response', async () => {
+      const { status, body } = await post('/cleanup');
+
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expectValidTiming(body);
+      expect(Object.keys(body).at(-1)).toBe('meta');
+    });
+
+    it('measures tool and observation time separately', async () => {
+      mockSM.cleanup.mockImplementationOnce(
+        async () =>
+          new Promise((resolve) => setTimeout(() => resolve(true), 60)),
+      );
+      mockSM.getExtensionState.mockImplementationOnce(
+        async () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ isLoaded: true, currentUrl: '' }), 60),
+          ),
+      );
+
+      const { body } = await post('/cleanup');
+
+      expectValidTiming(body);
+      expect(body.meta?.timing.toolMs).toBeGreaterThanOrEqual(50);
+      expect(body.meta?.timing.observationMs).toBeGreaterThanOrEqual(50);
+    });
+
+    it('reports observationMs 0 when no session is active', async () => {
+      mockSM.hasActiveSession.mockReturnValue(false);
+
+      const { body } = await post('/tool/get_context');
+
+      expectValidTiming(body);
+      expect(body.meta?.timing.observationMs).toBe(0);
+    });
+
+    it('reports queue wait for a request queued behind another', async () => {
+      let releaseFirst!: () => void;
+      mockSM.cleanup.mockImplementationOnce(
+        async () =>
+          new Promise((resolve) => {
+            releaseFirst = () => resolve(true);
+          }),
+      );
+
+      const first = post('/cleanup');
+      // The first request is now running inside the queue.
+      await vi.waitFor(() => expect(mockSM.cleanup).toHaveBeenCalled());
+      const second = post('/tool/get_context');
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      releaseFirst();
+
+      const [firstRes, secondRes] = await Promise.all([first, second]);
+      expectValidTiming(firstRes.body);
+      expectValidTiming(secondRes.body);
+      expect(secondRes.body.meta?.timing.queueMs).toBeGreaterThanOrEqual(50);
+    });
+
+    it('includes meta.timing when the tool throws', async () => {
+      mockSM.cleanup.mockRejectedValueOnce(new Error('Browser crash'));
+
+      const { status, body } = await post('/cleanup');
+
+      expect(status).toBe(500);
+      expect(body.error?.code).toBe('TOOL_EXECUTION_FAILED');
+      expectValidTiming(body);
+    });
+
+    it('includes meta.timing on validation errors', async () => {
+      const { status, body } = await post('/tool/click');
+
+      expect(status).toBe(400);
+      expect(body.error?.code).toBe('VALIDATION_ERROR');
+      expectValidTiming(body);
+      expect(body.meta?.timing.toolMs).toBe(0);
+    });
+
+    it('includes meta.timing for unknown tools', async () => {
+      const { status, body } = await post('/tool/nonexistent');
+
+      expect(status).toBe(404);
+      expectValidTiming(body);
+    });
+
+    it('includes meta.timing for platform gate errors', async () => {
+      const { status, body } = await post(
+        '/tool/device_swipe',
+        JSON.stringify({ direction: 'up' }),
+      );
+
+      expect(status).toBe(200);
+      expect(body.error?.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+      expectValidTiming(body);
+    });
+
+    it('includes meta.timing for malformed JSON bodies, measured from request arrival', async () => {
+      // Each performance.now() call advances 25ms, so a start recorded before
+      // the body parser yields totalMs > 0 in the error middleware.
+      let clock = 0;
+      const nowSpy = vi
+        .spyOn(performance, 'now')
+        .mockImplementation(() => (clock += 25));
+
+      try {
+        const { status, body } = await post('/tool/get_state', '{not json');
+
+        expect(status).toBe(500);
+        expect(body.error?.code).toBe('INTERNAL_ERROR');
+        expectValidTiming(body);
+        expect(body.meta?.timing.totalMs).toBeGreaterThan(0);
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+  });
 });
 
 describe('createServer with logging', () => {

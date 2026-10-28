@@ -1353,6 +1353,86 @@ describe('sendRequest', () => {
       observations: { state: 'home' },
     });
   });
+
+  describe('meta', () => {
+    const meta = {
+      timing: { queueMs: 0, toolMs: 12, observationMs: 30, totalMs: 45 },
+    };
+
+    const printed = (): Record<string, unknown> =>
+      JSON.parse((stdoutSpy.mock.calls[0] as string[])[0]) as Record<
+        string,
+        unknown
+      >;
+
+    it('prints meta after the result fields', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, result: { count: 2 }, meta }),
+      } as Response);
+
+      await sendRequest(3000, 'POST', '/tool/get_state', {});
+
+      const output = printed();
+      expect(output).toStrictEqual({ count: 2, meta });
+      expect(Object.keys(output)).toStrictEqual(['count', 'meta']);
+    });
+
+    it('prints meta after observations', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          result: { clicked: true },
+          observations: { state: 'home' },
+          meta,
+        }),
+      } as Response);
+
+      await sendRequest(3000, 'POST', '/tool/click', { a11yRef: 'e1' });
+
+      expect(Object.keys(printed())).toStrictEqual([
+        'clicked',
+        'observations',
+        'meta',
+      ]);
+    });
+
+    it('does not print meta for string results', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, result: 'simple string', meta }),
+      } as Response);
+
+      await sendRequest(3000, 'GET', '/status', null);
+
+      expect(stdoutSpy).toHaveBeenCalledWith('simple string\n');
+    });
+
+    it('wraps array results so meta can be printed', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, result: [1, 2], meta }),
+      } as Response);
+
+      await sendRequest(3000, 'POST', '/tool/get_state', {});
+
+      expect(printed()).toStrictEqual({ result: [1, 2], meta });
+    });
+
+    it('prints meta once when the body has no result key', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, status: 'running', meta }),
+      } as Response);
+
+      await sendRequest(3000, 'GET', '/status', null);
+
+      const output = printed();
+      expect(output).toStrictEqual({ ok: true, status: 'running', meta });
+      expect(Object.keys(output).at(-1)).toBe('meta');
+    });
+  });
 });
 
 describe('routeCommand', () => {

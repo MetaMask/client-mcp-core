@@ -7,6 +7,12 @@ import * as http from 'node:http';
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RequestQueue } from './request-queue.js';
+import {
+  RequestTimer,
+  requestStartOf,
+  setRequestStart,
+  withMeta,
+} from './response-timing.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { ExtensionState } from '../capabilities/types.js';
@@ -265,6 +271,13 @@ export function createServer(config: ServerConfig): ServerInstance {
   let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
   let lastObservation: StepRecordObservation | null = null;
 
+  // Registered before the body parser so `meta.timing.totalMs` includes body
+  // parsing, and so malformed-JSON errors still have a start time.
+  app.use((_req, res, next) => {
+    setRequestStart(res, performance.now());
+    next();
+  });
+
   // eslint-disable-next-line import-x/no-named-as-default-member
   app.use(express.json({ limit: '10mb' }));
 
@@ -399,23 +412,37 @@ export function createServer(config: ServerConfig): ServerInstance {
     rawInput: unknown,
     res: express.Response,
   ): Promise<void> {
+    const timer = new RequestTimer(requestStartOf(res));
     const tool = toolRegistry.get(toolName);
     if (!tool) {
-      res.status(404).json({
-        ok: false,
-        error: { code: 'TOOL_NOT_FOUND', message: `Unknown tool: ${toolName}` },
-      });
+      res.status(404).json(
+        withMeta(
+          {
+            ok: false,
+            error: {
+              code: 'TOOL_NOT_FOUND',
+              message: `Unknown tool: ${toolName}`,
+            },
+          },
+          timer.meta(),
+        ),
+      );
       return;
     }
 
     if (!workflowContext) {
-      res.status(503).json({
-        ok: false,
-        error: {
-          code: 'SERVER_NOT_STARTED',
-          message: 'Server has not been started yet.',
-        },
-      });
+      res.status(503).json(
+        withMeta(
+          {
+            ok: false,
+            error: {
+              code: 'SERVER_NOT_STARTED',
+              message: 'Server has not been started yet.',
+            },
+          },
+          timer.meta(),
+        ),
+      );
       return;
     }
 
@@ -426,19 +453,24 @@ export function createServer(config: ServerConfig): ServerInstance {
     if (schema) {
       const parsed = schema.safeParse(rawInput);
       if (!parsed.success) {
-        res.status(400).json({
-          ok: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: parsed.error.issues
-              .map((i) =>
-                i.path.length > 0
-                  ? `${i.path.join('.')}: ${i.message}`
-                  : i.message,
-              )
-              .join('; '),
-          },
-        });
+        res.status(400).json(
+          withMeta(
+            {
+              ok: false,
+              error: {
+                code: 'VALIDATION_ERROR',
+                message: parsed.error.issues
+                  .map((i) =>
+                    i.path.length > 0
+                      ? `${i.path.join('.')}: ${i.message}`
+                      : i.message,
+                  )
+                  .join('; '),
+              },
+            },
+            timer.meta(),
+          ),
+        );
         return;
       }
       validatedInput = parsed.data;
@@ -454,7 +486,7 @@ export function createServer(config: ServerConfig): ServerInstance {
       config.sessionManager.getPlatformDriver?.()?.getPlatform(),
     );
     if (gateError) {
-      res.json({ ok: false, error: gateError });
+      res.json(withMeta({ ok: false, error: gateError }, timer.meta()));
       return;
     }
 
@@ -466,10 +498,13 @@ export function createServer(config: ServerConfig): ServerInstance {
         : undefined;
 
     try {
+      timer.markEnqueued();
       const { toolResult, observations } = await queue.enqueue(
         async () => {
+          timer.markTaskStart();
           const context = buildToolContext(currentWorkflowContext);
           const result = await tool(validatedInput, context);
+          timer.markToolEnd();
 
           let obs: StepRecordObservation | undefined;
           if (
@@ -479,6 +514,7 @@ export function createServer(config: ServerConfig): ServerInstance {
             ) &&
             config.sessionManager.hasActiveSession()
           ) {
+            timer.markObservationStart();
             try {
               obs = await Promise.race([
                 (async (): Promise<StepRecordObservation> => {
@@ -566,6 +602,7 @@ export function createServer(config: ServerConfig): ServerInstance {
             } catch {
               // non-fatal: observation failure must not block the tool response
             }
+            timer.markObservationEnd();
           }
 
           return { toolResult: result, observations: obs };
@@ -591,7 +628,12 @@ export function createServer(config: ServerConfig): ServerInstance {
         includeInResponse && observations
           ? compactObservation(observations, lastObservation)
           : undefined;
-      res.json(buildResponseBody(toolResult, responseObservations));
+      res.json(
+        withMeta(
+          buildResponseBody(toolResult, responseObservations),
+          timer.meta(),
+        ),
+      );
 
       if (
         toolName === 'describe_screen' ||
@@ -618,13 +660,18 @@ export function createServer(config: ServerConfig): ServerInstance {
         startTime,
       );
 
-      res.status(500).json({
-        ok: false,
-        error: {
-          code: 'TOOL_EXECUTION_FAILED',
-          message: extractErrorMessage(error),
-        },
-      });
+      res.status(500).json(
+        withMeta(
+          {
+            ok: false,
+            error: {
+              code: 'TOOL_EXECUTION_FAILED',
+              message: extractErrorMessage(error),
+            },
+          },
+          timer.meta(),
+        ),
+      );
     }
   }
 
@@ -651,13 +698,18 @@ export function createServer(config: ServerConfig): ServerInstance {
       _next: express.NextFunction,
     ) => {
       appendLog(config.logFilePath, `[ERROR] ${error.message}`);
-      res.status(500).json({
-        ok: false,
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: error.message,
-        },
-      });
+      res.status(500).json(
+        withMeta(
+          {
+            ok: false,
+            error: {
+              code: 'INTERNAL_ERROR',
+              message: error.message,
+            },
+          },
+          new RequestTimer(requestStartOf(res)).meta(),
+        ),
+      );
     },
   );
 
