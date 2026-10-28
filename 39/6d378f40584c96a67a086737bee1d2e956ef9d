@@ -1,0 +1,16 @@
+src/server/create-server.test.ts
+  h_d6a04d82b61d5e 1162
+src/server/create-server.ts
+  h_d6a04d82b61d5e 25,142-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "396d378f40584c96a67a086737bee1d2e956ef9d",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
