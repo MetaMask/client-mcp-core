@@ -1,0 +1,19 @@
+src/cli/mm.ts
+  s_41346017393040::t_a36b868ca8e1f5 1694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "db34132e00ae47b0df86a9f5e49b28d00f41d3e6",
+  "prompts": {},
+  "sessions": {
+    "s_41346017393040": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e87d573aeffeykINijZ4llEO4m",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
