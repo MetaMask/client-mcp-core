@@ -154,6 +154,76 @@ describe('PlaywrightPlatformDriver', () => {
     });
   });
 
+  describe('abort during the target wait', () => {
+    it('does not click when the signal aborts while waiting', async () => {
+      const locator = createMockLocator();
+      const controller = new AbortController();
+      const reason = new Error('Tool execution timed out after 30000ms');
+      vi.spyOn(discoveryModule, 'waitForTarget').mockImplementation(
+        async () => {
+          controller.abort(reason);
+          return locator as any;
+        },
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.click(
+          'testId',
+          'confirm',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toBe(reason);
+      expect(locator.click).not.toHaveBeenCalled();
+    });
+
+    it('does not type when the signal aborts while waiting', async () => {
+      const locator = createMockLocator();
+      const controller = new AbortController();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockImplementation(
+        async () => {
+          controller.abort(new Error('timed out'));
+          return locator as any;
+        },
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.type(
+          'testId',
+          'input',
+          'text',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toThrowError('timed out');
+      expect(locator.fill).not.toHaveBeenCalled();
+    });
+
+    it('clicks when the signal is not aborted', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await driver.click(
+        'testId',
+        'btn',
+        new Map(),
+        5000,
+        undefined,
+        new AbortController().signal,
+      );
+      expect(locator.click).toHaveBeenCalled();
+    });
+  });
+
   describe('type', () => {
     it('delegates to waitForTarget and locator.fill', async () => {
       const locator = createMockLocator();

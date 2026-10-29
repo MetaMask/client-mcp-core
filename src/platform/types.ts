@@ -64,14 +64,25 @@ export type ScreenCapture = {
 };
 
 export type IPlatformDriver = {
+  /**
+   * Waits for the target, then clicks it. When `signal` is aborted while the
+   * driver waits for the target, the driver throws the abort reason and does
+   * not click. A click that already started is not cancelled.
+   */
   click(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<ClickActionResult>;
 
+  /**
+   * Waits for the target, then types into it. When `signal` is aborted while
+   * the driver waits for the target, the driver throws the abort reason and
+   * does not type. Typing that already started is not cancelled.
+   */
   type(
     targetType: TargetType,
     targetValue: string,
@@ -79,6 +90,7 @@ export type IPlatformDriver = {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<TypeActionResult>;
 
   waitForElement(

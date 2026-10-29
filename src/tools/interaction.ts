@@ -149,9 +149,14 @@ export async function clickTool(
       context.refMap,
       timeoutMs,
       resolveWithinScope(input.within),
+      context.signal,
     );
     return createToolSuccess(result);
   } catch (error) {
+    const aborted = abortedResponse<ClickResult>(context);
+    if (aborted) {
+      return aborted;
+    }
     const errorInfo = classifyClickError(error);
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
       return createToolError(
@@ -190,9 +195,14 @@ export async function typeTool(
       context.refMap,
       timeoutMs,
       resolveWithinScope(input.within),
+      context.signal,
     );
     return createToolSuccess(result);
   } catch (error) {
+    const aborted = abortedResponse<TypeResult>(context);
+    if (aborted) {
+      return aborted;
+    }
     const errorInfo = classifyTypeError(error);
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
       return createToolError(

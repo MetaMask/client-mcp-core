@@ -213,7 +213,20 @@ describe('tool delegation to context.driver', () => {
         expect.any(Map),
         expect.any(Number),
         undefined,
+        undefined,
       );
+    });
+
+    it('clickTool and typeTool pass the request signal to the driver', async () => {
+      const driver = createMockDriver();
+      const { signal } = new AbortController();
+      const context = { ...createContextWithDriver(driver), signal };
+
+      await clickTool({ testId: 'btn' }, context);
+      await typeTool({ testId: 'input', text: 'hello' }, context);
+
+      expect(vi.mocked(driver.click).mock.calls[0]?.[5]).toBe(signal);
+      expect(vi.mocked(driver.type).mock.calls[0]?.[6]).toBe(signal);
     });
 
     it('typeTool delegates to driver.type', async () => {
@@ -232,6 +245,7 @@ describe('tool delegation to context.driver', () => {
         'hello',
         expect.any(Map),
         expect.any(Number),
+        undefined,
         undefined,
       );
     });
