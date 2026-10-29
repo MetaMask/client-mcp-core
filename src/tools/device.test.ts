@@ -36,7 +36,6 @@ function createContext(options: {
     workflowContext: {
       config: artifactsDir === undefined ? {} : { artifactsDir },
     },
-    knowledgeStore: {},
     toolRegistry: new Map(),
     driver: driver as IPlatformDriver | undefined,
   } as unknown as ToolContext;

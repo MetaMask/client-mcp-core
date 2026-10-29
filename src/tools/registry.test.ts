@@ -7,6 +7,7 @@ import {
   isBrowserOnlyTool,
   isMobileOnlyTool,
 } from './registry.js';
+import { toolSchemas } from '../validation/schemas.js';
 
 describe('toolRegistry', () => {
   it('has expected tool entries', () => {
@@ -40,7 +41,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(47);
+    expect(toolRegistry.size).toBe(43);
   });
 
   it('stores only functions as values', () => {
@@ -57,6 +58,12 @@ describe('toolRegistry', () => {
 });
 
 describe('TOOL_CATEGORIES and getToolCategory', () => {
+  it('every key in toolRegistry has an input schema', () => {
+    for (const key of toolRegistry.keys()) {
+      expect(Object.hasOwn(toolSchemas, key)).toBe(true);
+    }
+  });
+
   it('every key in toolRegistry exists in TOOL_CATEGORIES', () => {
     for (const key of toolRegistry.keys()) {
       expect(TOOL_CATEGORIES).toHaveProperty(key);
@@ -77,12 +84,16 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     expect(getToolCategory('click')).toBe('mutating');
   });
 
-  it('getToolCategory returns readonly for knowledge_last', () => {
-    expect(getToolCategory('knowledge_last')).toBe('readonly');
+  it('getToolCategory returns readonly for get_context', () => {
+    expect(getToolCategory('get_context')).toBe('readonly');
   });
 
   it('getToolCategory returns discovery for describe_screen', () => {
     expect(getToolCategory('describe_screen')).toBe('discovery');
+  });
+
+  it('getToolCategory returns cdp for cdp', () => {
+    expect(getToolCategory('cdp')).toBe('cdp');
   });
 
   it('getToolCategory returns batch for run_steps', () => {

@@ -45,10 +45,6 @@ export type SessionLaunchInput = {
   fixturePreset?: string;
   /** Custom fixture data when stateMode is 'custom' */
   fixture?: Record<string, unknown>;
-  /** Goal description for this session (used in knowledge store) */
-  goal?: string;
-  /** Flow tags for categorizing this session */
-  flowTags?: string[];
   /** Free-form tags for ad-hoc filtering */
   tags?: string[];
   /** Path to extension directory */

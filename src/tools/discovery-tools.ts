@@ -6,11 +6,11 @@ import type {
   DescribeScreenResult,
   ListTestIdsInput,
   ListTestIdsResult,
-  PriorKnowledgeContext,
 } from './types';
 import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
 import {
+  abortedResponse,
   createToolError,
   createToolSuccess,
   requireActiveSession,
@@ -62,10 +62,9 @@ export async function listTestIdsTool(
 
   const limit = input.limit ?? DEFAULT_TESTID_LIMIT;
 
+  // The result has no refs, so the refMap is left as it is.
   try {
     const items = await driver.getTestIds(limit);
-    const { refMap } = await driver.getAccessibilityTree();
-    context.sessionManager.setRefMap(refMap);
     return createToolSuccess({ items });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);
@@ -108,7 +107,7 @@ export async function accessibilitySnapshotTool(
 }
 
 /**
- * Captures a full screen description including state, test IDs, a11y, and prior knowledge.
+ * Captures a full screen description including state, test IDs, a11y, and an optional screenshot.
  *
  * @param input - The describe-screen options including screenshot flags.
  * @param context - The tool execution context.
@@ -130,9 +129,19 @@ export async function describeScreenTool(
 
   try {
     const state = await driver.getAppState();
-    const testIds = await driver.getTestIds(DEFAULT_TESTID_LIMIT);
-    const { nodes, refMap } = await driver.getAccessibilityTree();
-
+    // Mobile: one device snapshot for both the test IDs and the tree, when
+    // the driver supports it.
+    const screen = driver.captureScreen
+      ? await driver.captureScreen()
+      : undefined;
+    const testIds = screen
+      ? await screen.getTestIds(DEFAULT_TESTID_LIMIT)
+      : await driver.getTestIds(DEFAULT_TESTID_LIMIT);
+    const aborted = abortedResponse<DescribeScreenResult>(context);
+    if (aborted) {
+      return aborted;
+    }
+    const { nodes, refMap } = screen ?? (await driver.getAccessibilityTree());
     context.sessionManager.setRefMap(refMap);
 
     const trackedPages = context.sessionManager.getTrackedPages();
@@ -165,27 +174,12 @@ export async function describeScreenTool(
       };
     }
 
-    const sessionMetadata = context.sessionManager.getSessionMetadata();
-    const priorKnowledgeContext: PriorKnowledgeContext = {
-      currentScreen: state.currentScreen,
-      currentUrl: state.currentUrl,
-      visibleTestIds: testIds,
-      a11yNodes: nodes,
-      currentSessionFlowTags: sessionMetadata?.flowTags,
-    };
-
-    const priorKnowledge = await context.knowledgeStore.generatePriorKnowledge(
-      priorKnowledgeContext,
-      context.sessionManager.getSessionId(),
-    );
-
     return createToolSuccess({
       state,
       activeTab,
       testIds: { items: testIds },
       a11y: { nodes },
       screenshot,
-      priorKnowledge,
     });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);

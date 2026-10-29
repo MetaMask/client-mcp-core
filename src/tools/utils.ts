@@ -51,3 +51,22 @@ export function requireActiveSession<TResult>(
 
   return undefined;
 }
+
+/**
+ * Returns an error response when the request was aborted (it timed out).
+ * Tools call it between steps so a timed-out request stops early.
+ *
+ * @param context - The tool execution context.
+ * @returns An error response when aborted, or undefined.
+ */
+export function abortedResponse<TResult>(
+  context: ToolContext,
+): ToolResponse<TResult> | undefined {
+  if (context.signal?.aborted) {
+    return createToolError(
+      ErrorCodes.MM_REQUEST_ABORTED,
+      'The request timed out and was cancelled.',
+    );
+  }
+  return undefined;
+}

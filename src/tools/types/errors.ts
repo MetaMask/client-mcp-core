@@ -28,8 +28,6 @@ export const ErrorCodes = {
   MM_DISCOVERY_FAILED: 'MM_DISCOVERY_FAILED',
   MM_STATE_FAILED: 'MM_STATE_FAILED',
 
-  MM_KNOWLEDGE_ERROR: 'MM_KNOWLEDGE_ERROR',
-
   MM_SEED_FAILED: 'MM_SEED_FAILED',
   MM_CONTRACT_NOT_FOUND: 'MM_CONTRACT_NOT_FOUND',
 
@@ -50,6 +48,8 @@ export const ErrorCodes = {
   MM_DEVICE_NOT_AVAILABLE: 'MM_DEVICE_NOT_AVAILABLE', // mobile-only tool invoked without a mobile driver capability
 
   MM_TOOL_NOT_SUPPORTED_ON_PLATFORM: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM', // tool gated off the active platform (browser-only / mobile-only)
+
+  MM_REQUEST_ABORTED: 'MM_REQUEST_ABORTED', // the request timed out; the tool stopped at its next checkpoint
 
   MM_UNKNOWN_TOOL: 'MM_UNKNOWN_TOOL',
   MM_INTERNAL_ERROR: 'MM_INTERNAL_ERROR',

@@ -8,7 +8,7 @@ import {
   observationCompactionDeps,
 } from './observation-compaction.js';
 import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
-import type { StepRecordObservation } from '../tools/types/step-record.js';
+import type { StepRecordObservation } from '../tools/types/observation.js';
 
 function createNode(
   ref: string,
@@ -39,15 +39,11 @@ function createObservation(
   overrides: Partial<StepRecordObservation> = {},
 ): StepRecordObservation {
   return {
-    state: overrides.state ?? ({} as StepRecordObservation['state']),
     testIds: overrides.testIds ?? [],
     a11y: {
       nodes,
       ...(overrides.a11y?.diff ? { diff: overrides.a11y.diff } : {}),
     },
-    ...(overrides.priorKnowledge
-      ? { priorKnowledge: overrides.priorKnowledge }
-      : {}),
   } as StepRecordObservation;
 }
 
@@ -68,6 +64,21 @@ describe('collapseOptionSubtrees', () => {
       role: 'option',
       name: '55 options (refs e2\u2013e56)',
       path: ['root', 'combo', 'option-2'],
+    });
+  });
+
+  it('builds a summary without a path when the options have none (mobile)', () => {
+    const { path: _comboPath, ...combobox } = createNode('e1', 'combobox');
+    const options = createOptionRun(5, 2).map(
+      ({ path: _path, ...option }) => option,
+    );
+
+    const result = collapseOptionSubtrees([combobox, ...options]);
+
+    expect(result[1]).toStrictEqual({
+      ref: 'e2\u2013e6',
+      role: 'option',
+      name: '5 options (refs e2\u2013e6)',
     });
   });
 
@@ -192,24 +203,19 @@ describe('collapseOptionSubtrees', () => {
 
 describe('compactObservation', () => {
   it('preserves non-a11y fields by reference while returning a new object', () => {
-    const state = { connected: true };
     const testIds = [{ testId: 'submit', tag: 'button', visible: true }];
-    const priorKnowledge = { schemaVersion: 1, notes: ['cached'] };
     const observation = {
-      state,
       testIds,
       a11y: {
         nodes: [createNode('e1', 'combobox'), ...createOptionRun(4, 2)],
       },
-      priorKnowledge,
     } as unknown as StepRecordObservation;
 
     const result = compactObservation(observation);
 
     expect(result).not.toBe(observation);
-    expect(result.state).toBe(state);
+    expect(result).not.toHaveProperty('state');
     expect(result.testIds).toBe(testIds);
-    expect(result.priorKnowledge).toBe(priorKnowledge);
     expect(result.a11y).not.toBe(observation.a11y);
     expect(result.a11y.nodes).toStrictEqual([
       observation.a11y.nodes[0],
@@ -224,7 +230,6 @@ describe('compactObservation', () => {
 
   it('is idempotent when called repeatedly on the same result', () => {
     const observation = {
-      state: {},
       testIds: [],
       a11y: {
         nodes: [createNode('e1', 'listbox'), ...createOptionRun(6, 2)],
@@ -275,7 +280,6 @@ describe('compactObservation', () => {
 
   it('falls back to the original observation when compaction throws', () => {
     const observation = {
-      state: {},
       testIds: [],
       a11y: { nodes: [createNode('e1', 'combobox')] },
     } as unknown as StepRecordObservation;
@@ -293,7 +297,6 @@ describe('compactObservation', () => {
 
   it('handles empty node arrays gracefully', () => {
     const observation = {
-      state: {},
       testIds: [],
       a11y: { nodes: [] },
     } as unknown as StepRecordObservation;
@@ -302,59 +305,6 @@ describe('compactObservation', () => {
 
     expect(result).not.toBe(observation);
     expect(result.a11y.nodes).toStrictEqual([]);
-  });
-
-  describe('activeTab passthrough', () => {
-    it('preserves state.activeTab when present', () => {
-      const state = {
-        isLoaded: true,
-        currentUrl: 'chrome-extension://extension/home.html',
-        extensionId: 'extension-id',
-        isUnlocked: true,
-        currentScreen: 'home',
-        accountAddress: '0x123',
-        networkName: 'Ethereum Mainnet',
-        chainId: 1,
-        balance: '1 ETH',
-        activeTab: {
-          role: 'dapp',
-          url: 'https://app.uniswap.org/',
-          title: 'Uniswap',
-        },
-      } satisfies StepRecordObservation['state'];
-      const observation = createObservation(
-        [createNode('e1', 'listbox'), ...createOptionRun(6, 2)],
-        { state },
-      );
-
-      const result = compactObservation(observation);
-
-      expect(result.state).toBe(state);
-      expect(result.state.activeTab).toStrictEqual(state.activeTab);
-    });
-
-    it('works when state.activeTab is undefined (backward compat)', () => {
-      const state = {
-        isLoaded: true,
-        currentUrl: 'chrome-extension://extension/home.html',
-        extensionId: 'extension-id',
-        isUnlocked: false,
-        currentScreen: 'unlock',
-        accountAddress: null,
-        networkName: null,
-        chainId: null,
-        balance: null,
-      } satisfies StepRecordObservation['state'];
-      const observation = createObservation(
-        [createNode('e1', 'listbox'), ...createOptionRun(6, 2)],
-        { state },
-      );
-
-      const result = compactObservation(observation);
-
-      expect(result.state).toBe(state);
-      expect(result.state.activeTab).toBeUndefined();
-    });
   });
 });
 
@@ -408,6 +358,25 @@ describe('nodeChanged', () => {
     expect(nodeChanged(current, previous)).toBe(false);
   });
 
+  it('treats two absent paths as equal (mobile nodes have no path)', () => {
+    const { path: _previousPath, ...previous } = createNode('e1', 'button', {
+      name: 'Send',
+    });
+    const { path: _currentPath, ...current } = createNode('e1', 'button', {
+      name: 'Send',
+    });
+
+    expect(nodeChanged(current, previous)).toBe(false);
+  });
+
+  it('returns true when a path appears or disappears', () => {
+    const withPath = createNode('e1', 'button', { name: 'Send', path: [] });
+    const { path: _path, ...withoutPath } = withPath;
+
+    expect(nodeChanged(withPath, withoutPath)).toBe(true);
+    expect(nodeChanged(withoutPath, withPath)).toBe(true);
+  });
+
   it('does not compare refs', () => {
     const previous = createNode('e1', 'button', {
       name: 'Continue',
@@ -423,6 +392,26 @@ describe('nodeChanged', () => {
 });
 
 describe('diffObservation', () => {
+  it('diffs mobile nodes that have no path', () => {
+    const strip = ({ path: _path, ...node }: A11yNodeTrimmed) => node;
+    const send = strip(createNode('e1', 'button', { name: 'Send' }));
+    const balance = strip(createNode('e2', 'text', { name: '1 ETH' }));
+    const previous = createObservation([send, balance]);
+    const current = createObservation([
+      { ...send },
+      { ...balance, name: '2 ETH' },
+    ]);
+
+    const result = diffObservation(current, previous);
+
+    expect(result.a11y.nodes).toStrictEqual([{ ...balance, name: '2 ETH' }]);
+    expect(result.a11y.diff).toStrictEqual({
+      added: [],
+      removed: [],
+      unchanged: 1,
+    });
+  });
+
   it('tracks added nodes and omits unchanged nodes from the diff payload', () => {
     const stable = createNode('e1', 'button', { name: 'Continue' });
     const added = createNode('e2', 'button', { name: 'Cancel' });
@@ -527,35 +516,16 @@ describe('diffObservation', () => {
     });
   });
 
-  it('preserves the current state and testIds', () => {
-    const state = {
-      mode: 'current',
-    } as unknown as StepRecordObservation['state'];
+  it('preserves the current testIds and adds no state', () => {
     const testIds = [{ testId: 'submit', tag: 'button', visible: true }];
     const previous = createObservation([]);
     const current = createObservation([createNode('e1', 'button')], {
-      state,
       testIds,
     });
 
     const result = diffObservation(current, previous);
 
-    expect(result.state).toBe(state);
+    expect(result).not.toHaveProperty('state');
     expect(result.testIds).toBe(testIds);
-  });
-
-  it('preserves the current priorKnowledge', () => {
-    const priorKnowledge = {
-      schemaVersion: 1,
-      notes: ['cached'],
-    } as unknown as StepRecordObservation['priorKnowledge'];
-    const previous = createObservation([]);
-    const current = createObservation([createNode('e1', 'button')], {
-      priorKnowledge,
-    });
-
-    const result = diffObservation(current, previous);
-
-    expect(result.priorKnowledge).toBe(priorKnowledge);
   });
 });

@@ -7,7 +7,6 @@
 import type { Page } from '@playwright/test';
 
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
-import type { KnowledgeStore } from '../knowledge-store/knowledge-store.js';
 import type { IPlatformDriver } from '../platform/types.js';
 import type { ISessionManager } from '../server/session-manager.js';
 
@@ -15,7 +14,7 @@ import type { ISessionManager } from '../server/session-manager.js';
  * Context passed to standalone tool functions.
  *
  * This context provides access to the session manager, current page,
- * accessibility reference map, workflow capabilities, and knowledge store.
+ * accessibility reference map and workflow capabilities.
  */
 export type ToolContext = {
   /** Session manager for browser session control */
@@ -26,12 +25,15 @@ export type ToolContext = {
   get refMap(): Map<string, string>;
   /** Workflow context with capabilities and environment config */
   workflowContext: WorkflowContext;
-  /** Knowledge store for session history and prior knowledge */
-  knowledgeStore: KnowledgeStore;
   /** Tool registry for batch execution (run_steps) */
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
   /** Platform driver for cross-platform element interaction (browser, iOS, Android) */
   driver?: IPlatformDriver;
+  /**
+   * Aborted when the request times out. Tools check it between steps and
+   * stop. Absent when the context was not built by the daemon.
+   */
+  signal?: AbortSignal;
   /**
    * Cleans up the session and disposes its driver through the server-owned
    * lifecycle, so failed disposals are retried by later cleanups and by
@@ -98,8 +100,6 @@ export type ServerConfig = {
   sessionManager: ISessionManager;
   /** Factory function to create workflow context (may be sync or async) */
   contextFactory: () => WorkflowContext | Promise<WorkflowContext>;
-  /** Shared knowledge store instance (optional — a new instance is created if omitted) */
-  knowledgeStore?: KnowledgeStore;
   /** Idle timeout for daemon auto-shutdown in milliseconds (default: 1_800_000 = 30 min) */
   idleShutdownMs?: number;
   /** Per-request execution timeout in milliseconds (default: 30_000) */

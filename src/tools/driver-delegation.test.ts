@@ -79,9 +79,6 @@ function createContextWithDriver(driver: IPlatformDriver): ToolContext {
     page: page as any,
     refMap: new Map(),
     workflowContext: {} as any,
-    knowledgeStore: {
-      generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
-    } as any,
     toolRegistry: new Map(),
     driver,
   } as unknown as ToolContext;
@@ -96,9 +93,6 @@ function createContextWithoutDriver(): ToolContext {
     page: page as any,
     refMap: new Map(),
     workflowContext: {} as any,
-    knowledgeStore: {
-      generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
-    } as any,
     toolRegistry: new Map(),
     driver: undefined,
   } as unknown as ToolContext;
@@ -219,7 +213,20 @@ describe('tool delegation to context.driver', () => {
         expect.any(Map),
         expect.any(Number),
         undefined,
+        undefined,
       );
+    });
+
+    it('clickTool and typeTool pass the request signal to the driver', async () => {
+      const driver = createMockDriver();
+      const { signal } = new AbortController();
+      const context = { ...createContextWithDriver(driver), signal };
+
+      await clickTool({ testId: 'btn' }, context);
+      await typeTool({ testId: 'input', text: 'hello' }, context);
+
+      expect(vi.mocked(driver.click).mock.calls[0]?.[5]).toBe(signal);
+      expect(vi.mocked(driver.type).mock.calls[0]?.[6]).toBe(signal);
     });
 
     it('typeTool delegates to driver.type', async () => {
@@ -238,6 +245,7 @@ describe('tool delegation to context.driver', () => {
         'hello',
         expect.any(Map),
         expect.any(Number),
+        undefined,
         undefined,
       );
     });
@@ -398,7 +406,8 @@ describe('tool delegation to context.driver', () => {
 
       expect(result.ok).toBe(true);
       expect(driver.getTestIds).toHaveBeenCalledOnce();
-      expect(driver.getAccessibilityTree).toHaveBeenCalledOnce();
+      // Its result has no refs, so it does not read the a11y tree.
+      expect(driver.getAccessibilityTree).not.toHaveBeenCalled();
     });
 
     it('accessibilitySnapshotTool delegates to driver.getAccessibilityTree', async () => {
@@ -434,9 +443,6 @@ describe('tool delegation to context.driver', () => {
         page: {} as any,
         refMap: new Map(),
         workflowContext: {} as any,
-        knowledgeStore: {
-          generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
-        } as any,
         toolRegistry: new Map(),
         driver,
       } as unknown as ToolContext;
@@ -534,9 +540,6 @@ describe('tool delegation to context.driver', () => {
         page: {} as any,
         refMap: new Map(),
         workflowContext: {} as any,
-        knowledgeStore: {
-          generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
-        } as any,
         toolRegistry: new Map(),
         driver,
       } as unknown as ToolContext;

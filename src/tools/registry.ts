@@ -34,12 +34,6 @@ import {
   typeTool,
   waitForTool,
 } from './interaction.js';
-import {
-  knowledgeLastTool,
-  knowledgeSearchTool,
-  knowledgeSessionsTool,
-  knowledgeSummarizeTool,
-} from './knowledge.js';
 import { launchTool } from './launch.js';
 import { mockNetworkTool } from './mock-network.js';
 import {
@@ -81,10 +75,6 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['type', typeTool],
   ['wait_for', waitForTool],
   ['get_text', getTextTool],
-  ['knowledge_last', knowledgeLastTool],
-  ['knowledge_search', knowledgeSearchTool],
-  ['knowledge_summarize', knowledgeSummarizeTool],
-  ['knowledge_sessions', knowledgeSessionsTool],
   ['seed_contract', seedContractTool],
   ['seed_contracts', seedContractsTool],
   ['get_contract_address', getContractAddressTool],
@@ -114,10 +104,26 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['generate_locators', generateLocatorsTool],
 ]);
 
-export type ToolCategory = 'mutating' | 'readonly' | 'discovery' | 'batch';
+/**
+ * Tool categories set the default `observe` level, which decides whether the
+ * daemon collects an observation after the tool runs (see
+ * `resolveObserveLevel` in `server/create-server.ts`). An explicit `observe`
+ * in the input always wins.
+ *
+ * - `mutating`: changes the UI; default `'diff'`.
+ * - `readonly` / `discovery`: reads only; default `'none'`.
+ * - `cdp`: raw CDP calls; mostly reads (`Runtime.evaluate`), default `'none'`.
+ * - `batch`: `run_steps`; one observation after the batch, default `'diff'`.
+ */
+export type ToolCategory =
+  | 'mutating'
+  | 'readonly'
+  | 'discovery'
+  | 'cdp'
+  | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (26)
+  // MUTATING (25)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
@@ -131,7 +137,6 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   wait_for_notification: 'mutating',
   seed_contract: 'mutating',
   seed_contracts: 'mutating',
-  cdp: 'mutating',
   mock_network: 'mutating',
   scroll_to_element: 'mutating',
   device_swipe: 'mutating',
@@ -151,10 +156,6 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   screen_recording: 'readonly',
   device_logs: 'readonly',
   generate_locators: 'readonly',
-  knowledge_last: 'readonly',
-  knowledge_search: 'readonly',
-  knowledge_summarize: 'readonly',
-  knowledge_sessions: 'readonly',
   get_text: 'readonly',
   get_state: 'readonly',
   get_context: 'readonly',
@@ -169,6 +170,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   list_testids: 'discovery',
   accessibility_snapshot: 'discovery',
   screenshot: 'discovery',
+  // CDP (1)
+  cdp: 'cdp',
   // BATCH (1)
   run_steps: 'batch',
 };

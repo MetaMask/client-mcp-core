@@ -1,5 +1,5 @@
 import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
-import type { StepRecordObservation } from '../tools/types/step-record.js';
+import type { StepRecordObservation } from '../tools/types/observation.js';
 import { OPTION_COLLAPSE_MIN_COUNT } from '../tools/utils/constants.js';
 
 const OPTION_RANGE_PATTERN =
@@ -55,12 +55,15 @@ function buildOptionSummary(nodes: A11yNodeTrimmed[]): A11yNodeTrimmed {
   );
   const refRange = `${firstRange.firstRef}\u2013${lastRange.lastRef}`;
 
-  return {
+  const summary: A11yNodeTrimmed = {
     ref: refRange,
     role: 'option',
     name: `${optionCount} options (refs ${refRange})`,
-    path: nodes[0].path,
   };
+  if (nodes[0].path) {
+    summary.path = nodes[0].path;
+  }
+  return summary;
 }
 
 export const observationCompactionDeps = {
@@ -168,13 +171,21 @@ export function compactObservation(
 }
 
 /**
- * Checks if two string arrays are equal.
+ * Checks if two optional string arrays are equal. Two absent arrays are
+ * equal; an absent array never equals a present one (even an empty one).
  *
  * @param left - First array to compare.
  * @param right - Second array to compare.
- * @returns True if arrays have equal length and identical elements.
+ * @returns True if both are absent, or both have equal length and identical
+ * elements.
  */
-function arraysEqual(left: string[], right: string[]): boolean {
+function arraysEqual(
+  left: string[] | undefined,
+  right: string[] | undefined,
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
   return (
     left.length === right.length && left.every((val, idx) => val === right[idx])
   );
@@ -246,7 +257,6 @@ export function diffObservation(
   }
 
   return {
-    state: current.state,
     testIds: current.testIds,
     a11y: {
       nodes: changedOrNewNodes,
@@ -256,6 +266,5 @@ export function diffObservation(
         unchanged: unchangedCount,
       },
     },
-    priorKnowledge: current.priorKnowledge,
   };
 }

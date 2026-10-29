@@ -48,18 +48,44 @@ export type WithinScope = {
   value: string;
 };
 
+/**
+ * One snapshot of the screen: the accessibility tree, and the test IDs of the
+ * same snapshot.
+ */
+export type ScreenCapture = {
+  nodes: A11yNodeTrimmed[];
+  refMap: Map<string, string>;
+  /**
+   * Lists the test IDs of this snapshot (no new snapshot).
+   *
+   * @param limit - Maximum number of test IDs to return.
+   */
+  getTestIds(limit?: number): Promise<TestIdItem[]>;
+};
+
 export type IPlatformDriver = {
   /** Release resources owned by this driver. Idempotent; does not shut down the device. */
   dispose?(): Promise<void>;
 
+  /**
+   * Waits for the target, then clicks it. When `signal` is aborted while the
+   * driver waits for the target, the driver throws the abort reason and does
+   * not click. A click that already started is not cancelled.
+   */
   click(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<ClickActionResult>;
 
+  /**
+   * Waits for the target, then types into it. When `signal` is aborted while
+   * the driver waits for the target, the driver throws the abort reason and
+   * does not type. Typing that already started is not cancelled.
+   */
   type(
     targetType: TargetType,
     targetValue: string,
@@ -67,6 +93,7 @@ export type IPlatformDriver = {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<TypeActionResult>;
 
   waitForElement(
@@ -90,6 +117,13 @@ export type IPlatformDriver = {
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }>;
 
   getTestIds(limit?: number): Promise<TestIdItem[]>;
+
+  /**
+   * Takes one snapshot and returns both the accessibility tree and its test
+   * IDs, so they describe the same screen. Optional: without it, callers use
+   * `getAccessibilityTree` and `getTestIds` (two snapshots).
+   */
+  captureScreen?(): Promise<ScreenCapture>;
 
   screenshot(options: PlatformScreenshotOptions): Promise<ScreenshotResult>;
 

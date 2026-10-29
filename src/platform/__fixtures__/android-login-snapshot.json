@@ -1,0 +1,992 @@
+[
+  {
+    "type": "android.widget.FrameLayout",
+    "frame": { "x": 0, "y": 0, "width": 1080, "height": 63 },
+    "enabled": true,
+    "children": [
+      {
+        "type": "android.widget.FrameLayout",
+        "identifier": "com.android.systemui:id/status_bar_launch_animation_container",
+        "frame": { "x": 0, "y": 0, "width": 1080, "height": 63 },
+        "enabled": true
+      },
+      {
+        "type": "android.widget.FrameLayout",
+        "identifier": "com.android.systemui:id/status_bar_container",
+        "frame": { "x": 0, "y": 0, "width": 1080, "height": 63 },
+        "enabled": true,
+        "children": [
+          {
+            "type": "androidx.compose.ui.platform.ComposeView",
+            "frame": { "x": 0, "y": 0, "width": 1080, "height": 63 },
+            "enabled": true,
+            "children": [
+              {
+                "type": "android.view.View",
+                "frame": { "x": 0, "y": 0, "width": 1080, "height": 63 },
+                "enabled": true,
+                "children": [
+                  {
+                    "type": "androidx.compose.ui.viewinterop.ViewFactoryHolder",
+                    "frame": { "x": 0, "y": 0, "width": 1080, "height": 63 },
+                    "enabled": true,
+                    "children": [
+                      {
+                        "type": "android.widget.FrameLayout",
+                        "identifier": "com.android.systemui:id/status_bar",
+                        "frame": {
+                          "x": 0,
+                          "y": 0,
+                          "width": 1080,
+                          "height": 63
+                        },
+                        "enabled": true,
+                        "children": [
+                          {
+                            "type": "android.widget.LinearLayout",
+                            "identifier": "com.android.systemui:id/status_bar_contents",
+                            "frame": {
+                              "x": 0,
+                              "y": 0,
+                              "width": 1027,
+                              "height": 63
+                            },
+                            "enabled": true,
+                            "children": [
+                              {
+                                "type": "android.widget.FrameLayout",
+                                "identifier": "com.android.systemui:id/status_bar_start_side_container",
+                                "frame": {
+                                  "x": 11,
+                                  "y": 0,
+                                  "width": 502,
+                                  "height": 63
+                                },
+                                "enabled": true,
+                                "children": [
+                                  {
+                                    "type": "android.widget.FrameLayout",
+                                    "identifier": "com.android.systemui:id/status_bar_start_side_content",
+                                    "frame": {
+                                      "x": 11,
+                                      "y": 0,
+                                      "width": 115,
+                                      "height": 63
+                                    },
+                                    "enabled": true,
+                                    "children": [
+                                      {
+                                        "type": "android.widget.LinearLayout",
+                                        "identifier": "com.android.systemui:id/status_bar_start_side_except_heads_up",
+                                        "frame": {
+                                          "x": 11,
+                                          "y": 0,
+                                          "width": 115,
+                                          "height": 63
+                                        },
+                                        "enabled": true,
+                                        "children": [
+                                          {
+                                            "type": "androidx.compose.ui.platform.ComposeView",
+                                            "frame": {
+                                              "x": 0,
+                                              "y": 0,
+                                              "width": 0,
+                                              "height": 0
+                                            },
+                                            "enabled": true,
+                                            "children": [
+                                              {
+                                                "type": "android.view.View",
+                                                "frame": {
+                                                  "x": 0,
+                                                  "y": 0,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "enabled": true
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "android.widget.TextView",
+                                            "label": "8:28 AM",
+                                            "value": "8:28",
+                                            "identifier": "com.android.systemui:id/clock",
+                                            "frame": {
+                                              "x": 11,
+                                              "y": 2,
+                                              "width": 115,
+                                              "height": 58
+                                            },
+                                            "enabled": true
+                                          },
+                                          {
+                                            "type": "android.widget.FrameLayout",
+                                            "identifier": "com.android.systemui:id/notification_icon_area",
+                                            "frame": {
+                                              "x": 126,
+                                              "y": 0,
+                                              "width": 0,
+                                              "height": 63
+                                            },
+                                            "enabled": true,
+                                            "children": [
+                                              {
+                                                "type": "android.view.ViewGroup",
+                                                "identifier": "com.android.systemui:id/notificationIcons",
+                                                "frame": {
+                                                  "x": 126,
+                                                  "y": 0,
+                                                  "width": 0,
+                                                  "height": 63
+                                                },
+                                                "enabled": true
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "android.widget.FrameLayout",
+                                "identifier": "com.android.systemui:id/status_bar_end_side_container",
+                                "frame": {
+                                  "x": 513,
+                                  "y": 0,
+                                  "width": 503,
+                                  "height": 63
+                                },
+                                "enabled": true,
+                                "children": [
+                                  {
+                                    "type": "android.widget.LinearLayout",
+                                    "identifier": "com.android.systemui:id/status_bar_end_side_content",
+                                    "frame": {
+                                      "x": 799,
+                                      "y": 0,
+                                      "width": 217,
+                                      "height": 63
+                                    },
+                                    "enabled": true,
+                                    "children": [
+                                      {
+                                        "type": "android.widget.LinearLayout",
+                                        "identifier": "com.android.systemui:id/system_icons",
+                                        "frame": {
+                                          "x": 799,
+                                          "y": 2,
+                                          "width": 217,
+                                          "height": 58
+                                        },
+                                        "enabled": true,
+                                        "children": [
+                                          {
+                                            "type": "android.widget.LinearLayout",
+                                            "identifier": "com.android.systemui:id/statusIcons",
+                                            "frame": {
+                                              "x": 807,
+                                              "y": 2,
+                                              "width": 128,
+                                              "height": 58
+                                            },
+                                            "enabled": true,
+                                            "children": [
+                                              {
+                                                "type": "android.widget.FrameLayout",
+                                                "label": "T-Mobile, two bars.",
+                                                "identifier": "com.android.systemui:id/mobile_combo",
+                                                "frame": {
+                                                  "x": 807,
+                                                  "y": 2,
+                                                  "width": 61,
+                                                  "height": 58
+                                                },
+                                                "enabled": true,
+                                                "children": [
+                                                  {
+                                                    "type": "android.widget.LinearLayout",
+                                                    "identifier": "com.android.systemui:id/mobile_group",
+                                                    "frame": {
+                                                      "x": 815,
+                                                      "y": 2,
+                                                      "width": 45,
+                                                      "height": 58
+                                                    },
+                                                    "enabled": true,
+                                                    "children": [
+                                                      {
+                                                        "type": "android.widget.FrameLayout",
+                                                        "frame": {
+                                                          "x": 815,
+                                                          "y": 15,
+                                                          "width": 45,
+                                                          "height": 32
+                                                        },
+                                                        "enabled": true,
+                                                        "children": [
+                                                          {
+                                                            "type": "android.widget.ImageView",
+                                                            "identifier": "com.android.systemui:id/mobile_signal",
+                                                            "frame": {
+                                                              "x": 815,
+                                                              "y": 15,
+                                                              "width": 45,
+                                                              "height": 32
+                                                            },
+                                                            "enabled": true
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "type": "android.widget.FrameLayout",
+                                                "frame": {
+                                                  "x": 0,
+                                                  "y": 0,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "enabled": true
+                                              },
+                                              {
+                                                "type": "android.widget.FrameLayout",
+                                                "frame": {
+                                                  "x": 0,
+                                                  "y": 0,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "enabled": true
+                                              },
+                                              {
+                                                "type": "android.widget.FrameLayout",
+                                                "identifier": "com.android.systemui:id/wifi_combo",
+                                                "frame": {
+                                                  "x": 868,
+                                                  "y": 2,
+                                                  "width": 59,
+                                                  "height": 58
+                                                },
+                                                "enabled": true,
+                                                "children": [
+                                                  {
+                                                    "type": "android.widget.LinearLayout",
+                                                    "identifier": "com.android.systemui:id/wifi_group",
+                                                    "frame": {
+                                                      "x": 876,
+                                                      "y": 2,
+                                                      "width": 43,
+                                                      "height": 58
+                                                    },
+                                                    "enabled": true,
+                                                    "children": [
+                                                      {
+                                                        "type": "android.widget.FrameLayout",
+                                                        "identifier": "com.android.systemui:id/wifi_combo",
+                                                        "frame": {
+                                                          "x": 876,
+                                                          "y": 15,
+                                                          "width": 43,
+                                                          "height": 32
+                                                        },
+                                                        "enabled": true,
+                                                        "children": [
+                                                          {
+                                                            "type": "android.widget.ImageView",
+                                                            "label": "Wifi signal full.",
+                                                            "identifier": "com.android.systemui:id/wifi_signal",
+                                                            "frame": {
+                                                              "x": 876,
+                                                              "y": 15,
+                                                              "width": 43,
+                                                              "height": 32
+                                                            },
+                                                            "enabled": true
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "androidx.compose.ui.platform.ComposeView",
+                                            "frame": {
+                                              "x": 935,
+                                              "y": 14,
+                                              "width": 70,
+                                              "height": 34
+                                            },
+                                            "enabled": true,
+                                            "children": [
+                                              {
+                                                "type": "android.view.View",
+                                                "frame": {
+                                                  "x": 935,
+                                                  "y": 14,
+                                                  "width": 70,
+                                                  "height": 34
+                                                },
+                                                "enabled": true,
+                                                "children": [
+                                                  {
+                                                    "type": "android.view.View",
+                                                    "identifier": "com.android.systemui:id/battery",
+                                                    "frame": {
+                                                      "x": 935,
+                                                      "y": 14,
+                                                      "width": 70,
+                                                      "height": 34
+                                                    },
+                                                    "enabled": true,
+                                                    "children": [
+                                                      {
+                                                        "type": "android.view.View",
+                                                        "label": "Battery 100 percent.",
+                                                        "frame": {
+                                                          "x": 935,
+                                                          "y": 14,
+                                                          "width": 63,
+                                                          "height": 34
+                                                        },
+                                                        "enabled": true
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "android.widget.FrameLayout",
+    "frame": { "x": 0, "y": 0, "width": 1080, "height": 2400 },
+    "enabled": true,
+    "children": [
+      {
+        "type": "android.widget.LinearLayout",
+        "frame": { "x": 0, "y": 0, "width": 1080, "height": 2400 },
+        "enabled": true,
+        "children": [
+          {
+            "type": "android.widget.FrameLayout",
+            "frame": { "x": 0, "y": 0, "width": 1080, "height": 2400 },
+            "enabled": true,
+            "children": [
+              {
+                "type": "android.widget.LinearLayout",
+                "identifier": "io.metamask:id/action_bar_root",
+                "frame": { "x": 0, "y": 0, "width": 1080, "height": 2400 },
+                "enabled": true,
+                "children": [
+                  {
+                    "type": "android.widget.FrameLayout",
+                    "identifier": "android:id/content",
+                    "frame": { "x": 0, "y": 0, "width": 1080, "height": 2400 },
+                    "enabled": true,
+                    "children": [
+                      {
+                        "type": "android.widget.FrameLayout",
+                        "frame": {
+                          "x": 0,
+                          "y": 0,
+                          "width": 1080,
+                          "height": 2400
+                        },
+                        "enabled": true,
+                        "children": [
+                          {
+                            "type": "android.widget.LinearLayout",
+                            "frame": {
+                              "x": 0,
+                              "y": 0,
+                              "width": 1080,
+                              "height": 2400
+                            },
+                            "enabled": true,
+                            "children": [
+                              {
+                                "type": "androidx.compose.ui.platform.ComposeView",
+                                "frame": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 1080,
+                                  "height": 2400
+                                },
+                                "enabled": true,
+                                "children": [
+                                  {
+                                    "type": "android.view.View",
+                                    "frame": {
+                                      "x": 0,
+                                      "y": 0,
+                                      "width": 1080,
+                                      "height": 2400
+                                    },
+                                    "enabled": true,
+                                    "children": [
+                                      {
+                                        "type": "android.view.View",
+                                        "frame": {
+                                          "x": 0,
+                                          "y": 63,
+                                          "width": 221,
+                                          "height": 221
+                                        },
+                                        "enabled": true,
+                                        "children": [
+                                          {
+                                            "type": "android.view.View",
+                                            "frame": {
+                                              "x": 902,
+                                              "y": 105,
+                                              "width": 137,
+                                              "height": 137
+                                            },
+                                            "enabled": true,
+                                            "children": [
+                                              {
+                                                "type": "android.view.View",
+                                                "frame": {
+                                                  "x": 908,
+                                                  "y": 111,
+                                                  "width": 126,
+                                                  "height": 126
+                                                },
+                                                "enabled": true,
+                                                "children": [
+                                                  {
+                                                    "type": "android.widget.ImageView",
+                                                    "label": "Tools",
+                                                    "frame": {
+                                                      "x": 937,
+                                                      "y": 140,
+                                                      "width": 68,
+                                                      "height": 68
+                                                    },
+                                                    "enabled": true
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "type": "android.widget.FrameLayout",
+                            "frame": {
+                              "x": 0,
+                              "y": 0,
+                              "width": 1080,
+                              "height": 2400
+                            },
+                            "enabled": true,
+                            "children": [
+                              {
+                                "type": "android.view.ViewGroup",
+                                "frame": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 1080,
+                                  "height": 2400
+                                },
+                                "enabled": true,
+                                "children": [
+                                  {
+                                    "type": "android.view.View",
+                                    "frame": {
+                                      "x": 0,
+                                      "y": 0,
+                                      "width": 1080,
+                                      "height": 2400
+                                    },
+                                    "enabled": true
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "android.view.ViewGroup",
+                                "frame": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 1080,
+                                  "height": 2400
+                                },
+                                "enabled": true,
+                                "children": [
+                                  {
+                                    "type": "android.view.ViewGroup",
+                                    "frame": {
+                                      "x": 0,
+                                      "y": 0,
+                                      "width": 1080,
+                                      "height": 2400
+                                    },
+                                    "enabled": true,
+                                    "children": [
+                                      {
+                                        "type": "android.view.ViewGroup",
+                                        "frame": {
+                                          "x": 0,
+                                          "y": 0,
+                                          "width": 1080,
+                                          "height": 2400
+                                        },
+                                        "enabled": true,
+                                        "children": [
+                                          {
+                                            "type": "android.view.ViewGroup",
+                                            "frame": {
+                                              "x": 0,
+                                              "y": 0,
+                                              "width": 1080,
+                                              "height": 2400
+                                            },
+                                            "enabled": true,
+                                            "children": [
+                                              {
+                                                "type": "android.view.ViewGroup",
+                                                "frame": {
+                                                  "x": 0,
+                                                  "y": 0,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "enabled": true,
+                                                "children": [
+                                                  {
+                                                    "type": "android.widget.FrameLayout",
+                                                    "identifier": "npm:@metamask/bitcoin-wallet-snap",
+                                                    "frame": {
+                                                      "x": 0,
+                                                      "y": 0,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "enabled": true,
+                                                    "children": [
+                                                      {
+                                                        "type": "android.webkit.WebView",
+                                                        "frame": {
+                                                          "x": 0,
+                                                          "y": 0,
+                                                          "width": 0,
+                                                          "height": 0
+                                                        },
+                                                        "enabled": true
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "type": "android.view.ViewGroup",
+                                                "frame": {
+                                                  "x": 0,
+                                                  "y": 0,
+                                                  "width": 1080,
+                                                  "height": 2400
+                                                },
+                                                "enabled": true,
+                                                "children": [
+                                                  {
+                                                    "type": "android.widget.ScrollView",
+                                                    "frame": {
+                                                      "x": 0,
+                                                      "y": 0,
+                                                      "width": 1080,
+                                                      "height": 2400
+                                                    },
+                                                    "enabled": true,
+                                                    "children": [
+                                                      {
+                                                        "type": "android.widget.LinearLayout",
+                                                        "frame": {
+                                                          "x": 0,
+                                                          "y": 0,
+                                                          "width": 1080,
+                                                          "height": 0
+                                                        },
+                                                        "enabled": true
+                                                      },
+                                                      {
+                                                        "type": "android.view.ViewGroup",
+                                                        "frame": {
+                                                          "x": 0,
+                                                          "y": 0,
+                                                          "width": 1080,
+                                                          "height": 2400
+                                                        },
+                                                        "enabled": true,
+                                                        "children": [
+                                                          {
+                                                            "type": "android.view.ViewGroup",
+                                                            "frame": {
+                                                              "x": 0,
+                                                              "y": 0,
+                                                              "width": 1080,
+                                                              "height": 0
+                                                            },
+                                                            "enabled": true
+                                                          },
+                                                          {
+                                                            "type": "android.view.ViewGroup",
+                                                            "frame": {
+                                                              "x": 0,
+                                                              "y": 0,
+                                                              "width": 1080,
+                                                              "height": 2400
+                                                            },
+                                                            "enabled": true,
+                                                            "children": [
+                                                              {
+                                                                "type": "android.view.ViewGroup",
+                                                                "frame": {
+                                                                  "x": 0,
+                                                                  "y": 0,
+                                                                  "width": 1080,
+                                                                  "height": 2400
+                                                                },
+                                                                "enabled": true,
+                                                                "children": [
+                                                                  {
+                                                                    "type": "android.widget.ScrollView",
+                                                                    "frame": {
+                                                                      "x": 0,
+                                                                      "y": 0,
+                                                                      "width": 1080,
+                                                                      "height": 2400
+                                                                    },
+                                                                    "enabled": true,
+                                                                    "children": [
+                                                                      {
+                                                                        "type": "android.widget.LinearLayout",
+                                                                        "frame": {
+                                                                          "x": 0,
+                                                                          "y": 0,
+                                                                          "width": 1080,
+                                                                          "height": 0
+                                                                        },
+                                                                        "enabled": true
+                                                                      },
+                                                                      {
+                                                                        "type": "android.view.ViewGroup",
+                                                                        "frame": {
+                                                                          "x": 0,
+                                                                          "y": 0,
+                                                                          "width": 1080,
+                                                                          "height": 2400
+                                                                        },
+                                                                        "enabled": true,
+                                                                        "children": [
+                                                                          {
+                                                                            "type": "android.view.ViewGroup",
+                                                                            "frame": {
+                                                                              "x": 0,
+                                                                              "y": 0,
+                                                                              "width": 1080,
+                                                                              "height": 0
+                                                                            },
+                                                                            "enabled": true
+                                                                          },
+                                                                          {
+                                                                            "type": "android.view.ViewGroup",
+                                                                            "frame": {
+                                                                              "x": 0,
+                                                                              "y": 0,
+                                                                              "width": 1080,
+                                                                              "height": 2400
+                                                                            },
+                                                                            "enabled": true,
+                                                                            "children": [
+                                                                              {
+                                                                                "type": "android.view.ViewGroup",
+                                                                                "frame": {
+                                                                                  "x": 0,
+                                                                                  "y": 0,
+                                                                                  "width": 1080,
+                                                                                  "height": 2400
+                                                                                },
+                                                                                "enabled": true
+                                                                              },
+                                                                              {
+                                                                                "type": "android.view.ViewGroup",
+                                                                                "frame": {
+                                                                                  "x": 0,
+                                                                                  "y": 0,
+                                                                                  "width": 1080,
+                                                                                  "height": 2400
+                                                                                },
+                                                                                "enabled": true,
+                                                                                "children": [
+                                                                                  {
+                                                                                    "type": "android.widget.ScrollView",
+                                                                                    "frame": {
+                                                                                      "x": 0,
+                                                                                      "y": 63,
+                                                                                      "width": 1080,
+                                                                                      "height": 2337
+                                                                                    },
+                                                                                    "enabled": true,
+                                                                                    "children": [
+                                                                                      {
+                                                                                        "type": "android.view.ViewGroup",
+                                                                                        "frame": {
+                                                                                          "x": 0,
+                                                                                          "y": 63,
+                                                                                          "width": 1080,
+                                                                                          "height": 2337
+                                                                                        },
+                                                                                        "enabled": true,
+                                                                                        "children": [
+                                                                                          {
+                                                                                            "type": "android.view.ViewGroup",
+                                                                                            "identifier": "login",
+                                                                                            "frame": {
+                                                                                              "x": 0,
+                                                                                              "y": 105,
+                                                                                              "width": 1080,
+                                                                                              "height": 2253
+                                                                                            },
+                                                                                            "enabled": true
+                                                                                          },
+                                                                                          {
+                                                                                            "type": "android.view.ViewGroup",
+                                                                                            "identifier": "login-download-logs-button",
+                                                                                            "frame": {
+                                                                                              "x": 289,
+                                                                                              "y": 602,
+                                                                                              "width": 504,
+                                                                                              "height": 273
+                                                                                            },
+                                                                                            "enabled": true,
+                                                                                            "children": [
+                                                                                              {
+                                                                                                "type": "com.horcrux.svg.SvgView",
+                                                                                                "identifier": "metamask-wordmark",
+                                                                                                "frame": {
+                                                                                                  "x": 289,
+                                                                                                  "y": 602,
+                                                                                                  "width": 504,
+                                                                                                  "height": 273
+                                                                                                },
+                                                                                                "enabled": true,
+                                                                                                "children": [
+                                                                                                  {
+                                                                                                    "type": "com.horcrux.svg.GroupView",
+                                                                                                    "frame": {
+                                                                                                      "x": 289,
+                                                                                                      "y": 602,
+                                                                                                      "width": 504,
+                                                                                                      "height": 273
+                                                                                                    },
+                                                                                                    "enabled": true,
+                                                                                                    "children": [
+                                                                                                      {
+                                                                                                        "type": "com.horcrux.svg.PathView",
+                                                                                                        "frame": {
+                                                                                                          "x": 289,
+                                                                                                          "y": 602,
+                                                                                                          "width": 504,
+                                                                                                          "height": 273
+                                                                                                        },
+                                                                                                        "enabled": true
+                                                                                                      }
+                                                                                                    ]
+                                                                                                  }
+                                                                                                ]
+                                                                                              }
+                                                                                            ]
+                                                                                          },
+                                                                                          {
+                                                                                            "type": "android.view.ViewGroup",
+                                                                                            "frame": {
+                                                                                              "x": 42,
+                                                                                              "y": 1232,
+                                                                                              "width": 996,
+                                                                                              "height": 126
+                                                                                            },
+                                                                                            "enabled": true
+                                                                                          },
+                                                                                          {
+                                                                                            "type": "android.widget.EditText",
+                                                                                            "label": "login-password-input",
+                                                                                            "value": "Enter password",
+                                                                                            "identifier": "login-password-input",
+                                                                                            "frame": {
+                                                                                              "x": 86,
+                                                                                              "y": 1234,
+                                                                                              "width": 908,
+                                                                                              "height": 121
+                                                                                            },
+                                                                                            "enabled": true
+                                                                                          },
+                                                                                          {
+                                                                                            "type": "android.widget.Button",
+                                                                                            "label": "Unlock",
+                                                                                            "identifier": "log-in-button",
+                                                                                            "frame": {
+                                                                                              "x": 42,
+                                                                                              "y": 1400,
+                                                                                              "width": 996,
+                                                                                              "height": 126
+                                                                                            },
+                                                                                            "enabled": false,
+                                                                                            "children": [
+                                                                                              {
+                                                                                                "type": "android.widget.TextView",
+                                                                                                "label": "Unlock",
+                                                                                                "frame": {
+                                                                                                  "x": 471,
+                                                                                                  "y": 1432,
+                                                                                                  "width": 138,
+                                                                                                  "height": 63
+                                                                                                },
+                                                                                                "enabled": true
+                                                                                              }
+                                                                                            ]
+                                                                                          },
+                                                                                          {
+                                                                                            "type": "android.widget.Button",
+                                                                                            "label": "Forgot password?",
+                                                                                            "identifier": "reset-wallet-button",
+                                                                                            "frame": {
+                                                                                              "x": 42,
+                                                                                              "y": 1568,
+                                                                                              "width": 996,
+                                                                                              "height": 126
+                                                                                            },
+                                                                                            "enabled": true,
+                                                                                            "children": [
+                                                                                              {
+                                                                                                "type": "android.widget.TextView",
+                                                                                                "label": "Forgot password?",
+                                                                                                "frame": {
+                                                                                                  "x": 363,
+                                                                                                  "y": 1600,
+                                                                                                  "width": 355,
+                                                                                                  "height": 63
+                                                                                                },
+                                                                                                "enabled": true
+                                                                                              }
+                                                                                            ]
+                                                                                          }
+                                                                                        ]
+                                                                                      }
+                                                                                    ]
+                                                                                  }
+                                                                                ]
+                                                                              },
+                                                                              {
+                                                                                "type": "android.view.ViewGroup",
+                                                                                "frame": {
+                                                                                  "x": 0,
+                                                                                  "y": 1518,
+                                                                                  "width": 1080,
+                                                                                  "height": 882
+                                                                                },
+                                                                                "enabled": true,
+                                                                                "children": [
+                                                                                  {
+                                                                                    "type": "android.widget.FrameLayout",
+                                                                                    "identifier": "fox-animation",
+                                                                                    "frame": {
+                                                                                      "x": 0,
+                                                                                      "y": 1518,
+                                                                                      "width": 1080,
+                                                                                      "height": 882
+                                                                                    },
+                                                                                    "enabled": true,
+                                                                                    "children": [
+                                                                                      {
+                                                                                        "type": "android.view.TextureView",
+                                                                                        "frame": {
+                                                                                          "x": 0,
+                                                                                          "y": 1518,
+                                                                                          "width": 1080,
+                                                                                          "height": 882
+                                                                                        },
+                                                                                        "enabled": true
+                                                                                      }
+                                                                                    ]
+                                                                                  }
+                                                                                ]
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "android.view.ViewGroup",
+                    "frame": { "x": 0, "y": 2400, "width": 1080, "height": 0 },
+                    "enabled": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

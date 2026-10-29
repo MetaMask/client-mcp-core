@@ -24,6 +24,7 @@ import {
   isValidTargetSelection,
 } from './utils/type-guards.js';
 import {
+  abortedResponse,
   createToolError,
   createToolSuccess,
   requireActiveSession,
@@ -56,6 +57,11 @@ function validateInteraction<TResult>(
   const missingSession = requireActiveSession<TResult>(context);
   if (missingSession) {
     return { error: missingSession };
+  }
+
+  const aborted = abortedResponse<TResult>(context);
+  if (aborted) {
+    return { error: aborted };
   }
 
   if (!context.driver) {
@@ -143,9 +149,14 @@ export async function clickTool(
       context.refMap,
       timeoutMs,
       resolveWithinScope(input.within),
+      context.signal,
     );
     return createToolSuccess(result);
   } catch (error) {
+    const aborted = abortedResponse<ClickResult>(context);
+    if (aborted) {
+      return aborted;
+    }
     const errorInfo = classifyClickError(error);
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
       return createToolError(
@@ -184,9 +195,14 @@ export async function typeTool(
       context.refMap,
       timeoutMs,
       resolveWithinScope(input.within),
+      context.signal,
     );
     return createToolSuccess(result);
   } catch (error) {
+    const aborted = abortedResponse<TypeResult>(context);
+    if (aborted) {
+      return aborted;
+    }
     const errorInfo = classifyTypeError(error);
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
       return createToolError(

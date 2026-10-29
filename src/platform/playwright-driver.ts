@@ -66,6 +66,8 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to selectors.
    * @param timeoutMs - Maximum time in milliseconds for the interaction.
    * @param within - Optional parent scope for chained locator resolution.
+   * @param signal - When aborted during the target wait, throws instead of
+   * clicking.
    * @returns The click result with success status and target info.
    */
   async click(
@@ -74,6 +76,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<ClickActionResult> {
     const page = this.#getPage();
     const deadline = Date.now() + timeoutMs;
@@ -94,6 +97,8 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       );
     }
 
+    // The request may have timed out while we waited for the target.
+    signal?.throwIfAborted();
     try {
       await locator.click({ timeout: remaining });
     } catch (error) {
@@ -122,6 +127,8 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to selectors.
    * @param timeoutMs - Maximum time in milliseconds.
    * @param within - Optional parent scope.
+   * @param signal - When aborted during the target wait, throws instead of
+   * typing.
    * @returns The type result with success status and text length.
    */
   async type(
@@ -131,6 +138,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<TypeActionResult> {
     const page = this.#getPage();
     const deadline = Date.now() + timeoutMs;
@@ -151,6 +159,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       );
     }
 
+    signal?.throwIfAborted();
     await locator.fill(text, { timeout: remaining });
 
     return {

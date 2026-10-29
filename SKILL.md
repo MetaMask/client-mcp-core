@@ -4,6 +4,10 @@ You control a browser extension through the `mm` CLI. Every command talks to a l
 
 If you are running outside the target project directory, use `--project <path>` or set the `MM_PROJECT` environment variable to point at the project root. All commands accept `--project` before the command name (e.g., `mm --project ../metamask-extension launch`).
 
+All commands also accept the global `--observe none|diff|full` flag to choose the observation returned after the call (see Observation Behavior). The CLI consumes `--observe <level>` anywhere in the command line, so to type the literal text `--observe` use `run-steps` or the HTTP API.
+
+Results are printed as one line of JSON when stdout is not a terminal (your case). Parse them as JSON; do not match on indentation. Add `--pretty` (or set `MM_PRETTY=1`) only when a human needs to read the output. `--pretty` is also consumed anywhere in the command line, like `--observe`.
+
 ## Core Loop
 
 ```
@@ -18,25 +22,48 @@ Cleanup also disposes the session driver's owned resources after consumer app/se
 
 **Critical rules:**
 
-- **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — they change after every action.
-- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `state`, `testIds`, and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need `priorKnowledge` or screenshots.
+- **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — use the refs from the latest response (`describe-screen` or the `observations` of your last action).
+- **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `testIds` and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need the full tree or screenshots, and `get-state` when you need app state (observations carry none).
 - **One target per command.** Specify exactly ONE of: a11y ref (`e5`), testId, or CSS selector.
 - **Errors are structured.** Check the `error.code` field to decide recovery strategy (see Error Codes below).
 
 ## Observation Behavior
 
-Tool responses include different data based on the tool's category:
+Every tool accepts an `observe` level (CLI: global `--observe <level>` flag; HTTP / `run_steps`: an `observe` field in the input):
 
-| Category      | Examples                                                                                                                                                                                                                                        | Observations in response?                      |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                  | No — faster response                           |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                               | Data is already in `result`                    |
-| **Batch**     | run_steps                                                                                                                                                                                                                                       | Controlled by `includeObservations` param      |
+| Level  | Response                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------ |
+| `none` | No `observations`, no collection cost (`meta.timing.observationMs` is 0). Fastest.         |
+| `diff` | Only what changed since the previous observation (see Diff-Based Observations below).      |
+| `full` | The whole compacted screen (`a11y` + `testIds`), no diff. Use after navigation or a modal. |
 
-**Observation Compaction:** Mutating tool observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list or `priorKnowledge`.
+The default depends on the tool's category:
 
-**Diff-Based Observations:** After the first mutating tool call sets a baseline, subsequent mutations return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
+| Category      | Examples                                                                                                                                                                                                                                   | Default `observe` |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
+| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                            | `none`            |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                            | `none`            |
+| **CDP**       | cdp                                                                                                                                                                                                                                        | `none`            |
+| **Batch**     | run_steps                                                                                                                                                                                                                                  | `diff`            |
+
+```bash
+mm click e3 --observe none     # chaining clicks: skip the observation
+mm navigate-home --observe full  # after navigation: get the whole screen
+mm get-state --observe full    # a read that also returns an observation
+```
+
+**After `--observe none`, refs are not refreshed.** If the call changed the screen, the refs you have still describe the previous screen. A ref backed by a testId fails loudly (`MM_TARGET_NOT_FOUND`), but a ref built from role and name, a DOM path or a mobile label can click a **different element**. After `--observe none`, target by `--testid`, or run `mm describe-screen` before you use refs again.
+
+**Only mutating and batch calls wait for animations** (browser, up to 1 s) before they observe. `mm describe-screen` and a read with `--observe full` read the page at once, so `mm click … --observe none && mm get-state --observe full` can catch a screen mid-animation. To get a settled screen after an action, let the action observe: `mm click … --observe full`.
+
+Observations contain `testIds` and `a11y` only — no app `state`. Call `mm get-state` for state.
+
+On mobile, each observation and `describe-screen` comes from one device snapshot. The Android system status bar and navigation bar and the Expo DevLauncher "Tools" button (iOS `gearshape.fill`) are not part of the app and are removed from `testIds` and `a11y`. Other system windows, such as the biometric prompt (`com.android.systemui:id/biometric_*`), are kept.
+
+**Observation Compaction:** Observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
+
+**Diff-Based Observations:** After the first observation sets a baseline, later calls at level `diff` return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
 
 ```json
 {
@@ -46,18 +73,17 @@ Tool responses include different data based on the tool's category:
 }
 ```
 
-The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `launch`, or `cleanup` — the next mutation returns a full compact observation (no `diff` field). When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
+The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next observation is a full compact one (no `diff` field). A `full` observation also becomes the new baseline; `none` leaves the baseline unchanged. When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
 
 ### Using inline observations (mutating tools)
 
-After a mutating action, the response includes fresh screen state:
+After a mutating action, the response includes fresh screen data:
 
 ```json
 {
   "ok": true,
   "result": { ... },
   "observations": {
-    "state": { "screen": "send", "url": "...", "balance": "1.5 ETH" },
     "testIds": ["send-amount-input", "send-button"],
     "a11y": {
       "nodes": [
@@ -69,13 +95,15 @@ After a mutating action, the response includes fresh screen state:
 }
 ```
 
-You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed. Note that refs in compacted observations may be summary nodes (e.g., `"55 options (refs e2–e56)"`) when there are 3+ options under a combobox or listbox.
+You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed. Refs are numbered in screen order: on an unchanged screen they stay the same, but when elements appear or disappear above an element its ref can change. With `--observe diff`, those elements are listed in the diff with their new refs, so always take refs from the latest response. Note that refs in compacted observations may be summary nodes (e.g., `"55 options (refs e2–e56)"`) when there are 3+ options under a combobox or listbox.
+
+**Timeouts cancel the call:** when a call times out (`Tool execution timed out`), it is cancelled. It stops at its next step and cannot overwrite the refs of later calls. A `click` or `type` that timed out while waiting for its target does not click or type. An action that already started may still have happened (browser: Playwright's checks inside the click; mobile: a tap in progress is not stopped), so run `describe-screen` before retrying.
 
 **Quick reference:**
 
-- Use `observations.state` for quick checks (screen name, loading status, balance, etc.)
 - Use `observations.a11y.nodes` with the compact refs for the next interaction
-- Call `describe-screen` only when you need the full tree or `priorKnowledge`
+- Call `get-state` for app state (screen, account, network, balance)
+- Call `describe-screen` only when you need the full tree
 
 ```bash
 mm click e3                 # mutating: response includes fresh observations
@@ -85,20 +113,13 @@ mm type e1 "0.01"           # use ref from previous response
 
 Call `describe-screen` explicitly when you need:
 
-- `priorKnowledge` (historical actions for this screen)
 - A screenshot via `includeScreenshot`
 - Full context after unexpected navigation
 - The complete, unfiltered a11y tree (e.g., all options in a dropdown)
 
-### `run_steps` and `includeObservations`
+### `run_steps` and `observe`
 
-The `run_steps` tool collects observations once after all steps complete. Control inclusion with the `includeObservations` parameter:
-
-| Value             | Behavior                                      |
-| ----------------- | --------------------------------------------- |
-| `'all'` (default) | Always include final state observations       |
-| `'none'`          | Never include observations (fastest response) |
-| `'failures'`      | Include observations only if any step failed  |
+The `run_steps` tool collects one observation after all steps complete. A top-level `observe` sets its level (default `diff`). Without one, the `observe` in the last executed step's `args` is used; `observe` on other steps is ignored. (`includeObservations` was removed; to react to failures, check `summary.ok`.)
 
 ```json
 {
@@ -106,7 +127,7 @@ The `run_steps` tool collects observations once after all steps complete. Contro
     { "tool": "click", "args": { "a11yRef": "e3" } },
     { "tool": "type", "args": { "a11yRef": "e5", "text": "0.01" } }
   ],
-  "includeObservations": "failures"
+  "observe": "none"
 }
 ```
 
@@ -119,7 +140,7 @@ The `run_steps` tool collects observations once after all steps complete. Contro
 Starts the daemon (if not running) and launches a headed Chrome session with the extension.
 
 ```
-mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
+mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--force]
 ```
 
 | Flag                      | Description                                                     |
@@ -129,11 +150,9 @@ mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-
 | `--state onboarding`      | Fresh wallet requiring manual onboarding setup                  |
 | `--state custom`          | Use a custom fixture for wallet state                           |
 | `--extension-path <path>` | Override the extension build directory                          |
-| `--goal <text>`           | Tag the session with a goal for knowledge store                 |
 | `--force`                 | Replace an existing active session                              |
-| `--flow-tags <tags>`      | Comma-separated flow tags for cross-session knowledge           |
 
-Returns: `sessionId`, `extensionId`, `state` (current extension state).
+Returns: `sessionId`, `extensionId`, `state` (current extension state; on mobile it is partial: `source: "stub"` and only the fields that were read, e.g. `isLoaded`, `extensionId`).
 
 #### `mm cleanup`
 
@@ -199,7 +218,6 @@ mm serve [--background]
 - **Active tab**: the currently focused tab's role and URL (if tracked)
 - **Test IDs**: visible `data-testid` attributes with text previews
 - **A11y tree**: interactive elements with deterministic refs (`e1`, `e2`, ...)
-- **Prior knowledge**: suggested actions from past sessions on this screen
 
 ```
 mm describe-screen
@@ -222,9 +240,13 @@ Each node looks like:
 
 The `testId` and `textContent` fields appear only on nodes with short or generic names — they provide extra context from the DOM to help identify ambiguous elements. Nodes with clear names omit these fields.
 
+On the browser, `path` lists the `role:name` of the dialogs and headings that contain the node. Mobile nodes have no `path`.
+
 When 3+ consecutive identical nodes appear (same role, name, and path), they are collapsed into a summary like `… 3 more "maskicon" (refs e2–e4)` to reduce token waste. Individual refs still work for targeting.
 
-Use the `ref` value (`e3`) for click/type/get-text/wait-for commands.
+On mobile (iOS, Android), the tree is a flat list in screen order. A node is a native element: `role` is its type (`Button`, `StaticText`, `android.widget.Button`, `android.view.ViewGroup`), and `bounds` is its frame (`{ x, y, width, height }`). Layout-only elements are left out: elements with no label or text, no testId, and a type that is not a control (button, link, text field, switch, slider, checkbox and similar). Their children stay in the list. Containers with a testId stay. Plain unlabelled views of at least 24×24 with nothing kept inside also stay: they are often icon buttons (for example the iOS wallet home action buttons). Only a node with a testId, label or text has a ref you can click or type into. Nodes without one (unlabelled views, spinners, unnamed controls) are listed with their `bounds` but their ref cannot be targeted: use `mm tap-coordinates <x> <y>` with the center of `bounds`.
+
+Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails (strict mode) instead of acting on another element: refs use the exact, case-sensitive name, and elements that share a role and name get a unique DOM selector, so two "Send" buttons get two refs that each click their own button. If a click fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
 #### `mm list-testids`
 
@@ -242,7 +264,7 @@ Useful when you know a `testId` value and want to verify it exists. Prefer `desc
 
 #### `mm accessibility-snapshot`
 
-Captures just the trimmed accessibility tree with deterministic refs. Lighter than `describe-screen` (no state, no prior knowledge, no test IDs).
+Captures just the trimmed accessibility tree with deterministic refs. Lighter than `describe-screen` (no state, no test IDs).
 
 ```
 mm accessibility-snapshot [--root <selector>]
@@ -276,7 +298,7 @@ mm click --testid end-accessory --within "testid:account-list-item/0"
 mm click --testid onboarding-complete-done --timeout 60000
 ```
 
-Use `--within` to scope the target inside a parent element. Values use the format `testid:<id>`, `selector:<css>`, or a bare a11y ref (`e5`).
+Use `--within` to scope the target inside a parent element. Values use the format `testid:<id>`, `selector:<css>`, or a bare a11y ref (`e5`). With a ref target (`mm click e7 --within ...`), the ref already identifies one element, so `--within` only checks that it is inside the parent; when it is on the page but outside the parent, the command fails at once with `Ref e7 is not inside the within element`.
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 
@@ -385,7 +407,7 @@ Returns extension state and tracked tabs without the full a11y tree.
 mm get-state
 ```
 
-Returns: `state` (extension state) and `tabs` (active + tracked tabs with roles and URLs).
+Returns: `state` (extension state) and `tabs` (active + tracked tabs with roles and URLs). This is the only way to read app state — observations do not include it. On mobile the state is partial (`source: "stub"`): usually only `isLoaded` and `extensionId`; fields that were not read from the app (`isUnlocked`, `currentScreen`, account, network, balance) are omitted, not guessed.
 
 #### `mm get-context`
 
@@ -401,42 +423,6 @@ Switches the session environment between `e2e` and `prod` modes. Blocked while a
 
 ```
 mm set-context <e2e|prod>
-```
-
-### Knowledge Store
-
-The knowledge store records every tool invocation and uses past sessions to suggest actions.
-
-#### `mm knowledge-search <query>`
-
-Searches past sessions for steps matching the query. Matches against tool names, screen names, test IDs, and a11y node names.
-
-```
-mm knowledge-search "confirm transaction"
-```
-
-#### `mm knowledge-last`
-
-Gets the most recent step records from the current session.
-
-```
-mm knowledge-last
-```
-
-#### `mm knowledge-sessions`
-
-Lists recent sessions with metadata (goal, flow tags, timestamps).
-
-```
-mm knowledge-sessions
-```
-
-#### `mm knowledge-summarize`
-
-Generates a recipe-style summary of a session's tool invocations, showing the step sequence with targets and outcomes.
-
-```
-mm knowledge-summarize [--session <id>]
 ```
 
 ### Contracts (E2E only)
@@ -488,7 +474,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. The `includeObservations` param controls whether final-state observations appear in the response: `'all'` (default), `'none'`, or `'failures'` (only on partial failure). Use `batchTimeoutMs` to set an overall deadline — if exceeded, remaining steps are marked as skipped and partial results are returned immediately. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The whole `run_steps` call is stopped after 30 s (the request limit), so use a lower `batchTimeoutMs` (for example 20000) to get partial results, and split longer flows into several batches. The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
@@ -588,7 +574,7 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 | Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`                |
 | Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      | `Runtime.evaluate` nests the value at `result.result.value`                                                     |
 
-Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool is categorized as **mutating** — run `describe-screen` afterward to re-sync if the call changed runtime/page state.
+Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
 #### `mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]`
 
@@ -680,20 +666,10 @@ Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a targ
 | Method           | Format              | Stability                       | When to use                                          |
 | ---------------- | ------------------- | ------------------------------- | ---------------------------------------------------- |
 | **a11y ref**     | `e1`, `e2`, ...     | Ephemeral (per describe-screen) | Default — use refs from the latest `describe-screen` |
-| **testId**       | `data-testid` value | Stable across sessions          | When you know the testId from prior knowledge        |
+| **testId**       | `data-testid` value | Stable across sessions          | When you know the testId from earlier output         |
 | **CSS selector** | Any CSS selector    | Fragile                         | Last resort fallback                                 |
 
 **Prefer a11y refs.** They come directly from the accessibility tree and map to ARIA selectors, making them the most reliable for the current screen state.
-
-## Prior Knowledge
-
-When you call `describe-screen`, the response may include a `priorKnowledge` section with:
-
-- **`similarSteps`**: Past tool invocations on the same screen with confidence scores
-- **`suggestedNextActions`**: Ranked actions based on historical success (e.g., "click confirm button")
-- **`avoid`**: Targets that frequently fail on this screen — skip these
-
-Use prior knowledge to guide your actions, but always verify against the current a11y tree.
 
 ## Error Codes
 
@@ -724,7 +700,6 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_DISCOVERY_FAILED`               | Discovery tool failure                                               | Page may be loading; wait and retry                                                                       |
 | `MM_SCREENSHOT_FAILED`              | Screenshot capture failure                                           | Page may be in unstable state; retry after describe-screen                                                |
 | `MM_STATE_FAILED`                   | State retrieval failed                                               | Session may be unstable; run `mm describe-screen`                                                         |
-| `MM_KNOWLEDGE_ERROR`                | Knowledge store operation failed                                     | Retry; check that session exists                                                                          |
 | `MM_CONTRACT_NOT_FOUND`             | Unknown contract name for seeding                                    | See available contracts below                                                                             |
 | `MM_SEED_FAILED`                    | Contract deployment failure                                          | Check Anvil chain is running; verify contract name                                                        |
 | `MM_CAPABILITY_NOT_AVAILABLE`       | Feature requires a capability not configured                         | Check environment mode (e2e vs prod)                                                                      |
@@ -759,20 +734,6 @@ These contracts can be deployed to the local Anvil chain via `seed_contract` / `
 | `entrypoint`           | ERC-4337 EntryPoint                                 |
 | `simpleAccountFactory` | ERC-4337 account factory                            |
 | `verifyingPaymaster`   | ERC-4337 paymaster                                  |
-
-## Flow Tags
-
-When launching, tag your session with flow tags for cross-session knowledge:
-
-| Tag               | Use for                        |
-| ----------------- | ------------------------------ |
-| `send`            | Token send flows               |
-| `swap`            | Token swap flows               |
-| `connect`         | dApp connection flows          |
-| `sign`            | Message/transaction signing    |
-| `onboarding`      | Wallet setup/onboarding        |
-| `settings`        | Settings configuration         |
-| `tx-confirmation` | Transaction confirmation flows |
 
 ## Daemon Model
 
@@ -827,18 +788,6 @@ mm cleanup --shutdown
 # Or use --project per command
 mm --project ../metamask-extension launch
 mm --project ../metamask-extension describe-screen
-```
-
-### Using Prior Knowledge
-
-```bash
-mm launch --state default --goal "Test send flow" --flow-tags send
-mm describe-screen
-# Response includes priorKnowledge.suggestedNextActions:
-# [{ action: "click", preferredTarget: { type: "testId", value: "send-button" }, confidence: 0.85 }]
-# Use the suggestion but verify the target exists in the current a11y tree
-mm click e3
-mm cleanup --shutdown
 ```
 
 ## Project-Specific Commands

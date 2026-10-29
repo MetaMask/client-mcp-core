@@ -2,6 +2,56 @@ import { z } from 'zod';
 
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 
+export const observeLevelSchema = z
+  .enum(['none', 'diff', 'full'])
+  .describe(
+    'Observation to return after the call: ' +
+      'none = skip it (fastest), ' +
+      'diff = only what changed since the previous observation, ' +
+      'full = the whole screen. ' +
+      'Default: diff for mutating tools and run_steps, none for the others.',
+  );
+
+export type ObserveLevel = z.infer<typeof observeLevelSchema>;
+
+const observeFieldSchema = z.object({
+  observe: observeLevelSchema.optional(),
+});
+
+/**
+ * Adds the optional `observe` field to a tool input schema. Uses an
+ * intersection so it works for every schema shape (objects, refined objects,
+ * unions and discriminated unions).
+ *
+ * @param schema - The tool input schema.
+ * @returns The schema with an optional `observe` field.
+ */
+export function withObserve<Schema extends z.ZodType>(
+  schema: Schema,
+): z.ZodIntersection<Schema, typeof observeFieldSchema> {
+  return schema.and(observeFieldSchema);
+}
+
+/**
+ * Removes the `observe` field from validated tool input. `observe` is read by
+ * the daemon, so tool handlers get their input without it.
+ *
+ * @param input - Validated tool input.
+ * @returns The input without `observe` (non-objects are returned unchanged).
+ */
+export function omitObserve<Input>(input: Input): Input {
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    Array.isArray(input) ||
+    !('observe' in input)
+  ) {
+    return input;
+  }
+  const { observe: _observe, ...rest } = input as Record<string, unknown>;
+  return rest as Input;
+}
+
 export const a11yRefPattern = z
   .string()
   .regex(/^e[0-9]+$/u)
@@ -38,41 +88,8 @@ export const targetSelectionSchema = z
     },
   );
 
-export const knowledgeScopeSchema = z.union([
-  z.literal('current').describe('Only search the active session'),
-  z.literal('all').describe('Search all sessions in the knowledge store'),
-  z
-    .object({
-      sessionId: z.string().min(4).describe('Specific session ID to query'),
-    })
-    .describe('Query a specific prior session by ID'),
-]);
-
 const smartContractNames = SMART_CONTRACT_NAMES;
 const hardforks = HARDFORKS;
-
-export const knowledgeFiltersSchema = z
-  .object({
-    flowTag: z
-      .string()
-      .min(1)
-      .describe('Filter by flow tag (e.g., send, swap, connect, sign)')
-      .optional(),
-    tag: z.string().min(1).describe('Filter by free-form tag').optional(),
-    screen: z
-      .string()
-      .min(1)
-      .describe('Filter by screen name (e.g., home, unlock, settings)')
-      .optional(),
-    sinceHours: z
-      .number()
-      .int()
-      .min(1)
-      .max(720)
-      .describe('Only include sessions/steps from the last N hours')
-      .optional(),
-  })
-  .optional();
 
 const networkMockResponseSchema = z
   .object({
@@ -205,19 +222,6 @@ export const launchInputSchema = z
     extensionPath: z
       .string()
       .describe('Custom path to built extension directory')
-      .optional(),
-    goal: z
-      .string()
-      .describe(
-        'Goal or task description for this session (for knowledge store)',
-      )
-      .optional(),
-    flowTags: z
-      .array(z.string())
-      .describe(
-        'Flow tags for categorization (e.g., ["send"], ["swap", "confirmation"]). ' +
-          'Used for cross-session knowledge retrieval.',
-      )
       .optional(),
     tags: z
       .array(z.string())
@@ -509,72 +513,6 @@ export const getTextInputSchema = targetSelectionSchema.and(
   }),
 );
 
-export const knowledgeLastInputSchema = z.object({
-  n: z
-    .number()
-    .int()
-    .min(1)
-    .max(200)
-    .default(20)
-    .describe('Number of recent steps to retrieve'),
-  scope: knowledgeScopeSchema
-    .default('current')
-    .describe(
-      'Scope for retrieval: current session, all sessions, or specific session',
-    ),
-  filters: knowledgeFiltersSchema,
-});
-
-export const knowledgeSearchInputSchema = z.object({
-  query: z
-    .string()
-    .min(1)
-    .max(200)
-    .describe(
-      'Search query - matches tool names, screen names, testIds, and a11y names',
-    ),
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .default(20)
-    .describe('Maximum number of results'),
-  scope: knowledgeScopeSchema
-    .default('all')
-    .describe(
-      'Search scope (defaults to all sessions for cross-session learning)',
-    ),
-  filters: knowledgeFiltersSchema,
-});
-
-export const knowledgeSummarizeInputSchema = z.object({
-  sessionId: z
-    .string()
-    .describe('Deprecated: use scope. Session ID to summarize.')
-    .optional(),
-  scope: z
-    .union([
-      z.literal('current'),
-      z.object({
-        sessionId: z.string().min(4),
-      }),
-    ])
-    .default('current')
-    .describe('Session to summarize (cannot use "all")'),
-});
-
-export const knowledgeSessionsInputSchema = z.object({
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(10)
-    .describe('Maximum number of sessions to list'),
-  filters: knowledgeFiltersSchema,
-});
-
 export const seedContractInputSchema = z.object({
   contractName: z.enum(smartContractNames),
   hardfork: z.enum(hardforks).optional(),
@@ -649,22 +587,23 @@ export const runStepsInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Stop execution on first error (default: false - continue)'),
-  includeObservations: z
-    .enum(['none', 'failures', 'all'])
-    .default('all')
-    .describe(
-      'When to include observations in results: ' +
-        'none = never (fastest), failures = only for failed steps, all = always',
-    ),
   batchTimeoutMs: z
     .number()
     .int()
     .min(1000)
-    .max(300_000)
+    .max(30_000)
     .describe(
       'Overall timeout for the batch in milliseconds. ' +
-        'When exceeded, remaining steps are marked as skipped and partial results are returned.',
+        'When exceeded, remaining steps are marked as skipped and partial results are returned. ' +
+        'The deadline is checked between steps. Capped at 30 000, the default request limit of ' +
+        'the queue and the CLI; to get partial results, leave room for the step in progress ' +
+        'and the observation (e.g. 20 000).',
     )
+    .optional(),
+  // Removed in favour of `observe`. Rejected (not ignored) so old callers
+  // learn about it instead of silently getting an observation.
+  includeObservations: z
+    .never({ error: 'includeObservations was removed; use observe' })
     .optional(),
 });
 
@@ -972,53 +911,49 @@ export type GenerateLocatorsInputZ = z.infer<
 >;
 
 export const toolSchemas = {
-  build: buildInputSchema,
-  launch: launchInputSchema,
-  cleanup: cleanupInputSchema,
-  get_state: getStateInputSchema,
-  navigate: navigateInputSchema,
-  wait_for_notification: waitForNotificationInputSchema,
-  switch_to_tab: switchToTabInputSchema,
-  close_tab: closeTabInputSchema,
-  list_testids: listTestIdsInputSchema,
-  accessibility_snapshot: accessibilitySnapshotInputSchema,
-  describe_screen: describeScreenInputSchema,
-  screenshot: screenshotInputSchema,
-  click: clickInputSchema,
-  type: typeInputSchema,
-  wait_for: waitForInputSchema,
-  get_text: getTextInputSchema,
-  knowledge_last: knowledgeLastInputSchema,
-  knowledge_search: knowledgeSearchInputSchema,
-  knowledge_summarize: knowledgeSummarizeInputSchema,
-  knowledge_sessions: knowledgeSessionsInputSchema,
-  seed_contract: seedContractInputSchema,
-  seed_contracts: seedContractsInputSchema,
-  get_contract_address: getContractAddressInputSchema,
-  list_contracts: listDeployedContractsInputSchema,
-  run_steps: runStepsInputSchema,
-  set_context: setContextInputSchema,
-  get_context: getContextInputSchema,
-  clipboard: clipboardInputSchema,
-  cdp: cdpInputSchema,
-  hermes_targets: hermesTargetsInputSchema,
-  get_window_size: getWindowSizeInputSchema,
-  mock_network: mockNetworkInputSchema,
-  scroll_to_element: scrollToElementInputSchema,
-  device_swipe: deviceSwipeInputSchema,
-  long_press: longPressInputSchema,
-  tap_coordinates: tapCoordinatesInputSchema,
-  dismiss_keyboard: dismissKeyboardInputSchema,
-  dismiss_alert: dismissAlertInputSchema,
-  get_alert_text: getAlertTextInputSchema,
-  open_app: openAppInputSchema,
-  close_app: closeAppInputSchema,
-  press_button: pressButtonInputSchema,
-  device_context: deviceContextInputSchema,
-  device_clipboard: deviceClipboardInputSchema,
-  screen_recording: screenRecordingInputSchema,
-  device_logs: deviceLogsInputSchema,
-  generate_locators: generateLocatorsInputSchema,
+  build: withObserve(buildInputSchema),
+  launch: withObserve(launchInputSchema),
+  cleanup: withObserve(cleanupInputSchema),
+  get_state: withObserve(getStateInputSchema),
+  navigate: withObserve(navigateInputSchema),
+  wait_for_notification: withObserve(waitForNotificationInputSchema),
+  switch_to_tab: withObserve(switchToTabInputSchema),
+  close_tab: withObserve(closeTabInputSchema),
+  list_testids: withObserve(listTestIdsInputSchema),
+  accessibility_snapshot: withObserve(accessibilitySnapshotInputSchema),
+  describe_screen: withObserve(describeScreenInputSchema),
+  screenshot: withObserve(screenshotInputSchema),
+  click: withObserve(clickInputSchema),
+  type: withObserve(typeInputSchema),
+  wait_for: withObserve(waitForInputSchema),
+  get_text: withObserve(getTextInputSchema),
+  seed_contract: withObserve(seedContractInputSchema),
+  seed_contracts: withObserve(seedContractsInputSchema),
+  get_contract_address: withObserve(getContractAddressInputSchema),
+  list_contracts: withObserve(listDeployedContractsInputSchema),
+  run_steps: withObserve(runStepsInputSchema),
+  set_context: withObserve(setContextInputSchema),
+  get_context: withObserve(getContextInputSchema),
+  clipboard: withObserve(clipboardInputSchema),
+  cdp: withObserve(cdpInputSchema),
+  hermes_targets: withObserve(hermesTargetsInputSchema),
+  get_window_size: withObserve(getWindowSizeInputSchema),
+  mock_network: withObserve(mockNetworkInputSchema),
+  scroll_to_element: withObserve(scrollToElementInputSchema),
+  device_swipe: withObserve(deviceSwipeInputSchema),
+  long_press: withObserve(longPressInputSchema),
+  tap_coordinates: withObserve(tapCoordinatesInputSchema),
+  dismiss_keyboard: withObserve(dismissKeyboardInputSchema),
+  dismiss_alert: withObserve(dismissAlertInputSchema),
+  get_alert_text: withObserve(getAlertTextInputSchema),
+  open_app: withObserve(openAppInputSchema),
+  close_app: withObserve(closeAppInputSchema),
+  press_button: withObserve(pressButtonInputSchema),
+  device_context: withObserve(deviceContextInputSchema),
+  device_clipboard: withObserve(deviceClipboardInputSchema),
+  screen_recording: withObserve(screenRecordingInputSchema),
+  device_logs: withObserve(deviceLogsInputSchema),
+  generate_locators: withObserve(generateLocatorsInputSchema),
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;
@@ -1041,16 +976,6 @@ export type ClickInputZ = z.infer<typeof clickInputSchema>;
 export type TypeInputZ = z.infer<typeof typeInputSchema>;
 export type WaitForInputZ = z.infer<typeof waitForInputSchema>;
 export type GetTextInputZ = z.infer<typeof getTextInputSchema>;
-export type KnowledgeLastInputZ = z.infer<typeof knowledgeLastInputSchema>;
-export type KnowledgeSearchInputZ = z.infer<typeof knowledgeSearchInputSchema>;
-export type KnowledgeSummarizeInputZ = z.infer<
-  typeof knowledgeSummarizeInputSchema
->;
-export type KnowledgeSessionsInputZ = z.infer<
-  typeof knowledgeSessionsInputSchema
->;
-export type KnowledgeScopeZ = z.infer<typeof knowledgeScopeSchema>;
-export type KnowledgeFiltersZ = z.infer<typeof knowledgeFiltersSchema>;
 export type RunStepsInputZ = z.infer<typeof runStepsInputSchema>;
 export type SwitchToTabInputZ = z.infer<typeof switchToTabInputSchema>;
 export type CloseTabInputZ = z.infer<typeof closeTabInputSchema>;

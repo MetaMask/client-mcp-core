@@ -14,6 +14,12 @@ import type {
   UIElement,
 } from '@metamask/device-mcp';
 
+import {
+  filterAppHierarchy,
+  pruneLayoutOnly,
+  viewportFromHierarchy,
+} from './mobile-hierarchy.js';
+import type { Viewport } from './mobile-hierarchy.js';
 import type {
   IPlatformDriver,
   TargetType,
@@ -22,6 +28,7 @@ import type {
   GetTextActionResult,
   PlatformScreenshotOptions,
   PlatformType,
+  ScreenCapture,
   WithinScope,
 } from './types.js';
 import type {
@@ -56,6 +63,15 @@ const HERMES_BLOCKED_METHOD_CODE = 'HERMES_BLOCKED_METHOD';
 // agent-facing contract matches the browser and Hermes drivers.
 const WEBVIEW_BLOCKED_METHOD_CODE = 'WEBVIEW_BLOCKED_METHOD';
 
+/** Options of `MobilePlatformDriver`. */
+export type MobilePlatformDriverOptions = {
+  /**
+   * Remove the Expo DevLauncher "Tools" button of development builds from
+   * the accessibility tree and the test IDs. Default true.
+   */
+  excludeDevOverlay?: boolean;
+};
+
 /**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
  * Wraps DeviceBackend behind the IPlatformDriver interface so the
@@ -72,16 +88,30 @@ export class MobilePlatformDriver implements IPlatformDriver {
   // across mobile sessions (e.g. a relaunch against a different simulator).
   readonly #hermesSession: HermesSession;
 
+  readonly #excludeDevOverlay: boolean;
+
+  #windowSize: Viewport | undefined;
+
   #disposing: Promise<void> | undefined;
 
   /**
    * @param backend - The device-mcp backend to delegate to.
    * @param bundleId - The app bundle ID for getAppState calls.
+   * @param options - Driver options.
+   * @param options.excludeDevOverlay - Remove the Expo DevLauncher "Tools"
+   * button of development builds from the accessibility tree and the test
+   * IDs (default true). Android System UI (status bar, navigation bar) is
+   * always removed.
    */
-  constructor(backend: DeviceBackend, bundleId: string = DEFAULT_BUNDLE_ID) {
+  constructor(
+    backend: DeviceBackend,
+    bundleId: string = DEFAULT_BUNDLE_ID,
+    options: MobilePlatformDriverOptions = {},
+  ) {
     this.#backend = backend;
     this.#bundleId = bundleId;
     this.#hermesSession = new HermesSession({ platform: backend.platform });
+    this.#excludeDevOverlay = options.excludeDevOverlay ?? true;
   }
 
   /** Release only this backend's resources; compatible with older device-mcp releases. */
@@ -104,6 +134,9 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
    * @param within - Must be undefined — scoped search is not supported on mobile.
+   * @param signal - When aborted during the target wait, throws instead of
+   * tapping. device-mcp takes no signal: a wait or tap that is already
+   * running inside the backend is not cancelled.
    * @returns Click result with success status and target info.
    */
   async click(
@@ -112,11 +145,14 @@ export class MobilePlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<ClickActionResult> {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
+    // The request may have timed out while we waited for the target.
+    signal?.throwIfAborted();
     const remaining = deadline - Date.now();
     await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
     return { clicked: true, target: `${targetType}:${targetValue}` };
@@ -129,6 +165,9 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
    * @param within - Must be undefined — scoped search is not supported on mobile.
+   * @param signal - When aborted during the target wait or after the focus
+   * tap, throws instead of tapping or typing. device-mcp takes no signal: a
+   * wait, tap or typeText that is already running is not cancelled.
    * @returns Type result with success status and text length.
    */
   async type(
@@ -138,13 +177,16 @@ export class MobilePlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<TypeActionResult> {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
+    signal?.throwIfAborted();
     let remaining = deadline - Date.now();
     await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
+    signal?.throwIfAborted();
     remaining = deadline - Date.now();
     await withTimeout(this.#backend.typeText(text), remaining, 'typeText');
     return {
@@ -212,8 +254,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
   async getAccessibilityTree(
     _rootSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
-    const snapshot = await this.#backend.snapshot();
-    return normalizeSnapshot(snapshot.hierarchy);
+    const { hierarchy } = await this.#snapshotApp();
+    return normalizeSnapshot(hierarchy, this.#backend.platform);
   }
 
   /**
@@ -223,18 +265,85 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * viewport; elements with unknown geometry are assumed visible.
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
+    const { hierarchy, viewport } = await this.#snapshotApp();
+    return this.#testIdsOf(hierarchy, viewport, limit);
+  }
+
+  /**
+   * Takes one device snapshot and returns its accessibility tree and test
+   * IDs, so both describe the same screen.
+   *
+   * @returns The nodes, refMap and a test ID reader for the same snapshot.
+   */
+  async captureScreen(): Promise<ScreenCapture> {
+    const { hierarchy, viewport } = await this.#snapshotApp();
+    return {
+      ...normalizeSnapshot(hierarchy, this.#backend.platform),
+      getTestIds: async (limit?: number) =>
+        this.#testIdsOf(hierarchy, viewport, limit),
+    };
+  }
+
+  /**
+   * Takes one device snapshot, reads the viewport from it, and removes the
+   * elements that are not part of the app (see `filterAppHierarchy`), so the
+   * tree, the refs and the test IDs all use the same filtered hierarchy.
+   *
+   * @returns The filtered hierarchy and the viewport of the snapshot.
+   */
+  async #snapshotApp(): Promise<{
+    hierarchy: UIElement[];
+    viewport: Viewport | undefined;
+  }> {
     const snapshot = await this.#backend.snapshot();
+    const { platform } = this.#backend;
+    return {
+      hierarchy: filterAppHierarchy(snapshot.hierarchy, {
+        platform,
+        excludeDevOverlay: this.#excludeDevOverlay,
+      }),
+      viewport: viewportFromHierarchy(snapshot.hierarchy, platform),
+    };
+  }
+
+  /**
+   * @param hierarchy - The filtered UIElement tree of a snapshot.
+   * @param snapshotViewport - The viewport read from that snapshot, if any.
+   * @param limit - Maximum number of test IDs to return.
+   * @returns The test IDs, with visibility against the device viewport.
+   */
+  async #testIdsOf(
+    hierarchy: UIElement[],
+    snapshotViewport: Viewport | undefined,
+    limit?: number,
+  ): Promise<TestIdItem[]> {
     const items: TestIdItem[] = [];
     const max = limit ?? OBSERVATION_TESTID_LIMIT;
-    let viewport: { width: number; height: number } | undefined;
-    try {
-      viewport = await this.#backend.getWindowSize();
-    } catch {
-      // Without a viewport we cannot judge visibility; report everything.
-      viewport = undefined;
-    }
-    collectTestIds(snapshot.hierarchy, items, max, viewport);
+    const viewport = snapshotViewport ?? (await this.#cachedWindowSize());
+    collectTestIds(hierarchy, items, max, viewport);
     return items;
+  }
+
+  /**
+   * The device window size, read from the backend once per driver (a device
+   * round trip: `idb describe` / `adb shell wm size`). Only used when a
+   * snapshot has no top-level frame to read the viewport from. A failed read
+   * is not cached. The cached size is never invalidated, so after a rotation
+   * it keeps the old orientation; snapshots with root frames (all idb and
+   * adb snapshots seen so far) do not use it.
+   *
+   * @returns The window size, or undefined when the backend cannot read it.
+   */
+  async #cachedWindowSize(): Promise<Viewport | undefined> {
+    if (!this.#windowSize) {
+      try {
+        this.#windowSize = await this.#backend.getWindowSize();
+      } catch {
+        // Without a viewport we cannot judge visibility; report everything.
+        return undefined;
+      }
+    }
+    return this.#windowSize;
   }
 
   /**
@@ -255,7 +364,11 @@ export class MobilePlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * @returns Extension state with mobile-appropriate defaults.
+   * Reads only what the device backend knows: whether the app is running.
+   * Wallet fields (unlock, screen, account, network, balance) are omitted
+   * rather than guessed, and `source: 'stub'` marks the result as partial.
+   *
+   * @returns The partial app state.
    */
   async getAppState(): Promise<ExtensionState> {
     const appState = await this.#backend.getAppState(this.#bundleId);
@@ -264,14 +377,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
       appState.state === APPIUM_STATE_RUNNING_IN_FOREGROUND;
     return {
       isLoaded: isRunning,
-      currentUrl: '',
       extensionId: this.#bundleId,
-      isUnlocked: isRunning,
-      currentScreen: 'unknown',
-      accountAddress: null,
-      networkName: null,
-      chainId: null,
-      balance: null,
+      source: 'stub',
     };
   }
 
@@ -639,13 +746,15 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Generates ranked locator suggestions for every interactive element on the
-   * current screen by walking the device snapshot hierarchy. Mobile only.
+   * current screen by walking the device snapshot hierarchy, without the
+   * elements that are not part of the app (see `filterAppHierarchy`). Mobile
+   * only.
    *
    * @returns The ranked element locators.
    */
   async generateLocators(): Promise<ElementLocatorInfo[]> {
-    const snapshot = await this.#backend.snapshot();
-    return generateLocators(snapshot.hierarchy);
+    const { hierarchy } = await this.#snapshotApp();
+    return generateLocators(hierarchy);
   }
 }
 
@@ -766,12 +875,32 @@ function parseStableIdentifier(stableId: string): ElementQuery {
 }
 
 /**
- * Normalizes a UIElement hierarchy into A11yNodeTrimmed nodes with sequential refs.
+ * Normalizes a UIElement hierarchy into a flat, pre-order list of
+ * A11yNodeTrimmed nodes with sequential refs.
  *
- * @param hierarchy - The raw UIElement tree from a device snapshot.
+ * Layout-only elements (no name, no testId, not actionable, see
+ * `pruneLayoutOnly`) are removed first, so they get no node, and node refs
+ * number only the kept nodes. Nodes have no `path`: on mobile the ancestors
+ * are native view classes (`android.widget.FrameLayout`, `RNSScreenView`)
+ * with no targeting value, and the ancestor list was most of the payload.
+ * Targeting is by `ref` or `testId`.
+ *
+ * Only a node with a testId, label or value gets a refMap entry, so only
+ * its ref can be targeted. Kept nodes with none of them are listed (with
+ * `bounds`, for `tap-coordinates`) but their ref does not resolve:
+ * unlabelled tap targets (see `isUnlabelledTapTarget`), progress indicators
+ * (kept for the screen settle) and unnamed controls. Ambiguity is computed
+ * over the kept nodes.
+ *
+ * @param hierarchy - The UIElement tree from a device snapshot (after
+ * `filterAppHierarchy`).
+ * @param platform - The device platform.
  * @returns Trimmed nodes and the ref-to-stable-identifier map.
  */
-function normalizeSnapshot(hierarchy: UIElement[]): {
+function normalizeSnapshot(
+  hierarchy: UIElement[],
+  platform: 'ios' | 'android',
+): {
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
 } {
@@ -782,16 +911,15 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
 
   /**
    * @param elements - UIElement nodes to walk.
-   * @param path - Accumulated ancestor roles.
    */
-  function walk(elements: UIElement[], path: string[]): void {
+  function walk(elements: UIElement[]): void {
     for (const el of elements) {
       refCounter += 1;
       const ref = `e${refCounter}`;
       const role = el.type || 'element';
       const name = el.label ?? el.value ?? '';
 
-      const node: A11yNodeTrimmed = { ref, role, name, path };
+      const node: A11yNodeTrimmed = { ref, role, name };
       if (!el.enabled) {
         node.disabled = true;
       }
@@ -802,7 +930,10 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
         node.textContent = el.value;
       }
       if (el.frame.width > 0 || el.frame.height > 0) {
-        node.bounds = { ...el.frame };
+        // Fixed key order: idb returns frame keys in varying order, and
+        // screenSignature / diffs compare the serialized nodes.
+        const { x, y, width, height } = el.frame;
+        node.bounds = { x, y, width, height };
       }
       nodes.push(node);
 
@@ -823,12 +954,12 @@ function normalizeSnapshot(hierarchy: UIElement[]): {
       }
 
       if (el.children?.length) {
-        walk(el.children, [...path, role]);
+        walk(el.children);
       }
     }
   }
 
-  walk(hierarchy, []);
+  walk(pruneLayoutOnly(hierarchy, platform));
 
   for (const refs of stableIdCount.values()) {
     if (refs.length > 1) {

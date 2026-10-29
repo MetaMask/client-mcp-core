@@ -18,6 +18,8 @@ import {
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
 import { computeTimeoutBudget } from '../utils/timeout-budget.js';
+import { observeLevelSchema } from '../validation/schemas.js';
+import type { ObserveLevel } from '../validation/schemas.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
@@ -82,6 +84,146 @@ export function extractProjectFlag(argv: string[]): {
   return { args: remaining, projectPath: value };
 }
 
+const OBSERVE_LEVELS: readonly ObserveLevel[] = observeLevelSchema.options;
+
+/**
+ * Extracts and consumes the global `--observe <none|diff|full>` flag from
+ * argv, returning the remaining args and the level (if any).
+ *
+ * @param argv - Raw CLI arguments (after the node/script entries).
+ * @returns The remaining arguments and the optional observe level.
+ */
+export function extractObserveFlag(argv: string[]): {
+  args: string[];
+  observe: ObserveLevel | undefined;
+} {
+  const idx = argv.indexOf('--observe');
+  if (idx < 0) {
+    return { args: argv, observe: undefined };
+  }
+  const value = argv[idx + 1];
+  if (!OBSERVE_LEVELS.includes(value as ObserveLevel)) {
+    process.stderr.write(
+      `Error: --observe requires one of: ${OBSERVE_LEVELS.join(', ')}\n`,
+    );
+    process.exit(1);
+  }
+  const remaining = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
+  return { args: remaining, observe: value as ObserveLevel };
+}
+
+let globalObserveLevel: ObserveLevel | undefined;
+
+/**
+ * Sets the `--observe` level that {@link sendRequest} adds to every tool,
+ * `/launch` and `/cleanup` request body.
+ *
+ * @param level - The level, or undefined to send none (daemon default).
+ */
+export function setObserveLevel(level: ObserveLevel | undefined): void {
+  globalObserveLevel = level;
+}
+
+/**
+ * Adds the global `--observe` level to a request body. Only POST requests to
+ * `/tool/*`, `/launch` and `/cleanup` with a plain-object body get it, and an
+ * `observe` already in the body (e.g. in `run-steps` JSON) is kept.
+ *
+ * @param method - The HTTP method.
+ * @param requestPath - The URL path.
+ * @param body - The request body.
+ * @returns The body, with `observe` added when it applies.
+ */
+export function applyObserveLevel(
+  method: string,
+  requestPath: string,
+  body: unknown,
+): unknown {
+  if (
+    globalObserveLevel === undefined ||
+    method !== 'POST' ||
+    !(
+      requestPath.startsWith('/tool/') ||
+      requestPath === '/launch' ||
+      requestPath === '/cleanup'
+    ) ||
+    typeof body !== 'object' ||
+    body === null ||
+    Array.isArray(body)
+  ) {
+    return body;
+  }
+  return { observe: globalObserveLevel, ...(body as Record<string, unknown>) };
+}
+
+/**
+ * Extracts and consumes the global `--pretty` flag (every occurrence) from
+ * argv.
+ *
+ * @param argv - Raw CLI arguments (after the node/script entries).
+ * @returns The remaining arguments and whether `--pretty` was given.
+ */
+export function extractPrettyFlag(argv: string[]): {
+  args: string[];
+  pretty: boolean;
+} {
+  const args = argv.filter((arg) => arg !== '--pretty');
+  return { args, pretty: args.length !== argv.length };
+}
+
+/**
+ * Decides whether JSON output is indented. Agents read stdout through a pipe
+ * and pay for every byte, so the default there is one line per result.
+ * Precedence: `--pretty`, then `MM_PRETTY` (`1`/`true` = pretty, `0`/`false`
+ * = compact), then pretty only when stdout is a terminal.
+ *
+ * @param flag - Whether `--pretty` was given.
+ * @param env - The `MM_PRETTY` value.
+ * @param isTTY - Whether stdout is a terminal.
+ * @returns True to indent JSON output.
+ */
+export function resolvePretty(
+  flag: boolean,
+  env: string | undefined,
+  isTTY: boolean | undefined,
+): boolean {
+  if (flag) {
+    return true;
+  }
+  const value = env?.trim().toLowerCase();
+  if (value === '1' || value === 'true') {
+    return true;
+  }
+  if (value === '0' || value === 'false') {
+    return false;
+  }
+  return isTTY === true;
+}
+
+let prettyOutput = false;
+
+/**
+ * Sets whether {@link formatJsonOutput} indents JSON.
+ *
+ * @param pretty - True to indent with 2 spaces.
+ */
+export function setPrettyOutput(pretty: boolean): void {
+  prettyOutput = pretty;
+}
+
+/**
+ * Serializes a CLI result for stdout: one line by default, indented with 2
+ * spaces when pretty output is on (see {@link resolvePretty}).
+ *
+ * @param output - The value to print.
+ * @returns The JSON text, without a trailing newline.
+ */
+export function formatJsonOutput(output: unknown): string {
+  return prettyOutput
+    ? JSON.stringify(output, null, 2)
+    : JSON.stringify(output);
+}
+
 /**
  * Resolves the target project root directory using the following precedence:
  *   1. `--project <path>` CLI flag
@@ -143,8 +285,15 @@ export async function resolveWorktreeRoot(
  * CLI entry point that parses arguments and routes to the appropriate handler.
  */
 export async function main(): Promise<void> {
-  const { args: remainingArgs, projectPath } = extractProjectFlag(
+  const { args: projectlessArgs, projectPath } = extractProjectFlag(
     process.argv.slice(2),
+  );
+  const { args: observelessArgs, observe } =
+    extractObserveFlag(projectlessArgs);
+  setObserveLevel(observe);
+  const { args: remainingArgs, pretty } = extractPrettyFlag(observelessArgs);
+  setPrettyOutput(
+    resolvePretty(pretty, process.env.MM_PRETTY, process.stdout.isTTY),
   );
 
   if (
@@ -618,28 +767,6 @@ export async function routeCommand(
       });
       break;
     }
-    case 'knowledge-search':
-      if (!args[0]) {
-        process.stderr.write('Usage: mm knowledge-search <query>\n');
-        process.exit(1);
-      }
-      await sendRequest(port, 'POST', '/tool/knowledge_search', {
-        query: args[0],
-      });
-      break;
-    case 'knowledge-last':
-      await sendRequest(port, 'POST', '/tool/knowledge_last', {});
-      break;
-    case 'knowledge-sessions':
-      await sendRequest(port, 'POST', '/tool/knowledge_sessions', {});
-      break;
-    case 'knowledge-summarize': {
-      const summarizeSession = parseStringFlag(args, '--session');
-      await sendRequest(port, 'POST', '/tool/knowledge_summarize', {
-        ...(summarizeSession ? { scope: { sessionId: summarizeSession } } : {}),
-      });
-      break;
-    }
     case 'run-steps':
       if (!args[0]) {
         process.stderr.write(
@@ -1092,7 +1219,13 @@ export async function sendRequest(
     }
 
     try {
-      const data = await daemonFetch(port, method, requestPath, body, timeout);
+      const data = await daemonFetch(
+        port,
+        method,
+        requestPath,
+        applyObserveLevel(method, requestPath, body),
+        timeout,
+      );
 
       const { meta, ...rest } = data;
       const result = rest.result ?? rest;
@@ -1119,7 +1252,7 @@ export async function sendRequest(
       if (typeof output === 'string') {
         process.stdout.write(`${output}\n`);
       } else {
-        process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+        process.stdout.write(`${formatJsonOutput(output)}\n`);
       }
       return;
     } catch (error) {
@@ -1637,22 +1770,6 @@ export async function readSelfOnboardingInput(
  */
 export function parseLaunchArgs(args: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const knownFlags = new Set([
-    '--context',
-    '--state',
-    '--extension-path',
-    '--goal',
-    '--force',
-    '--flow-tags',
-    '--platform',
-    '--device-id',
-    '--app-bundle',
-    '--metro-port',
-    '--reinstall',
-    '--reset-app-data',
-    '--allow-fox-code-mismatch',
-    '--self-onboarding',
-  ]);
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -1681,22 +1798,6 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
         process.exit(1);
       }
       result.extensionPath = args[i];
-    } else if (arg === '--goal') {
-      i += 1;
-      if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write('Error: --goal requires a value\n');
-        process.exit(1);
-      }
-      result.goal = args[i];
-    } else if (arg === '--flow-tags') {
-      i += 1;
-      if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write(
-          'Error: --flow-tags requires a comma-separated value\n',
-        );
-        process.exit(1);
-      }
-      result.flowTags = args[i].split(',').map((tag) => tag.trim());
     } else if (arg === '--platform') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
@@ -1745,7 +1846,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
       result.allowFoxCodeMismatch = true;
     } else if (arg === '--self-onboarding') {
       result.selfOnboarding = true;
-    } else if (arg.startsWith('--') && !knownFlags.has(arg)) {
+    } else if (arg.startsWith('--')) {
       process.stderr.write(`Warning: unknown launch flag '${arg}'\n`);
     }
   }
@@ -1758,18 +1859,28 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
 export function printHelp(): void {
   process.stdout.write(`mm — MetaMask CLI
 
-Usage: mm [--project <path>] <command> [options]
+Usage: mm [--project <path>] [--observe <level>] [--pretty] <command> [options]
 
 Global Options:
   --project <path>    Target a specific project directory (absolute or relative).
                       Overrides MM_PROJECT and git-based discovery.
+  --observe <level>   Observation returned after the call: none | diff | full.
+                      Default: diff for mutating commands and run-steps,
+                      none for reads, discovery and cdp. none does not
+                      refresh refs: run describe-screen before using refs
+                      again.
+  --pretty            Indent JSON output. Default: one line per result when
+                      stdout is not a terminal (agents, pipes), indented on a
+                      terminal.
 
 Environment Variables:
   MM_PROJECT          Default project directory when --project is not provided.
                       Falls back to the current git worktree root.
+  MM_PRETTY           1/true: indent JSON output; 0/false: one line, also on a
+                      terminal. --pretty takes precedence.
 
 Lifecycle:
-  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>] [--platform browser|ios|android] [--device-id <id>]
+  mm launch [--context e2e|prod] [--state default|onboarding|custom] [--self-onboarding] [--extension-path <path>] [--force] [--platform browser|ios|android] [--device-id <id>]
   mm launch --platform ios|android [--device-id <id>] [--app-bundle <path>] [--metro-port <port>] [--reinstall] [--reset-app-data] [--allow-fox-code-mismatch]
   mm launch --self-onboarding reads the secret recovery phrase from stdin,
     and an optional vault password from the next line.
@@ -1804,12 +1915,6 @@ State & Context:
   mm get-state
   mm get-context
   mm set-context <e2e|prod>
-
-Knowledge:
-  mm knowledge-search <query>
-  mm knowledge-last
-  mm knowledge-sessions
-  mm knowledge-summarize [--session <id>]
 
 Contracts (E2E only):
   mm seed-contract <name> [--hardfork <fork>]

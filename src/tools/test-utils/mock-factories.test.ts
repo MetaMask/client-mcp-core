@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 import {
   createMockSessionManager,
-  createMockKnowledgeStore,
   createMockPage,
   createMockLocator,
   createMockBrowserContext,
@@ -95,55 +94,6 @@ describe('mock-factories', () => {
 
       expect(mock1.hasActiveSession()).toBe(true);
       expect(mock2.hasActiveSession()).toBe(false);
-    });
-  });
-
-  describe('createMockKnowledgeStore', () => {
-    it('returns a fresh instance each call', () => {
-      const mock1 = createMockKnowledgeStore();
-      const mock2 = createMockKnowledgeStore();
-
-      expect(mock1).not.toBe(mock2);
-    });
-
-    it('creates fresh vi.fn() mocks each call', () => {
-      const mock1 = createMockKnowledgeStore();
-      const mock2 = createMockKnowledgeStore();
-
-      expect(mock1.recordStep).not.toBe(mock2.recordStep);
-    });
-
-    it('has all required KnowledgeStore methods', () => {
-      const mock = createMockKnowledgeStore();
-
-      expect(typeof mock.recordStep).toBe('function');
-      expect(typeof mock.getLastSteps).toBe('function');
-      expect(typeof mock.searchSteps).toBe('function');
-      expect(typeof mock.summarizeSession).toBe('function');
-      expect(typeof mock.listSessions).toBe('function');
-      expect(typeof mock.generatePriorKnowledge).toBe('function');
-      expect(typeof mock.writeSessionMetadata).toBe('function');
-    });
-
-    it('returns sensible defaults', async () => {
-      const mock = createMockKnowledgeStore();
-
-      expect(await mock.getLastSteps?.(10, 'all', undefined)).toStrictEqual([]);
-      expect(
-        await mock.searchSteps?.('test', 10, 'all', undefined),
-      ).toStrictEqual([]);
-      expect(await mock.listSessions?.(10)).toStrictEqual([]);
-    });
-
-    it('allows customization via options', async () => {
-      const customSteps = [{ tool: 'click', screen: 'home' }];
-      const mock = createMockKnowledgeStore({
-        lastSteps: customSteps,
-      });
-
-      expect(await mock.getLastSteps?.(10, 'all', undefined)).toStrictEqual(
-        customSteps,
-      );
     });
   });
 
