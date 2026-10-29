@@ -471,7 +471,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     if (category !== 'readonly' && category !== 'discovery') {
       await page.waitForLoadState('domcontentloaded').catch(() => undefined);
       signal.throwIfAborted();
-      // Waits only for running, finite, in-viewport animations (infinite
+      // Waits only for running, finite animations of elements (infinite
       // spinners are ignored), checked once per frame, capped at 1 s.
       await waitForAnimationsToSettle(
         page,

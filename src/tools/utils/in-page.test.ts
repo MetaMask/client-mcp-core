@@ -514,14 +514,14 @@ function targetElement(rect: {
 }
 
 /**
- * Runs animationsSettled against fake animations in a 800x600 viewport.
+ * Runs animationsSettled against fake animations. Target rects are relative
+ * to an 800x600 viewport, but animationsSettled does not read them.
  *
  * @param animations - The page's animations.
  * @returns The predicate result.
  */
 function settled(animations: FakeAnimation[]): boolean {
   const fn = compileInPage<typeof animationsSettled>(animationsSettled, {
-    window: { innerWidth: 800, innerHeight: 600 },
     document: { getAnimations: () => animations },
   });
   return fn();
@@ -565,30 +565,20 @@ describe('animationsSettled', () => {
     ).toBe(true);
   });
 
-  it('ignores targets outside the viewport', () => {
-    expect(
-      settled([
-        animation({ target: targetElement({ x: -10, y: 0 }) }),
-        animation({ target: targetElement({ x: 0, y: -10 }) }),
-        animation({ target: targetElement({ x: 800, y: 0 }) }),
-        animation({ target: targetElement({ x: 0, y: 600 }) }),
-      ]),
-    ).toBe(true);
+  it.each([
+    ['right of the viewport (drawer sliding in)', { x: 800, y: 0 }],
+    ['below the viewport (bottom sheet sliding up)', { x: 0, y: 600 }],
+    ['left of the viewport', { x: -10, y: 0 }],
+    ['above the viewport', { x: 0, y: -10 }],
+  ])('counts a target that starts %s', (_label, rect) => {
+    expect(settled([animation({ target: targetElement(rect) })])).toBe(false);
   });
 
-  it('ignores targets with an empty box', () => {
-    expect(
-      settled([
-        animation({ target: targetElement({ x: 5, y: 5, width: 0 }) }),
-        animation({ target: targetElement({ x: 5, y: 5, height: 0 }) }),
-      ]),
-    ).toBe(true);
-  });
-
-  it('counts targets that only partly intersect the viewport', () => {
-    expect(
-      settled([animation({ target: targetElement({ x: -5, y: 595 }) })]),
-    ).toBe(false);
+  it.each([
+    ['zero height (accordion opening)', { x: 5, y: 5, height: 0 }],
+    ['zero width', { x: 5, y: 5, width: 0 }],
+  ])('counts a target with %s', (_label, rect) => {
+    expect(settled([animation({ target: targetElement(rect) })])).toBe(false);
   });
 
   it('is not settled when one animation still counts', () => {

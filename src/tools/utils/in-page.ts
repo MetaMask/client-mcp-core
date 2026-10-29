@@ -25,23 +25,23 @@ export type InPageTestIdItem = {
 /**
  * Reports whether the page's animations have settled.
  *
- * Only animations that can end soon and that the user can see are counted:
- * an animation keeps the page unsettled when it is running, it is finite
- * (its computed `iterations` and `endTime` are not `Infinity`), and its
- * effect targets an element whose bounding box has a non-zero size and
- * intersects the viewport. Animations without an effect or without an
- * element target are ignored. Infinite animations (spinners, the fox,
- * skeleton shimmer) never settle, so they are ignored too. A finite
- * animation that is still in a long `delay` phase reports `running`, so it
- * counts as running until it ends or the wait reaches its cap.
+ * Only animations that will end are counted: an animation keeps the page
+ * unsettled when it is running, it is finite (its computed `iterations` and
+ * `endTime` are not `Infinity`), and its effect targets an element.
+ * Animations without an effect or without an element target are ignored.
+ * Infinite animations (spinners, the fox, skeleton shimmer) never settle, so
+ * they are ignored too. The target's position and size are not checked: an
+ * element that slides in from outside the viewport (drawer, bottom sheet) or
+ * grows from zero size (accordion) is still moving even while it is not
+ * visible yet. A finite animation that is still in a long `delay` phase
+ * reports `running`, so it counts as running until it ends or the wait
+ * reaches its cap.
  *
  * Runs in the page: must stay self-contained.
  *
- * @returns True when no running, finite, in-viewport animation remains.
+ * @returns True when no running, finite animation of an element remains.
  */
 export function animationsSettled(): boolean {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
   for (const animation of document.getAnimations()) {
     if (animation.playState !== 'running') {
       continue;
@@ -55,17 +55,8 @@ export function animationsSettled(): boolean {
       continue;
     }
     const target = (effect as Partial<KeyframeEffect>).target ?? null;
-    if (!target || typeof target.getBoundingClientRect !== 'function') {
-      continue;
-    }
-    const rect = target.getBoundingClientRect();
-    const hasSize = rect.width > 0 && rect.height > 0;
-    const inViewport =
-      rect.right > 0 &&
-      rect.bottom > 0 &&
-      rect.left < viewportWidth &&
-      rect.top < viewportHeight;
-    if (hasSize && inViewport) {
+    // An element target (it has a layout box API). Other targets are ignored.
+    if (target && typeof target.getBoundingClientRect === 'function') {
       return false;
     }
   }

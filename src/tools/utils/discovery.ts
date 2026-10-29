@@ -274,7 +274,7 @@ async function collectTestIdsViaLocators(
 }
 
 /**
- * Waits until the page's running, finite, in-viewport animations end (see
+ * Waits until the page's running, finite element animations end (see
  * `animationsSettled`), checking once per animation frame, for at most
  * `timeoutMs`. Never throws: a timeout or an unreadable page ends the wait.
  *
