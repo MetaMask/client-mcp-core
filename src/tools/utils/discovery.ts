@@ -1,7 +1,16 @@
 import type { Page, Locator, CDPSession } from '@playwright/test';
 
-import { withCdpSession } from './cdp.js';
-import { TEXT_PREVIEW_MAX_LENGTH } from './constants.js';
+import { callInIsolatedWorld, withCdpSession } from './cdp.js';
+import {
+  TESTID_COLLECT_TIMEOUT_MS,
+  TEXT_PREVIEW_MAX_LENGTH,
+} from './constants.js';
+import {
+  animationsSettled,
+  collectTestIdsInPage,
+  waitUntilInPage,
+} from './in-page.js';
+import type { InPageTestIdItem } from './in-page.js';
 import { debugWarn } from '../../utils';
 import type {
   TestIdItem,
@@ -161,7 +170,12 @@ function parseAriaNodeDescriptor(descriptor: string): RawA11yNode | null {
 }
 
 /**
- * Collect all visible test IDs from the current page.
+ * Collect the `[data-testid]` elements of the current page, with a text
+ * preview and visibility, in one in-page call (see `collectTestIdsInPage`
+ * for order, text and visibility semantics).
+ *
+ * When the in-page call fails or takes longer than
+ * `TESTID_COLLECT_TIMEOUT_MS`, falls back to per-element locator calls.
  *
  * @param page The Playwright page to scan for test IDs
  * @param limit Maximum number of test IDs to return (default: 150)
@@ -173,7 +187,50 @@ export async function collectTestIds(
 ): Promise<TestIdItem[]> {
   await page.waitForLoadState('domcontentloaded').catch(() => undefined);
 
-  const locators = await page.locator('[data-testid]').all();
+  let items: InPageTestIdItem[];
+  try {
+    items = await callInIsolatedWorld<InPageTestIdItem[]>(
+      page,
+      collectTestIdsInPage.toString(),
+      [limit, TEXT_PREVIEW_MAX_LENGTH],
+      TESTID_COLLECT_TIMEOUT_MS,
+    );
+  } catch (error) {
+    debugWarn(
+      'discovery.collectTestIds: in-page call failed, using locators',
+      error,
+    );
+    return collectTestIdsViaLocators(page, limit);
+  }
+
+  return (items ?? []).map((item) => ({
+    testId: item.testId,
+    tag: 'element',
+    text: item.text ?? undefined,
+    visible: item.visible,
+  }));
+}
+
+/**
+ * Collects test IDs with per-element Playwright locator calls
+ * (`getAttribute`, `isVisible`, `textContent`). Slower than the in-page
+ * call; used only when that call fails.
+ *
+ * @param page The Playwright page to scan for test IDs
+ * @param limit Maximum number of test IDs to return
+ * @returns Array of test ID items with visibility and text content
+ */
+async function collectTestIdsViaLocators(
+  page: Page,
+  limit: number,
+): Promise<TestIdItem[]> {
+  const locators = await page
+    .locator('[data-testid]')
+    .all()
+    .catch((error: unknown) => {
+      debugWarn('discovery.collectTestIdsViaLocators', error);
+      return [];
+    });
   const results: TestIdItem[] = [];
 
   for (const locator of locators) {
@@ -203,12 +260,43 @@ export async function collectTestIds(
         visible: isVisible,
       });
     } catch (error) {
-      debugWarn('discovery.collectTestIds', error);
+      debugWarn('discovery.collectTestIdsViaLocators', error);
       continue;
     }
   }
 
   return results;
+}
+
+/**
+ * Waits until the page's running, finite, in-viewport animations end (see
+ * `animationsSettled`), checking once per animation frame, for at most
+ * `timeoutMs`. Never throws: a timeout or an unreadable page ends the wait.
+ *
+ * @param page - The Playwright page.
+ * @param timeoutMs - Maximum time to wait in the page.
+ * @param graceMs - Extra time before the daemon stops waiting for the page.
+ * @returns True when the animations settled, false otherwise.
+ */
+export async function waitForAnimationsToSettle(
+  page: Page,
+  timeoutMs: number,
+  graceMs: number,
+): Promise<boolean> {
+  const functionDeclaration = `function (timeoutMs) {
+    return (${waitUntilInPage.toString()})(${animationsSettled.toString()}, timeoutMs);
+  }`;
+  try {
+    return await callInIsolatedWorld<boolean>(
+      page,
+      functionDeclaration,
+      [timeoutMs],
+      timeoutMs + graceMs,
+    );
+  } catch (error) {
+    debugWarn('discovery.waitForAnimationsToSettle', error);
+    return false;
+  }
 }
 
 type CdpAXProperty = {

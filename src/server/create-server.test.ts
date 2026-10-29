@@ -17,6 +17,7 @@ import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import { toolRegistry } from '../tools/registry.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
+import { waitForAnimationsToSettle } from '../tools/utils/discovery.js';
 import type {
   DaemonState,
   ServerConfig,
@@ -37,6 +38,7 @@ vi.mock('../tools/utils/discovery.js', () => ({
     nodes: [],
     refMap: new Map(),
   }),
+  waitForAnimationsToSettle: vi.fn().mockResolvedValue(true),
   waitForTarget: vi.fn().mockResolvedValue({
     click: vi.fn().mockResolvedValue(undefined),
     fill: vi.fn().mockResolvedValue(undefined),
@@ -58,7 +60,6 @@ function createMockSessionManager() {
     cleanup: vi.fn(async () => true),
     getPage: vi.fn(() => ({
       waitForLoadState: vi.fn(async () => undefined),
-      waitForFunction: vi.fn(async () => undefined),
       isClosed: vi.fn(() => false),
       viewportSize: vi.fn(() => ({ width: 800, height: 600 })),
       locator: vi.fn(() => ({
@@ -1055,9 +1056,9 @@ describe('createServer with active session', () => {
     });
 
     it('cdp with observe full waits for animations and returns an observation', async () => {
+      vi.mocked(waitForAnimationsToSettle).mockClear();
       const page = {
         waitForLoadState: vi.fn(async () => undefined),
-        waitForFunction: vi.fn(async () => undefined),
       };
       mockSM.getPage.mockReturnValue(page as never);
       mockSM.getPlatformDriver.mockReturnValue({
@@ -1072,13 +1073,13 @@ describe('createServer with active session', () => {
 
       expect(body.ok).toBe(true);
       expect(body.observations).toBeDefined();
-      expect(page.waitForFunction).toHaveBeenCalled();
+      expect(waitForAnimationsToSettle).toHaveBeenCalledWith(page, 1_000, 250);
     });
 
     it('get_state with observe full does not wait for animations', async () => {
+      vi.mocked(waitForAnimationsToSettle).mockClear();
       const page = {
         waitForLoadState: vi.fn(async () => undefined),
-        waitForFunction: vi.fn(async () => undefined),
         url: () => '',
       };
       mockSM.getPage.mockReturnValue(page as never);
@@ -1086,7 +1087,7 @@ describe('createServer with active session', () => {
       const { body } = await post('/tool/get_state', { observe: 'full' });
 
       expect(body.observations).toBeDefined();
-      expect(page.waitForFunction).not.toHaveBeenCalled();
+      expect(waitForAnimationsToSettle).not.toHaveBeenCalled();
     });
 
     it('does not pass observe to the tool handler', async () => {
@@ -2336,7 +2337,6 @@ describe('createServer abort, ref generations and observations', () => {
       vi.mocked(discovery.collectTestIds).mockClear();
       mockSM.getPage.mockReturnValue({
         waitForLoadState: vi.fn(async () => sleep(120)),
-        waitForFunction: vi.fn(async () => undefined),
       } as never);
       await startServer({ requestTimeoutMs: 50, mobile: false });
       addTapTool();
