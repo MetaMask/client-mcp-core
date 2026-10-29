@@ -64,6 +64,14 @@ export const MOBILE_SETTLE_MAX_SNAPSHOTS = 3;
  */
 export const MOBILE_SETTLE_UNCHANGED_RETRIES = 1;
 
+/**
+ * Mobile observation settle: when the first snapshot took at least this long
+ * (an Android `am instrument` capture can take seconds), the UI already had
+ * that time to change, so an unchanged screen is not retried. A busy screen
+ * still is.
+ */
+export const MOBILE_SETTLE_SLOW_CAPTURE_MS = 1_000;
+
 /** Timeout for graceful HTTP server close during daemon shutdown */
 export const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;
 

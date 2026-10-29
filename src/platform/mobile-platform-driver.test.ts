@@ -1,6 +1,7 @@
 import type { DeviceBackend, UIElement } from '@metamask/device-mcp';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
+import androidLoginSnapshot from './__fixtures__/android-login-snapshot.json';
 import { MobilePlatformDriver } from './mobile-platform-driver.js';
 
 function makeElement(overrides: Partial<UIElement> = {}): UIElement {
@@ -114,6 +115,299 @@ describe('MobilePlatformDriver', () => {
         { testId: 'below', tag: 'StaticText', text: undefined, visible: false },
       ]);
       expect(await screen.getTestIds(1)).toHaveLength(1);
+    });
+  });
+
+  describe('P1-13: one snapshot, app-only hierarchy, viewport', () => {
+    const snapshotOf = async (
+      platform: 'ios' | 'android',
+      hierarchy: UIElement[],
+    ): ReturnType<DeviceBackend['snapshot']> => ({
+      platform,
+      hierarchy,
+      raw: '',
+      timestamp: 0,
+    });
+
+    // Shaped like a real adb snapshot: System UI status bar window, then
+    // the app window with the DevLauncher "Tools" button in a Compose view.
+    const androidHierarchy = (): UIElement[] => [
+      makeElement({
+        type: 'android.widget.FrameLayout',
+        frame: { x: 0, y: 0, width: 1080, height: 63 },
+        children: [
+          makeElement({
+            type: 'android.widget.FrameLayout',
+            identifier: 'com.android.systemui:id/status_bar',
+            children: [
+              makeElement({
+                type: 'android.widget.TextView',
+                identifier: 'com.android.systemui:id/clock',
+                value: '12:46 AM',
+              }),
+            ],
+          }),
+        ],
+      }),
+      makeElement({
+        type: 'android.widget.FrameLayout',
+        frame: { x: 0, y: 0, width: 1080, height: 2400 },
+        children: [
+          makeElement({
+            type: 'android.widget.LinearLayout',
+            identifier: 'io.metamask:id/action_bar_root',
+            frame: { x: 0, y: 0, width: 1080, height: 2400 },
+            children: [
+              makeElement({
+                type: 'androidx.compose.ui.platform.ComposeView',
+                children: [
+                  makeElement({
+                    type: 'android.widget.ImageView',
+                    label: 'Tools',
+                  }),
+                ],
+              }),
+              makeElement({
+                type: 'android.widget.Button',
+                identifier: 'log-in-button',
+                label: 'Unlock',
+                frame: { x: 40, y: 1800, width: 1000, height: 120 },
+              }),
+              makeElement({
+                type: 'android.widget.TextView',
+                identifier: 'below-fold',
+                frame: { x: 0, y: 2600, width: 1080, height: 60 },
+              }),
+            ],
+          }),
+        ],
+      }),
+    ];
+
+    it('lists the app test IDs of a real Android login snapshot (AC2)', async () => {
+      const backend = createMockBackend({
+        platform: 'android',
+        snapshot: vi.fn(async () =>
+          snapshotOf('android', androidLoginSnapshot as UIElement[]),
+        ),
+        getWindowSize: vi.fn().mockResolvedValue({ width: 1080, height: 2400 }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const screen = await driver.captureScreen();
+      const testIds = (await screen.getTestIds()).map((item) => item.testId);
+
+      // Before P1-13: 35 test IDs, 22 of them com.android.systemui.
+      expect(testIds.filter((id) => id.includes('systemui'))).toStrictEqual([]);
+      expect(testIds).toContain('log-in-button');
+      expect(screen.nodes[0]?.bounds).toStrictEqual({
+        x: 0,
+        y: 0,
+        width: 1080,
+        height: 2400,
+      });
+      expect(backend.getWindowSize).not.toHaveBeenCalled();
+    });
+
+    it('takes one snapshot and no window size for a capture (AC1)', async () => {
+      const backend = createMockBackend({
+        platform: 'android',
+        snapshot: vi.fn(async () => snapshotOf('android', androidHierarchy())),
+        getWindowSize: vi.fn().mockResolvedValue({ width: 1080, height: 2400 }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const screen = await driver.captureScreen();
+      await screen.getTestIds();
+      await screen.getTestIds(1);
+
+      expect(backend.snapshot).toHaveBeenCalledTimes(1);
+      // The viewport comes from the snapshot's top-level window frames.
+      expect(backend.getWindowSize).not.toHaveBeenCalled();
+    });
+
+    it('drops com.android.systemui test IDs, nodes and refs (AC2)', async () => {
+      const backend = createMockBackend({
+        platform: 'android',
+        snapshot: vi.fn(async () => snapshotOf('android', androidHierarchy())),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const screen = await driver.captureScreen();
+      const testIds = await screen.getTestIds();
+      const listed = await driver.getTestIds();
+      const tree = await driver.getAccessibilityTree();
+
+      for (const ids of [
+        testIds.map((item) => item.testId),
+        listed.map((item) => item.testId),
+        screen.nodes.flatMap((node) => (node.testId ? [node.testId] : [])),
+        [...screen.refMap.values()],
+        tree.nodes.map((node) => node.name),
+      ]) {
+        expect(ids.join(' ')).not.toMatch(/systemui|12:46|Tools/u);
+      }
+      expect(testIds).toStrictEqual([
+        {
+          testId: 'io.metamask:id/action_bar_root',
+          tag: 'android.widget.LinearLayout',
+          text: undefined,
+          visible: true,
+        },
+        {
+          testId: 'log-in-button',
+          tag: 'android.widget.Button',
+          text: 'Unlock',
+          visible: true,
+        },
+        {
+          testId: 'below-fold',
+          tag: 'android.widget.TextView',
+          text: undefined,
+          visible: false,
+        },
+      ]);
+      // Tree and test IDs come from the same filtered hierarchy.
+      expect(
+        screen.nodes.flatMap((node) => (node.testId ? [node.testId] : [])),
+      ).toStrictEqual(testIds.map((item) => item.testId));
+      expect(screen.nodes[0]?.ref).toBe('e1');
+      expect(screen.nodes[0]?.role).toBe('android.widget.FrameLayout');
+    });
+
+    it('drops the iOS DevLauncher overlay by default', async () => {
+      const hierarchy = [
+        makeElement({
+          type: 'Other',
+          label: 'MetaMask',
+          frame: { x: 0, y: 0, width: 402, height: 874 },
+          children: [
+            makeElement({ identifier: 'log-in-button', label: 'Unlock' }),
+            makeElement({
+              type: 'Image',
+              identifier: 'gearshape.fill',
+              label: 'Gear Shape, Filled',
+            }),
+            makeElement({ type: 'StaticText', label: 'Tools' }),
+          ],
+        }),
+      ];
+      const backend = createMockBackend({
+        snapshot: vi.fn(async () => snapshotOf('ios', hierarchy)),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const screen = await driver.captureScreen();
+
+      expect(screen.nodes.map((node) => node.name)).toStrictEqual([
+        'MetaMask',
+        'Unlock',
+      ]);
+      expect(
+        (await screen.getTestIds()).map((item) => item.testId),
+      ).toStrictEqual(['log-in-button']);
+    });
+
+    it('keeps the DevLauncher overlay with excludeDevOverlay: false', async () => {
+      const hierarchy = [
+        makeElement({ type: 'Image', identifier: 'gearshape.fill' }),
+        makeElement({ type: 'StaticText', label: 'Tools' }),
+      ];
+      const backend = createMockBackend({
+        snapshot: vi.fn(async () => snapshotOf('ios', hierarchy)),
+      });
+      const driver = new MobilePlatformDriver(backend, 'io.metamask', {
+        excludeDevOverlay: false,
+      });
+
+      const screen = await driver.captureScreen();
+
+      expect(screen.nodes.map((node) => node.name)).toStrictEqual([
+        '',
+        'Tools',
+      ]);
+      expect(
+        (await screen.getTestIds()).map((item) => item.testId),
+      ).toStrictEqual(['gearshape.fill']);
+    });
+
+    it('reads the window size at most once across observations without a root frame', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn(async () =>
+          snapshotOf('ios', [
+            makeElement({
+              identifier: 'below',
+              frame: { x: 0, y: 2000, width: 10, height: 10 },
+            }),
+          ]),
+        ),
+        getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      for (let i = 0; i < 5; i++) {
+        const screen = await driver.captureScreen();
+        expect((await screen.getTestIds())[0]?.visible).toBe(false);
+      }
+      await driver.getTestIds();
+
+      expect(backend.snapshot).toHaveBeenCalledTimes(6);
+      expect(backend.getWindowSize).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache a failed window size read', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn(async () =>
+          snapshotOf('ios', [
+            makeElement({
+              identifier: 'below',
+              frame: { x: 0, y: 2000, width: 10, height: 10 },
+            }),
+          ]),
+        ),
+        getWindowSize: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('idb describe failed'))
+          .mockResolvedValue({ width: 402, height: 874 }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const first = await driver.getTestIds();
+      const second = await driver.getTestIds();
+      await driver.getTestIds();
+
+      expect(first[0]?.visible).toBe(true);
+      expect(second[0]?.visible).toBe(false);
+      expect(backend.getWindowSize).toHaveBeenCalledTimes(2);
+    });
+
+    it('prefers the snapshot viewport over the window size', async () => {
+      // Landscape: the root frame is wider than `wm size` (natural
+      // orientation); the snapshot is what the screen shows now.
+      const backend = createMockBackend({
+        platform: 'android',
+        snapshot: vi.fn(async () =>
+          snapshotOf('android', [
+            makeElement({
+              type: 'android.widget.FrameLayout',
+              frame: { x: 0, y: 0, width: 2400, height: 1080 },
+              children: [
+                makeElement({
+                  identifier: 'right-side',
+                  frame: { x: 2000, y: 100, width: 200, height: 100 },
+                }),
+              ],
+            }),
+          ]),
+        ),
+        getWindowSize: vi.fn().mockResolvedValue({ width: 1080, height: 2400 }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0]?.visible).toBe(true);
+      expect(backend.getWindowSize).not.toHaveBeenCalled();
     });
   });
 
@@ -1265,6 +1559,28 @@ describe('MobilePlatformDriver', () => {
         value: 'submit',
         confidence: 'high',
       });
+    });
+
+    it('leaves out the status bar and the DevLauncher overlay', async () => {
+      const backend = createMockBackend({
+        platform: 'android',
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'android',
+          hierarchy: androidLoginSnapshot,
+          raw: '',
+          timestamp: 0,
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const locators = await driver.generateLocators();
+
+      expect(backend.snapshot).toHaveBeenCalledTimes(1);
+      const values = locators.flatMap((locator) =>
+        locator.suggestions.map((suggestion) => suggestion.value),
+      );
+      expect(values).toContain('log-in-button');
+      expect(values.join(' ')).not.toMatch(/systemui|Tools/u);
     });
 
     it('returns an empty list when the snapshot has no interactive elements', async () => {

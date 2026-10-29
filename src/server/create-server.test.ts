@@ -2679,6 +2679,142 @@ describe('createServer abort, ref generations and observations', () => {
     });
   });
 
+  describe('P1-13: device snapshots per observation (MobilePlatformDriver)', () => {
+    type Element = {
+      type: string;
+      label?: string;
+      value?: string;
+      identifier?: string;
+      frame: { x: number; y: number; width: number; height: number };
+      enabled: boolean;
+      children?: Element[];
+    };
+
+    const frame = { x: 0, y: 0, width: 1080, height: 2400 };
+    // Android screen: the status bar (System UI, clock changes every
+    // snapshot) and the app window.
+    const screen = (clock: string, names: string[]): Element[] => [
+      {
+        type: 'android.widget.FrameLayout',
+        frame: { x: 0, y: 0, width: 1080, height: 63 },
+        enabled: true,
+        children: [
+          {
+            type: 'android.widget.TextView',
+            identifier: 'com.android.systemui:id/clock',
+            value: clock,
+            frame: { x: 11, y: 2, width: 136, height: 58 },
+            enabled: true,
+          },
+        ],
+      },
+      {
+        type: 'android.widget.FrameLayout',
+        frame,
+        enabled: true,
+        children: names.map((name) => ({
+          type: 'android.widget.Button',
+          identifier: `btn-${name}`,
+          label: name,
+          frame: { x: 0, y: 100, width: 200, height: 100 },
+          enabled: true,
+        })),
+      },
+    ];
+
+    let minute = 0;
+    let names: string[] = [];
+    let backend: {
+      platform: 'android';
+      snapshot: ReturnType<typeof vi.fn>;
+      getWindowSize: ReturnType<typeof vi.fn>;
+      getAppState: ReturnType<typeof vi.fn>;
+      waitForElement: ReturnType<typeof vi.fn>;
+      tapElement: ReturnType<typeof vi.fn>;
+    };
+
+    const startWithRealDriver = async (): Promise<void> => {
+      minute = 0;
+      names = ['Wallet'];
+      backend = {
+        platform: 'android',
+        // A new clock value on every snapshot, like a real status bar.
+        snapshot: vi.fn(async () => {
+          minute += 1;
+          return {
+            platform: 'android',
+            hierarchy: screen(`12:${String(minute).padStart(2, '0')}`, names),
+            raw: '',
+            timestamp: 0,
+          };
+        }),
+        getWindowSize: vi.fn().mockResolvedValue({ width: 1080, height: 2400 }),
+        getAppState: vi
+          .fn()
+          .mockResolvedValue({ bundleId: 'io.metamask', state: 'Running' }),
+        waitForElement: vi.fn().mockResolvedValue(undefined),
+        tapElement: vi.fn().mockResolvedValue({ success: true }),
+      };
+      const { MobilePlatformDriver } =
+        await import('../platform/mobile-platform-driver.js');
+      const realDriver = new MobilePlatformDriver(
+        backend as unknown as ConstructorParameters<
+          typeof MobilePlatformDriver
+        >[0],
+      );
+      await startServer({ mobile: false });
+      mockSM.getPlatformDriver.mockReturnValue(realDriver);
+    };
+
+    it('takes one backend.snapshot() per observation when the screen changed (AC1)', async () => {
+      await startWithRealDriver();
+
+      await post('/tool/click', { testId: 'btn-Wallet' });
+      expect(backend.snapshot).toHaveBeenCalledTimes(1);
+
+      names = ['Send'];
+      const { body } = await post('/tool/click', { testId: 'btn-Wallet' });
+
+      expect(backend.snapshot).toHaveBeenCalledTimes(2);
+      expect(backend.getWindowSize).not.toHaveBeenCalled();
+      const testIds = (
+        body as unknown as { observations: { testIds: { testId: string }[] } }
+      ).observations.testIds.map((item) => item.testId);
+      expect(testIds).toStrictEqual(['btn-Send']);
+    });
+
+    it('retries an unchanged screen once even though the Android clock changed', async () => {
+      await startWithRealDriver();
+
+      await post('/tool/click', { testId: 'btn-Wallet' });
+      const { body } = await post('/tool/click', { testId: 'btn-Wallet' });
+
+      // Second click: the screen equals the last one once System UI is
+      // removed, so the P1-09 settle takes its one unchanged retry.
+      expect(backend.snapshot).toHaveBeenCalledTimes(3);
+      expect(body.observations?.a11y.nodes).toStrictEqual([]);
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: [],
+        removed: [],
+        unchanged: 2,
+      });
+    });
+
+    it.each([
+      ['describe_screen', {}],
+      ['list_testids', {}],
+      ['accessibility_snapshot', {}],
+    ])('takes one backend.snapshot() for %s', async (tool, input) => {
+      await startWithRealDriver();
+
+      const { body } = await post(`/tool/${tool}`, input);
+
+      expect(body.ok).toBe(true);
+      expect(backend.snapshot).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(body)).not.toContain('systemui');
+    });
+  });
+
   describe('P1-09: mobile settle after a mutating tool', () => {
     it('re-snapshots once after 300 ms when the screen looks unchanged', async () => {
       await startServer();
@@ -2820,15 +2956,74 @@ describe('createServer abort, ref generations and observations', () => {
     it('stops settling at MOBILE_SETTLE_MAX_MS', async () => {
       await startServer();
       driver.getAccessibilityTree.mockImplementation(async () => {
-        await sleep(700);
+        await sleep(800);
         return buildTree(['Unlock, busy']);
       });
 
       await post('/tool/click', { testId: 'x' });
 
-      // 1st snapshot, then (300 ms + 700 ms) twice = 2000 ms; a third wait
-      // would end after the 2000 ms cap.
+      // 1st snapshot 800 ms, then 300 ms + 800 ms = 1900 ms; a second wait
+      // would end at 2200 ms, after the 2000 ms cap (the first snapshot
+      // counts). Kept well away from the cap so timer jitter cannot flip it.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('counts the first snapshot against MOBILE_SETTLE_MAX_MS', async () => {
+      await startServer();
+      let calls = 0;
+      driver.getAccessibilityTree.mockImplementation(async () => {
+        calls += 1;
+        // The click's first capture is slow (a slow Android snapshot).
+        await sleep(calls === 2 ? 1_600 : 0);
+        return buildTree(['Unlock, busy']);
+      });
+
+      await post('/tool/click', { testId: 'x', observe: 'none' });
+      await post('/tool/click', { testId: 'x' });
+
+      // 1600 ms capture + 300 ms wait + snapshot = 1900 ms; a second wait
+      // would end at 2200 ms, after 2000 ms. Counting from after the first
+      // capture would allow 3 extra snapshots.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry an unchanged screen after a slow first capture', async () => {
+      await startServer();
+      let calls = 0;
+      driver.getAccessibilityTree.mockImplementation(async () => {
+        calls += 1;
+        // Well above MOBILE_SETTLE_SLOW_CAPTURE_MS: timers can fire a ms
+        // early against Date.now().
+        await sleep(calls === 2 ? 1_200 : 0);
+        return buildTree(['Same']);
+      });
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x' });
+
+      // 1 (first click) + 1 slow capture, no unchanged retry.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('still retries a busy screen after a slow first capture', async () => {
+      await startServer();
+      let calls = 0;
+      driver.getAccessibilityTree.mockImplementation(async () => {
+        calls += 1;
+        if (calls === 2) {
+          await sleep(1_200);
+          return buildTree(['Unlock, busy']);
+        }
+        return buildTree(calls === 1 ? ['Unlock'] : ['Wallet']);
+      });
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = await post('/tool/click', { testId: 'x' });
+
       expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+      expect(
+        body.observations?.a11y.nodes.map((node) => node.name),
+      ).toStrictEqual(['Wallet']);
     });
 
     it('does not settle when the tool set refs', async () => {

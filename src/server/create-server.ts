@@ -41,6 +41,7 @@ import {
   MOBILE_SETTLE_MAX_MS,
   MOBILE_SETTLE_MAX_SNAPSHOTS,
   MOBILE_SETTLE_MS,
+  MOBILE_SETTLE_SLOW_CAPTURE_MS,
   MOBILE_SETTLE_UNCHANGED_RETRIES,
   OBSERVATION_TESTID_LIMIT,
   OBSERVATION_TIMEOUT_MS,
@@ -363,7 +364,8 @@ export function createServer(config: ServerConfig): ServerInstance {
 
   /**
    * Takes one mobile snapshot: one device snapshot when the driver has
-   * `captureScreen`, else the tree and the test IDs separately.
+   * `captureScreen` (`MobilePlatformDriver`), else the tree and the test IDs
+   * separately (two device snapshots).
    *
    * @param driver - The mobile platform driver.
    * @returns The tree and a test ID reader.
@@ -390,12 +392,15 @@ export function createServer(config: ServerConfig): ServerInstance {
    * - Unchanged (equals the last screen the agent received, ignoring refs)
    * and not busy: retry at most `MOBILE_SETTLE_UNCHANGED_RETRIES` time(s).
    * Many taps leave the screen as it is (for example tapping the tab that is
-   * already open), so more retries would only add device snapshots. On
-   * Android the status bar (clock, signal) usually differs between
-   * snapshots, so this rule rarely fires there.
+   * already open), so more retries would only add device snapshots. This
+   * applies to Android too: the mobile driver removes the status bar
+   * (clock, signal), so it does not make every snapshot differ. No unchanged
+   * retry when the first snapshot took `MOBILE_SETTLE_SLOW_CAPTURE_MS` or
+   * more: the UI already had that time to change.
    * - In total: at most `MOBILE_SETTLE_MAX_SNAPSHOTS` extra snapshots, and no
    * wait that would end later than `MOBILE_SETTLE_MAX_MS` after the first
-   * snapshot. A spinner that never stops costs at most these limits.
+   * snapshot started (the snapshots count, so a slow Android capture leaves
+   * less time). A spinner that never stops costs at most these limits.
    *
    * The test IDs come from the final snapshot, so they describe the same
    * screen as the tree.
@@ -410,9 +415,11 @@ export function createServer(config: ServerConfig): ServerInstance {
     settle: boolean,
     signal: AbortSignal,
   ): Promise<ObservedTree> {
+    const settleStartedAt = Date.now();
     let screen = await captureMobile(driver);
     if (settle) {
-      const settleStartedAt = Date.now();
+      const slowCapture =
+        Date.now() - settleStartedAt >= MOBILE_SETTLE_SLOW_CAPTURE_MS;
       const previous = lastScreen ? screenSignature(lastScreen) : null;
       let unchangedRetries = 0;
       const shouldRetry = (nodes: A11yNodeTrimmed[]): boolean => {
@@ -421,6 +428,7 @@ export function createServer(config: ServerConfig): ServerInstance {
         }
         if (
           previous === null ||
+          slowCapture ||
           unchangedRetries >= MOBILE_SETTLE_UNCHANGED_RETRIES ||
           screenSignature(nodes) !== previous
         ) {
