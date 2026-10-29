@@ -22,6 +22,7 @@ import {
   checkPlatformGate,
 } from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
+import type { RunStepsInput } from '../tools/types';
 import { createDefaultObservation } from '../tools/types/observation.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
 import {
@@ -74,11 +75,12 @@ export function buildResponseBody(
 }
 
 /**
- * Whether to run Playwright observation collection for this tool invocation.
+ * Whether to collect an observation (state, test IDs, a11y tree) after a tool
+ * runs. Only tools that change the UI pay for it:
  *
- * Observations are collected for every tool, whether or not they appear in
- * the HTTP response (they also feed the next response's diff). The only
- * exception is batch with `'none'` policy, which skips collection entirely.
+ * - `mutating`: yes.
+ * - `batch` (`run_steps`): yes, unless `includeObservations` is `'none'`.
+ * - `readonly`, `discovery`, `cdp`: no.
  *
  * @param category - The tool category to check.
  * @param validatedInput - The validated input payload (checked for batch policy).
@@ -88,17 +90,19 @@ export function shouldCollectObservations(
   category: ToolCategory,
   validatedInput?: Record<string, unknown>,
 ): boolean {
-  if (category === 'batch') {
-    const policy =
-      (validatedInput as { includeObservations?: string })
-        ?.includeObservations ?? 'all';
-    return policy !== 'none';
+  if (category === 'mutating') {
+    return true;
   }
-  return true;
+  if (category === 'batch') {
+    return batchObservationPolicy(validatedInput) !== 'none';
+  }
+  return false;
 }
 
 /**
- * Whether to include observations in the HTTP response.
+ * Whether to include the collected observation in the HTTP response. Never
+ * true when {@link shouldCollectObservations} is false. For `run_steps` with
+ * `includeObservations: 'failures'`, only failed batches include it.
  *
  * @param category - The tool category.
  * @param toolResult - The result returned by the tool.
@@ -110,27 +114,35 @@ export function shouldIncludeObservationsInResponse(
   toolResult: ToolResponse,
   validatedInput?: Record<string, unknown>,
 ): boolean {
-  if (category === 'mutating') {
-    return true;
+  if (!shouldCollectObservations(category, validatedInput)) {
+    return false;
   }
-  if (category === 'batch') {
-    const policy =
-      (validatedInput as { includeObservations?: string })
-        ?.includeObservations ?? 'all';
-    if (policy === 'none') {
-      return false;
+  if (
+    category === 'batch' &&
+    batchObservationPolicy(validatedInput) === 'failures'
+  ) {
+    if (!toolResult.ok) {
+      return true;
     }
-    if (policy === 'failures') {
-      if (!toolResult.ok) {
-        return true;
-      }
-      const result = toolResult.result as Record<string, unknown>;
-      const summary = result?.summary as Record<string, unknown> | undefined;
-      return summary !== undefined && !summary.ok;
-    }
-    return true; // 'all'
+    const result = toolResult.result as Record<string, unknown>;
+    const summary = result?.summary as Record<string, unknown> | undefined;
+    return summary !== undefined && !summary.ok;
   }
-  return false; // readonly, discovery
+  return true;
+}
+
+/**
+ * Reads the `run_steps` observation policy.
+ *
+ * @param validatedInput - The validated `run_steps` input.
+ * @returns The policy, `'all'` by default.
+ */
+function batchObservationPolicy(
+  validatedInput: Record<string, unknown> | undefined,
+): NonNullable<RunStepsInput['includeObservations']> {
+  const policy =
+    validatedInput?.includeObservations as RunStepsInput['includeObservations'];
+  return policy ?? 'all';
 }
 
 /**
@@ -455,6 +467,7 @@ export function createServer(config: ServerConfig): ServerInstance {
 
       if (
         toolName === 'describe_screen' ||
+        toolName === 'accessibility_snapshot' ||
         toolName === 'launch' ||
         toolName === 'cleanup'
       ) {

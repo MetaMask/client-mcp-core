@@ -167,12 +167,16 @@ describe('shouldCollectObservations', () => {
     expect(shouldCollectObservations('mutating')).toBe(true);
   });
 
-  it('returns true for readonly', () => {
-    expect(shouldCollectObservations('readonly')).toBe(true);
+  it('returns false for readonly', () => {
+    expect(shouldCollectObservations('readonly')).toBe(false);
   });
 
-  it('returns true for discovery', () => {
-    expect(shouldCollectObservations('discovery')).toBe(true);
+  it('returns false for discovery', () => {
+    expect(shouldCollectObservations('discovery')).toBe(false);
+  });
+
+  it('returns false for cdp', () => {
+    expect(shouldCollectObservations('cdp')).toBe(false);
   });
 
   it('returns true for batch with default policy', () => {
@@ -225,6 +229,10 @@ describe('shouldIncludeObservationsInResponse', () => {
     expect(shouldIncludeObservationsInResponse('discovery', okResult)).toBe(
       false,
     );
+  });
+
+  it('returns false for cdp', () => {
+    expect(shouldIncludeObservationsInResponse('cdp', okResult)).toBe(false);
   });
 
   it("returns true for batch with 'all' (default)", () => {
@@ -881,7 +889,7 @@ describe('createServer with active session', () => {
     }
   });
 
-  it('observation Playwright helpers called for read-only tools', async () => {
+  it('observation Playwright helpers not called for read-only tools', async () => {
     const { collectTestIds, collectTrimmedA11ySnapshot } =
       await import('../tools/utils/discovery.js');
     const collectTestIdsSpy = vi.mocked(collectTestIds);
@@ -896,8 +904,8 @@ describe('createServer with active session', () => {
       body: JSON.stringify({}),
     });
 
-    expect(collectTestIdsSpy).toHaveBeenCalled();
-    expect(collectA11ySpy).toHaveBeenCalled();
+    expect(collectTestIdsSpy).not.toHaveBeenCalled();
+    expect(collectA11ySpy).not.toHaveBeenCalled();
   });
 
   it('observation Playwright helpers called for mutating tools', async () => {
@@ -1004,7 +1012,7 @@ describe('createServer with active session', () => {
       expect(body.observations?.state.currentScreen).toBe('unknown');
     });
 
-    it('does not recheck for readonly tool category', async () => {
+    it('collects no observation for readonly tool category', async () => {
       mockSM.getExtensionState.mockReset();
       mockSM.getExtensionState.mockResolvedValue({
         isLoaded: true,
@@ -1020,12 +1028,14 @@ describe('createServer with active session', () => {
           body: JSON.stringify({}),
         },
       );
+      const body = (await res.json()) as { observations?: unknown };
 
       expect(res.status).toBe(200);
-      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+      expect(body.observations).toBeUndefined();
+      expect(mockSM.getExtensionState).not.toHaveBeenCalled();
     });
 
-    it('does not recheck for discovery tool category', async () => {
+    it('collects no observation for discovery tool category', async () => {
       mockSM.getExtensionState.mockReset();
       mockSM.getExtensionState.mockResolvedValue({
         isLoaded: true,
@@ -1041,9 +1051,11 @@ describe('createServer with active session', () => {
           body: JSON.stringify({}),
         },
       );
+      const body = (await res.json()) as { observations?: unknown };
 
       expect(res.status).toBe(200);
-      expect(mockSM.getExtensionState).toHaveBeenCalledTimes(1);
+      expect(body.observations).toBeUndefined();
+      expect(mockSM.getExtensionState).not.toHaveBeenCalled();
     });
 
     it('does not recheck for batch tool category', async () => {
@@ -1139,6 +1151,48 @@ describe('createServer with active session', () => {
       expectValidTiming(body);
       expect(body.meta?.timing.toolMs).toBeGreaterThanOrEqual(50);
       expect(body.meta?.timing.observationMs).toBeGreaterThanOrEqual(50);
+    });
+
+    it.each([
+      ['readonly', '/tool/get_state'],
+      ['discovery', '/tool/list_testids'],
+      ['cdp', '/tool/cdp', JSON.stringify({ method: 'Runtime.evaluate' })],
+    ])(
+      'reports observationMs 0 for %s tools with an active session',
+      async (category, urlPath, requestBody?: string) => {
+        if (category === 'cdp') {
+          mockSM.getPlatformDriver.mockReturnValue({
+            getPlatform: () => 'browser',
+            cdp: vi.fn().mockResolvedValue({ ok: true, result: { value: 2 } }),
+          });
+        }
+
+        const { status, body } = await post(urlPath, requestBody);
+
+        expect(status).toBe(200);
+        expect(body.ok).toBe(true);
+        expect(
+          (body as TimedBody & { observations?: unknown }).observations,
+        ).toBeUndefined();
+        expectValidTiming(body);
+        expect(body.meta?.timing.observationMs).toBe(0);
+      },
+    );
+
+    it('reports observationMs above 0 for mutating tools', async () => {
+      mockSM.getExtensionState.mockImplementationOnce(
+        async () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ isLoaded: true, currentUrl: '' }), 20),
+          ),
+      );
+
+      const { body } = await post('/cleanup');
+
+      expect(
+        (body as TimedBody & { observations?: unknown }).observations,
+      ).toBeDefined();
+      expect(body.meta?.timing.observationMs).toBeGreaterThan(0);
     });
 
     it('reports observationMs 0 when no session is active', async () => {
@@ -1547,6 +1601,105 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations?.a11y.nodes.length).toBeGreaterThan(1);
   });
 
+  it('accessibility_snapshot resets the diff baseline', async () => {
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
+    vi.mocked(collectTrimmedA11ySnapshot)
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: changedButtons as never,
+        refMap: new Map(),
+      });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    await httpRequest(
+      `http://127.0.0.1:${state.port}/tool/accessibility_snapshot`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          nodes: unknown[];
+          diff?: unknown;
+        };
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations).toBeDefined();
+    expect(body.observations?.a11y.diff).toBeUndefined();
+    expect(body.observations?.a11y.nodes.length).toBeGreaterThan(1);
+  });
+
+  it('read tools do not move the diff baseline', async () => {
+    const { collectTrimmedA11ySnapshot } =
+      await import('../tools/utils/discovery.js');
+    vi.mocked(collectTrimmedA11ySnapshot)
+      .mockResolvedValueOnce({
+        nodes: initialButtons as never,
+        refMap: new Map(),
+      })
+      .mockResolvedValueOnce({
+        nodes: changedButtons as never,
+        refMap: new Map(),
+      });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+
+    await httpRequest(`http://127.0.0.1:${state.port}/tool/get_state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    const res = await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a11yRef: 'e1' }),
+    });
+    const body = (await res.json()) as {
+      ok: boolean;
+      observations?: {
+        a11y: {
+          diff?: { added: string[]; removed: string[]; unchanged: number };
+        };
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.observations?.a11y.diff).toStrictEqual({
+      added: ['e3'],
+      removed: ['e2'],
+      unchanged: 1,
+    });
+  });
   it('falls back to the full observation when the diff is not smaller', async () => {
     const { collectTrimmedA11ySnapshot } =
       await import('../tools/utils/discovery.js');
