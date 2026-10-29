@@ -13,8 +13,12 @@ import type { MockInstance } from 'vitest';
 import {
   applyObserveLevel,
   extractObserveFlag,
+  extractPrettyFlag,
   extractProjectFlag,
+  formatJsonOutput,
+  resolvePretty,
   setObserveLevel,
+  setPrettyOutput,
   resolveTargetFromArgs,
   resolveWithinFromArgs,
   getPositionalTarget,
@@ -97,6 +101,8 @@ const mockResolveRuntime = vi.fn();
 // eslint-disable-next-line vitest/require-top-level-describe
 beforeEach(() => {
   vi.clearAllMocks();
+  // A developer's own MM_PRETTY must not change the output format in tests.
+  vi.stubEnv('MM_PRETTY', undefined);
   mockSearch.mockResolvedValue({
     config: { daemon: './daemon.ts', runtime: 'tsx' },
     filepath: '/mock/worktree/mm-client-cli.config.ts',
@@ -119,6 +125,8 @@ afterEach(() => {
   stderrSpy.mockRestore();
   stdoutSpy.mockRestore();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  setPrettyOutput(false);
 });
 
 describe('extractProjectFlag', () => {
@@ -203,6 +211,81 @@ describe('extractObserveFlag', () => {
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --observe requires one of: none, diff, full\n',
     );
+  });
+});
+
+describe('extractPrettyFlag', () => {
+  it('returns args unchanged when no --pretty flag', () => {
+    expect(extractPrettyFlag(['click', 'e1'])).toStrictEqual({
+      args: ['click', 'e1'],
+      pretty: false,
+    });
+  });
+
+  it('extracts --pretty from anywhere in argv', () => {
+    expect(extractPrettyFlag(['--pretty', 'describe-screen'])).toStrictEqual({
+      args: ['describe-screen'],
+      pretty: true,
+    });
+    expect(extractPrettyFlag(['click', 'e1', '--pretty'])).toStrictEqual({
+      args: ['click', 'e1'],
+      pretty: true,
+    });
+  });
+
+  it('removes every --pretty', () => {
+    expect(
+      extractPrettyFlag(['--pretty', 'click', '--pretty', 'e1']),
+    ).toStrictEqual({ args: ['click', 'e1'], pretty: true });
+  });
+});
+
+describe('resolvePretty', () => {
+  it('is compact when stdout is not a terminal and nothing is set', () => {
+    expect(resolvePretty(false, undefined, false)).toBe(false);
+    expect(resolvePretty(false, undefined, undefined)).toBe(false);
+    expect(resolvePretty(false, '', false)).toBe(false);
+  });
+
+  it('is pretty on a terminal by default', () => {
+    expect(resolvePretty(false, undefined, true)).toBe(true);
+  });
+
+  it('--pretty wins over MM_PRETTY and the terminal check', () => {
+    expect(resolvePretty(true, '0', false)).toBe(true);
+    expect(resolvePretty(true, undefined, false)).toBe(true);
+  });
+
+  it.each(['1', 'true', 'TRUE', ' true '])(
+    'turns pretty on without a terminal for MM_PRETTY=%j',
+    (value) => {
+      expect(resolvePretty(false, value, false)).toBe(true);
+    },
+  );
+
+  it.each(['0', 'false', 'False'])(
+    'turns pretty off on a terminal for MM_PRETTY=%j',
+    (value) => {
+      expect(resolvePretty(false, value, true)).toBe(false);
+    },
+  );
+
+  it('ignores other MM_PRETTY values', () => {
+    expect(resolvePretty(false, 'yes', false)).toBe(false);
+    expect(resolvePretty(false, 'yes', true)).toBe(true);
+  });
+});
+
+describe('formatJsonOutput', () => {
+  const value = { a: 1, nested: { b: [1, 2] } };
+
+  it('prints one line by default', () => {
+    expect(formatJsonOutput(value)).toBe('{"a":1,"nested":{"b":[1,2]}}');
+  });
+
+  it('indents with 2 spaces when pretty output is on', () => {
+    setPrettyOutput(true);
+    expect(formatJsonOutput(value)).toBe(JSON.stringify(value, null, 2));
   });
 });
 
@@ -861,6 +944,8 @@ describe('printHelp', () => {
     expect(output).toContain('Usage:');
     expect(output).toContain('mm launch');
     expect(output).toContain('--observe <level>');
+    expect(output).toContain('--pretty');
+    expect(output).toContain('MM_PRETTY');
   });
 });
 
@@ -1265,6 +1350,35 @@ describe('sendRequest', () => {
     await sendRequest(3000, 'GET', '/status', null);
 
     expect(stdoutSpy).toHaveBeenCalledWith('simple string\n');
+  });
+
+  it('prints object results as one line of JSON by default', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        result: { clicked: true },
+        observations: { nodes: [{ ref: 'e1' }] },
+      }),
+    } as Response);
+
+    await sendRequest(3000, 'POST', '/tool/click', { a11yRef: 'e1' });
+
+    expect(stdoutSpy).toHaveBeenCalledWith(
+      '{"clicked":true,"observations":{"nodes":[{"ref":"e1"}]}}\n',
+    );
+  });
+
+  it('prints indented JSON when pretty output is on', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { clicked: true } }),
+    } as Response);
+    setPrettyOutput(true);
+
+    await sendRequest(3000, 'POST', '/tool/click', { a11yRef: 'e1' });
+
+    expect(stdoutSpy).toHaveBeenCalledWith('{\n  "clicked": true\n}\n');
   });
 
   it('exits on error response', async () => {
@@ -3090,6 +3204,112 @@ describe('main', () => {
       'http://127.0.0.1:3000/tool/get_state',
       expect.objectContaining({ body: '{"observe":"full"}' }),
     );
+  });
+
+  describe('output format', () => {
+    const originalIsTTY = Object.getOwnPropertyDescriptor(
+      process.stdout,
+      'isTTY',
+    );
+
+    const setStdoutIsTTY = (isTTY: boolean): void => {
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: isTTY,
+        configurable: true,
+        writable: true,
+      });
+    };
+
+    beforeEach(() => {
+      setStdoutIsTTY(false);
+    });
+
+    afterEach(() => {
+      if (originalIsTTY === undefined) {
+        delete (process.stdout as { isTTY?: boolean }).isTTY;
+      } else {
+        Object.defineProperty(process.stdout, 'isTTY', originalIsTTY);
+      }
+      setObserveLevel(undefined);
+    });
+
+    const runGetState = async (argv: string[]): Promise<void> => {
+      const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+        await import('../server/daemon-state.js');
+      vi.mocked(readDaemonState).mockResolvedValueOnce({
+        port: 3000,
+        pid: 123,
+        nonce: 'abc',
+        startedAt: '2024-01-01',
+        version: '1.0.0',
+        subPorts: {},
+      });
+      vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+      vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, result: { count: 2 } }),
+      } as Response);
+
+      const origArgv = process.argv;
+      process.argv = ['node', 'mm', ...argv];
+      try {
+        await main();
+      } finally {
+        process.argv = origArgv;
+      }
+    };
+
+    it('prints one line of JSON when stdout is not a terminal', async () => {
+      await runGetState(['get-state']);
+
+      expect(stdoutSpy).toHaveBeenCalledWith('{"count":2}\n');
+    });
+
+    it('consumes --pretty and prints indented JSON', async () => {
+      await runGetState(['--pretty', 'get-state']);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:3000/tool/get_state',
+        expect.anything(),
+      );
+      expect(stdoutSpy).toHaveBeenCalledWith('{\n  "count": 2\n}\n');
+    });
+
+    it('consumes --pretty together with --observe', async () => {
+      await runGetState(['--observe', 'none', 'get-state', '--pretty']);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:3000/tool/get_state',
+        expect.objectContaining({ body: '{"observe":"none"}' }),
+      );
+      expect(stdoutSpy).toHaveBeenCalledWith('{\n  "count": 2\n}\n');
+    });
+
+    it('prints indented JSON when MM_PRETTY=1', async () => {
+      vi.stubEnv('MM_PRETTY', '1');
+
+      await runGetState(['get-state']);
+
+      expect(stdoutSpy).toHaveBeenCalledWith('{\n  "count": 2\n}\n');
+    });
+
+    it('prints indented JSON on a terminal', async () => {
+      setStdoutIsTTY(true);
+
+      await runGetState(['get-state']);
+
+      expect(stdoutSpy).toHaveBeenCalledWith('{\n  "count": 2\n}\n');
+    });
+
+    it('prints one line on a terminal when MM_PRETTY=0', async () => {
+      setStdoutIsTTY(true);
+      vi.stubEnv('MM_PRETTY', '0');
+
+      await runGetState(['get-state']);
+
+      expect(stdoutSpy).toHaveBeenCalledWith('{"count":2}\n');
+    });
   });
 
   it('sends the stdin recovery phrase with a self-onboarding launch', async () => {

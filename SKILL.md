@@ -6,6 +6,8 @@ If you are running outside the target project directory, use `--project <path>` 
 
 All commands also accept the global `--observe none|diff|full` flag to choose the observation returned after the call (see Observation Behavior). The CLI consumes `--observe <level>` anywhere in the command line, so to type the literal text `--observe` use `run-steps` or the HTTP API.
 
+Results are printed as one line of JSON when stdout is not a terminal (your case). Parse them as JSON; do not match on indentation. Add `--pretty` (or set `MM_PRETTY=1`) only when a human needs to read the output. `--pretty` is also consumed anywhere in the command line, like `--observe`.
+
 ## Core Loop
 
 ```
