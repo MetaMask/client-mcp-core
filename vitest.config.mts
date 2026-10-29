@@ -35,10 +35,10 @@ export default defineConfig({
         // Auto-update the coverage thresholds when running locally.
         // Disabled in CI to prevent non-deterministic config changes.
         autoUpdate: !process.env.CI,
-        branches: 91.7,
-        functions: 94.81,
-        lines: 96.68,
-        statements: 96.44,
+        branches: 91.73,
+        functions: 94.86,
+        lines: 96.69,
+        statements: 96.46,
       },
     },
 

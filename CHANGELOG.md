@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Dispose session-owned drivers after consumer cleanup, including cleanup errors, forced relaunch, failed launch, daemon shutdown, and server startup rollback. Retain failed disposals in one server-owned lifecycle, so the next cleanup or daemon stop retries them.
+- Dispose session-owned drivers after consumer cleanup, including cleanup errors, forced relaunch, failed launch, daemon shutdown, and server startup rollback. Retain failed disposals in one server-owned lifecycle, so the next cleanup or daemon stop retries them. Only the current session's cleanup and disposal can fail a call; drivers retained from earlier sessions are retried best-effort in parallel, logged when they fail again, and never fail the current cleanup or launch.
 
 ## [0.12.0]
 

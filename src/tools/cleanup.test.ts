@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { cleanupTool } from './cleanup.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
+import { DriverLifecycle } from '../server/cleanup-session.js';
 import type { ToolContext } from '../types/http.js';
 
 function createMockContext(hasActive = false): ToolContext {
@@ -91,5 +92,31 @@ describe('cleanupTool', () => {
     expect(serverCleanup).toHaveBeenCalledTimes(1);
     expect(context.sessionManager.cleanup).not.toHaveBeenCalled();
     expect(result).toStrictEqual({ ok: true, result: { cleanedUp: true } });
+  });
+
+  it('succeeds while a stuck driver from an earlier session keeps failing', async () => {
+    const context = createMockContext(true);
+    const lifecycle = new DriverLifecycle();
+    const { sessionManager } = context;
+    const stuck = vi.fn().mockRejectedValue(new Error('stuck companion'));
+    sessionManager.getPlatformDriver = () =>
+      ({ dispose: stuck }) as unknown as NonNullable<ToolContext['driver']>;
+    const serverContext: ToolContext = {
+      ...context,
+      cleanupSession: async () => lifecycle.cleanupSession(sessionManager),
+    };
+    await expect(cleanupTool({}, serverContext)).rejects.toThrowError(
+      'stuck companion',
+    );
+
+    const healthy = vi.fn().mockResolvedValue(undefined);
+    sessionManager.getPlatformDriver = () =>
+      ({ dispose: healthy }) as unknown as NonNullable<ToolContext['driver']>;
+    const result = await cleanupTool({}, serverContext);
+
+    expect(result).toStrictEqual({ ok: true, result: { cleanedUp: true } });
+    expect(healthy).toHaveBeenCalledTimes(1);
+    expect(stuck).toHaveBeenCalledTimes(2);
+    expect(lifecycle.pendingCount).toBe(1);
   });
 });

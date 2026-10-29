@@ -4,7 +4,7 @@ import type { ErrorCode } from './types/errors.js';
 import { createToolError, createToolSuccess } from './utils.js';
 import { cleanupSession } from '../server/cleanup-session.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
-import { extractErrorMessage } from '../utils';
+import { debugWarn, extractErrorMessage } from '../utils';
 
 const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
   {
@@ -61,8 +61,9 @@ export async function launchTool(
         // Preserve the launch error after best-effort cleanup of a partial session.
         try {
           await cleanup();
-        } catch {
+        } catch (rollbackError) {
           // The original launch error is the actionable failure.
+          debugWarn('launch.rollback', rollbackError);
         }
         throw error;
       });

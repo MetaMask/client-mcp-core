@@ -261,7 +261,15 @@ export function createServer(config: ServerConfig): ServerInstance {
   const knowledgeStore = config.knowledgeStore ?? new KnowledgeStore();
   // One owner for driver disposal retries across tools, stop() and rollback.
   // Keyed by this server, not by the session manager object a caller sees.
-  const driverLifecycle = new DriverLifecycle();
+  // Retries of drivers from earlier sessions never fail the current call, so
+  // log them here to keep repeated failures visible.
+  const driverLifecycle = new DriverLifecycle({
+    onStaleDisposalError: (error): void =>
+      appendLog(
+        config.logFilePath,
+        `[WARN] Retained driver disposal failed again: ${extractErrorMessage(error)}`,
+      ),
+  });
 
   let httpServer: http.Server | null = null;
   let worktreeRoot = '';
