@@ -5,7 +5,7 @@ import { createToolError, createToolSuccess } from './utils.js';
 import type { ToolContext, ToolFunction, ToolResponse } from '../types/http.js';
 import { extractErrorMessage } from '../utils';
 import type { ToolName } from '../validation/schemas.js';
-import { toolSchemas } from '../validation/schemas.js';
+import { omitObserve, toolSchemas } from '../validation/schemas.js';
 
 /** Tools whose args include a target selection (a11yRef/testId/selector). */
 const TARGET_TOOLS = new Set(['click', 'type', 'wait_for']);
@@ -231,7 +231,7 @@ export async function runStepsTool(
     }
 
     try {
-      const response = await handler(validatedArgs, context);
+      const response = await handler(omitObserve(validatedArgs), context);
 
       stepResults.push({
         tool,

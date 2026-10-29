@@ -239,7 +239,11 @@ export class MobilePlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * @returns Extension state with mobile-appropriate defaults.
+   * Reads only what the device backend knows: whether the app is running.
+   * Wallet fields (unlock, screen, account, network, balance) are omitted
+   * rather than guessed, and `source: 'stub'` marks the result as partial.
+   *
+   * @returns The partial app state.
    */
   async getAppState(): Promise<ExtensionState> {
     const appState = await this.#backend.getAppState(this.#bundleId);
@@ -248,14 +252,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
       appState.state === APPIUM_STATE_RUNNING_IN_FOREGROUND;
     return {
       isLoaded: isRunning,
-      currentUrl: '',
       extensionId: this.#bundleId,
-      isUnlocked: isRunning,
-      currentScreen: 'unknown',
-      accountAddress: null,
-      networkName: null,
-      chainId: null,
-      balance: null,
+      source: 'stub',
     };
   }
 

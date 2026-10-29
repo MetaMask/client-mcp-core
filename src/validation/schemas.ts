@@ -2,6 +2,56 @@ import { z } from 'zod';
 
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 
+export const observeLevelSchema = z
+  .enum(['none', 'diff', 'full'])
+  .describe(
+    'Observation to return after the call: ' +
+      'none = skip it (fastest), ' +
+      'diff = only what changed since the previous observation, ' +
+      'full = the whole screen. ' +
+      'Default: diff for mutating tools and run_steps, none for the others.',
+  );
+
+export type ObserveLevel = z.infer<typeof observeLevelSchema>;
+
+const observeFieldSchema = z.object({
+  observe: observeLevelSchema.optional(),
+});
+
+/**
+ * Adds the optional `observe` field to a tool input schema. Uses an
+ * intersection so it works for every schema shape (objects, refined objects,
+ * unions and discriminated unions).
+ *
+ * @param schema - The tool input schema.
+ * @returns The schema with an optional `observe` field.
+ */
+export function withObserve<Schema extends z.ZodType>(
+  schema: Schema,
+): z.ZodIntersection<Schema, typeof observeFieldSchema> {
+  return schema.and(observeFieldSchema);
+}
+
+/**
+ * Removes the `observe` field from validated tool input. `observe` is read by
+ * the daemon, so tool handlers get their input without it.
+ *
+ * @param input - Validated tool input.
+ * @returns The input without `observe` (non-objects are returned unchanged).
+ */
+export function omitObserve<Input>(input: Input): Input {
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    Array.isArray(input) ||
+    !('observe' in input)
+  ) {
+    return input;
+  }
+  const { observe: _observe, ...rest } = input as Record<string, unknown>;
+  return rest as Input;
+}
+
 export const a11yRefPattern = z
   .string()
   .regex(/^e[0-9]+$/u)
@@ -537,13 +587,6 @@ export const runStepsInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Stop execution on first error (default: false - continue)'),
-  includeObservations: z
-    .enum(['none', 'failures', 'all'])
-    .default('all')
-    .describe(
-      'When to include observations in results: ' +
-        'none = never (fastest), failures = only for failed steps, all = always',
-    ),
   batchTimeoutMs: z
     .number()
     .int()
@@ -553,6 +596,11 @@ export const runStepsInputSchema = z.object({
       'Overall timeout for the batch in milliseconds. ' +
         'When exceeded, remaining steps are marked as skipped and partial results are returned.',
     )
+    .optional(),
+  // Removed in favour of `observe`. Rejected (not ignored) so old callers
+  // learn about it instead of silently getting an observation.
+  includeObservations: z
+    .never({ error: 'includeObservations was removed; use observe' })
     .optional(),
 });
 
@@ -860,49 +908,49 @@ export type GenerateLocatorsInputZ = z.infer<
 >;
 
 export const toolSchemas = {
-  build: buildInputSchema,
-  launch: launchInputSchema,
-  cleanup: cleanupInputSchema,
-  get_state: getStateInputSchema,
-  navigate: navigateInputSchema,
-  wait_for_notification: waitForNotificationInputSchema,
-  switch_to_tab: switchToTabInputSchema,
-  close_tab: closeTabInputSchema,
-  list_testids: listTestIdsInputSchema,
-  accessibility_snapshot: accessibilitySnapshotInputSchema,
-  describe_screen: describeScreenInputSchema,
-  screenshot: screenshotInputSchema,
-  click: clickInputSchema,
-  type: typeInputSchema,
-  wait_for: waitForInputSchema,
-  get_text: getTextInputSchema,
-  seed_contract: seedContractInputSchema,
-  seed_contracts: seedContractsInputSchema,
-  get_contract_address: getContractAddressInputSchema,
-  list_contracts: listDeployedContractsInputSchema,
-  run_steps: runStepsInputSchema,
-  set_context: setContextInputSchema,
-  get_context: getContextInputSchema,
-  clipboard: clipboardInputSchema,
-  cdp: cdpInputSchema,
-  hermes_targets: hermesTargetsInputSchema,
-  get_window_size: getWindowSizeInputSchema,
-  mock_network: mockNetworkInputSchema,
-  scroll_to_element: scrollToElementInputSchema,
-  device_swipe: deviceSwipeInputSchema,
-  long_press: longPressInputSchema,
-  tap_coordinates: tapCoordinatesInputSchema,
-  dismiss_keyboard: dismissKeyboardInputSchema,
-  dismiss_alert: dismissAlertInputSchema,
-  get_alert_text: getAlertTextInputSchema,
-  open_app: openAppInputSchema,
-  close_app: closeAppInputSchema,
-  press_button: pressButtonInputSchema,
-  device_context: deviceContextInputSchema,
-  device_clipboard: deviceClipboardInputSchema,
-  screen_recording: screenRecordingInputSchema,
-  device_logs: deviceLogsInputSchema,
-  generate_locators: generateLocatorsInputSchema,
+  build: withObserve(buildInputSchema),
+  launch: withObserve(launchInputSchema),
+  cleanup: withObserve(cleanupInputSchema),
+  get_state: withObserve(getStateInputSchema),
+  navigate: withObserve(navigateInputSchema),
+  wait_for_notification: withObserve(waitForNotificationInputSchema),
+  switch_to_tab: withObserve(switchToTabInputSchema),
+  close_tab: withObserve(closeTabInputSchema),
+  list_testids: withObserve(listTestIdsInputSchema),
+  accessibility_snapshot: withObserve(accessibilitySnapshotInputSchema),
+  describe_screen: withObserve(describeScreenInputSchema),
+  screenshot: withObserve(screenshotInputSchema),
+  click: withObserve(clickInputSchema),
+  type: withObserve(typeInputSchema),
+  wait_for: withObserve(waitForInputSchema),
+  get_text: withObserve(getTextInputSchema),
+  seed_contract: withObserve(seedContractInputSchema),
+  seed_contracts: withObserve(seedContractsInputSchema),
+  get_contract_address: withObserve(getContractAddressInputSchema),
+  list_contracts: withObserve(listDeployedContractsInputSchema),
+  run_steps: withObserve(runStepsInputSchema),
+  set_context: withObserve(setContextInputSchema),
+  get_context: withObserve(getContextInputSchema),
+  clipboard: withObserve(clipboardInputSchema),
+  cdp: withObserve(cdpInputSchema),
+  hermes_targets: withObserve(hermesTargetsInputSchema),
+  get_window_size: withObserve(getWindowSizeInputSchema),
+  mock_network: withObserve(mockNetworkInputSchema),
+  scroll_to_element: withObserve(scrollToElementInputSchema),
+  device_swipe: withObserve(deviceSwipeInputSchema),
+  long_press: withObserve(longPressInputSchema),
+  tap_coordinates: withObserve(tapCoordinatesInputSchema),
+  dismiss_keyboard: withObserve(dismissKeyboardInputSchema),
+  dismiss_alert: withObserve(dismissAlertInputSchema),
+  get_alert_text: withObserve(getAlertTextInputSchema),
+  open_app: withObserve(openAppInputSchema),
+  close_app: withObserve(closeAppInputSchema),
+  press_button: withObserve(pressButtonInputSchema),
+  device_context: withObserve(deviceContextInputSchema),
+  device_clipboard: withObserve(deviceClipboardInputSchema),
+  screen_recording: withObserve(screenRecordingInputSchema),
+  device_logs: withObserve(deviceLogsInputSchema),
+  generate_locators: withObserve(generateLocatorsInputSchema),
 } as const;
 
 export type ToolName = keyof typeof toolSchemas;

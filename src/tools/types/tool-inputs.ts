@@ -127,7 +127,6 @@ export type RunStepsInput = {
     args?: Record<string, unknown>;
   }[];
   stopOnError?: boolean;
-  includeObservations?: 'none' | 'failures' | 'all';
   batchTimeoutMs?: number;
 };
 

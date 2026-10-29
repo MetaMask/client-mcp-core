@@ -479,7 +479,7 @@ describe('runStepsTool', () => {
     }
   });
 
-  it('excludes observations when includeObservations is "none"', async () => {
+  it('accepts observe in step args and does not pass it to the handler', async () => {
     const clickHandler = vi.fn().mockResolvedValue({
       ok: true,
       result: { clicked: true },
@@ -490,16 +490,41 @@ describe('runStepsTool', () => {
 
     const result = await runStepsTool(
       {
-        steps: [{ tool: 'click', args: { testId: 'btn' } }],
-        includeObservations: 'none',
+        steps: [{ tool: 'click', args: { testId: 'btn', observe: 'full' } }],
       },
       context,
     );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
+      expect(result.result.steps[0].ok).toBe(true);
       expect(result.result.steps[0]).not.toHaveProperty('observation');
     }
+    expect(clickHandler).toHaveBeenCalledWith(
+      expect.not.objectContaining({ observe: expect.anything() }),
+      context,
+    );
+    expect(clickHandler.mock.calls[0][0]).toMatchObject({ testId: 'btn' });
+  });
+
+  it('rejects an invalid observe level in step args', async () => {
+    const clickHandler = vi.fn();
+    const context = createMockContext({
+      toolRegistry: new Map([['click', clickHandler]]),
+    });
+
+    const result = await runStepsTool(
+      {
+        steps: [{ tool: 'click', args: { testId: 'btn', observe: 'all' } }],
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.steps[0].error?.code).toBe('VALIDATION_ERROR');
+    }
+    expect(clickHandler).not.toHaveBeenCalled();
   });
 
   it('marks remaining steps as skipped when batchTimeoutMs is exceeded', async () => {

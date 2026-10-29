@@ -11,7 +11,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { MockInstance } from 'vitest';
 
 import {
+  applyObserveLevel,
+  extractObserveFlag,
   extractProjectFlag,
+  setObserveLevel,
   resolveTargetFromArgs,
   resolveWithinFromArgs,
   getPositionalTarget,
@@ -168,6 +171,78 @@ describe('extractProjectFlag', () => {
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --project requires a path value\n',
     );
+  });
+});
+
+describe('extractObserveFlag', () => {
+  it('returns args unchanged when no --observe flag', () => {
+    expect(extractObserveFlag(['click', 'e1'])).toStrictEqual({
+      args: ['click', 'e1'],
+      observe: undefined,
+    });
+  });
+
+  it.each(['none', 'diff', 'full'])(
+    'extracts --observe %s from anywhere in argv',
+    (level) => {
+      expect(
+        extractObserveFlag(['click', '--observe', level, 'e1']),
+      ).toStrictEqual({ args: ['click', 'e1'], observe: level });
+      expect(
+        extractObserveFlag(['--observe', level, 'get-state']),
+      ).toStrictEqual({ args: ['get-state'], observe: level });
+    },
+  );
+
+  it.each([
+    [['--observe']],
+    [['--observe', 'all']],
+    [['--observe', '--force']],
+  ])('exits on a missing or invalid value: %j', (argv) => {
+    expect(() => extractObserveFlag(argv)).toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --observe requires one of: none, diff, full\n',
+    );
+  });
+});
+
+describe('applyObserveLevel', () => {
+  afterEach(() => {
+    setObserveLevel(undefined);
+  });
+
+  it('returns the body unchanged when no level is set', () => {
+    const body = { a11yRef: 'e1' };
+    expect(applyObserveLevel('POST', '/tool/click', body)).toBe(body);
+  });
+
+  it.each(['/tool/click', '/tool/run_steps', '/launch', '/cleanup'])(
+    'adds observe to POST %s bodies',
+    (requestPath) => {
+      setObserveLevel('none');
+      expect(applyObserveLevel('POST', requestPath, { x: 1 })).toStrictEqual({
+        observe: 'none',
+        x: 1,
+      });
+    },
+  );
+
+  it('keeps an observe already in the body', () => {
+    setObserveLevel('none');
+    expect(
+      applyObserveLevel('POST', '/tool/run_steps', { observe: 'full' }),
+    ).toStrictEqual({ observe: 'full' });
+  });
+
+  it('leaves GET, other paths and non-object bodies alone', () => {
+    setObserveLevel('full');
+    expect(applyObserveLevel('GET', '/status', null)).toBeNull();
+    expect(applyObserveLevel('POST', '/status', { x: 1 })).toStrictEqual({
+      x: 1,
+    });
+    expect(applyObserveLevel('POST', '/tool/click', null)).toBeNull();
+    const list = [1];
+    expect(applyObserveLevel('POST', '/tool/click', list)).toBe(list);
   });
 });
 
@@ -785,6 +860,7 @@ describe('printHelp', () => {
     expect(output).toContain('mm — MetaMask CLI');
     expect(output).toContain('Usage:');
     expect(output).toContain('mm launch');
+    expect(output).toContain('--observe <level>');
   });
 });
 
@@ -1132,6 +1208,34 @@ describe('sendRequest', () => {
       expect.objectContaining({ method: 'GET' }),
     );
     expect(stdoutSpy).toHaveBeenCalled();
+  });
+
+  it('adds the global --observe level to POST tool bodies', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { clicked: true } }),
+    } as Response);
+    setObserveLevel('none');
+
+    try {
+      await sendRequest(3000, 'POST', '/tool/click', { a11yRef: 'e1' });
+      await sendRequest(3000, 'GET', '/status', null);
+    } finally {
+      setObserveLevel(undefined);
+    }
+
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: '{"observe":"none","a11yRef":"e1"}',
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:3000/status',
+      expect.not.objectContaining({ body: expect.anything() }),
+    );
   });
 
   it('sends POST request with JSON body', async () => {
@@ -2952,6 +3056,40 @@ describe('main', () => {
     );
 
     process.argv = origArgv;
+  });
+
+  it('sends the global --observe level with the request', async () => {
+    const { readDaemonState, isDaemonAlive, isDaemonVersionMatch } =
+      await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce({
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: {},
+    });
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    vi.mocked(isDaemonVersionMatch).mockReturnValueOnce(true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { state: {} } }),
+    } as Response);
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'get-state', '--observe', 'full'];
+
+    try {
+      await main();
+    } finally {
+      process.argv = origArgv;
+      setObserveLevel(undefined);
+    }
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/get_state',
+      expect.objectContaining({ body: '{"observe":"full"}' }),
+    );
   });
 
   it('sends the stdin recovery phrase with a self-onboarding launch', async () => {
