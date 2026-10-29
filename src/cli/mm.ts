@@ -18,8 +18,8 @@ import {
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
 import { computeTimeoutBudget } from '../utils/timeout-budget.js';
-import { observeLevelSchema } from '../validation/schemas.js';
-import type { ObserveLevel } from '../validation/schemas.js';
+import { OBSERVE_LEVELS } from '../validation/observe-level.js';
+import type { ObserveLevel } from '../validation/observe-level.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   launch: 120_000,
@@ -83,8 +83,6 @@ export function extractProjectFlag(argv: string[]): {
   const remaining = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
   return { args: remaining, projectPath: value };
 }
-
-const OBSERVE_LEVELS: readonly ObserveLevel[] = observeLevelSchema.options;
 
 /**
  * Extracts and consumes the global `--observe <none|diff|full>` flag from
@@ -225,10 +223,45 @@ export function formatJsonOutput(output: unknown): string {
 }
 
 /**
+ * Finds the git worktree root without starting a `git` process (about 90 ms
+ * per call): walks up from the real cwd to the first directory that has a
+ * `.git` entry. `.git` is a directory in a main checkout and a file in a
+ * linked worktree or submodule; both count.
+ *
+ * @returns The worktree root, or undefined when no `.git` entry is found or
+ * `GIT_DIR` / `GIT_WORK_TREE` override git's own discovery.
+ */
+export async function findGitWorktreeRoot(): Promise<string | undefined> {
+  if (process.env.GIT_DIR || process.env.GIT_WORK_TREE) {
+    return undefined;
+  }
+  let dir: string;
+  try {
+    dir = await fs.realpath(process.cwd());
+  } catch {
+    return undefined;
+  }
+  for (;;) {
+    try {
+      await fs.stat(path.join(dir, '.git'));
+      return dir;
+    } catch {
+      const parent = path.dirname(dir);
+      if (parent === dir) {
+        return undefined;
+      }
+      dir = parent;
+    }
+  }
+}
+
+/**
  * Resolves the target project root directory using the following precedence:
  *   1. `--project <path>` CLI flag
  *   2. `MM_PROJECT` environment variable
- *   3. `git rev-parse --show-toplevel` (current working directory)
+ *   3. the git worktree root of the current working directory: the nearest
+ *      `.git` entry (see {@link findGitWorktreeRoot}), else
+ *      `git rev-parse --show-toplevel`
  *
  * Both explicit sources accept absolute or relative paths (resolved from cwd).
  * The resolved path is normalized via `fs.realpath` to handle symlinks.
@@ -265,6 +298,11 @@ export async function resolveWorktreeRoot(
     }
 
     return real;
+  }
+
+  const found = await findGitWorktreeRoot();
+  if (found) {
+    return found;
   }
 
   try {
