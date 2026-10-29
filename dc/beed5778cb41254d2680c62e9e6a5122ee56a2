@@ -1,0 +1,19 @@
+src/platform/device-mcp-runtime.test.ts
+  s_bd6f37fe795f81::t_ba9396dbd1868b 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dcbeed5778cb41254d2680c62e9e6a5122ee56a2",
+  "prompts": {},
+  "sessions": {
+    "s_bd6f37fe795f81": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e7cee5b80ffeN0vBXe3dWVUa7e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
