@@ -930,3 +930,23 @@ describe('runStepsInputSchema includeObservations', () => {
     expect(parsed.error?.issues[0]?.message).toContain('use observe');
   });
 });
+
+describe('runStepsInputSchema batchTimeoutMs', () => {
+  it.each([1000, 30_000])('accepts %i', (batchTimeoutMs) => {
+    expect(
+      toolSchemas.run_steps.safeParse({
+        steps: [{ tool: 'get_state' }],
+        batchTimeoutMs,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects values above the 30 s request ceiling', () => {
+    expect(
+      toolSchemas.run_steps.safeParse({
+        steps: [{ tool: 'get_state' }],
+        batchTimeoutMs: 30_001,
+      }).success,
+    ).toBe(false);
+  });
+});
