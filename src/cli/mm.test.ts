@@ -1240,9 +1240,31 @@ describe('resolveWorktreeRoot', () => {
     );
   });
 
-  it('falls back to git worktree when no explicit path', async () => {
+  it('finds the nearest .git entry above the cwd without running git', async () => {
     const origEnv = process.env.MM_PROJECT;
     delete process.env.MM_PROJECT;
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/repo/a/b');
+    vi.mocked(fs.stat).mockImplementation(async (p) => {
+      if (p === path.join('/repo', '.git')) {
+        return { isDirectory: () => false } as any;
+      }
+      throw new Error('ENOENT');
+    });
+    const { execSync } = await import('node:child_process');
+    vi.mocked(execSync).mockClear();
+
+    const result = await resolveWorktreeRoot(undefined);
+
+    expect(result).toBe('/repo');
+    expect(execSync).not.toHaveBeenCalled();
+    cwdSpy.mockRestore();
+    process.env.MM_PROJECT = origEnv;
+  });
+
+  it('falls back to git rev-parse when no .git entry is found', async () => {
+    const origEnv = process.env.MM_PROJECT;
+    delete process.env.MM_PROJECT;
+    vi.mocked(fs.stat).mockRejectedValue(new Error('ENOENT'));
 
     const { execSync } = await import('node:child_process');
     vi.mocked(execSync).mockReturnValueOnce(Buffer.from('/git/root\n'));
@@ -1253,9 +1275,45 @@ describe('resolveWorktreeRoot', () => {
     process.env.MM_PROJECT = origEnv;
   });
 
+  it('falls back to git rev-parse when the cwd cannot be resolved', async () => {
+    const origEnv = process.env.MM_PROJECT;
+    delete process.env.MM_PROJECT;
+    vi.mocked(fs.realpath).mockRejectedValueOnce(new Error('ENOENT'));
+
+    const { execSync } = await import('node:child_process');
+    vi.mocked(execSync).mockReturnValueOnce(Buffer.from('/git/root\n'));
+
+    const result = await resolveWorktreeRoot(undefined);
+    expect(result).toBe('/git/root');
+
+    process.env.MM_PROJECT = origEnv;
+  });
+
+  it.each(['GIT_DIR', 'GIT_WORK_TREE'])(
+    'lets git resolve the root when %s is set',
+    async (name) => {
+      const origEnv = process.env.MM_PROJECT;
+      delete process.env.MM_PROJECT;
+      process.env[name] = '/custom';
+
+      const { execSync } = await import('node:child_process');
+      vi.mocked(execSync).mockReturnValueOnce(Buffer.from('/git/root\n'));
+
+      const result = await resolveWorktreeRoot(undefined);
+      expect(result).toBe('/git/root');
+      expect(fs.stat).not.toHaveBeenCalledWith(
+        expect.stringMatching(/\.git$/u),
+      );
+
+      delete process.env[name];
+      process.env.MM_PROJECT = origEnv;
+    },
+  );
+
   it('exits when not in a git repository', async () => {
     const origEnv = process.env.MM_PROJECT;
     delete process.env.MM_PROJECT;
+    vi.mocked(fs.stat).mockRejectedValue(new Error('ENOENT'));
 
     const { execSync } = await import('node:child_process');
     vi.mocked(execSync).mockImplementation(() => {
