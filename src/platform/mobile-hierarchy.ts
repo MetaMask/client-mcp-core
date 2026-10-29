@@ -1,5 +1,10 @@
 import type { UIElement } from '@metamask/device-mcp';
 
+import {
+  MOBILE_BUSY_TYPE,
+  MOBILE_TAP_TARGET_MIN_SIZE,
+} from '../tools/utils/constants.js';
+
 /** Options of `filterAppHierarchy`. */
 export type AppHierarchyFilterOptions = {
   /** Device platform of the snapshot. */
@@ -149,6 +154,184 @@ export function filterAppHierarchy(
   };
 
   return walk(roots, false);
+}
+
+/**
+ * iOS element types (idb `describe-all` AX types, also used by Appium
+ * XCUITest) of controls a user can tap or type into. Matched exactly: the
+ * nested idb format reports UIKit class names
+ * (`UIKit._UITabBarItemPlatterView`, `RNSTabsHostComponentView`) for the
+ * views that are not accessibility elements, and a substring match would
+ * keep those. Assumes the backend strips the `XCUIElementType` prefix (the
+ * device-mcp Appium backend does): `XCUIElementTypeButton` is not matched.
+ */
+const IOS_ACTIONABLE_TYPES = new Set([
+  'Button',
+  'Cell',
+  'CheckBox',
+  'ComboBox',
+  'DatePicker',
+  'Incrementor',
+  'Key',
+  'Link',
+  'MenuItem',
+  'Picker',
+  'PickerWheel',
+  'PopUpButton',
+  'RadioButton',
+  'SearchField',
+  'SecureTextField',
+  'SegmentedControl',
+  'Slider',
+  'Stepper',
+  'Switch',
+  'Tab',
+  'TextArea',
+  'TextField',
+  'TextView',
+  'Toggle',
+]);
+
+/**
+ * Android widget classes of controls a user can tap or type into, matched as
+ * a suffix of the class name so subclasses match too (`Button` also matches
+ * `ImageButton`, `RadioButton`, `ToggleButton`, `MaterialButton`;
+ * `EditText` matches `AppCompatEditText`). The device snapshot has no
+ * `clickable` attribute, so a tappable `ViewGroup` (React Native
+ * `Pressable`) is kept only through its testId or label.
+ */
+const ANDROID_ACTIONABLE_CLASS =
+  /(?:Button|EditText|AutoCompleteTextView|CheckBox|CheckedTextView|Switch|SwitchCompat|SwitchMaterial|SeekBar|Spinner|RatingBar)$/u;
+
+/**
+ * Plain React Native view classes: `View` and `Pressable` render as these.
+ * An unlabelled one with no children is often a tap target (an icon button
+ * whose label is on a sibling, or an image), so it is kept when large enough
+ * (see `isUnlabelledTapTarget`).
+ */
+const RN_VIEW_TYPES: Record<'ios' | 'android', ReadonlySet<string>> = {
+  ios: new Set(['RCTViewComponentView']),
+  android: new Set(['android.view.ViewGroup']),
+};
+
+/**
+ * @param el - A snapshot element.
+ * @param platform - Device platform of the snapshot.
+ * @returns True when the element type is a control a user can tap or type
+ * into (see `IOS_ACTIONABLE_TYPES`, `ANDROID_ACTIONABLE_CLASS`).
+ */
+export function isActionableElement(
+  el: UIElement,
+  platform: 'ios' | 'android',
+): boolean {
+  return platform === 'ios'
+    ? IOS_ACTIONABLE_TYPES.has(el.type)
+    : ANDROID_ACTIONABLE_CLASS.test(el.type);
+}
+
+/**
+ * @param el - A snapshot element.
+ * @param platform - Device platform of the snapshot.
+ * @returns True when the element only lays out other elements: it has no
+ * name (label or value), no identifier (testId), is not actionable and is
+ * not a progress indicator.
+ */
+export function isLayoutOnly(
+  el: UIElement,
+  platform: 'ios' | 'android',
+): boolean {
+  return (
+    !el.label &&
+    !el.value &&
+    !el.identifier &&
+    !isActionableElement(el, platform) &&
+    !MOBILE_BUSY_TYPE.test(el.type)
+  );
+}
+
+/**
+ * @param el - A layout-only element (see `isLayoutOnly`) whose kept
+ * children were checked.
+ * @param platform - Device platform of the snapshot.
+ * @returns True when the element is a plain React Native view
+ * (`RCTViewComponentView`, `android.view.ViewGroup`) at least
+ * `MOBILE_TAP_TARGET_MIN_SIZE` wide and high. Call it only for an element
+ * with no kept children (a leaf after pruning). Such views are often
+ * unlabelled buttons (the wallet home action buttons on iOS), usable with
+ * `tap-coordinates`.
+ */
+export function isUnlabelledTapTarget(
+  el: UIElement,
+  platform: 'ios' | 'android',
+): boolean {
+  return (
+    RN_VIEW_TYPES[platform].has(el.type) &&
+    el.frame.width >= MOBILE_TAP_TARGET_MIN_SIZE &&
+    el.frame.height >= MOBILE_TAP_TARGET_MIN_SIZE
+  );
+}
+
+/**
+ * Removes the layout-only elements (see `isLayoutOnly`) from a snapshot
+ * hierarchy, for the accessibility tree. A removed element is replaced by
+ * its kept descendants, in order, so the pre-order of the kept elements does
+ * not change. Containers with a testId, named elements (text included),
+ * actionable controls and progress indicators stay. A layout-only element
+ * that is left with no kept children also stays when it is an unlabelled tap
+ * target (see `isUnlabelledTapTarget`), without its children. The input is
+ * not modified; unchanged subtrees are returned by reference.
+ *
+ * On real MetaMask snapshots (after `filterAppHierarchy`) this keeps 15 of
+ * 47 elements on the Android login screen and 67 of 177 on iOS wallet home
+ * (idb nested format).
+ *
+ * @param hierarchy - The snapshot hierarchy (after `filterAppHierarchy`).
+ * @param platform - Device platform of the snapshot.
+ * @returns The hierarchy without layout-only elements.
+ */
+export function pruneLayoutOnly(
+  hierarchy: UIElement[],
+  platform: 'ios' | 'android',
+): UIElement[] {
+  const kept: UIElement[] = [];
+  for (const el of hierarchy) {
+    const children = el.children?.length
+      ? pruneLayoutOnly(el.children, platform)
+      : undefined;
+    if (isLayoutOnly(el, platform)) {
+      if (children?.length) {
+        kept.push(...children);
+      } else if (isUnlabelledTapTarget(el, platform)) {
+        kept.push(withoutChildren(el));
+      }
+      continue;
+    }
+    const unchanged =
+      children === undefined ||
+      (children.length === el.children?.length &&
+        children.every((child, at) => child === el.children?.[at]));
+    if (unchanged) {
+      kept.push(el);
+    } else if (children.length) {
+      kept.push({ ...el, children });
+    } else {
+      kept.push(withoutChildren(el));
+    }
+  }
+  return kept;
+}
+
+/**
+ * @param el - A snapshot element.
+ * @returns The element itself when it has no `children` key, else a copy
+ * without it.
+ */
+function withoutChildren(el: UIElement): UIElement {
+  if (!('children' in el)) {
+    return el;
+  }
+  const { children: _children, ...leaf } = el;
+  return leaf;
 }
 
 /**

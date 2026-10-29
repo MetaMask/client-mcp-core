@@ -4,9 +4,14 @@ import { describe, it, expect } from 'vitest';
 import androidLoginSnapshot from './__fixtures__/android-login-snapshot.json';
 import {
   filterAppHierarchy,
+  isActionableElement,
+  isLayoutOnly,
+  isUnlabelledTapTarget,
+  pruneLayoutOnly,
   resourceIdPackage,
   viewportFromHierarchy,
 } from './mobile-hierarchy.js';
+import { isBusyNode } from '../server/screen-settle.js';
 
 function el(
   type: string,
@@ -509,6 +514,286 @@ describe('filterAppHierarchy', () => {
     expect(reactRoot).toBe(
       snapshot[1]?.children?.[0]?.children?.[0]?.children?.[1],
     );
+  });
+});
+
+describe('isActionableElement', () => {
+  it.each([
+    'Button',
+    'Link',
+    'TextField',
+    'SecureTextField',
+    'SearchField',
+    'TextView',
+    'Switch',
+    'Slider',
+    'Cell',
+    'Tab',
+  ])('treats iOS %s as actionable', (type) => {
+    expect(isActionableElement(el(type), 'ios')).toBe(true);
+  });
+
+  it.each([
+    'UIView',
+    'RCTViewComponentView',
+    'UIKit._UITabBarItemPlatterView',
+    'TabBar',
+    'Toolbar',
+    'StaticText',
+    'Image',
+    'Other',
+    // Assumes the backend strips the XCUITest prefix (device-mcp Appium
+    // backend does): a prefixed type is not matched.
+    'XCUIElementTypeButton',
+    'XCUIElementTypeTextField',
+  ])('does not treat iOS %s as actionable', (type) => {
+    expect(isActionableElement(el(type), 'ios')).toBe(false);
+  });
+
+  it.each([
+    'android.widget.Button',
+    'android.widget.ImageButton',
+    'android.widget.RadioButton',
+    'android.widget.ToggleButton',
+    'com.google.android.material.button.MaterialButton',
+    'android.widget.EditText',
+    'androidx.appcompat.widget.AppCompatEditText',
+    'android.widget.CheckBox',
+    'android.widget.Switch',
+    'androidx.appcompat.widget.SwitchCompat',
+    'android.widget.SeekBar',
+    'android.widget.Spinner',
+    'android.widget.CheckedTextView',
+    'android.widget.RatingBar',
+  ])('treats Android %s as actionable', (type) => {
+    expect(isActionableElement(el(type), 'android')).toBe(true);
+  });
+
+  it.each([
+    'android.view.ViewGroup',
+    'android.widget.FrameLayout',
+    'android.widget.TextView',
+    'android.widget.ImageView',
+    'com.horcrux.svg.SvgView',
+  ])('does not treat Android %s as actionable', (type) => {
+    expect(isActionableElement(el(type), 'android')).toBe(false);
+  });
+});
+
+describe('isLayoutOnly', () => {
+  it('is true for an element with no name, testId or control type', () => {
+    expect(isLayoutOnly(el('android.view.ViewGroup'), 'android')).toBe(true);
+    expect(isLayoutOnly(el('RNSScreenView'), 'ios')).toBe(true);
+  });
+
+  it.each([
+    ['a label', el('UIView', { label: 'Balance' })],
+    ['a value', el('UIView', { value: '0.5 ETH' })],
+    ['a testId', el('UIView', { identifier: 'wallet-screen' })],
+    ['a control type', el('SecureTextField')],
+    ['a progress indicator type', el('UIActivityIndicatorView')],
+  ])('is false for an element with %s', (_case, element) => {
+    expect(isLayoutOnly(element, 'ios')).toBe(false);
+  });
+
+  it('is false for every progress indicator the screen settle detects', () => {
+    // Same MOBILE_BUSY_TYPE as isBusyNode (server/screen-settle.ts).
+    for (const type of [
+      'android.widget.ProgressBar',
+      'androidx.core.widget.ContentLoadingProgressBar',
+    ]) {
+      expect(isLayoutOnly(el(type), 'android')).toBe(false);
+      expect(isBusyNode({ ref: 'e1', role: type, name: '' })).toBe(true);
+    }
+    for (const type of [
+      'ActivityIndicator',
+      'ProgressIndicator',
+      'UIActivityIndicatorView',
+    ]) {
+      expect(isLayoutOnly(el(type), 'ios')).toBe(false);
+      expect(isBusyNode({ ref: 'e1', role: type, name: '' })).toBe(true);
+    }
+  });
+});
+
+describe('isUnlabelledTapTarget', () => {
+  const frame = (width: number, height: number) => ({
+    frame: { x: 0, y: 0, width, height },
+  });
+
+  it.each([
+    ['ios', 'RCTViewComponentView'],
+    ['android', 'android.view.ViewGroup'],
+  ] as const)('accepts a %s %s of at least 24x24', (platform, type) => {
+    expect(isUnlabelledTapTarget(el(type, frame(24, 24)), platform)).toBe(true);
+    expect(isUnlabelledTapTarget(el(type, frame(87, 73)), platform)).toBe(true);
+  });
+
+  it.each([
+    [23, 48],
+    [48, 23],
+    [0, 0],
+  ])('rejects a %sx%s frame', (width, height) => {
+    expect(
+      isUnlabelledTapTarget(
+        el('RCTViewComponentView', frame(width, height)),
+        'ios',
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['ios', 'UIView'],
+    ['ios', 'android.view.ViewGroup'],
+    ['android', 'android.widget.FrameLayout'],
+    ['android', 'RCTViewComponentView'],
+  ] as const)('rejects a %s %s', (platform, type) => {
+    expect(isUnlabelledTapTarget(el(type, frame(100, 100)), platform)).toBe(
+      false,
+    );
+  });
+});
+
+describe('pruneLayoutOnly', () => {
+  it('keeps an unlabelled RN view that is a leaf after pruning, without its children', () => {
+    const icon = el(
+      'RCTViewComponentView',
+      { frame: { x: 16, y: 242, width: 87, height: 73 } },
+      [el('RNSVGGroup', {}, [el('RNSVGPath')])],
+    );
+
+    const pruned = pruneLayoutOnly([el('UIView', {}, [icon])], 'ios');
+
+    expect(pruned).toStrictEqual([
+      el('RCTViewComponentView', {
+        frame: { x: 16, y: 242, width: 87, height: 73 },
+      }),
+    ]);
+  });
+
+  it('hoists the kept children of an unlabelled RN view instead of keeping it', () => {
+    const text = el('android.widget.TextView', { value: 'Buy' });
+    const pruned = pruneLayoutOnly(
+      [
+        el(
+          'android.view.ViewGroup',
+          { frame: { x: 0, y: 0, width: 200, height: 200 } },
+          [text],
+        ),
+      ],
+      'android',
+    );
+
+    expect(pruned).toStrictEqual([text]);
+  });
+
+  it('hoists the kept descendants of a layout-only element, in order', () => {
+    const pruned = pruneLayoutOnly(
+      [
+        el('UIView', {}, [
+          el('StaticText', { label: 'A' }),
+          el('UIView', {}, [el('StaticText', { label: 'B' })]),
+          el('StaticText', { label: 'C' }),
+        ]),
+        el('StaticText', { label: 'D' }),
+      ],
+      'ios',
+    );
+
+    expect(pruned.map((node) => node.label)).toStrictEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+    ]);
+  });
+
+  it('drops a layout-only subtree with no kept element', () => {
+    expect(
+      pruneLayoutOnly(
+        [el('UIView', {}, [el('UIView', {}, [el('UIView')])])],
+        'ios',
+      ),
+    ).toStrictEqual([]);
+  });
+
+  it('keeps a container with a testId and nests its kept descendants', () => {
+    const button = el('android.widget.Button', { label: 'Send' });
+    const pruned = pruneLayoutOnly(
+      [
+        el('android.view.ViewGroup', { identifier: 'actions' }, [
+          el('android.view.ViewGroup', {}, [button]),
+          el('android.view.ViewGroup'),
+        ]),
+      ],
+      'android',
+    );
+
+    expect(pruned).toStrictEqual([
+      el('android.view.ViewGroup', { identifier: 'actions' }, [button]),
+    ]);
+    expect(pruned[0]?.children?.[0]).toBe(button);
+  });
+
+  it('removes the children key of a kept element whose children are all dropped', () => {
+    const pruned = pruneLayoutOnly(
+      [el('Button', { label: 'OK' }, [el('UIView')])],
+      'ios',
+    );
+
+    expect(pruned).toStrictEqual([el('Button', { label: 'OK' })]);
+    expect(pruned[0]).not.toHaveProperty('children');
+  });
+
+  it('keeps an unnamed control and a disabled element', () => {
+    const pruned = pruneLayoutOnly(
+      [
+        el('UIView', {}, [
+          el('TextField'),
+          el('Button', { label: 'Next', enabled: false }),
+        ]),
+      ],
+      'ios',
+    );
+
+    expect(pruned).toStrictEqual([
+      el('TextField'),
+      el('Button', { label: 'Next', enabled: false }),
+    ]);
+  });
+
+  it('returns unchanged subtrees by reference and does not modify the input', () => {
+    const row = el('android.view.ViewGroup', { identifier: 'row' }, [
+      el('android.widget.TextView', { value: 'Hi' }),
+    ]);
+    const snapshot = [el('android.widget.FrameLayout', {}, [row])];
+    const before = JSON.stringify(snapshot);
+
+    const pruned = pruneLayoutOnly(snapshot, 'android');
+
+    expect(JSON.stringify(snapshot)).toBe(before);
+    expect(pruned).toStrictEqual([row]);
+    expect(pruned[0]).toBe(row);
+  });
+
+  it('keeps the named, identified, actionable and tap-target elements of a real Android login snapshot', () => {
+    const app = filterAppHierarchy(androidLoginSnapshot as UIElement[], {
+      platform: 'android',
+    });
+    const count = (elements: UIElement[]): number =>
+      elements.reduce(
+        (total, node) => total + 1 + count(node.children ?? []),
+        0,
+      );
+
+    const pruned = pruneLayoutOnly(app, 'android');
+
+    expect(count(app)).toBe(47);
+    // 12 named, identified or actionable elements, plus 3 unlabelled
+    // ViewGroup leaves kept as tap targets.
+    expect(count(pruned)).toBe(15);
+    expect(identifiers(pruned)).toStrictEqual(identifiers(app));
+    expect(labels(pruned)).toStrictEqual(labels(app));
   });
 });
 

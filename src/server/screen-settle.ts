@@ -1,4 +1,5 @@
 import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
+import { MOBILE_BUSY_TYPE } from '../tools/utils/constants.js';
 
 /**
  * React Native adds ", busy" to the accessibility label of an element with
@@ -6,23 +7,6 @@ import type { A11yNodeTrimmed } from '../tools/types/discovery.js';
  * button `"Unlock, busy"` while the wallet unlocks.
  */
 const BUSY_LABEL = /,\s*busy$/iu;
-
-/**
- * Roles of progress indicators, matched as a suffix of the node role (the
- * mobile driver uses the backend element type as the role, see
- * `normalizeSnapshot`):
- *
- * - Android (adb/Appium `class`): `android.widget.ProgressBar` and
- * subclasses whose class name ends in `ProgressBar`.
- * - iOS via Appium XCUITest: `XCUIElementTypeActivityIndicator` and
- * `XCUIElementTypeProgressIndicator`, reported without the
- * `XCUIElementType` prefix (`ActivityIndicator`, `ProgressIndicator`).
- * - iOS via idb `describe-all`: the element `type`, either the AX role
- * without `AX` (`ProgressIndicator`) or the UIKit class name
- * (`UIActivityIndicatorView`, used by React Native `ActivityIndicator`).
- */
-const BUSY_ROLE =
-  /(?:ProgressBar|ActivityIndicator(?:View)?|ProgressIndicator)$/u;
 
 /**
  * Builds a ref-independent signature of a screen, used to tell whether the
@@ -38,13 +22,13 @@ export function screenSignature(nodes: A11yNodeTrimmed[]): string {
 /**
  * Checks whether a node shows that work is in progress: its label ends in
  * ", busy" (React Native busy state), or it is a progress indicator (see
- * `BUSY_ROLE`).
+ * `MOBILE_BUSY_TYPE`).
  *
  * @param node - The accessibility node.
  * @returns True when the node is busy.
  */
 export function isBusyNode(node: A11yNodeTrimmed): boolean {
-  return BUSY_LABEL.test(node.name) || BUSY_ROLE.test(node.role);
+  return BUSY_LABEL.test(node.name) || MOBILE_BUSY_TYPE.test(node.role);
 }
 
 /**

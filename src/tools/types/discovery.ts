@@ -57,7 +57,11 @@ export type A11yNodeTrimmed = {
   disabled?: boolean;
   checked?: boolean;
   expanded?: boolean;
-  path: string[];
+  /**
+   * Browser only: the `role:name` of the ancestor dialogs and headings. Not
+   * set on mobile, where the ancestors are native view classes.
+   */
+  path?: string[];
   testId?: string;
   textContent?: string;
   ambiguous?: boolean;

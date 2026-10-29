@@ -951,6 +951,27 @@ describe('collectTrimmedA11ySnapshot', () => {
     expect(result.refMap.get('e5')).toBe('role=button[name="Submit" s]');
   });
 
+  it('keeps the dialog and heading ancestry in path on the browser', async () => {
+    const a11yTree = [
+      '- main:',
+      '  - heading "Send" [level=2]',
+      '  - dialog "Transaction":',
+      '    - button "Confirm"',
+      '    - button "Confirm"',
+      '    - button "Confirm"',
+    ].join('\n');
+
+    const page = createMockPage({ a11ySnapshot: a11yTree });
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes.map((node) => [node.name, node.path])).toStrictEqual([
+      ['Send', ['heading:Send']],
+      ['Transaction', ['dialog:Transaction']],
+      ['Confirm', ['dialog:Transaction']],
+      ['\u2026 2 more "Confirm" (refs e3\u2013e5)', ['dialog:Transaction']],
+    ]);
+  });
+
   it('does not collapse nodes with same role and name but different paths', async () => {
     const a11yTree = [
       '- main:',
@@ -968,10 +989,10 @@ describe('collectTrimmedA11ySnapshot', () => {
     const result = await collectTrimmedA11ySnapshot(page);
 
     const dialogAButtons = result.nodes.filter(
-      (n) => n.role === 'button' && n.path.some((p) => p.includes('dialog:A')),
+      (n) => n.role === 'button' && n.path?.some((p) => p.includes('dialog:A')),
     );
     const dialogBButtons = result.nodes.filter(
-      (n) => n.role === 'button' && n.path.some((p) => p.includes('dialog:B')),
+      (n) => n.role === 'button' && n.path?.some((p) => p.includes('dialog:B')),
     );
     expect(dialogAButtons.length).toBeGreaterThanOrEqual(1);
     expect(dialogBButtons.length).toBeGreaterThanOrEqual(1);

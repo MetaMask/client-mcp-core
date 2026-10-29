@@ -1109,13 +1109,21 @@ async function enrichNodesWithDOMContext(
 const COLLAPSE_THRESHOLD = 3;
 
 /**
- * Checks whether two string arrays contain identical elements in order.
+ * Checks whether two optional string arrays (an a11y node `path`) contain
+ * identical elements in order. Two absent arrays are equal; an absent array
+ * never equals a present one, even an empty one.
  *
  * @param left - First array to compare.
  * @param right - Second array to compare.
- * @returns True if both arrays are equal.
+ * @returns True if both arrays are absent or equal.
  */
-function arraysEqual(left: string[], right: string[]): boolean {
+function arraysEqual(
+  left: string[] | undefined,
+  right: string[] | undefined,
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
   return (
     left.length === right.length && left.every((val, idx) => val === right[idx])
   );

@@ -2793,10 +2793,11 @@ describe('createServer abort, ref generations and observations', () => {
       // removed, so the P1-09 settle takes its one unchanged retry.
       expect(backend.snapshot).toHaveBeenCalledTimes(3);
       expect(body.observations?.a11y.nodes).toStrictEqual([]);
+      // The button only: the unnamed app window is a layout-only node (P1-14).
       expect(body.observations?.a11y.diff).toStrictEqual({
         added: [],
         removed: [],
-        unchanged: 2,
+        unchanged: 1,
       });
     });
 
