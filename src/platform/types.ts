@@ -64,6 +64,9 @@ export type ScreenCapture = {
 };
 
 export type IPlatformDriver = {
+  /** Release resources owned by this driver. Idempotent; does not shut down the device. */
+  dispose?(): Promise<void>;
+
   /**
    * Waits for the target, then clicks it. When `signal` is aborted while the
    * driver waits for the target, the driver throws the abort reason and does

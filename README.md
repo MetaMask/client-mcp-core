@@ -236,6 +236,16 @@ type ISessionManager = {
 };
 ```
 
+### Session-scoped device teardown
+
+Core captures `sessionManager.getPlatformDriver?.()` before calling the consumer's `cleanup()`, then calls the driver's optional `dispose()` hook. Disposal runs even when consumer cleanup fails. This applies to `mm cleanup`, forced relaunch, failed launch, daemon shutdown, and server startup rollback. A failed disposal fails that cleanup call and is retained for a later attempt. The daemon owns that retention (one per `createServer` instance), so a later `mm cleanup`, forced relaunch, or daemon stop retries it, whatever wrapper of the session manager a tool receives. Only the current session's cleanup and disposal can fail a call. Drivers retained from earlier sessions are retried best-effort and in parallel. When they fail again, the daemon writes a `[WARN]` line to its log, and the current cleanup or launch continues. Tools reach this retention through `ToolContext.cleanupSession()`; without it (a context built outside the daemon), the tools fall back to retention per session-manager object.
+
+`MobilePlatformDriver.dispose()` delegates to its backend's optional `dispose()` hook. With a device-mcp version that implements private IDB companions, this stops only that backend's companion and recording. Older device-mcp versions remain compatible, but do not gain companion teardown. Adopt the device-mcp lifecycle release in the consumer after it is published; this change does not update the core dependency range.
+
+Consumers must expose a session-owned driver through `getPlatformDriver()` and create a fresh driver/backend for each launch. If launch fails before the driver is exposed, the consumer must dispose that locally held driver in its own failure path. Direct calls to a consumer's `cleanup()` also remain the consumer's responsibility.
+
+`mm cleanup --shutdown` additionally stops the worktree's daemon. Driver disposal does not shut down a simulator, stop Metro, or terminate shared IDB companions. Use separate worktrees/daemons and explicit device IDs for independent agent sessions. Separate companions isolate connection teardown even for the same simulator; app state on that simulator remains shared.
+
 ### Workflow Context & Capabilities
 
 The `WorkflowContext` aggregates optional capabilities that consumers inject through the `contextFactory`. The tool system checks for capabilities at runtime — tools that depend on missing capabilities return clear errors.

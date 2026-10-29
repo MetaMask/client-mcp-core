@@ -2,8 +2,9 @@ import type { LaunchInput, LaunchPrerequisite, LaunchResult } from './types';
 import { ErrorCodes } from './types';
 import type { ErrorCode } from './types/errors.js';
 import { createToolError, createToolSuccess } from './utils.js';
+import { cleanupSession } from '../server/cleanup-session.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
-import { extractErrorMessage } from '../utils';
+import { debugWarn, extractErrorMessage } from '../utils';
 
 const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
   {
@@ -35,11 +36,13 @@ export async function launchTool(
   context: ToolContext,
 ): Promise<ToolResponse<LaunchResult>> {
   const { sessionManager } = context;
+  const cleanup = async (): Promise<boolean> =>
+    context.cleanupSession?.() ?? cleanupSession(sessionManager);
 
   try {
     if (sessionManager.hasActiveSession()) {
       if (input.force) {
-        await sessionManager.cleanup();
+        await cleanup();
       } else {
         return createToolError(
           ErrorCodes.MM_SESSION_ALREADY_RUNNING,
@@ -52,7 +55,18 @@ export async function launchTool(
       sessionManager.setContext(input.context);
     }
 
-    const result = await sessionManager.launch(input);
+    const result = await sessionManager
+      .launch(input)
+      .catch(async (error: unknown) => {
+        // Preserve the launch error after best-effort cleanup of a partial session.
+        try {
+          await cleanup();
+        } catch (rollbackError) {
+          // The original launch error is the actionable failure.
+          debugWarn('launch.rollback', rollbackError);
+        }
+        throw error;
+      });
     const isProdMode = sessionManager.getEnvironmentMode() === 'prod';
 
     return createToolSuccess({

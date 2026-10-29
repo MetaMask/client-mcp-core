@@ -11,6 +11,7 @@
 import { vi } from 'vitest';
 
 import type { ExtensionState } from '../../capabilities/types.js';
+import type { IPlatformDriver } from '../../platform/types.js';
 import type {
   TrackedPage,
   SessionLaunchResult,
@@ -119,6 +120,13 @@ export function createMockSessionManager(
     getChainCapability: vi.fn().mockReturnValue(undefined),
     getContractSeedingCapability: vi.fn().mockReturnValue(undefined),
     getStateSnapshotCapability: vi.fn().mockReturnValue(undefined),
+
+    // Platform Driver
+    getPlatformDriver: vi
+      .fn<() => IPlatformDriver | undefined>()
+      .mockReturnValue(undefined) as
+      | (() => IPlatformDriver | undefined)
+      | undefined,
 
     // Environment
     setWorkflowContext: vi.fn(),

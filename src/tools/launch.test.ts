@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { launchTool } from './launch.js';
 import type { LaunchInput } from './types';
 import type { ExtensionState } from '../capabilities/types.js';
+import { DriverLifecycle } from '../server/cleanup-session.js';
 import type { SessionLaunchResult } from '../server/session-manager.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
@@ -211,6 +212,9 @@ describe('launchTool', () => {
     it('cleans up and relaunches when force is true', async () => {
       const context = createMockContext({ hasActive: true });
       vi.spyOn(context.sessionManager, 'cleanup').mockResolvedValue(true);
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      context.sessionManager.getPlatformDriver = () =>
+        ({ dispose }) as unknown as NonNullable<ToolContext['driver']>;
 
       const result = await launchTool(
         { stateMode: 'default', force: true },
@@ -219,11 +223,91 @@ describe('launchTool', () => {
 
       expect(result.ok).toBe(true);
       expect(context.sessionManager.cleanup).toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect(dispose.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(context.sessionManager.launch).mock.invocationCallOrder[0],
+      );
       expect(context.sessionManager.launch).toHaveBeenCalled();
+    });
+
+    it('relaunches with force while a stuck driver from an earlier session keeps failing', async () => {
+      const context = createMockContext({ hasActive: true });
+      const lifecycle = new DriverLifecycle();
+      const { sessionManager } = context;
+      const stuck = vi.fn().mockRejectedValue(new Error('stuck companion'));
+      sessionManager.getPlatformDriver = () =>
+        ({ dispose: stuck }) as unknown as NonNullable<ToolContext['driver']>;
+      const serverContext: ToolContext = {
+        ...context,
+        cleanupSession: async () => lifecycle.cleanupSession(sessionManager),
+      };
+      await expect(
+        lifecycle.cleanupSession(sessionManager),
+      ).rejects.toThrowError('stuck companion');
+
+      const healthy = vi.fn().mockResolvedValue(undefined);
+      sessionManager.getPlatformDriver = () =>
+        ({ dispose: healthy }) as unknown as NonNullable<ToolContext['driver']>;
+      const result = await launchTool(
+        { stateMode: 'default', force: true },
+        serverContext,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(sessionManager.launch).toHaveBeenCalledTimes(1);
+      expect(healthy).toHaveBeenCalledTimes(1);
+      expect(stuck).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('launch failures', () => {
+    it('disposes an exposed partial-launch driver even if consumer cleanup fails', async () => {
+      const context = createMockContext({ hasActive: false });
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      context.sessionManager.getPlatformDriver = () =>
+        ({ dispose }) as unknown as NonNullable<ToolContext['driver']>;
+      vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
+        Object.assign(new Error('device failed'), {
+          code: ErrorCodes.MM_DEPENDENCIES_MISSING,
+        }),
+      );
+      vi.spyOn(context.sessionManager, 'cleanup').mockRejectedValue(
+        new Error('cleanup failed'),
+      );
+
+      const result = await launchTool({ stateMode: 'default' }, context);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: ErrorCodes.MM_DEPENDENCIES_MISSING,
+          message: 'device failed',
+        },
+      });
+    });
+
+    it('uses the server-owned cleanup for forced and failed launches', async () => {
+      const serverCleanup = vi.fn().mockResolvedValue(true);
+      const forced = createMockContext({ hasActive: true });
+      await launchTool(
+        { stateMode: 'default', force: true },
+        { ...forced, cleanupSession: serverCleanup },
+      );
+      expect(serverCleanup).toHaveBeenCalledTimes(1);
+      expect(forced.sessionManager.cleanup).not.toHaveBeenCalled();
+
+      const failed = createMockContext({ hasActive: false });
+      vi.spyOn(failed.sessionManager, 'launch').mockRejectedValue(
+        new Error('device failed'),
+      );
+      const result = await launchTool(
+        { stateMode: 'default' },
+        { ...failed, cleanupSession: serverCleanup },
+      );
+      expect(result.ok).toBe(false);
+      expect(serverCleanup).toHaveBeenCalledTimes(2);
+    });
+
     it('returns port conflict error for EADDRINUSE', async () => {
       const context = createMockContext({ hasActive: false });
       vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(

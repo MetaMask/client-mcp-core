@@ -92,6 +92,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   #windowSize: Viewport | undefined;
 
+  #disposing: Promise<void> | undefined;
+
   /**
    * @param backend - The device-mcp backend to delegate to.
    * @param bundleId - The app bundle ID for getAppState calls.
@@ -110,6 +112,20 @@ export class MobilePlatformDriver implements IPlatformDriver {
     this.#bundleId = bundleId;
     this.#hermesSession = new HermesSession({ platform: backend.platform });
     this.#excludeDevOverlay = options.excludeDevOverlay ?? true;
+  }
+
+  /** Release only this backend's resources; compatible with older device-mcp releases. */
+  async dispose(): Promise<void> {
+    const backend = this.#backend as DeviceBackend & {
+      dispose?(): Promise<void>;
+    };
+    this.#disposing ??= Promise.resolve()
+      .then(async () => backend.dispose?.())
+      .catch((error: unknown) => {
+        this.#disposing = undefined;
+        throw error;
+      });
+    await this.#disposing;
   }
 
   /**

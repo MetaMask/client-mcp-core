@@ -511,6 +511,8 @@ describe('createServer integration', () => {
     await server.stop();
 
     const mockSM = createMockSessionManager();
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    mockSM.getPlatformDriver.mockReturnValue({ dispose });
     const customServer = createServer(
       buildConfig({
         sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
@@ -524,6 +526,7 @@ describe('createServer integration', () => {
     try {
       await expect(customServer.start()).rejects.toThrowError(/EACCES/u);
       expect(mockSM.cleanup).toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledTimes(1);
     } finally {
       await fs.chmod(tmpDir, 0o755).catch(() => {});
     }
@@ -620,6 +623,126 @@ describe('createServer integration', () => {
   it('stop() is idempotent', async () => {
     await server.stop();
     expect(await server.stop()).toBeUndefined();
+  });
+
+  it('disposes the session driver on daemon stop even when consumer cleanup fails', async () => {
+    await server.stop();
+    const mockSM = createMockSessionManager();
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    mockSM.getPlatformDriver.mockReturnValue({ dispose });
+    mockSM.cleanup.mockRejectedValue(new Error('app close failed'));
+    const customServer = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+      }),
+    );
+    await customServer.start();
+    await customServer.stop();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(mockSM.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
+      dispose.mock.invocationCallOrder[0],
+    );
+  });
+
+  describe('driver disposal retries (server-owned)', () => {
+    function flakyDriverSession(): {
+      mockSM: ReturnType<typeof createMockSessionManager>;
+      dispose: ReturnType<typeof vi.fn>;
+    } {
+      const mockSM = createMockSessionManager();
+      const dispose = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('companion stop timed out'))
+        .mockResolvedValue(undefined);
+      let driver:
+        | { dispose: typeof dispose; getPlatform: () => 'ios' }
+        | undefined = { dispose, getPlatform: () => 'ios' };
+      mockSM.hasActiveSession.mockImplementation(() => driver !== undefined);
+      mockSM.getPlatformDriver.mockImplementation(() => driver);
+      mockSM.cleanup.mockImplementation(async () => {
+        // The consumer resets its session state, dropping the driver.
+        driver = undefined;
+        return true;
+      });
+      return { mockSM, dispose };
+    }
+
+    async function postCleanup(port: number): Promise<number> {
+      const res = await httpRequest(`http://127.0.0.1:${port}/tool/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      await res.json();
+      return res.status;
+    }
+
+    it('retries a failed disposal on the next /tool/cleanup', async () => {
+      await server.stop();
+      const { mockSM, dispose } = flakyDriverSession();
+      const customServer = createServer(
+        buildConfig({
+          sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        }),
+      );
+      const started = await customServer.start();
+      try {
+        expect(await postCleanup(started.port)).toBe(500);
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(await postCleanup(started.port)).toBe(200);
+        expect(dispose).toHaveBeenCalledTimes(2);
+      } finally {
+        await customServer.stop();
+      }
+      expect(dispose).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries a failed /tool/cleanup disposal on daemon stop', async () => {
+      await server.stop();
+      const { mockSM, dispose } = flakyDriverSession();
+      const customServer = createServer(
+        buildConfig({
+          sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        }),
+      );
+      const started = await customServer.start();
+      expect(await postCleanup(started.port)).toBe(500);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await customServer.stop();
+      expect(dispose).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps /tool/cleanup healthy and logs on stop while an older driver stays stuck', async () => {
+      await server.stop();
+      const { mockSM, dispose } = flakyDriverSession();
+      dispose.mockReset();
+      dispose.mockRejectedValue(new Error('stuck companion'));
+      const logPath = path.join(tmpDir, 'stuck-driver.log');
+      const customServer = createServer(
+        buildConfig({
+          sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+          logFilePath: logPath,
+        }),
+      );
+      const started = await customServer.start();
+      expect(await postCleanup(started.port)).toBe(500);
+      expect(await postCleanup(started.port)).toBe(200);
+      expect(dispose).toHaveBeenCalledTimes(2);
+
+      await customServer.stop();
+      expect(dispose).toHaveBeenCalledTimes(3);
+      await vi.waitFor(async () => {
+        const log = await fs.readFile(logPath, 'utf-8');
+        expect(log).toContain(
+          '[WARN] Retained driver disposal failed again: stuck companion',
+        );
+        expect(log).toContain('[INFO] Daemon stopped');
+      });
+      const log = await fs.readFile(logPath, 'utf-8');
+      // One warning per retry: the second /tool/cleanup and stop().
+      expect(log.match(/\[WARN\] Retained driver disposal/gu)).toHaveLength(2);
+      expect(log).not.toContain('[ERROR] Cleanup failed');
+    });
   });
 
   describe('POST /tool/:name input validation', () => {

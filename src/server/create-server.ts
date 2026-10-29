@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { DriverLifecycle } from './cleanup-session.js';
 import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RefStore } from './ref-store.js';
@@ -263,6 +264,17 @@ export function createServer(config: ServerConfig): ServerInstance {
   const queue = new RequestQueue(config.requestTimeoutMs);
   const refStore = new RefStore(config.sessionManager);
   const nonce = randomUUID();
+  // One owner for driver disposal retries across tools, stop() and rollback.
+  // Keyed by this server, not by the session manager object a caller sees.
+  // Retries of drivers from earlier sessions never fail the current call, so
+  // log them here to keep repeated failures visible.
+  const driverLifecycle = new DriverLifecycle({
+    onStaleDisposalError: (error): void =>
+      appendLog(
+        config.logFilePath,
+        `[WARN] Retained driver disposal failed again: ${extractErrorMessage(error)}`,
+      ),
+  });
 
   let httpServer: http.Server | null = null;
   let worktreeRoot = '';
@@ -359,6 +371,8 @@ export function createServer(config: ServerConfig): ServerInstance {
       toolRegistry,
       driver,
       signal,
+      cleanupSession: async () =>
+        driverLifecycle.cleanupSession(config.sessionManager),
     };
   }
 
@@ -942,7 +956,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           });
         }
         try {
-          await config.sessionManager.cleanup();
+          await driverLifecycle.cleanupSession(config.sessionManager);
         } catch {
           // Swallow — we're already propagating startupError.
         }
@@ -994,7 +1008,7 @@ export function createServer(config: ServerConfig): ServerInstance {
 
       // 4. Clean up session
       try {
-        await config.sessionManager.cleanup();
+        await driverLifecycle.cleanupSession(config.sessionManager);
       } catch (error) {
         appendLog(
           config.logFilePath,

@@ -34,6 +34,12 @@ export type ToolContext = {
    * stop. Absent when the context was not built by the daemon.
    */
   signal?: AbortSignal;
+  /**
+   * Cleans up the session and disposes its driver through the server-owned
+   * lifecycle, so failed disposals are retried by later cleanups and by
+   * daemon stop. Absent when the context was not built by the daemon.
+   */
+  cleanupSession?: () => Promise<boolean>;
 };
 
 /**
