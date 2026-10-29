@@ -1,12 +1,17 @@
 import type { Page, Locator, CDPSession } from '@playwright/test';
 
-import { callInIsolatedWorld, withCdpSession } from './cdp.js';
+import {
+  callInIsolatedWorld,
+  callOnNodeInIsolatedWorld,
+  withCdpSession,
+} from './cdp.js';
 import {
   TESTID_COLLECT_TIMEOUT_MS,
   TEXT_PREVIEW_MAX_LENGTH,
 } from './constants.js';
 import {
   animationsSettled,
+  buildUniqueSelectorInPage,
   collectTestIdsInPage,
   waitUntilInPage,
 } from './in-page.js';
@@ -321,11 +326,41 @@ type CdpAXNode = {
   backendDOMNodeId?: number;
 };
 
-type RefTarget = {
-  selector: string;
-  backendDOMNodeId?: number;
+/**
+ * A node of the snapshot that gets a ref, in AX tree order.
+ */
+type RefCandidate = {
   role: string;
   name: string;
+  backendDOMNodeId?: number;
+  /**
+   * False for nodes of a scoped snapshot that are outside the root subtree
+   * (relatives returned by the `getPartialAXTree` fallback).
+   */
+  inScope: boolean;
+};
+
+/**
+ * RefMap value for an element inside a closed shadow root, which no
+ * Playwright selector can reach (see `buildUniqueSelectorInPage`).
+ * Resolving such a ref throws at once instead of matching another element.
+ */
+export const UNREACHABLE_REF_SELECTOR = 'mm-unreachable=closed-shadow-root';
+
+/**
+ * Maximum number of DOM selector lookups (`buildSelectorFromBackendNode`)
+ * in flight at the same time during one snapshot.
+ */
+const DOM_SELECTOR_CONCURRENCY = 16;
+
+/**
+ * The element a scoped snapshot was taken from.
+ */
+type SnapshotScope = {
+  /** Playwright selector for the root element (`css=<root> >> nth=0`). */
+  selector: string;
+  /** Backend DOM node id of the root element. */
+  backendNodeId: number;
 };
 
 /**
@@ -514,19 +549,20 @@ async function resolveRootBackendNodeId(
  * @param page The Playwright page to snapshot.
  * @param cdpSession The active CDP session.
  * @param rootSelector Optional CSS selector that scopes the snapshot.
- * @returns The normalized raw accessibility tree.
+ * @returns The normalized raw accessibility tree, and the backend node id of
+ * the root element when the snapshot is scoped.
  */
 async function collectRawAxTree(
   page: Page,
   cdpSession: CDPSession,
   rootSelector?: string,
-): Promise<RawA11yNode[]> {
+): Promise<{ roots: RawA11yNode[]; rootBackendNodeId?: number }> {
   await cdpSession.send('Accessibility.enable');
 
   try {
     if (!rootSelector) {
       const result = await cdpSession.send('Accessibility.getFullAXTree');
-      return buildAxTree(result.nodes);
+      return { roots: buildAxTree(result.nodes) };
     }
 
     const backendNodeId = await resolveRootBackendNodeId(
@@ -535,23 +571,32 @@ async function collectRawAxTree(
       rootSelector,
     );
     if (backendNodeId === null) {
-      return [];
+      return { roots: [] };
     }
 
     try {
       const result = await cdpSession.send('Accessibility.queryAXTree', {
         backendNodeId,
       });
-      return buildAxTree(result.nodes);
+      return {
+        roots: buildAxTree(result.nodes),
+        rootBackendNodeId: backendNodeId,
+      };
     } catch (error) {
       debugWarn(
         `queryAXTree failed for selector="${rootSelector}", falling back to getPartialAXTree:`,
         error,
       );
+      // getPartialAXTree also returns relatives of the root (ancestors,
+      // siblings). Their role selectors stay page-wide, so ambiguous matches
+      // fail in strict mode instead of being narrowed to the root subtree.
       const result = await cdpSession.send('Accessibility.getPartialAXTree', {
         backendNodeId,
       });
-      return buildAxTree(result.nodes);
+      return {
+        roots: buildAxTree(result.nodes),
+        rootBackendNodeId: backendNodeId,
+      };
     }
   } finally {
     await cdpSession.send('Accessibility.disable').catch(() => undefined);
@@ -592,250 +637,339 @@ function shouldIncludeNode(node: RawA11yNode): boolean {
 /**
  * Builds the most stable Playwright selector available for a DOM-backed AX node.
  *
- * @param cdpSession The active CDP session.
+ * Runs `buildUniqueSelectorInPage` on the node in an isolated world of the
+ * page (`callOnNodeInIsolatedWorld`): the Extension's main world scuttles
+ * globals with LavaMoat, so page code must not run there. A unique
+ * `data-testid`, else a unique `id`, else the shortest unique `nth-of-type`
+ * path, checked the way Playwright's CSS engine matches (open shadow roots
+ * included). Elements inside open shadow roots get a chained selector
+ * (`css=<host> >> css=<inside>`), and elements inside a closed shadow root
+ * get `UNREACHABLE_REF_SELECTOR`. There is no selector (`undefined`) when
+ * no candidate is unique, and for detached elements.
+ *
+ * @param page The Playwright page.
  * @param backendDOMNodeId The backend DOM node id for the target element.
  * @returns A Playwright-compatible selector when one can be synthesized.
  */
 async function buildSelectorFromBackendNode(
-  cdpSession: CDPSession,
+  page: Page,
   backendDOMNodeId: number,
 ): Promise<string | undefined> {
-  const resolvedNode = await cdpSession.send('DOM.resolveNode', {
-    backendNodeId: backendDOMNodeId,
-    objectGroup: `mm-discovery-${backendDOMNodeId}`,
-  });
-  const { objectId } = resolvedNode.object;
-
-  if (!objectId) {
-    return undefined;
-  }
-
-  try {
-    const selectorResult = await cdpSession.send('Runtime.callFunctionOn', {
-      objectId,
-      returnByValue: true,
-      functionDeclaration: `function() {
-        const escapeCss = (value) => {
-          if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') {
-            return globalThis.CSS.escape(String(value));
-          }
-
-          return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
-        };
-
-        if (!(this instanceof Element)) {
-          return null;
-        }
-
-        const testId = this.getAttribute('data-testid');
-        if (testId) {
-          const candidate = '[data-testid="' + escapeCss(testId) + '"]';
-          if (document.querySelectorAll(candidate).length === 1) {
-            return candidate;
-          }
-        }
-
-        if (this.id) {
-          const candidate = '#' + escapeCss(this.id);
-          if (document.querySelectorAll(candidate).length === 1) {
-            return candidate;
-          }
-        }
-
-        const parts = [];
-        let current = this;
-
-        while (current && current instanceof Element) {
-          let selector = current.localName;
-          if (!selector) {
-            return null;
-          }
-
-          if (current.parentElement) {
-            const siblings = Array.from(current.parentElement.children).filter(
-              (sibling) => sibling.localName === current.localName,
-            );
-
-            if (siblings.length > 1) {
-              selector += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
-            }
-          }
-
-          parts.unshift(selector);
-          const joined = parts.join(' > ');
-
-          try {
-            if (document.querySelectorAll(joined).length === 1) {
-              return joined;
-            }
-          } catch {
-            return null;
-          }
-
-          current = current.parentElement;
-        }
-
-        return parts.join(' > ');
-      }`,
-    });
-
-    return typeof selectorResult.result.value === 'string'
-      ? selectorResult.result.value
-      : undefined;
-  } finally {
-    await cdpSession
-      .send('Runtime.releaseObjectGroup', {
-        objectGroup: `mm-discovery-${backendDOMNodeId}`,
-      })
-      .catch(() => undefined);
-  }
+  const selector = await callOnNodeInIsolatedWorld<unknown>(
+    page,
+    backendDOMNodeId,
+    buildUniqueSelectorInPage.toString(),
+  );
+  return typeof selector === 'string' ? selector : undefined;
 }
 
 /**
- * Builds the selector target that backs a trimmed accessibility ref.
+ * Runs an async function over items with at most `limit` calls in flight.
  *
- * Standard included roles (button, link, heading, etc.) use a cheap ARIA
- * selector built from the role and name — no CDP round-trips required.
- * Only generic or other non-standard nodes pay the cost of DOM selector
- * resolution, since they cannot produce a meaningful ARIA selector.
- *
- * @param cdpSession The active CDP session.
- * @param node The normalized accessibility node.
- * @param role The normalized role for the node.
- * @param name The accessible name for the node.
- * @returns The selector target used to populate the ref map.
+ * @param items The items.
+ * @param limit The maximum number of concurrent calls.
+ * @param fn The function to run for each item.
+ * @returns The results, in the order of `items`.
  */
-async function buildRefTarget(
-  cdpSession: CDPSession,
-  node: RawA11yNode,
-  role: string,
-  name: string,
-): Promise<RefTarget | null> {
-  if (INCLUDED_ROLES_SET.has(role)) {
-    return {
-      selector: buildA11ySelector(role as IncludedRole, name),
-      backendDOMNodeId: node.backendDOMNodeId,
-      role,
-      name,
-    };
-  }
-
-  let domSelector: string | undefined;
-
-  if (node.backendDOMNodeId !== null && node.backendDOMNodeId !== undefined) {
-    try {
-      domSelector = await buildSelectorFromBackendNode(
-        cdpSession,
-        node.backendDOMNodeId,
-      );
-    } catch (error) {
-      debugWarn(
-        `Failed to resolve DOM selector for backendDOMNodeId=${node.backendDOMNodeId} (role=${role}, name=${name}):`,
-        error,
-      );
+async function mapWithConcurrency<TItem, TResult>(
+  items: TItem[],
+  limit: number,
+  fn: (item: TItem) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results: TResult[] = new Array(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await fn(items[index]);
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+}
 
-  const selector =
-    domSelector ?? (name ? `text=${JSON.stringify(name)}` : undefined);
+/**
+ * Builds DOM selectors (see `buildSelectorFromBackendNode`) for backend DOM
+ * node ids, at most `DOM_SELECTOR_CONCURRENCY` at a time. A failed lookup
+ * is logged and gives no selector.
+ *
+ * @param page The Playwright page.
+ * @param backendNodeIds The backend DOM node ids.
+ * @returns The selector of each id that has one.
+ */
+async function buildDomSelectors(
+  page: Page,
+  backendNodeIds: number[],
+): Promise<Map<number, string>> {
+  const selectors = await mapWithConcurrency(
+    backendNodeIds,
+    DOM_SELECTOR_CONCURRENCY,
+    async (backendNodeId) => {
+      try {
+        return await buildSelectorFromBackendNode(page, backendNodeId);
+      } catch (error) {
+        debugWarn(
+          `Failed to resolve DOM selector for backendDOMNodeId=${backendNodeId}:`,
+          error,
+        );
+        return undefined;
+      }
+    },
+  );
+  const result = new Map<number, string>();
+  backendNodeIds.forEach((backendNodeId, index) => {
+    const selector = selectors[index];
+    if (selector) {
+      result.set(backendNodeId, selector);
+    }
+  });
+  return result;
+}
 
-  if (!domSelector && selector) {
+/**
+ * Builds the selector of every ref of a snapshot, so that each ref matches
+ * exactly one element or, when that cannot be guaranteed, makes the action
+ * fail in Playwright's strict mode instead of hitting another element.
+ *
+ * - Included roles (button, link, heading, ...) use
+ * `role=<role>[name="<name>" s]` (exact, case-sensitive name), which needs
+ * no CDP round-trip. It matches every element with that role and name, so
+ * when several refs share it, each of them gets a DOM selector from
+ * `buildSelectorFromBackendNode` (verified unique the way Playwright's
+ * CSS engine matches). A member without one (no backend node, resolve
+ * failure, no unique path) keeps the plain role selector, so an action on
+ * it fails in Playwright's strict mode. A member inside a closed shadow
+ * root gets `UNREACHABLE_REF_SELECTOR`: Playwright cannot see it, so its
+ * role selector could match exactly one other member. There is
+ * deliberately no `>> nth=<k>` fallback: Chromium's AX tree and
+ * Playwright's role engine do not always agree on the members of a group
+ * and their order (a modal `<dialog>` or `inert` removes the blocked
+ * elements from the AX tree while Playwright still counts them; Playwright
+ * visits shadow roots after the light DOM while the AX tree uses flat-tree
+ * order, slotted content included; aria-owns moves owned elements in the
+ * AX tree only), so an index could act on another element.
+ * - Generic nodes use a DOM selector, else `text="<name>"`. `text=` also
+ * matches wrappers of the text and elements that are not refs of this
+ * snapshot, so an action on an ambiguous text ref fails in strict mode.
+ *
+ * DOM lookups run concurrently, at most `DOM_SELECTOR_CONCURRENCY` at a
+ * time.
+ *
+ * Scoped snapshots: the AX tree only holds the subtree of the root, so role
+ * and text selectors get the root as a prefix
+ * (`css=<root> >> nth=0 >> role=...`). DOM selectors are unique in the
+ * document and get no prefix. Playwright's
+ * role engine does not match the scope element itself, so the root node
+ * gets the root selector. With the `getPartialAXTree` fallback, the tree
+ * also holds relatives of the root (ancestors, siblings). Their role
+ * selectors stay page-wide, without DOM lookup, so an action on such a ref
+ * fails in strict mode when it matches more than one element.
+ *
+ * @param page The Playwright page.
+ * @param candidates The nodes that can get a ref, in AX tree order.
+ * @param scope The root of a scoped snapshot.
+ * @returns The selector of each candidate (same order), or null when the
+ * candidate has no selector and gets no ref.
+ */
+async function buildRefSelectors(
+  page: Page,
+  candidates: RefCandidate[],
+  scope?: SnapshotScope,
+): Promise<(string | null)[]> {
+  const scoped = (selector: string, inScope: boolean): string =>
+    scope && inScope ? `${scope.selector} >> ${selector}` : selector;
+  const isScopeRoot = (candidate: RefCandidate): boolean =>
+    scope !== undefined && candidate.backendDOMNodeId === scope.backendNodeId;
+
+  // Role selectors, and how many in-scope refs share each one.
+  const roleSelectors = candidates.map((candidate) =>
+    INCLUDED_ROLES_SET.has(candidate.role) && !isScopeRoot(candidate)
+      ? scoped(
+          buildA11ySelector(candidate.role as IncludedRole, candidate.name),
+          candidate.inScope,
+        )
+      : undefined,
+  );
+  const groupSizes = new Map<string, number>();
+  candidates.forEach((candidate, index) => {
+    const selector = roleSelectors[index];
+    if (selector !== undefined && candidate.inScope) {
+      groupSizes.set(selector, (groupSizes.get(selector) ?? 0) + 1);
+    }
+  });
+  const isDuplicate = (index: number): boolean => {
+    const selector = roleSelectors[index];
+    return (
+      selector !== undefined &&
+      candidates[index].inScope &&
+      (groupSizes.get(selector) ?? 0) > 1
+    );
+  };
+
+  // DOM lookups: generic nodes, and refs that share a role selector.
+  const lookupIds = new Set<number>();
+  candidates.forEach(({ role, backendDOMNodeId }, index) => {
+    if (
+      backendDOMNodeId !== undefined &&
+      backendDOMNodeId !== null &&
+      (!INCLUDED_ROLES_SET.has(role) || isDuplicate(index))
+    ) {
+      lookupIds.add(backendDOMNodeId);
+    }
+  });
+  const domSelectors = await buildDomSelectors(page, [...lookupIds]);
+
+  return candidates.map((candidate, index) => {
+    const roleSelector = roleSelectors[index];
+    if (roleSelector !== undefined && !isDuplicate(index)) {
+      return roleSelector;
+    }
+
+    const domSelector =
+      candidate.backendDOMNodeId === undefined
+        ? undefined
+        : domSelectors.get(candidate.backendDOMNodeId);
+    if (domSelector) {
+      return domSelector;
+    }
+    if (roleSelector !== undefined) {
+      // Duplicate without a DOM selector: strict mode makes an action on
+      // it fail instead of acting on another member of the group.
+      return roleSelector;
+    }
+    if (scope && isScopeRoot(candidate)) {
+      return scope.selector;
+    }
+    if (!candidate.name) {
+      return null;
+    }
     debugWarn(
-      `Using text= fallback selector for generic node (role=${role}, name=${name}). ` +
+      `Using text= fallback selector for generic node (role=${candidate.role}, name=${candidate.name}). ` +
         `DOM resolution failed; targeting by visible text is less stable.`,
       undefined,
     );
-  }
-
-  if (!selector) {
-    return null;
-  }
-
-  return {
-    selector,
-    backendDOMNodeId: node.backendDOMNodeId,
-    role,
-    name,
-  };
+    return scoped(buildTextSelector(candidate.name), candidate.inScope);
+  });
 }
 
 /**
  * Trims a normalized AX tree into the public accessibility snapshot shape.
  *
- * @param cdpSession The active CDP session.
+ * @param page The Playwright page.
  * @param parsedRoots The normalized raw accessibility tree roots.
+ * @param scope The root of a scoped snapshot.
  * @returns The trimmed nodes and their backing ref map.
  */
 async function trimAxTreeToA11yNodes(
-  cdpSession: CDPSession,
+  page: Page,
   parsedRoots: RawA11yNode[],
+  scope?: SnapshotScope,
 ): Promise<{
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
 }> {
-  const trimmedNodes: A11yNodeTrimmed[] = [];
-  const refMap = new Map<string, string>();
-  let refCounter = 1;
+  const candidates: RefCandidate[] = [];
+  const candidateNodes: Omit<A11yNodeTrimmed, 'ref'>[] = [];
+
+  // queryAXTree returns only the root subtree, which may not hold the root
+  // node itself (when it is ignored). Every node is then in scope. When the
+  // root node is present, only it and its descendants are.
+  const rootInTree =
+    scope !== undefined &&
+    containsBackendNode(parsedRoots, scope.backendNodeId);
 
   /**
-   * Walks the normalized tree and emits trimmed nodes with deterministic refs.
+   * Walks the normalized tree and collects the nodes that can get a ref.
    *
    * @param node The current node being visited.
    * @param ancestorPath The semantic ancestor path collected so far.
-   * @returns Resolves once the current subtree has been processed.
+   * @param insideRoot Whether an ancestor is the scope root.
    */
-  async function traverseNode(
+  function traverseNode(
     node: RawA11yNode,
     ancestorPath: string[],
-  ): Promise<void> {
+    insideRoot: boolean,
+  ): void {
     const role = node.role?.toLowerCase() ?? '';
     const name = node.name ?? '';
     const isPathNode = role === 'dialog' || role === 'heading';
     const childPath = isPathNode
       ? [...ancestorPath, `${role}:${name}`]
       : ancestorPath;
+    const inScope =
+      !rootInTree ||
+      insideRoot ||
+      node.backendDOMNodeId === scope?.backendNodeId;
 
     if (shouldIncludeNode(node)) {
-      const refTarget = await buildRefTarget(cdpSession, node, role, name);
+      const trimmedNode: Omit<A11yNodeTrimmed, 'ref'> = {
+        role,
+        name,
+        path: isPathNode ? childPath : ancestorPath,
+      };
 
-      if (refTarget) {
-        const ref = `e${refCounter}`;
-        refCounter += 1;
-
-        const trimmedNode: A11yNodeTrimmed = {
-          ref,
-          role,
-          name,
-          path: isPathNode ? childPath : ancestorPath,
-        };
-
-        if (node.disabled !== undefined) {
-          trimmedNode.disabled = node.disabled;
-        }
-        if (node.checked !== undefined) {
-          trimmedNode.checked = node.checked === true;
-        }
-        if (node.expanded !== undefined) {
-          trimmedNode.expanded = node.expanded;
-        }
-
-        trimmedNodes.push(trimmedNode);
-        refMap.set(ref, refTarget.selector);
+      if (node.disabled !== undefined) {
+        trimmedNode.disabled = node.disabled;
       }
+      if (node.checked !== undefined) {
+        trimmedNode.checked = node.checked === true;
+      }
+      if (node.expanded !== undefined) {
+        trimmedNode.expanded = node.expanded;
+      }
+
+      candidateNodes.push(trimmedNode);
+      candidates.push({
+        role,
+        name,
+        backendDOMNodeId: node.backendDOMNodeId,
+        inScope,
+      });
     }
 
-    if (node.children) {
-      for (const child of node.children) {
-        await traverseNode(child, childPath);
-      }
+    for (const child of node.children ?? []) {
+      traverseNode(child, childPath, inScope);
     }
   }
 
   for (const root of parsedRoots) {
-    await traverseNode(root, []);
+    traverseNode(root, [], false);
   }
 
-  return { nodes: trimmedNodes, refMap };
+  const selectors = await buildRefSelectors(page, candidates, scope);
+  const nodes: A11yNodeTrimmed[] = [];
+  const refMap = new Map<string, string>();
+  selectors.forEach((selector, index) => {
+    if (selector === null) {
+      return;
+    }
+    const ref = `e${nodes.length + 1}`;
+    nodes.push({ ref, ...candidateNodes[index] });
+    refMap.set(ref, selector);
+  });
+
+  return { nodes, refMap };
+}
+
+/**
+ * Checks whether a tree holds the node of a backend DOM node id.
+ *
+ * @param nodes The tree roots.
+ * @param backendNodeId The backend DOM node id.
+ * @returns True when a node of the tree has that id.
+ */
+function containsBackendNode(
+  nodes: RawA11yNode[],
+  backendNodeId: number,
+): boolean {
+  return nodes.some(
+    (node) =>
+      node.backendDOMNodeId === backendNodeId ||
+      containsBackendNode(node.children ?? [], backendNodeId),
+  );
 }
 
 /**
@@ -853,15 +987,28 @@ export async function collectTrimmedA11ySnapshot(
   refMap: Map<string, string>;
 }> {
   return withCdpSession(page, async (cdpSession) => {
-    const parsedRoots = await collectRawAxTree(page, cdpSession, rootSelector);
+    const { roots: parsedRoots, rootBackendNodeId } = await collectRawAxTree(
+      page,
+      cdpSession,
+      rootSelector,
+    );
 
     if (parsedRoots.length === 0) {
       return { nodes: [], refMap: new Map() };
     }
 
+    const scope =
+      rootSelector !== undefined && rootBackendNodeId !== undefined
+        ? {
+            selector: buildScopeSelector(rootSelector),
+            backendNodeId: rootBackendNodeId,
+          }
+        : undefined;
+
     const { nodes, refMap } = await trimAxTreeToA11yNodes(
-      cdpSession,
+      page,
       parsedRoots,
+      scope,
     );
 
     await enrichNodesWithDOMContext(page, nodes, refMap);
@@ -913,7 +1060,7 @@ async function enrichNodesWithDOMContext(
   const results = await Promise.allSettled(
     enrichBatch.map(async (node): Promise<EnrichmentResult> => {
       const selector = refMap.get(node.ref);
-      if (!selector) {
+      if (!selector || selector === UNREACHABLE_REF_SELECTOR) {
         return { ref: node.ref, testId: null, textContent: null };
       }
       try {
@@ -1020,15 +1167,81 @@ function collapseIdenticalRuns(nodes: A11yNodeTrimmed[]): A11yNodeTrimmed[] {
 }
 
 /**
+ * Normalizes whitespace the way Playwright does before it compares names and
+ * text (`normalizeWhiteSpace`): drops zero-width spaces and soft hyphens,
+ * trims, and collapses whitespace runs (newlines included) to one space.
+ * Two names with the same normalized form match the same elements, so they
+ * must produce the same selector for duplicates to be detected.
+ *
+ * @param value The name or text.
+ * @returns The normalized string.
+ */
+function normalizeSelectorWhitespace(value: string): string {
+  return value
+    .replace(/[\u200b\u00ad]/gu, '')
+    .trim()
+    .replace(/\s+/gu, ' ');
+}
+
+/**
+ * Quotes a string for a Playwright selector.
+ *
+ * Playwright reads quoted strings in attribute selectors
+ * (`parseAttributeSelector`) and in `text=` selectors (`cssUnquote`) the
+ * same way: a backslash escapes the next character, so only `\` and `"`
+ * need escaping. `>>` inside the quotes does not split the selector. The
+ * value is whitespace-normalized first (see `normalizeSelectorWhitespace`).
+ *
+ * @param value The string to quote.
+ * @returns The quoted string.
+ */
+function quoteSelectorString(value: string): string {
+  const escaped = normalizeSelectorWhitespace(value)
+    .replace(/\\/gu, '\\\\')
+    .replace(/"/gu, '\\"');
+  return `"${escaped}"`;
+}
+
+/**
  * Build an accessibility selector string from role and name.
+ *
+ * Playwright's `role=` engine matches a quoted name exactly and
+ * case-sensitively (the full accessible name after whitespace
+ * normalization, no substring), so "Send" does not match "Send max". Only
+ * `getByRole` / `internal:role` without `exact` match substrings or ignore
+ * case. The `s` flag repeats the case-sensitive default to make it
+ * explicit. An empty name matches only elements with an empty accessible
+ * name. The selector still matches every element with that role and name:
+ * `buildRefSelectors` gives duplicates a unique selector.
  *
  * @param role The ARIA role for the selector
  * @param name The accessible name to match
- * @returns Formatted selector string (e.g., "role=button[name=\"Click me\"]")
+ * @returns Formatted selector string (e.g., `role=button[name="Click me" s]`)
  */
 function buildA11ySelector(role: IncludedRole, name: string): string {
-  const escapedName = name.replace(/"/gu, '\\"');
-  return `role=${role}[name="${escapedName}"]`;
+  return `role=${role}[name=${quoteSelectorString(name)} s]`;
+}
+
+/**
+ * Build a text selector that matches elements whose own text is exactly
+ * `text` (case-sensitive, after whitespace normalization).
+ *
+ * @param text The text to match.
+ * @returns Formatted selector string (e.g., `text="Rename account"`).
+ */
+function buildTextSelector(text: string): string {
+  return `text=${quoteSelectorString(text)}`;
+}
+
+/**
+ * Build the Playwright selector for the root of a scoped snapshot: the
+ * first element that matches the CSS selector, as `DOM.querySelector` does.
+ *
+ * @param rootSelector The CSS selector of the snapshot root.
+ * @returns Formatted selector string (e.g., `css=.modal >> nth=0`).
+ */
+function buildScopeSelector(rootSelector: string): string {
+  return `css=${rootSelector.trim()} >> nth=0`;
 }
 
 /**
@@ -1068,6 +1281,11 @@ function resolveTargetScoped(
             `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
         );
       }
+      if (selector === UNREACHABLE_REF_SELECTOR) {
+        throw new Error(
+          `Ref ${targetValue} is inside a closed shadow root: it cannot be targeted`,
+        );
+      }
       return scope.locator(selector);
     }
     case 'testId':
@@ -1098,6 +1316,11 @@ export async function resolveTarget(
 ): Promise<Locator> {
   return resolveTargetScoped(page, targetType, targetValue, refMap);
 }
+
+/**
+ * Delay between the two checks that a `within` ref is outside the parent.
+ */
+const WITHIN_RECHECK_DELAY_MS = 100;
 
 /**
  * Wait for a target element to become visible, optionally scoped within a parent.
@@ -1141,7 +1364,63 @@ export async function waitForTarget(
     // (e.g. 63 "end-accessory" buttons across 63 account cells).
     scope = parentLocator.first();
   }
-  const locator = resolveTargetScoped(scope, targetType, targetValue, refMap);
+  let locator: Locator;
+  if (within && targetType === 'a11yRef') {
+    // A ref selector resolves to one element page-wide (DOM selectors are
+    // unique in the document; scope prefixes count from the document, not
+    // from the parent). Resolve it page-wide and keep it only if it is
+    // inside the parent: `within` only checks containment.
+    const refLocator = resolveTargetScoped(
+      page,
+      targetType,
+      targetValue,
+      refMap,
+    );
+    const contained = refLocator.and(scope.locator('*'));
+    // `within` must never pick among the matches of an ambiguous ref (a
+    // duplicate without a unique selector): with several page-wide matches,
+    // `.and(parent)` could narrow them to one wrong element.
+    const assertUnambiguous = async (): Promise<number> => {
+      const count = await refLocator.count();
+      if (count > 1) {
+        throw new Error(
+          `Ref ${targetValue} is ambiguous (${count} matches); take a new snapshot or target it by testId or selector`,
+        );
+      }
+      return count;
+    };
+    // Fail fast when the ref is on the page but outside the parent, instead
+    // of waiting for the whole timeout. The two counts are separate round
+    // trips and the page can change in between (an element moving into the
+    // parent), so only fail when a second check, after a short delay, sees
+    // the same.
+    const isOutside = async (): Promise<boolean> =>
+      (await assertUnambiguous()) === 1 && (await contained.count()) === 0;
+    if (await isOutside()) {
+      const delay = Math.min(
+        WITHIN_RECHECK_DELAY_MS,
+        Math.max(0, deadline - Date.now()),
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (await isOutside()) {
+        throw new Error(`Ref ${targetValue} is not inside the within element`);
+      }
+    }
+    const attachRemaining = deadline - Date.now();
+    if (attachRemaining <= 0) {
+      throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
+    }
+    // Not on the page yet: wait until it is (`first()`: no strict-mode
+    // error while it is ambiguous), then check again that it is one
+    // element. Containment is enforced by waiting on `contained` below.
+    await refLocator
+      .first()
+      .waitFor({ state: 'attached', timeout: attachRemaining });
+    await assertUnambiguous();
+    locator = contained;
+  } else {
+    locator = resolveTargetScoped(scope, targetType, targetValue, refMap);
+  }
   const childRemaining = deadline - Date.now();
   if (childRemaining <= 0) {
     throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);

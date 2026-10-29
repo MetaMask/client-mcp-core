@@ -1249,7 +1249,9 @@ describe('createServer with active session', () => {
       // The first request is now running inside the queue.
       await vi.waitFor(() => expect(mockSM.cleanup).toHaveBeenCalled());
       const second = post('/tool/get_context');
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      // Hold the first request well past the threshold below: under host
+      // load the second request can take tens of ms to reach the queue.
+      await new Promise((resolve) => setTimeout(resolve, 250));
       releaseFirst();
 
       const [firstRes, secondRes] = await Promise.all([first, second]);
