@@ -1,0 +1,54 @@
+src/server/create-server.ts
+  s_4bb5d2cab18f48::t_9cc7801339ac51 264-266,268-272
+  s_4bb5d2cab18f48::t_3040ff43aefbaa 267
+src/tools/launch.ts
+  s_4bb5d2cab18f48::t_d3ee8e4cbf0014 7
+  s_4bb5d2cab18f48::t_9c6cb31fea3e0e 64,66
+CHANGELOG.md
+  s_4bb5d2cab18f48::t_fc3df6eac3fd9c 16
+README.md
+  s_4bb5d2cab18f48::t_ef15f6e665e669 242
+src/tools/launch.test.ts
+  s_4bb5d2cab18f48::t_199ca70c09fbab 237-248,252-265
+  s_4bb5d2cab18f48::t_07d606fee8dd8d 12
+  s_4bb5d2cab18f48::t_1227340aa60d11 249-251
+src/tools/test-utils/mock-factories.ts
+  s_4bb5d2cab18f48::t_c40614e4f8935d 15
+  s_4bb5d2cab18f48::t_9e0a228392b906 136-142
+src/server/cleanup-session.test.ts
+  s_4bb5d2cab18f48::t_a6d5a3a0e2f5d8 215,217-224,233,235
+  s_4bb5d2cab18f48::t_dc1286a26c1709 198
+  s_4bb5d2cab18f48::t_eec910a568567b 241
+  s_4bb5d2cab18f48::t_a945c2d4bc9c89 93-94,102-197,199-214,216,225-232,234,236-240,242-246
+  s_4bb5d2cab18f48::t_fedd1048e4db2f 58-59,69,72-77
+  s_4bb5d2cab18f48::t_b962d0fb87e07b 247-248
+src/server/create-server.test.ts
+  s_4bb5d2cab18f48::t_a7e8e9365991d4 938-969
+src/server/cleanup-session.ts
+  s_4bb5d2cab18f48::t_ef43ce99cb3683 3-15,26-30,35-36,40-43,54-55,59-60,63,69,79,84,88,95-97,102-126,130,135,139
+  s_4bb5d2cab18f48::t_1aadb5e26a97d1 133
+  s_4bb5d2cab18f48::t_7e18be937d3295 65-68,80-83,85-86
+  s_4bb5d2cab18f48::t_09600473e1cdb5 37-39
+  s_4bb5d2cab18f48::t_c6cba75d5a8663 127-129,131-132,134,136-138
+vitest.config.mts
+  s_4bb5d2cab18f48::t_12d9e91d2a5d31 38-41
+src/tools/cleanup.test.ts
+  s_4bb5d2cab18f48::t_825958e806f969 11
+  s_4bb5d2cab18f48::t_8dd13da8d92d7d 96-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30de39e64276bdc2c2481e7856ca6a8e48833a7a",
+  "prompts": {},
+  "sessions": {
+    "s_4bb5d2cab18f48": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e78392ff9ffeEEUgGCVtY5HDfr",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
