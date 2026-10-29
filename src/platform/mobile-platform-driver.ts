@@ -1,19 +1,12 @@
-import {
-  runHermesCdp,
-  HermesSession,
-  fetchDiscoveryTargets,
-  selectHermesTarget,
-  hasAmbiguousTarget,
-  generateLocators,
-  LEGACY_SYNTHETIC_TITLE,
-} from '@metamask/device-mcp';
 import type {
   DeviceBackend,
   ElementQuery,
+  HermesSession,
   HermesTarget,
   UIElement,
 } from '@metamask/device-mcp';
 
+import { loadDeviceMcp } from './device-mcp-runtime.js';
 import {
   filterAppHierarchy,
   pruneLayoutOnly,
@@ -86,7 +79,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
   // Scoped to this driver instance rather than the process-wide
   // getHermesSession() singleton so the pinned Hermes deviceId cannot leak
   // across mobile sessions (e.g. a relaunch against a different simulator).
-  readonly #hermesSession: HermesSession;
+  // Created on first use, because device-mcp is loaded on first use.
+  #hermesSession: HermesSession | undefined;
 
   readonly #excludeDevOverlay: boolean;
 
@@ -110,8 +104,19 @@ export class MobilePlatformDriver implements IPlatformDriver {
   ) {
     this.#backend = backend;
     this.#bundleId = bundleId;
-    this.#hermesSession = new HermesSession({ platform: backend.platform });
     this.#excludeDevOverlay = options.excludeDevOverlay ?? true;
+  }
+
+  /**
+   * Returns this driver's Hermes session, creating it on first use.
+   *
+   * @returns The Hermes session of this driver.
+   */
+  async #getHermesSession(): Promise<HermesSession> {
+    const { HermesSession: Session } = await loadDeviceMcp();
+    // Concurrent first calls both get here; the first one creates the session.
+    this.#hermesSession ??= new Session({ platform: this.#backend.platform });
+    return this.#hermesSession;
   }
 
   /** Release only this backend's resources; compatible with older device-mcp releases. */
@@ -591,7 +596,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @returns A discriminated CDP outcome.
    */
   async #hermesCdp(input: CdpInput): Promise<CdpOutcome> {
-    const session = this.#hermesSession;
+    const { runHermesCdp } = await loadDeviceMcp();
+    const session = await this.#getHermesSession();
     const resolved = session.resolve({
       metroPort: input.metroPort,
       appId: input.appId,
@@ -671,7 +677,13 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @returns A structured report of discovered targets and the selection result.
    */
   async hermesTargets(input: HermesTargetsInput): Promise<HermesTargetsResult> {
-    const session = this.#hermesSession;
+    const {
+      fetchDiscoveryTargets,
+      selectHermesTarget,
+      hasAmbiguousTarget,
+      LEGACY_SYNTHETIC_TITLE,
+    } = await loadDeviceMcp();
+    const session = await this.#getHermesSession();
     const resolved = session.resolve({
       metroPort: input.metroPort,
       appId: input.appId,
@@ -753,7 +765,10 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @returns The ranked element locators.
    */
   async generateLocators(): Promise<ElementLocatorInfo[]> {
-    const { hierarchy } = await this.#snapshotApp();
+    const [{ hierarchy }, { generateLocators }] = await Promise.all([
+      this.#snapshotApp(),
+      loadDeviceMcp(),
+    ]);
     return generateLocators(hierarchy);
   }
 }
