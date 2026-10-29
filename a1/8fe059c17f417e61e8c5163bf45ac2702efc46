@@ -1,0 +1,34 @@
+CHANGELOG.md
+  h_d6a04d82b61d5e 16
+README.md
+  h_d6a04d82b61d5e 93,99-103,163,600
+src/cli/mm.test.ts
+  h_d6a04d82b61d5e 1243,1246-1281,1292-1312,1316
+src/cli/mm.ts
+  h_d6a04d82b61d5e 21-22,225-257,262-264,303-307
+src/platform/device-mcp-runtime.test.ts
+  h_d6a04d82b61d5e 1-57
+src/platform/device-mcp-runtime.ts
+  h_d6a04d82b61d5e 1-46
+src/platform/mobile-platform-driver.hermes-integration.test.ts
+  h_d6a04d82b61d5e 15-17,22-28
+src/platform/mobile-platform-driver.hermes.test.ts
+  h_d6a04d82b61d5e 15-25,54-55,61-67,76-87
+src/platform/mobile-platform-driver.ts
+  h_d6a04d82b61d5e 4,9,82-83,110-121,632-633,713-719,801-804
+src/validation/observe-level.ts
+  h_d6a04d82b61d5e 1-8
+src/validation/schemas.ts
+  h_d6a04d82b61d5e 3,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a18fe059c17f417e61e8c5163bf45ac2702efc46",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
