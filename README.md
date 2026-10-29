@@ -90,11 +90,16 @@ Use the invocation that matches your installation:
 
 ```bash
 # Project dependency
-yarn mm launch
+node_modules/.bin/mm launch     # or: yarn mm launch
 
 # Global installation
 mm launch
 ```
+
+For agents and scripts that call the CLI many times, call the bin directly
+(`node_modules/.bin/mm`, or an alias to it), not `yarn mm` or `npx mm`. The
+CLI itself starts in about 0.1 s; `yarn mm` adds about 0.35-0.45 s and
+`npx mm` about 0.3 s to every call (measured on macOS with Yarn 4).
 
 ## Getting Started
 
@@ -155,7 +160,7 @@ mm click e3            # interact using a11y refs
 mm cleanup --shutdown  # stop browser and daemon
 ```
 
-Use `yarn mm` in place of `mm` when the CLI is installed as a project dependency.
+Use `node_modules/.bin/mm` (or `yarn mm`) in place of `mm` when the CLI is installed as a project dependency.
 
 If running from outside the project directory (e.g., a parent folder containing multiple repos):
 
@@ -592,7 +597,7 @@ By default, the CLI resolves the target project from the current git worktree. T
 
 1. **`--project <path>`** — Explicit flag, highest priority. Accepts absolute or relative paths.
 2. **`MM_PROJECT`** — Environment variable. Useful for setting once in agent config or shell profile.
-3. **Git worktree** — `git rev-parse --show-toplevel` from the current working directory (existing behavior).
+3. **Git worktree** — the nearest directory at or above the current working directory that contains a `.git` entry (directory, or file for linked worktrees and submodules). Falls back to `git rev-parse --show-toplevel` when there is none, or when `GIT_DIR` / `GIT_WORK_TREE` is set.
 
 ```bash
 # From inside the project (unchanged)

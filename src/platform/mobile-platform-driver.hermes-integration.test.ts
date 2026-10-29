@@ -12,17 +12,20 @@ const mocks = vi.hoisted(() => ({
   HermesSession: vi.fn(),
 }));
 
-vi.mock('@metamask/device-mcp', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@metamask/device-mcp')>();
+// The driver loads device-mcp on first use through this module.
+vi.mock('./device-mcp-runtime.js', async () => {
+  const actual = await import('@metamask/device-mcp');
   mocks.selectHermesTarget.mockImplementation(actual.selectHermesTarget);
   mocks.hasAmbiguousTarget.mockImplementation(actual.hasAmbiguousTarget);
 
   return {
-    ...actual,
-    fetchDiscoveryTargets: mocks.fetchDiscoveryTargets,
-    selectHermesTarget: mocks.selectHermesTarget,
-    hasAmbiguousTarget: mocks.hasAmbiguousTarget,
-    HermesSession: mocks.HermesSession,
+    loadDeviceMcp: async () => ({
+      ...actual,
+      fetchDiscoveryTargets: mocks.fetchDiscoveryTargets,
+      selectHermesTarget: mocks.selectHermesTarget,
+      hasAmbiguousTarget: mocks.hasAmbiguousTarget,
+      HermesSession: mocks.HermesSession,
+    }),
   };
 });
 

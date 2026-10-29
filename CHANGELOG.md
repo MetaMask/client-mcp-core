@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add optional platform-driver disposal and forward mobile disposal to lifecycle-capable device-mcp backends.
 
+### Changed
+
+- Start the CLI faster: find the project root without running `git` and do not load zod. Load `@metamask/device-mcp` only when a mobile session uses it, so browser daemons start without it.
+
 ### Fixed
 
 - Dispose session-owned drivers after consumer cleanup, including cleanup errors, forced relaunch, failed launch, daemon shutdown, and server startup rollback. Retain failed disposals in one server-owned lifecycle, so the next cleanup or daemon stop retries them.

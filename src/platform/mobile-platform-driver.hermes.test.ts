@@ -12,13 +12,17 @@ const mocks = vi.hoisted(() => ({
   HermesSession: vi.fn(),
 }));
 
-vi.mock('@metamask/device-mcp', () => ({
-  runHermesCdp: mocks.runHermesCdp,
-  fetchDiscoveryTargets: mocks.fetchDiscoveryTargets,
-  selectHermesTarget: mocks.selectHermesTarget,
-  hasAmbiguousTarget: mocks.hasAmbiguousTarget,
-  LEGACY_SYNTHETIC_TITLE: 'React Native Experimental (Improved Chrome Reloads)',
-  HermesSession: mocks.HermesSession,
+// The driver loads device-mcp on first use through this module.
+vi.mock('./device-mcp-runtime.js', () => ({
+  loadDeviceMcp: async () => ({
+    runHermesCdp: mocks.runHermesCdp,
+    fetchDiscoveryTargets: mocks.fetchDiscoveryTargets,
+    selectHermesTarget: mocks.selectHermesTarget,
+    hasAmbiguousTarget: mocks.hasAmbiguousTarget,
+    LEGACY_SYNTHETIC_TITLE:
+      'React Native Experimental (Improved Chrome Reloads)',
+    HermesSession: mocks.HermesSession,
+  }),
 }));
 
 // Imported AFTER vi.mock so the driver binds to the mocked device-mcp runtime.
@@ -47,12 +51,20 @@ describe('MobilePlatformDriver hermes delegation', () => {
   });
 
   describe('session scoping', () => {
-    it('owns an instance-scoped Hermes session instead of the process singleton', () => {
+    it('owns an instance-scoped Hermes session instead of the process singleton', async () => {
+      mocks.runHermesCdp.mockResolvedValue({ ok: true, result: {} });
       const iosDriver = new MobilePlatformDriver(createBackend('ios'));
       const androidDriver = new MobilePlatformDriver(createBackend('android'));
 
       expect(iosDriver.getPlatform()).toBe('ios');
       expect(androidDriver.getPlatform()).toBe('android');
+      // Created on first use (device-mcp is loaded lazily), once per driver.
+      expect(mocks.HermesSession).not.toHaveBeenCalled();
+
+      await iosDriver.cdp({ method: 'Runtime.evaluate', timeoutMs: 1000 });
+      await iosDriver.cdp({ method: 'Runtime.evaluate', timeoutMs: 1000 });
+      await androidDriver.cdp({ method: 'Runtime.evaluate', timeoutMs: 1000 });
+
       expect(mocks.HermesSession).toHaveBeenCalledTimes(2);
       expect(mocks.HermesSession).toHaveBeenNthCalledWith(1, {
         platform: 'ios',
@@ -60,6 +72,18 @@ describe('MobilePlatformDriver hermes delegation', () => {
       expect(mocks.HermesSession).toHaveBeenNthCalledWith(2, {
         platform: 'android',
       });
+    });
+
+    it('creates one session when first calls run concurrently', async () => {
+      mocks.runHermesCdp.mockResolvedValue({ ok: true, result: {} });
+      const driver = new MobilePlatformDriver(createBackend('ios'));
+
+      await Promise.all([
+        driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 1000 }),
+        driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 1000 }),
+      ]);
+
+      expect(mocks.HermesSession).toHaveBeenCalledTimes(1);
     });
   });
 

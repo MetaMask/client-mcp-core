@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
+import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 
 export const observeLevelSchema = z
-  .enum(['none', 'diff', 'full'])
+  .enum(OBSERVE_LEVELS)
   .describe(
     'Observation to return after the call: ' +
       'none = skip it (fastest), ' +
