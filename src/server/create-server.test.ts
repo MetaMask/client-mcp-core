@@ -47,7 +47,6 @@ vi.mock('../knowledge-store/knowledge-store.js', () => {
     searchSteps: vi.fn().mockResolvedValue([]),
     summarizeSession: vi.fn().mockResolvedValue({ stepCount: 0, recipe: [] }),
     listSessions: vi.fn().mockResolvedValue([]),
-    generatePriorKnowledge: vi.fn().mockResolvedValue(undefined),
     getAllSessionIds: vi.fn().mockResolvedValue([]),
     resolveSessionIds: vi.fn().mockResolvedValue([]),
   };

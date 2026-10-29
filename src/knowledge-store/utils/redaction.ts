@@ -1,8 +1,4 @@
 import type {
-  PriorKnowledgeTarget,
-  PriorKnowledgeV1,
-} from '../../tools/types/knowledge.js';
-import type {
   StepRecord,
   StepRecordObservation,
 } from '../../tools/types/step-record.js';
@@ -144,81 +140,6 @@ function createSecretRedactor(
 }
 
 /**
- * Redact a suggested target's text while keeping its type and accessibility role.
- *
- * @param target - The suggested target.
- * @param redactor - The secret-matching operations.
- * @returns A redacted target.
- */
-function redactKnowledgeTarget(
-  target: PriorKnowledgeTarget,
-  redactor: SecretRedactor,
-): PriorKnowledgeTarget {
-  if (target.type === 'a11yHint') {
-    return {
-      ...target,
-      value: { ...target.value, name: redactor.text(target.value.name) },
-    };
-  }
-  return { ...target, value: redactor.text(target.value) };
-}
-
-/**
- * Redact historical free text, retaining session IDs, timestamps, and diagnostics.
- *
- * @param knowledge - The prior knowledge attached to an observation.
- * @param redactor - The secret-matching operations.
- * @returns A redacted copy of the prior knowledge.
- */
-function redactPriorKnowledge(
-  knowledge: PriorKnowledgeV1,
-  redactor: SecretRedactor,
-): PriorKnowledgeV1 {
-  const sanitized: PriorKnowledgeV1 = {
-    ...knowledge,
-    query: {
-      ...knowledge.query,
-      usedFilters: redactor.value(knowledge.query.usedFilters),
-    },
-    relatedSessions: knowledge.relatedSessions.map((session) => ({
-      ...session,
-      goal: redactor.value(session.goal),
-    })),
-    similarSteps: knowledge.similarSteps.map((step) => {
-      const sanitizedStep = {
-        ...step,
-        screen: redactor.text(step.screen),
-        snippet: redactor.text(step.snippet),
-        target: redactor.value(step.target),
-      };
-      if (step.a11yHint) {
-        sanitizedStep.a11yHint = {
-          ...step.a11yHint,
-          name: redactor.text(step.a11yHint.name),
-        };
-      }
-      return sanitizedStep;
-    }),
-    suggestedNextActions: knowledge.suggestedNextActions.map((action) => ({
-      ...action,
-      rationale: redactor.text(action.rationale),
-      preferredTarget: redactKnowledgeTarget(action.preferredTarget, redactor),
-      fallbackTargets: action.fallbackTargets?.map((target) =>
-        redactKnowledgeTarget(target, redactor),
-      ),
-    })),
-  };
-  if (knowledge.avoid) {
-    sanitized.avoid = knowledge.avoid.map((item) => ({
-      ...item,
-      rationale: redactor.text(item.rationale),
-      target: redactor.value(item.target),
-    }));
-  }
-  return sanitized;
-}
-
-/**
  * Redact observation text while retaining accessibility refs, roles, and tags.
  *
  * @param observation - The post-execution observation.
@@ -281,7 +202,6 @@ export function redactRecordedSecrets(
   }
   const { error } = record.outcome;
   const screenshot = record.artifacts?.screenshot;
-  const { priorKnowledge } = record.observation;
   const sanitized: StepRecord = {
     ...record,
     tool: { ...record.tool },
@@ -303,12 +223,6 @@ export function redactRecordedSecrets(
       ...record.artifacts,
       screenshot: { ...screenshot, path: redactor.value(screenshot.path) },
     };
-  }
-  if (priorKnowledge) {
-    sanitized.observation.priorKnowledge = redactPriorKnowledge(
-      priorKnowledge,
-      redactor,
-    );
   }
   return sanitized;
 }
