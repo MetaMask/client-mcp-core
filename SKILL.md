@@ -28,7 +28,7 @@ Tool responses include different data based on the tool's category:
 | Category      | Examples                                                                                                                                                                                                                                        | Observations in response?                      |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, cdp, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | Yes — `state` + `a11y` (compacted) + `testIds` |
-| **Read-only** | get_state, get_text, knowledge\_\*, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                  | No — faster response                           |
+| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                                 | No — faster response                           |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot                                                                                                                                                                               | Data is already in `result`                    |
 | **Batch**     | run_steps                                                                                                                                                                                                                                       | Controlled by `includeObservations` param      |
 
@@ -116,7 +116,7 @@ The `run_steps` tool collects observations once after all steps complete. Contro
 Starts the daemon (if not running) and launches a headed Chrome session with the extension.
 
 ```
-mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--goal <text>] [--force] [--flow-tags <tags>]
+mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-path <path>] [--force]
 ```
 
 | Flag                      | Description                                                     |
@@ -126,9 +126,7 @@ mm launch [--context e2e|prod] [--state default|onboarding|custom] [--extension-
 | `--state onboarding`      | Fresh wallet requiring manual onboarding setup                  |
 | `--state custom`          | Use a custom fixture for wallet state                           |
 | `--extension-path <path>` | Override the extension build directory                          |
-| `--goal <text>`           | Tag the session with a goal for knowledge store                 |
 | `--force`                 | Replace an existing active session                              |
-| `--flow-tags <tags>`      | Comma-separated flow tags for cross-session knowledge           |
 
 Returns: `sessionId`, `extensionId`, `state` (current extension state).
 
@@ -397,42 +395,6 @@ Switches the session environment between `e2e` and `prod` modes. Blocked while a
 
 ```
 mm set-context <e2e|prod>
-```
-
-### Knowledge Store
-
-The knowledge store records every tool invocation and uses past sessions to suggest actions.
-
-#### `mm knowledge-search <query>`
-
-Searches past sessions for steps matching the query. Matches against tool names, screen names, test IDs, and a11y node names.
-
-```
-mm knowledge-search "confirm transaction"
-```
-
-#### `mm knowledge-last`
-
-Gets the most recent step records from the current session.
-
-```
-mm knowledge-last
-```
-
-#### `mm knowledge-sessions`
-
-Lists recent sessions with metadata (goal, flow tags, timestamps).
-
-```
-mm knowledge-sessions
-```
-
-#### `mm knowledge-summarize`
-
-Generates a recipe-style summary of a session's tool invocations, showing the step sequence with targets and outcomes.
-
-```
-mm knowledge-summarize [--session <id>]
 ```
 
 ### Contracts (E2E only)
@@ -710,7 +672,6 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_DISCOVERY_FAILED`               | Discovery tool failure                                               | Page may be loading; wait and retry                                                                       |
 | `MM_SCREENSHOT_FAILED`              | Screenshot capture failure                                           | Page may be in unstable state; retry after describe-screen                                                |
 | `MM_STATE_FAILED`                   | State retrieval failed                                               | Session may be unstable; run `mm describe-screen`                                                         |
-| `MM_KNOWLEDGE_ERROR`                | Knowledge store operation failed                                     | Retry; check that session exists                                                                          |
 | `MM_CONTRACT_NOT_FOUND`             | Unknown contract name for seeding                                    | See available contracts below                                                                             |
 | `MM_SEED_FAILED`                    | Contract deployment failure                                          | Check Anvil chain is running; verify contract name                                                        |
 | `MM_CAPABILITY_NOT_AVAILABLE`       | Feature requires a capability not configured                         | Check environment mode (e2e vs prod)                                                                      |
@@ -745,20 +706,6 @@ These contracts can be deployed to the local Anvil chain via `seed_contract` / `
 | `entrypoint`           | ERC-4337 EntryPoint                                 |
 | `simpleAccountFactory` | ERC-4337 account factory                            |
 | `verifyingPaymaster`   | ERC-4337 paymaster                                  |
-
-## Flow Tags
-
-When launching, tag your session with flow tags for cross-session knowledge:
-
-| Tag               | Use for                        |
-| ----------------- | ------------------------------ |
-| `send`            | Token send flows               |
-| `swap`            | Token swap flows               |
-| `connect`         | dApp connection flows          |
-| `sign`            | Message/transaction signing    |
-| `onboarding`      | Wallet setup/onboarding        |
-| `settings`        | Settings configuration         |
-| `tx-confirmation` | Transaction confirmation flows |
 
 ## Daemon Model
 

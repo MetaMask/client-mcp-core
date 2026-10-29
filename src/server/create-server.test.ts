@@ -8,9 +8,6 @@ import type { MockInstance } from 'vitest';
 import type { ServerInstance } from './create-server.js';
 import {
   createServer,
-  extractTargetFromInput,
-  extractScreenshotInfo,
-  extractToolOutcome,
   buildResponseBody,
   shouldCollectObservations,
   shouldIncludeObservationsInResponse,
@@ -38,33 +35,6 @@ vi.mock('../tools/utils/discovery.js', () => ({
     textContent: vi.fn().mockResolvedValue(''),
   }),
 }));
-
-vi.mock('../knowledge-store/knowledge-store.js', () => {
-  const mockStore = {
-    recordStep: vi.fn().mockResolvedValue('/mock/path'),
-    writeSessionMetadata: vi.fn().mockResolvedValue('/mock/path'),
-    getLastSteps: vi.fn().mockResolvedValue([]),
-    searchSteps: vi.fn().mockResolvedValue([]),
-    summarizeSession: vi.fn().mockResolvedValue({ stepCount: 0, recipe: [] }),
-    listSessions: vi.fn().mockResolvedValue([]),
-    getAllSessionIds: vi.fn().mockResolvedValue([]),
-    resolveSessionIds: vi.fn().mockResolvedValue([]),
-  };
-  return {
-    KnowledgeStore: vi.fn(() => mockStore),
-    createDefaultObservation: vi.fn(
-      (state: unknown, testIds?: unknown[], nodes?: unknown[]) => ({
-        state: state ?? {},
-        testIds: testIds ?? [],
-        a11y: { nodes: nodes ?? [] },
-      }),
-    ),
-    createKnowledgeStore: vi.fn(() => mockStore),
-    setKnowledgeStore: vi.fn(),
-    hasKnowledgeStore: vi.fn(() => false),
-    knowledgeStore: mockStore,
-  };
-});
 
 function createMockSessionManager() {
   return {
@@ -171,179 +141,6 @@ async function httpRequest(
   });
 }
 
-describe('extractTargetFromInput', () => {
-  it('returns undefined for null input', () => {
-    expect(extractTargetFromInput(null)).toBeUndefined();
-  });
-
-  it('returns undefined for non-object input', () => {
-    expect(extractTargetFromInput('string')).toBeUndefined();
-    expect(extractTargetFromInput(42)).toBeUndefined();
-  });
-
-  it('returns undefined when no target fields present', () => {
-    expect(extractTargetFromInput({ name: 'click' })).toBeUndefined();
-  });
-
-  it('extracts a11yRef', () => {
-    expect(extractTargetFromInput({ a11yRef: 'e1' })).toStrictEqual({
-      a11yRef: 'e1',
-      testId: undefined,
-      selector: undefined,
-    });
-  });
-
-  it('extracts testId', () => {
-    expect(extractTargetFromInput({ testId: 'btn' })).toStrictEqual({
-      a11yRef: undefined,
-      testId: 'btn',
-      selector: undefined,
-    });
-  });
-
-  it('extracts selector', () => {
-    expect(extractTargetFromInput({ selector: '.my-btn' })).toStrictEqual({
-      a11yRef: undefined,
-      testId: undefined,
-      selector: '.my-btn',
-    });
-  });
-
-  it('extracts multiple target fields', () => {
-    expect(
-      extractTargetFromInput({ a11yRef: 'e1', testId: 'btn' }),
-    ).toStrictEqual({
-      a11yRef: 'e1',
-      testId: 'btn',
-      selector: undefined,
-    });
-  });
-
-  it('ignores non-string target values', () => {
-    expect(extractTargetFromInput({ a11yRef: 42 })).toBeUndefined();
-  });
-});
-
-describe('extractScreenshotInfo', () => {
-  it('returns undefined for non-screenshot tools', () => {
-    expect(extractScreenshotInfo('click', {})).toBeUndefined();
-  });
-
-  it('returns undefined when toolResult is not an object', () => {
-    expect(extractScreenshotInfo('screenshot', null)).toBeUndefined();
-    expect(extractScreenshotInfo('screenshot', 'string')).toBeUndefined();
-  });
-
-  it('returns undefined when result is not ok', () => {
-    expect(extractScreenshotInfo('screenshot', { ok: false })).toBeUndefined();
-  });
-
-  it('returns undefined when result has no path', () => {
-    expect(
-      extractScreenshotInfo('screenshot', { ok: true, result: {} }),
-    ).toBeUndefined();
-  });
-
-  it('extracts screenshot path from result.path', () => {
-    expect(
-      extractScreenshotInfo('screenshot', {
-        ok: true,
-        result: { path: '/img.png' },
-      }),
-    ).toStrictEqual({ path: '/img.png' });
-  });
-
-  it('extracts screenshot path with dimensions', () => {
-    expect(
-      extractScreenshotInfo('screenshot', {
-        ok: true,
-        result: { path: '/img.png', width: 1280, height: 720 },
-      }),
-    ).toStrictEqual({
-      path: '/img.png',
-      dimensions: { width: 1280, height: 720 },
-    });
-  });
-
-  it('extracts screenshot from nested screenshot object', () => {
-    expect(
-      extractScreenshotInfo('describe_screen', {
-        ok: true,
-        result: { screenshot: { path: '/ss.png', width: 800, height: 600 } },
-      }),
-    ).toStrictEqual({
-      path: '/ss.png',
-      dimensions: { width: 800, height: 600 },
-    });
-  });
-
-  it('extracts nested screenshot without dimensions', () => {
-    expect(
-      extractScreenshotInfo('describe_screen', {
-        ok: true,
-        result: { screenshot: { path: '/ss.png' } },
-      }),
-    ).toStrictEqual({ path: '/ss.png' });
-  });
-
-  it('returns undefined when result.result is null', () => {
-    expect(
-      extractScreenshotInfo('screenshot', { ok: true, result: null }),
-    ).toBeUndefined();
-  });
-
-  it('returns undefined when nested screenshot has no path', () => {
-    expect(
-      extractScreenshotInfo('describe_screen', {
-        ok: true,
-        result: { screenshot: { width: 800 } },
-      }),
-    ).toBeUndefined();
-  });
-
-  it('returns undefined when nested screenshot is null', () => {
-    expect(
-      extractScreenshotInfo('describe_screen', {
-        ok: true,
-        result: { screenshot: null },
-      }),
-    ).toBeUndefined();
-  });
-});
-
-describe('extractToolOutcome', () => {
-  it('returns ok:true for non-object input', () => {
-    expect(extractToolOutcome(null)).toStrictEqual({ ok: true });
-    expect(extractToolOutcome('string')).toStrictEqual({ ok: true });
-  });
-
-  it('returns ok:true when ok not in result', () => {
-    expect(extractToolOutcome({ result: 'data' })).toStrictEqual({ ok: true });
-  });
-
-  it('returns ok:true for successful result', () => {
-    expect(extractToolOutcome({ ok: true, result: 'data' })).toStrictEqual({
-      ok: true,
-    });
-  });
-
-  it('returns ok:false with error for failed result', () => {
-    expect(
-      extractToolOutcome({
-        ok: false,
-        error: { code: 'ERR', message: 'fail' },
-      }),
-    ).toStrictEqual({
-      ok: false,
-      error: { code: 'ERR', message: 'fail' },
-    });
-  });
-
-  it('returns ok:false without error when no error field', () => {
-    expect(extractToolOutcome({ ok: false })).toStrictEqual({ ok: false });
-  });
-});
-
 describe('buildResponseBody', () => {
   it('returns toolResult as-is for non-object', () => {
     expect(buildResponseBody('string', undefined)).toBe('string');
@@ -370,11 +167,11 @@ describe('shouldCollectObservations', () => {
     expect(shouldCollectObservations('mutating')).toBe(true);
   });
 
-  it('returns true for readonly (collected for knowledge store)', () => {
+  it('returns true for readonly', () => {
     expect(shouldCollectObservations('readonly')).toBe(true);
   });
 
-  it('returns true for discovery (collected for knowledge store)', () => {
+  it('returns true for discovery', () => {
     expect(shouldCollectObservations('discovery')).toBe(true);
   });
 
@@ -531,34 +328,6 @@ describe('createServer integration', () => {
 
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-  });
-
-  it('omits the recovery phrase and vault password from the recorded launch step', async () => {
-    const { KnowledgeStore } =
-      await import('../knowledge-store/knowledge-store.js');
-    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
-      recordStep: ReturnType<typeof vi.fn>;
-    };
-    mockStore.recordStep.mockClear();
-    const srp = Array.from({ length: 12 }, () => 'abandon').join(' ');
-    const password = 'vault-password-sentinel';
-
-    await httpRequest(`http://127.0.0.1:${state.port}/launch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selfOnboarding: true, srp, password }),
-    });
-
-    expect(mockStore.recordStep).toHaveBeenCalled();
-    const recorded = mockStore.recordStep.mock.calls[0][0] as {
-      input: Record<string, unknown>;
-    };
-    expect(recorded.input.selfOnboarding).toBe(true);
-    expect(recorded.input).not.toHaveProperty('srp');
-    expect(recorded.input).not.toHaveProperty('password');
-    const serialized = JSON.stringify(mockStore.recordStep.mock.calls);
-    expect(serialized).not.toContain('abandon');
-    expect(serialized).not.toContain(password);
   });
 
   it('pOST /cleanup delegates to session manager', async () => {
@@ -970,7 +739,7 @@ describe('createServer with active session', () => {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  it('collects observations and records knowledge for tool execution', async () => {
+  it('collects observations for tool execution', async () => {
     const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -983,7 +752,7 @@ describe('createServer with active session', () => {
     expect(body.observations).toBeDefined();
   });
 
-  it('records error step when tool execution throws', async () => {
+  it('returns 500 when tool execution throws', async () => {
     mockSM.cleanup.mockRejectedValueOnce(new Error('Browser crash'));
 
     const res = await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
@@ -1112,7 +881,7 @@ describe('createServer with active session', () => {
     }
   });
 
-  it('playwright helpers called for read-only tools (knowledge store)', async () => {
+  it('observation Playwright helpers called for read-only tools', async () => {
     const { collectTestIds, collectTrimmedA11ySnapshot } =
       await import('../tools/utils/discovery.js');
     const collectTestIdsSpy = vi.mocked(collectTestIds);
@@ -1148,40 +917,6 @@ describe('createServer with active session', () => {
 
     expect(collectTestIdsSpy).toHaveBeenCalled();
     expect(collectA11ySpy).toHaveBeenCalled();
-  });
-
-  it('recordStep is called for mutating tool routes', async () => {
-    const { KnowledgeStore } =
-      await import('../knowledge-store/knowledge-store.js');
-    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
-      recordStep: ReturnType<typeof vi.fn>;
-    };
-    mockStore.recordStep.mockClear();
-
-    await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-
-    expect(mockStore.recordStep).toHaveBeenCalled();
-  });
-
-  it('recordStep is called for read-only tool routes', async () => {
-    const { KnowledgeStore } =
-      await import('../knowledge-store/knowledge-store.js');
-    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
-      recordStep: ReturnType<typeof vi.fn>;
-    };
-    mockStore.recordStep.mockClear();
-
-    await httpRequest(`http://127.0.0.1:${state.port}/tool/get_state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-
-    expect(mockStore.recordStep).toHaveBeenCalled();
   });
 
   describe('post-mutation state recheck', () => {
@@ -1278,7 +1013,7 @@ describe('createServer with active session', () => {
       });
 
       const res = await httpRequest(
-        `http://127.0.0.1:${state.port}/tool/knowledge_last`,
+        `http://127.0.0.1:${state.port}/tool/get_context`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1325,7 +1060,7 @@ describe('createServer with active session', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            steps: [{ tool: 'knowledge_last', args: {} }],
+            steps: [{ tool: 'get_context', args: {} }],
           }),
         },
       );
@@ -1850,68 +1585,6 @@ describe('observation compaction in HTTP responses', () => {
     expect(body.observations).toBeDefined();
     expect(body.observations?.a11y.diff).toBeUndefined();
     expect(body.observations?.a11y.nodes).toHaveLength(10);
-  });
-
-  it('knowledge store always receives the full observation instead of the diff', async () => {
-    const { collectTrimmedA11ySnapshot } =
-      await import('../tools/utils/discovery.js');
-    vi.mocked(collectTrimmedA11ySnapshot)
-      .mockResolvedValueOnce({
-        nodes: initialButtons as never,
-        refMap: new Map(),
-      })
-      .mockResolvedValueOnce({
-        nodes: changedButtons as never,
-        refMap: new Map(),
-      });
-
-    const { KnowledgeStore } =
-      await import('../knowledge-store/knowledge-store.js');
-    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
-      recordStep: ReturnType<typeof vi.fn>;
-    };
-    mockStore.recordStep.mockClear();
-
-    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ a11yRef: 'e1' }),
-    });
-
-    await httpRequest(`http://127.0.0.1:${state.port}/tool/click`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ a11yRef: 'e1' }),
-    });
-
-    expect(mockStore.recordStep).toHaveBeenCalledTimes(2);
-    const recorded = mockStore.recordStep.mock.calls[1][0] as {
-      observation: { a11y: { nodes: unknown[]; diff?: unknown } };
-    };
-
-    expect(recorded.observation.a11y.diff).toBeUndefined();
-    expect(recorded.observation.a11y.nodes).toStrictEqual(changedButtons);
-  });
-
-  it('knowledge store receives full uncompacted observations', async () => {
-    const { KnowledgeStore } =
-      await import('../knowledge-store/knowledge-store.js');
-    const mockStore = vi.mocked(KnowledgeStore).mock.results.at(-1)?.value as {
-      recordStep: ReturnType<typeof vi.fn>;
-    };
-    mockStore.recordStep.mockClear();
-
-    await httpRequest(`http://127.0.0.1:${state.port}/cleanup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-
-    expect(mockStore.recordStep).toHaveBeenCalled();
-    const recorded = mockStore.recordStep.mock.calls[0][0] as {
-      observation: { a11y: { nodes: unknown[] } };
-    };
-    expect(recorded.observation.a11y.nodes).toHaveLength(12);
   });
 
   it('batch with includeObservations=all returns compact observations', async () => {

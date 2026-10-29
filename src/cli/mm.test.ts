@@ -570,25 +570,19 @@ describe('parseLaunchArgs', () => {
     });
   });
 
-  it('parses --goal value', () => {
-    expect(parseLaunchArgs(['--goal', 'test swap'])).toStrictEqual({
-      goal: 'test swap',
-    });
-  });
-
-  it('parses --flow-tags as comma-separated array', () => {
-    expect(parseLaunchArgs(['--flow-tags', 'send, swap'])).toStrictEqual({
-      flowTags: ['send', 'swap'],
-    });
-  });
-
   it('parses multiple flags together', () => {
     expect(
-      parseLaunchArgs(['--state', 'default', '--force', '--goal', 'test it']),
+      parseLaunchArgs([
+        '--state',
+        'default',
+        '--force',
+        '--extension-path',
+        '/ext',
+      ]),
     ).toStrictEqual({
       stateMode: 'default',
       force: true,
-      goal: 'test it',
+      extensionPath: '/ext',
     });
   });
 
@@ -611,18 +605,6 @@ describe('parseLaunchArgs', () => {
     );
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --extension-path requires a value\n',
-    );
-  });
-
-  it('exits for --goal without value', () => {
-    expect(() => parseLaunchArgs(['--goal'])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith('Error: --goal requires a value\n');
-  });
-
-  it('exits for --flow-tags without value', () => {
-    expect(() => parseLaunchArgs(['--flow-tags'])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --flow-tags requires a comma-separated value\n',
     );
   });
 
@@ -781,6 +763,18 @@ describe('parseLaunchArgs', () => {
       "Warning: unknown launch flag '--unknown'\n",
     );
   });
+
+  it.each(['--goal', '--flow-tags'])(
+    'treats removed %s flag as unknown',
+    (flag) => {
+      const result = parseLaunchArgs([flag, 'x']);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        `Warning: unknown launch flag '${flag}'\n`,
+      );
+      expect(result).not.toHaveProperty('goal');
+      expect(result).not.toHaveProperty('flowTags');
+    },
+  );
 });
 
 describe('printHelp', () => {
@@ -2045,56 +2039,6 @@ describe('routeCommand', () => {
     );
   });
 
-  it('routes knowledge-search', async () => {
-    await routeCommand('knowledge-search', ['send flow'], 3000);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:3000/tool/knowledge_search',
-      expect.objectContaining({
-        body: JSON.stringify({ query: 'send flow' }),
-      }),
-    );
-  });
-
-  it('exits when knowledge-search has no query', async () => {
-    await expect(
-      routeCommand('knowledge-search', [], 3000),
-    ).rejects.toThrowError('process.exit');
-  });
-
-  it('routes knowledge-last', async () => {
-    await routeCommand('knowledge-last', [], 3000);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:3000/tool/knowledge_last',
-      expect.anything(),
-    );
-  });
-
-  it('routes knowledge-sessions', async () => {
-    await routeCommand('knowledge-sessions', [], 3000);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:3000/tool/knowledge_sessions',
-      expect.anything(),
-    );
-  });
-
-  it('routes knowledge-summarize', async () => {
-    await routeCommand('knowledge-summarize', [], 3000);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:3000/tool/knowledge_summarize',
-      expect.objectContaining({ body: JSON.stringify({}) }),
-    );
-  });
-
-  it('routes knowledge-summarize with --session', async () => {
-    await routeCommand('knowledge-summarize', ['--session', 'sid'], 3000);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:3000/tool/knowledge_summarize',
-      expect.objectContaining({
-        body: JSON.stringify({ scope: { sessionId: 'sid' } }),
-      }),
-    );
-  });
-
   it('routes run-steps with JSON input', async () => {
     const input = JSON.stringify({
       steps: [{ tool: 'click', args: { a11yRef: 'e1' } }],
@@ -2715,6 +2659,21 @@ describe('routeCommand', () => {
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining("unknown command 'unknown-cmd'"),
     );
+  });
+
+  it.each([
+    'knowledge-last',
+    'knowledge-search',
+    'knowledge-sessions',
+    'knowledge-summarize',
+  ])('exits for removed %s command', async (command) => {
+    await expect(routeCommand(command, [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`unknown command '${command}'`),
+    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
 

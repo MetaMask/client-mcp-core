@@ -40,7 +40,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(47);
+    expect(toolRegistry.size).toBe(43);
   });
 
   it('stores only functions as values', () => {
@@ -77,8 +77,8 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     expect(getToolCategory('click')).toBe('mutating');
   });
 
-  it('getToolCategory returns readonly for knowledge_last', () => {
-    expect(getToolCategory('knowledge_last')).toBe('readonly');
+  it('getToolCategory returns readonly for get_context', () => {
+    expect(getToolCategory('get_context')).toBe('readonly');
   });
 
   it('getToolCategory returns discovery for describe_screen', () => {

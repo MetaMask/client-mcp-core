@@ -16,7 +16,6 @@ function createContext(options: {
     sessionManager: createMockSessionManager({ hasActive }),
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
     toolRegistry: new Map(),
     driver: driver as IPlatformDriver | undefined,
   } as unknown as ToolContext;

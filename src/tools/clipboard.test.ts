@@ -38,7 +38,6 @@ function createMockContext(
     page: mockPage,
     refMap: new Map(),
     workflowContext: {},
-    knowledgeStore: {},
   } as unknown as ToolContext;
 }
 

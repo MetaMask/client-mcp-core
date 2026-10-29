@@ -19,8 +19,6 @@ export type LaunchInput = {
   };
   slowMo?: number;
   extensionPath?: string;
-  goal?: string;
-  flowTags?: string[];
   tags?: string[];
   seedContracts?: SmartContractName[];
   force?: boolean;
@@ -121,43 +119,6 @@ export type WaitForInput = TargetSelection & {
 export type GetTextInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
-};
-
-export type KnowledgeScope =
-  | 'current'
-  | 'all'
-  | {
-      sessionId: string;
-    };
-
-export type KnowledgeFilters = {
-  flowTag?: string;
-  tag?: string;
-  screen?: string;
-  sinceHours?: number;
-};
-
-export type KnowledgeLastInput = {
-  n?: number;
-  scope?: KnowledgeScope;
-  filters?: KnowledgeFilters;
-};
-
-export type KnowledgeSearchInput = {
-  query: string;
-  limit?: number;
-  scope?: KnowledgeScope;
-  filters?: KnowledgeFilters;
-};
-
-export type KnowledgeSummarizeInput = {
-  sessionId?: string;
-  scope?: KnowledgeScope;
-};
-
-export type KnowledgeSessionsInput = {
-  limit?: number;
-  filters?: KnowledgeFilters;
 };
 
 export type RunStepsInput = {
