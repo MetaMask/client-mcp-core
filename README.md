@@ -366,8 +366,12 @@ type ToolContext = {
   get refMap(): Map<string, string>; // lazy — returns empty map if no session
   workflowContext: WorkflowContext;
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
+  driver?: IPlatformDriver;
+  signal?: AbortSignal; // aborted when the request times out
 };
 ```
+
+Tools check `signal?.aborted` between steps and stop. In the daemon, `context.sessionManager.setRefMap` goes through a guard (`RefStore`) that drops a write from a request that timed out or was replaced by a newer one, so a cancelled call cannot overwrite the refs of later calls.
 
 The daemon routes `POST /tool/:name` requests through the registry, applies Zod validation on inputs, executes the tool through the request queue, and captures observations (test IDs, a11y snapshot) according to the call's `observe` level (see [Observations](#observations)).
 
@@ -442,6 +446,10 @@ mm type e3 "hello"    → types into the element mapped to e3
 ```
 
 This accessibility-first approach provides reliable element targeting that survives minor UI changes.
+
+Refs are numbered in tree order each time the daemon reads the screen (`describe_screen`, `accessibility_snapshot`, or an observation). The same screen gives the same refs, so an unchanged screen diffs as unchanged. When elements appear or disappear above an element, its ref can change: use the refs from the latest response. When a call returns both a tree and an observation (for example `describe_screen` with `observe`), the observation's refs are the ones that resolve. `list_testids` does not change refs.
+
+On mobile, after a mutating or batch call, the daemon may take the snapshot again after 300 ms: while it shows a busy element (a label ending in `, busy`, an Android `ProgressBar`, or an iOS `ActivityIndicator` / `ProgressIndicator` / `UIActivityIndicatorView`), and at most once when it still equals the previous screen. In total at most 3 extra snapshots and about 2 s. The test IDs come from the same snapshot as the tree. `describe_screen` on mobile also takes one snapshot for both.
 
 ### Session Metadata
 
@@ -540,6 +548,8 @@ When `observe` is absent, the default comes from the tool category: `diff` for *
 For `run_steps`, the top-level `observe` sets the level of the one observation collected after the batch. Without it, the `observe` in the last executed step's `args` is used; per-step `observe` on other steps is ignored. `includeObservations` was removed.
 
 Observations contain `testIds` and `a11y` only. They do not include app state; call `get_state` for that.
+
+A call that times out is cancelled: its signal is aborted, it stops at its next step, it collects no observation, and its refs are dropped.
 
 ## CLI Reference
 
@@ -795,6 +805,7 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_PORT_IN_USE`                    | Port already in use                                                                                     |
 | **System**                          |                                                                                                         |
 | `MM_UNKNOWN_TOOL`                   | Unknown tool name                                                                                       |
+| `MM_REQUEST_ABORTED`                | Internal: a cancelled (timed-out) call stopped; the caller gets the timeout error                       |
 | `MM_INTERNAL_ERROR`                 | Internal server error                                                                                   |
 | `MM_BATCH_TIMEOUT`                  | `batchTimeoutMs` deadline exceeded in run_steps                                                         |
 | `MM_CDP_BLOCKED`                    | CDP method is blocked (destructive to session); on mobile the Hermes blocklist maps here too            |

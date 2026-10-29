@@ -48,6 +48,21 @@ export type WithinScope = {
   value: string;
 };
 
+/**
+ * One snapshot of the screen: the accessibility tree, and the test IDs of the
+ * same snapshot.
+ */
+export type ScreenCapture = {
+  nodes: A11yNodeTrimmed[];
+  refMap: Map<string, string>;
+  /**
+   * Lists the test IDs of this snapshot (no new snapshot).
+   *
+   * @param limit - Maximum number of test IDs to return.
+   */
+  getTestIds(limit?: number): Promise<TestIdItem[]>;
+};
+
 export type IPlatformDriver = {
   click(
     targetType: TargetType,
@@ -87,6 +102,13 @@ export type IPlatformDriver = {
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }>;
 
   getTestIds(limit?: number): Promise<TestIdItem[]>;
+
+  /**
+   * Takes one snapshot and returns both the accessibility tree and its test
+   * IDs, so they describe the same screen. Optional: without it, callers use
+   * `getAccessibilityTree` and `getTestIds` (two snapshots).
+   */
+  captureScreen?(): Promise<ScreenCapture>;
 
   screenshot(options: PlatformScreenshotOptions): Promise<ScreenshotResult>;
 

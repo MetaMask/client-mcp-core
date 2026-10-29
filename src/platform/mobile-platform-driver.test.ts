@@ -71,6 +71,52 @@ describe('MobilePlatformDriver', () => {
     vi.restoreAllMocks();
   });
 
+  describe('captureScreen', () => {
+    it('returns the tree and the test IDs of one snapshot', async () => {
+      const backend = createMockBackend({
+        getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
+        snapshot: vi
+          .fn()
+          .mockResolvedValueOnce({
+            platform: 'ios',
+            hierarchy: [
+              makeElement({ identifier: 'login', label: 'Unlock' }),
+              makeElement({
+                identifier: 'below',
+                type: 'StaticText',
+                frame: { x: 0, y: 2000, width: 10, height: 10 },
+              }),
+            ],
+            raw: '[]',
+            timestamp: Date.now(),
+          })
+          .mockResolvedValueOnce({
+            platform: 'ios',
+            hierarchy: [makeElement({ identifier: 'wallet' })],
+            raw: '[]',
+            timestamp: Date.now(),
+          }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const screen = await driver.captureScreen();
+      const testIds = await screen.getTestIds();
+
+      expect(backend.snapshot).toHaveBeenCalledTimes(1);
+      expect(screen.nodes.map((node) => node.testId)).toStrictEqual([
+        'login',
+        'below',
+      ]);
+      expect(screen.refMap.get('e1')).toBe('identifier:login');
+      // Same items, order and visibility as getTestIds on that snapshot.
+      expect(testIds).toStrictEqual([
+        { testId: 'login', tag: 'Button', text: 'Unlock', visible: true },
+        { testId: 'below', tag: 'StaticText', text: undefined, visible: false },
+      ]);
+      expect(await screen.getTestIds(1)).toHaveLength(1);
+    });
+  });
+
   describe('getPlatform', () => {
     it('returns ios for ios backend', () => {
       const driver = new MobilePlatformDriver(createMockBackend());

@@ -105,21 +105,22 @@ describe('discovery-tools', () => {
       );
     });
 
-    it('updates refMap in session manager', async () => {
+    it('does not take an a11y snapshot or change the refMap (no refs in its result)', async () => {
       const context = createMockContext();
-      const mockRefMap = new Map([['e1', 'role=button[name="Submit"]']]);
+      const setRefMap = vi.fn();
 
       vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
-      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
-        {
-          nodes: [],
-          refMap: mockRefMap,
-        },
-      );
+      const snapshot = vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot');
 
-      await listTestIdsTool({}, context);
+      const result = await listTestIdsTool({}, {
+        ...context,
+        setRefMap,
+      } as ToolContext);
 
-      expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
+      expect(result).toStrictEqual({ ok: true, result: { items: [] } });
+      expect(snapshot).not.toHaveBeenCalled();
+      expect(setRefMap).not.toHaveBeenCalled();
+      expect(context.sessionManager.setRefMap).not.toHaveBeenCalled();
     });
 
     it('returns error when no active session', async () => {
@@ -423,6 +424,75 @@ describe('discovery-tools', () => {
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
     });
 
+    it('uses one captureScreen snapshot for test IDs and tree when the driver has it', async () => {
+      const context = createMockContext();
+      const screenNodes: A11yNodeTrimmed[] = [
+        { ref: 'e1', role: 'Button', name: 'Send', path: [] },
+      ];
+      const screenRefMap = new Map([['e1', 'label:Send|type:Button']]);
+      const screenTestIds: TestIdItem[] = [
+        { testId: 'wallet-screen', tag: 'View', visible: true },
+      ];
+      const getTestIds = vi.fn().mockResolvedValue(screenTestIds);
+      const captureScreen = vi.fn().mockResolvedValue({
+        nodes: screenNodes,
+        refMap: screenRefMap,
+        getTestIds,
+      });
+      const driver = {
+        getAppState: vi.fn().mockResolvedValue({ isLoaded: true }),
+        getTestIds: vi.fn(),
+        getAccessibilityTree: vi.fn(),
+        captureScreen,
+      };
+
+      const result = await describeScreenTool({}, {
+        ...context,
+        driver,
+      } as unknown as ToolContext);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.testIds.items).toStrictEqual(screenTestIds);
+        expect(result.result.a11y.nodes).toStrictEqual(screenNodes);
+      }
+      expect(captureScreen).toHaveBeenCalledTimes(1);
+      expect(getTestIds).toHaveBeenCalledWith(150);
+      expect(driver.getTestIds).not.toHaveBeenCalled();
+      expect(driver.getAccessibilityTree).not.toHaveBeenCalled();
+      expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(
+        screenRefMap,
+      );
+    });
+
+    it('stops after captureScreen when the request is aborted', async () => {
+      const controller = new AbortController();
+      const context = createMockContext();
+      const driver = {
+        getAppState: vi.fn().mockResolvedValue({ isLoaded: true }),
+        captureScreen: vi.fn().mockResolvedValue({
+          nodes: [],
+          refMap: new Map(),
+          getTestIds: vi.fn(async () => {
+            controller.abort();
+            return [];
+          }),
+        }),
+      };
+
+      const result = await describeScreenTool({}, {
+        ...context,
+        driver,
+        signal: controller.signal,
+      } as unknown as ToolContext);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_REQUEST_ABORTED);
+      }
+      expect(context.sessionManager.setRefMap).not.toHaveBeenCalled();
+    });
+
     it('returns error when no active session', async () => {
       const context = createMockContext({ hasActive: false });
 
@@ -448,5 +518,69 @@ describe('discovery-tools', () => {
         expect(result.error.code).toBe('MM_DISCOVERY_FAILED');
       }
     });
+  });
+
+  describe('refs and abort', () => {
+    const nodes: A11yNodeTrimmed[] = [
+      { ref: 'e1', role: 'button', name: 'Go', path: [] },
+    ];
+    const refMap = new Map([['e1', 'role=button[name="Go"]']]);
+
+    beforeEach(() => {
+      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        { nodes, refMap },
+      );
+    });
+
+    const nodesOf = (result: unknown): A11yNodeTrimmed[] | undefined => {
+      const value = (result as { result?: Record<string, unknown> }).result;
+      return (
+        (value?.nodes as A11yNodeTrimmed[] | undefined) ??
+        (value?.a11y as { nodes: A11yNodeTrimmed[] } | undefined)?.nodes
+      );
+    };
+
+    it.each([
+      ['accessibility_snapshot', accessibilitySnapshotTool],
+      ['describe_screen', describeScreenTool],
+    ] as const)(
+      '%s sets refs through sessionManager.setRefMap and returns the tree nodes',
+      async (_name, tool) => {
+        const context = createMockContext();
+        const result = await tool({}, context);
+
+        expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(refMap);
+        expect(nodesOf(result)).toStrictEqual(nodes);
+      },
+    );
+
+    it.each([['describe_screen', describeScreenTool]] as const)(
+      '%s stops before the a11y snapshot when the request is aborted',
+      async (_name, tool) => {
+        const controller = new AbortController();
+        const context = createMockContext();
+        vi.spyOn(discoveryModule, 'collectTestIds').mockImplementation(
+          async () => {
+            controller.abort();
+            return [];
+          },
+        );
+
+        const result = await tool({}, {
+          ...context,
+          signal: controller.signal,
+        } as ToolContext);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_REQUEST_ABORTED);
+        }
+        expect(
+          discoveryModule.collectTrimmedA11ySnapshot,
+        ).not.toHaveBeenCalled();
+        expect(context.sessionManager.setRefMap).not.toHaveBeenCalled();
+      },
+    );
   });
 });

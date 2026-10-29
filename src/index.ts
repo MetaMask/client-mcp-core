@@ -10,6 +10,7 @@ export type {
   TypeActionResult,
   GetTextActionResult,
   PlatformScreenshotOptions,
+  ScreenCapture,
 } from './platform';
 export { PlaywrightPlatformDriver, MobilePlatformDriver } from './platform';
 

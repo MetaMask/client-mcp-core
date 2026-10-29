@@ -1240,4 +1240,45 @@ describe('interaction', () => {
       }
     });
   });
+
+  describe('abort', () => {
+    it.each([
+      [
+        'click',
+        async (context: ToolContext) => clickTool({ testId: 'a' }, context),
+      ],
+      [
+        'type',
+        async (context: ToolContext) =>
+          typeTool({ testId: 'a', text: 'x' }, context),
+      ],
+      [
+        'wait_for',
+        async (context: ToolContext) => waitForTool({ testId: 'a' }, context),
+      ],
+      [
+        'get_text',
+        async (context: ToolContext) => getTextTool({ testId: 'a' }, context),
+      ],
+    ])(
+      '%s returns MM_REQUEST_ABORTED without touching the page when aborted',
+      async (_name, run) => {
+        const controller = new AbortController();
+        controller.abort();
+        const context = {
+          ...createMockContext(),
+          signal: controller.signal,
+        } as ToolContext;
+        const waitSpy = vi.spyOn(discoveryModule, 'waitForTarget');
+
+        const result = await run(context);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_REQUEST_ABORTED);
+        }
+        expect(waitSpy).not.toHaveBeenCalled();
+      },
+    );
+  });
 });

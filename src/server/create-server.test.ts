@@ -10,11 +10,20 @@ import {
   createServer,
   buildResponseBody,
   resolveObserveLevel,
+  screenAfterResponse,
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
-import type { DaemonState, ServerConfig, ToolResponse } from '../types/http.js';
+import { toolRegistry } from '../tools/registry.js';
+import type { StepRecordObservation } from '../tools/types/observation.js';
+import type {
+  DaemonState,
+  ServerConfig,
+  ToolContext,
+  ToolFunction,
+  ToolResponse,
+} from '../types/http.js';
 
 const tmpDir = path.join(os.tmpdir(), `mm-create-server-test-${Date.now()}`);
 
@@ -73,6 +82,7 @@ function createMockSessionManager() {
     takeScreenshot: vi.fn(async () => ({ path: '', base64: '' })),
     getRefMap: vi.fn(() => new Map()),
     setRefMap: vi.fn(),
+    clearRefMap: vi.fn(),
     setWorkflowContext: vi.fn(),
     getEnvironmentMode: vi.fn(() => 'e2e'),
     setContext: vi.fn(),
@@ -2148,5 +2158,874 @@ describe('createServer observation driver freshness after launch', () => {
 
     expect(body.ok).toBe(false);
     expect(body.error.code).toBe('MM_TOOL_NOT_SUPPORTED_ON_PLATFORM');
+  });
+});
+
+describe('createServer abort, ref generations and observations', () => {
+  type Node = { ref: string; role: string; name: string; path: string[] };
+  type ObsBody = {
+    ok: boolean;
+    error?: { code: string; message: string };
+    observations?: {
+      a11y: {
+        nodes: Node[];
+        diff?: { added: string[]; removed: string[]; unchanged: number };
+      };
+    };
+  };
+  type Tree = { nodes: Node[]; refMap: Map<string, string> };
+
+  const sleep = async (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  const buildTree = (names: string[]): Tree => ({
+    nodes: names.map((name, index) => ({
+      ref: `e${index + 1}`,
+      role: 'button',
+      name,
+      path: [],
+    })),
+    refMap: new Map(
+      names.map((name, index) => [`e${index + 1}`, `label:${name}`] as const),
+    ),
+  });
+
+  let server: ServerInstance | undefined;
+  let state: DaemonState;
+  let mockSM: ReturnType<typeof createMockSessionManager>;
+  let storedRefMap: Map<string, string>;
+  let driver: {
+    getPlatform: ReturnType<typeof vi.fn>;
+    getAppState: ReturnType<typeof vi.fn>;
+    getTestIds: ReturnType<typeof vi.fn>;
+    getAccessibilityTree: ReturnType<typeof vi.fn>;
+    click: ReturnType<typeof vi.fn>;
+  };
+  const addedTools: string[] = [];
+
+  const startServer = async (
+    options: { requestTimeoutMs?: number; mobile?: boolean } = {},
+  ): Promise<void> => {
+    if (options.mobile !== false) {
+      mockSM.getPlatformDriver.mockReturnValue(driver);
+    }
+    server = createServer(
+      buildConfig({
+        sessionManager: mockSM as unknown as ServerConfig['sessionManager'],
+        requestTimeoutMs: options.requestTimeoutMs,
+      }),
+    );
+    state = await server.start();
+  };
+
+  const post = async (
+    urlPath: string,
+    requestBody: unknown = {},
+  ): Promise<{ status: number; body: ObsBody }> => {
+    const res = await httpRequest(`http://127.0.0.1:${state.port}${urlPath}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+    return { status: res.status, body: (await res.json()) as ObsBody };
+  };
+
+  const addTool = (name: string, fn: ToolFunction<unknown, unknown>): void => {
+    toolRegistry.set(name, fn);
+    addedTools.push(name);
+  };
+
+  // A mutating tool without a `timeoutMs` default, so the server's
+  // requestTimeoutMs is the queue timeout (click defaults to 15 s).
+  const addTapTool = (): void => {
+    addTool('test_tap', async () => ({ ok: true, result: {} }));
+  };
+
+  beforeEach(async () => {
+    await fs.mkdir(tmpDir, { recursive: true });
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+
+    storedRefMap = new Map();
+    mockSM = createMockSessionManager();
+    mockSM.hasActiveSession.mockReturnValue(true);
+    mockSM.setRefMap.mockImplementation((map: Map<string, string>) => {
+      storedRefMap = map;
+    });
+    mockSM.getRefMap.mockImplementation(() => storedRefMap);
+
+    driver = {
+      getPlatform: vi.fn().mockReturnValue('android'),
+      getAppState: vi.fn().mockResolvedValue({ isLoaded: true }),
+      getTestIds: vi.fn().mockResolvedValue([]),
+      getAccessibilityTree: vi.fn().mockResolvedValue(buildTree(['Unlock'])),
+      click: vi.fn().mockResolvedValue({ clicked: true, target: 'x' }),
+    };
+  });
+
+  afterEach(async () => {
+    const running = server;
+    server = undefined;
+    await running?.stop();
+    for (const name of addedTools.splice(0)) {
+      toolRegistry.delete(name);
+    }
+    exitSpy.mockRestore();
+    const discovery = await import('../tools/utils/discovery.js');
+    vi.mocked(discovery.collectTrimmedA11ySnapshot).mockReset();
+    vi.mocked(discovery.collectTrimmedA11ySnapshot).mockResolvedValue({
+      nodes: [],
+      refMap: new Map(),
+    });
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  describe('P1-08: timed-out requests', () => {
+    it('aborts the signal of a timed-out task and ignores its late setRefMap (AC1)', async () => {
+      await startServer({ requestTimeoutMs: 50 });
+      let abortedWhenLate: boolean | undefined;
+      let finished!: () => void;
+      const done = new Promise<void>((resolve) => {
+        finished = resolve;
+      });
+      addTool('test_slow_tool', async (_input, context) => {
+        await sleep(120);
+        abortedWhenLate = context.signal?.aborted;
+        context.sessionManager.setRefMap(new Map([['e1', 'late']]));
+        finished();
+        return { ok: true, result: {} };
+      });
+
+      const { status, body } = await post('/tool/test_slow_tool');
+      await done;
+
+      expect(status).toBe(500);
+      expect(body.error?.message).toContain('timed out after 50ms');
+      expect(abortedWhenLate).toBe(true);
+      expect(mockSM.setRefMap).not.toHaveBeenCalled();
+    });
+
+    it('keeps the refMap of the second request after the first times out (AC2)', async () => {
+      await startServer({ requestTimeoutMs: 50 });
+      const firstTree = buildTree(['Old screen']);
+      const secondTree = buildTree(['New screen']);
+      // First click: its observation snapshot arrives after the timeout.
+      driver.getAccessibilityTree
+        .mockImplementationOnce(async () => {
+          await sleep(120);
+          return firstTree;
+        })
+        .mockResolvedValueOnce(secondTree);
+      addTapTool();
+
+      const first = await post('/tool/test_tap');
+      const second = await post('/tool/test_tap');
+
+      expect(first.status).toBe(500);
+      expect(second.status).toBe(200);
+      expect(second.body.observations?.a11y.nodes).toStrictEqual(
+        secondTree.nodes,
+      );
+      expect(mockSM.setRefMap).toHaveBeenCalledTimes(1);
+      expect(storedRefMap).toStrictEqual(secondTree.refMap);
+      // The aborted observation stopped before its test ID step.
+      expect(driver.getTestIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops the browser observation at the next checkpoint after an abort', async () => {
+      const discovery = await import('../tools/utils/discovery.js');
+      vi.mocked(discovery.collectTestIds).mockClear();
+      mockSM.getPage.mockReturnValue({
+        waitForLoadState: vi.fn(async () => sleep(120)),
+        waitForFunction: vi.fn(async () => undefined),
+      } as never);
+      await startServer({ requestTimeoutMs: 50, mobile: false });
+      addTapTool();
+
+      const { status } = await post('/tool/test_tap');
+      await sleep(150);
+
+      expect(status).toBe(500);
+      expect(vi.mocked(discovery.collectTestIds)).not.toHaveBeenCalled();
+      expect(mockSM.setRefMap).not.toHaveBeenCalled();
+    });
+
+    it('cancels a tool that checks the signal between steps', async () => {
+      await startServer({ requestTimeoutMs: 50 });
+      const steps: string[] = [];
+      addTool('test_steps_tool', async (_input, context) => {
+        steps.push('one');
+        await sleep(100);
+        if (context.signal?.aborted) {
+          return { ok: false, error: { code: 'X', message: 'aborted' } };
+        }
+        steps.push('two');
+        return { ok: true, result: {} };
+      });
+
+      await post('/tool/test_steps_tool');
+      await sleep(80);
+
+      expect(steps).toStrictEqual(['one']);
+    });
+  });
+
+  describe('P1-09: observations and refs', () => {
+    it('a non-delivered observation does not change lastObservation (AC1)', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['A', 'B']))
+        .mockResolvedValueOnce(buildTree(['A', 'B', 'C']));
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x', observe: 'none' });
+      const { body } = await post('/tool/click', { testId: 'x' });
+
+      // observe none collected nothing; the diff is against the first
+      // (delivered) observation.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: ['e3'],
+        removed: [],
+        unchanged: 2,
+      });
+    });
+
+    it('lets the observation replace the refs the tool set, without a settle', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Send', 'Swap']))
+        .mockResolvedValueOnce(buildTree(['Banner', 'Send', 'Swap']));
+
+      const { body } = await post('/tool/describe_screen', {
+        observe: 'full',
+      });
+
+      expect(body.ok).toBe(true);
+      // The observation is the last tree in the response: every ref in it
+      // resolves to the element it shows.
+      const nodes = body.observations?.a11y.nodes ?? [];
+      expect(nodes.map((node) => [node.ref, node.name])).toStrictEqual([
+        ['e1', 'Banner'],
+        ['e2', 'Send'],
+        ['e3', 'Swap'],
+      ]);
+      expect(storedRefMap).toStrictEqual(
+        buildTree(['Banner', 'Send', 'Swap']).refMap,
+      );
+      // No settle: the tool set refs, so it had just read the screen.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('lets the run_steps observation replace refs a step set', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Send']))
+        .mockResolvedValueOnce(buildTree(['Done']));
+
+      await post('/tool/run_steps', {
+        steps: [{ tool: 'accessibility_snapshot' }],
+      });
+
+      expect(mockSM.setRefMap).toHaveBeenCalledTimes(2);
+      expect(storedRefMap).toStrictEqual(new Map([['e1', 'label:Done']]));
+    });
+
+    it('sends the new refs when an element is inserted above the others', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Send', 'Swap']))
+        .mockResolvedValueOnce(buildTree(['Banner', 'Send', 'Swap']));
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = await post('/tool/click', { testId: 'x' });
+
+      // Refs are positional: Banner takes e1, Send and Swap move to e2/e3.
+      // Every node changed, so the response carries the full tree (a diff
+      // would not be smaller) and the agent sees the new refs.
+      expect(body.observations?.a11y.diff).toBeUndefined();
+      expect(
+        body.observations?.a11y.nodes.map((node) => [node.ref, node.name]),
+      ).toStrictEqual([
+        ['e1', 'Banner'],
+        ['e2', 'Send'],
+        ['e3', 'Swap'],
+      ]);
+      expect(storedRefMap.get('e1')).toBe('label:Banner');
+    });
+
+    it('diffs two mobile observations of the same tree as unchanged', async () => {
+      await startServer();
+      // Many unnamed containers (Android: android.view.ViewGroup), plus a
+      // status-bar label that changes.
+      const screen = (signal: string): Tree => {
+        const nodes: Node[] = [
+          {
+            ref: 'e1',
+            role: 'android.widget.FrameLayout',
+            name: signal,
+            path: [],
+          },
+          ...Array.from(
+            { length: 30 },
+            (_, index): Node => ({
+              ref: `e${index + 2}`,
+              role: 'android.view.ViewGroup',
+              name: '',
+              path: ['android.widget.FrameLayout'],
+            }),
+          ),
+          { ref: 'e32', role: 'android.widget.Button', name: 'Send', path: [] },
+        ];
+        return {
+          nodes,
+          refMap: new Map([
+            ['e1', `label:${signal}|type:android.widget.FrameLayout`],
+            ['e32', 'label:Send|type:android.widget.Button'],
+          ]),
+        };
+      };
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(screen('T-Mobile, no signal.'))
+        .mockResolvedValueOnce(screen('T-Mobile, no signal.'))
+        // Settle retry (unchanged): the status bar changed meanwhile.
+        .mockResolvedValue(screen('T-Mobile, signal full.'));
+
+      await post('/tool/click', { testId: 'x' });
+      const same = await post('/tool/click', { testId: 'x' });
+
+      // Only the status-bar node whose name changed is sent.
+      expect(
+        same.body.observations?.a11y.nodes.map((node) => node.name),
+      ).toStrictEqual(['T-Mobile, signal full.']);
+
+      const again = await post('/tool/click', { testId: 'x' });
+
+      expect(again.body.observations?.a11y.diff).toStrictEqual({
+        added: [],
+        removed: [],
+        unchanged: 32,
+      });
+      expect(again.body.observations?.a11y.nodes).toStrictEqual([]);
+    });
+
+    it('routes context.sessionManager.setRefMap through the request handle', async () => {
+      await startServer();
+      const target = mockSM as unknown as Record<string, unknown>;
+      target.whoAmI = function (this: unknown): boolean {
+        return this === mockSM;
+      };
+      Object.defineProperty(mockSM, 'isSelf', {
+        configurable: true,
+        get(this: unknown): boolean {
+          return this === mockSM;
+        },
+      });
+      let seen: { bound?: boolean; getter?: boolean; id?: string } = {};
+      addTool('test_consumer_tool', async (_input, context) => {
+        const sessionManager = context.sessionManager as unknown as {
+          whoAmI(): boolean;
+          isSelf: boolean;
+        } & ToolContext['sessionManager'];
+        const { whoAmI } = sessionManager;
+        seen = {
+          bound: whoAmI(),
+          getter: sessionManager.isSelf,
+          id: sessionManager.getSessionId(),
+        };
+        context.sessionManager.setRefMap(new Map([['e1', 'consumer']]));
+        return { ok: true, result: {} };
+      });
+
+      await post('/tool/test_consumer_tool', { observe: 'none' });
+
+      expect(seen).toStrictEqual({
+        bound: true,
+        getter: true,
+        id: 'test-session',
+      });
+      expect(mockSM.setRefMap).toHaveBeenCalledTimes(1);
+      expect(storedRefMap).toStrictEqual(new Map([['e1', 'consumer']]));
+    });
+
+    it('drops a late clearRefMap from a timed-out request', async () => {
+      await startServer({ requestTimeoutMs: 50 });
+      storedRefMap = new Map([['e1', 'kept']]);
+      mockSM.clearRefMap.mockImplementation(() => {
+        storedRefMap = new Map();
+      });
+      let finished!: () => void;
+      const done = new Promise<void>((resolve) => {
+        finished = resolve;
+      });
+      addTool('test_slow_clear_tool', async (_input, context) => {
+        await sleep(120);
+        context.sessionManager.clearRefMap();
+        finished();
+        return { ok: true, result: {} };
+      });
+
+      const { status } = await post('/tool/test_slow_clear_tool');
+      await done;
+
+      expect(status).toBe(500);
+      expect(mockSM.clearRefMap).not.toHaveBeenCalled();
+      expect(storedRefMap).toStrictEqual(new Map([['e1', 'kept']]));
+    });
+
+    it('binds methods and getters of a session manager class with #private fields', async () => {
+      class PrivateSessionManager {
+        readonly #id = 'private-session';
+
+        #refMap = new Map<string, string>();
+
+        get privateId(): string {
+          return this.#id;
+        }
+
+        readPrivateId(): string {
+          return this.#id;
+        }
+
+        hasActiveSession(): boolean {
+          return true;
+        }
+
+        getSessionId(): string {
+          return this.#id;
+        }
+
+        getPlatformDriver(): typeof driver {
+          return driver;
+        }
+
+        setRefMap(map: Map<string, string>): void {
+          this.#refMap = map;
+        }
+
+        getRefMap(): Map<string, string> {
+          return this.#refMap;
+        }
+      }
+      const real = new PrivateSessionManager();
+      // Fill in the other members the server needs from the mock, as own
+      // properties of the real instance (the #private members stay real).
+      for (const [key, value] of Object.entries(mockSM)) {
+        if (!(key in real)) {
+          (real as unknown as Record<string, unknown>)[key] = value;
+        }
+      }
+      server = createServer(
+        buildConfig({
+          sessionManager: real as unknown as ServerConfig['sessionManager'],
+        }),
+      );
+      state = await server.start();
+      let seen: { getter?: string; method?: string; detached?: string } = {};
+      addTool('test_private_tool', async (_input, context) => {
+        const proxied = context.sessionManager as unknown as Pick<
+          PrivateSessionManager,
+          'privateId' | 'readPrivateId'
+        >;
+        const { readPrivateId } = proxied;
+        seen = {
+          getter: proxied.privateId,
+          method: proxied.readPrivateId(),
+          detached: readPrivateId(),
+        };
+        context.sessionManager.setRefMap(new Map([['e1', 'private']]));
+        return { ok: true, result: {} };
+      });
+
+      const { status } = await post('/tool/test_private_tool', {
+        observe: 'none',
+      });
+
+      expect(status).toBe(200);
+      expect(seen).toStrictEqual({
+        getter: 'private-session',
+        method: 'private-session',
+        detached: 'private-session',
+      });
+      // The write went through the RefStore to the real #refMap.
+      expect(real.getRefMap()).toStrictEqual(new Map([['e1', 'private']]));
+    });
+
+    describe('launch and cleanup', () => {
+      let realLaunch: ToolFunction<unknown, unknown> | undefined;
+
+      beforeEach(() => {
+        realLaunch = toolRegistry.get('launch');
+      });
+
+      afterEach(() => {
+        if (realLaunch) {
+          toolRegistry.set('launch', realLaunch);
+        }
+      });
+
+      it('does not compare against the screen from before a launch', async () => {
+        await startServer();
+        toolRegistry.set('launch', async () => ({ ok: true, result: {} }));
+        driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
+
+        await post('/tool/click', { testId: 'x' });
+        await post('/launch', { observe: 'none' });
+        await post('/tool/click', { testId: 'x' });
+
+        // No unchanged retry after the launch: there is no previous screen.
+        expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+      });
+    });
+  });
+
+  describe('P1-09: mobile settle after a mutating tool', () => {
+    it('re-snapshots once after 300 ms when the screen looks unchanged', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValueOnce(buildTree(['Wallet']));
+
+      await post('/tool/click', { testId: 'x' });
+      const startedAt = Date.now();
+      const { body } = await post('/tool/click', { testId: 'unlock' });
+
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(290);
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+      expect(body.observations?.a11y.nodes.map((node) => node.name)).toContain(
+        'Wallet',
+      );
+    });
+
+    it('retries an unchanged, non-busy screen only once', async () => {
+      await startServer();
+      driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x' });
+
+      // 1 (first click) + 1 + 1 retry (second click).
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+    });
+
+    it('takes at most three extra snapshots while the screen is busy', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValue(buildTree(['Password', 'Unlock, busy']));
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x' });
+
+      // 1 (first click) + 1 + 3 extra (second click).
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(5);
+    });
+
+    it('keeps retrying when an unchanged screen turns busy, within the limits', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock, busy']))
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValue(buildTree(['Wallet']));
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = await post('/tool/click', {
+        testId: 'x',
+        observe: 'full',
+      });
+
+      // Second click: unchanged → retry (the one unchanged retry), busy →
+      // retry, unchanged again → no second unchanged retry: stop.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(4);
+      expect(
+        body.observations?.a11y.nodes.map((node) => node.name),
+      ).toStrictEqual(['Password', 'Unlock']);
+    });
+
+    it('re-snapshots while a node is busy, even when the screen changed (Android unlock)', async () => {
+      await startServer();
+      const busy: Tree = {
+        nodes: [
+          {
+            ref: 'e1',
+            role: 'android.widget.EditText',
+            name: 'Password',
+            path: [],
+          },
+          {
+            ref: 'e2',
+            role: 'android.widget.Button',
+            name: 'Unlock, busy',
+            path: [],
+          },
+        ],
+        refMap: new Map([['e2', 'identifier:log-in-button']]),
+      };
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Password', 'Unlock']))
+        .mockResolvedValueOnce(busy)
+        .mockResolvedValueOnce(busy)
+        .mockResolvedValueOnce(buildTree(['Wallet']));
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = await post('/tool/click', { testId: 'log-in-button' });
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(4);
+      expect(
+        body.observations?.a11y.nodes.map((node) => node.name),
+      ).toStrictEqual(['Wallet']);
+    });
+
+    it('re-snapshots a busy first observation without a previous screen', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Unlock, busy']))
+        .mockResolvedValueOnce(buildTree(['Wallet']));
+
+      await post('/tool/click', { testId: 'x' });
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not compare against a describe_screen that timed out', async () => {
+      await startServer({ requestTimeoutMs: 100 });
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Login']))
+        .mockImplementationOnce(async () => {
+          await sleep(200);
+          return buildTree(['Wallet']);
+        })
+        .mockResolvedValue(buildTree(['Wallet']));
+
+      await post('/tool/click', { testId: 'x' });
+      mockSM.setRefMap.mockClear();
+      const described = await post('/tool/describe_screen');
+      await sleep(150);
+
+      expect(described.status).toBe(500);
+      // The late describe_screen write was dropped.
+      expect(mockSM.setRefMap).not.toHaveBeenCalled();
+
+      await post('/tool/click', { testId: 'x' });
+
+      // Compared against the delivered Login tree, so Wallet is a change:
+      // no unchanged retry (3 snapshots so far + 1).
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+      expect(storedRefMap).toStrictEqual(buildTree(['Wallet']).refMap);
+    });
+
+    it('stops settling at MOBILE_SETTLE_MAX_MS', async () => {
+      await startServer();
+      driver.getAccessibilityTree.mockImplementation(async () => {
+        await sleep(700);
+        return buildTree(['Unlock, busy']);
+      });
+
+      await post('/tool/click', { testId: 'x' });
+
+      // 1st snapshot, then (300 ms + 700 ms) twice = 2000 ms; a third wait
+      // would end after the 2000 ms cap.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not settle when the tool set refs', async () => {
+      await startServer();
+      driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
+      addTool('test_ref_tool', async (_input, context) => {
+        context.sessionManager.setRefMap(buildTree(['Same']).refMap);
+        return { ok: true, result: {} };
+      });
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/test_ref_tool');
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('settles against the tree describe_screen returned', async () => {
+      await startServer();
+      driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
+
+      await post('/tool/describe_screen');
+      await post('/tool/click', { testId: 'x' });
+
+      // One describe snapshot; the click snapshot is unchanged against the
+      // described tree, so it retries once.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not settle after cleanup', async () => {
+      await startServer();
+      driver.getAccessibilityTree.mockResolvedValue(
+        buildTree(['Unlock, busy']),
+      );
+      mockSM.cleanup.mockResolvedValue(true);
+
+      await post('/cleanup', { observe: 'full' });
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(1);
+    });
+
+    it('takes the test IDs from the same snapshot as the final tree', async () => {
+      await startServer();
+      const screens = [
+        { names: ['Password', 'Unlock'], testIds: ['login'] },
+        { names: ['Password', 'Unlock, busy'], testIds: ['login-busy'] },
+        { names: ['Wallet'], testIds: ['wallet'] },
+      ].map(({ names, testIds }) => ({
+        ...buildTree(names),
+        getTestIds: vi.fn(async () =>
+          testIds.map((testId) => ({ testId, tag: 'View', visible: true })),
+        ),
+      }));
+      const captureScreen = vi.fn();
+      for (const screen of screens) {
+        captureScreen.mockResolvedValueOnce(screen);
+      }
+      Object.assign(driver, { captureScreen });
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = (await post('/tool/click', {
+        testId: 'x',
+      })) as unknown as {
+        body: {
+          observations: {
+            testIds: { testId: string }[];
+            a11y: { nodes: Node[] };
+          };
+        };
+      };
+
+      expect(captureScreen).toHaveBeenCalledTimes(3);
+      expect(driver.getAccessibilityTree).not.toHaveBeenCalled();
+      expect(driver.getTestIds).not.toHaveBeenCalled();
+      expect(screens[1]?.getTestIds).not.toHaveBeenCalled();
+      expect(
+        body.observations.testIds.map((item) => item.testId),
+      ).toStrictEqual(['wallet']);
+      expect(
+        body.observations.a11y.nodes.map((node) => node.name),
+      ).toStrictEqual(['Wallet']);
+    });
+
+    it('does not wait when the screen changed', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['Login']))
+        .mockResolvedValueOnce(buildTree(['Wallet']));
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x' });
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not wait for a readonly tool that asked for an observation', async () => {
+      await startServer();
+      driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/get_state', { observe: 'full' });
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops waiting and sets no refs when the request is aborted', async () => {
+      await startServer({ requestTimeoutMs: 150 });
+      driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
+
+      addTapTool();
+
+      await post('/tool/test_tap');
+      mockSM.setRefMap.mockClear();
+      const { status } = await post('/tool/test_tap');
+      await sleep(250);
+
+      expect(status).toBe(500);
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+      expect(mockSM.setRefMap).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('screenAfterResponse', () => {
+  const tree = [{ ref: 'e1', role: 'button', name: 'Go', path: [] }];
+  const other = [{ ref: 'e1', role: 'button', name: 'Back', path: [] }];
+  const observation = {
+    testIds: [],
+    a11y: { nodes: other },
+  } as unknown as StepRecordObservation;
+
+  it.each(['launch', 'cleanup'])('returns null after %s', (toolName) => {
+    expect(
+      screenAfterResponse(
+        toolName,
+        { ok: true, result: {} },
+        observation,
+        tree,
+      ),
+    ).toBeNull();
+  });
+
+  it('prefers the delivered observation', () => {
+    expect(
+      screenAfterResponse(
+        'describe_screen',
+        { ok: true, result: { a11y: { nodes: tree } } },
+        observation,
+        null,
+      ),
+    ).toBe(other);
+  });
+
+  it('returns the describe_screen and accessibility_snapshot trees', () => {
+    expect(
+      screenAfterResponse(
+        'describe_screen',
+        { ok: true, result: { a11y: { nodes: tree } } },
+        undefined,
+        null,
+      ),
+    ).toBe(tree);
+    expect(
+      screenAfterResponse(
+        'accessibility_snapshot',
+        { ok: true, result: { nodes: tree } },
+        undefined,
+        null,
+      ),
+    ).toBe(tree);
+  });
+
+  it('ignores an accessibility_snapshot of a subtree', () => {
+    expect(
+      screenAfterResponse(
+        'accessibility_snapshot',
+        { ok: true, result: { nodes: tree } },
+        undefined,
+        other,
+        '#modal',
+      ),
+    ).toBe(other);
+  });
+
+  it('keeps the previous tree for an error or a call without a tree', () => {
+    expect(
+      screenAfterResponse(
+        'describe_screen',
+        { ok: false, error: { code: 'X', message: 'x' } },
+        undefined,
+        tree,
+      ),
+    ).toBe(tree);
+    expect(
+      screenAfterResponse(
+        'get_state',
+        { ok: true, result: {} },
+        undefined,
+        tree,
+      ),
+    ).toBe(tree);
   });
 });

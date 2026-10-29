@@ -29,6 +29,11 @@ export type ToolContext = {
   toolRegistry: Map<string, ToolFunction<unknown, unknown>>;
   /** Platform driver for cross-platform element interaction (browser, iOS, Android) */
   driver?: IPlatformDriver;
+  /**
+   * Aborted when the request times out. Tools check it between steps and
+   * stop. Absent when the context was not built by the daemon.
+   */
+  signal?: AbortSignal;
 };
 
 /**

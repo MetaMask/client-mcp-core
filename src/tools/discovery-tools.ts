@@ -10,6 +10,7 @@ import type {
 import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
 import {
+  abortedResponse,
   createToolError,
   createToolSuccess,
   requireActiveSession,
@@ -61,10 +62,9 @@ export async function listTestIdsTool(
 
   const limit = input.limit ?? DEFAULT_TESTID_LIMIT;
 
+  // The result has no refs, so the refMap is left as it is.
   try {
     const items = await driver.getTestIds(limit);
-    const { refMap } = await driver.getAccessibilityTree();
-    context.sessionManager.setRefMap(refMap);
     return createToolSuccess({ items });
   } catch (error) {
     const errorInfo = classifyDiscoveryError(error);
@@ -129,9 +129,19 @@ export async function describeScreenTool(
 
   try {
     const state = await driver.getAppState();
-    const testIds = await driver.getTestIds(DEFAULT_TESTID_LIMIT);
-    const { nodes, refMap } = await driver.getAccessibilityTree();
-
+    // Mobile: one device snapshot for both the test IDs and the tree, when
+    // the driver supports it.
+    const screen = driver.captureScreen
+      ? await driver.captureScreen()
+      : undefined;
+    const testIds = screen
+      ? await screen.getTestIds(DEFAULT_TESTID_LIMIT)
+      : await driver.getTestIds(DEFAULT_TESTID_LIMIT);
+    const aborted = abortedResponse<DescribeScreenResult>(context);
+    if (aborted) {
+      return aborted;
+    }
+    const { nodes, refMap } = screen ?? (await driver.getAccessibilityTree());
     context.sessionManager.setRefMap(refMap);
 
     const trackedPages = context.sessionManager.getTrackedPages();

@@ -18,7 +18,7 @@ mm cleanup --shutdown      # 5. Clean up when done
 
 **Critical rules:**
 
-- **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — they change after every action.
+- **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — use the refs from the latest response (`describe-screen` or the `observations` of your last action).
 - **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `testIds` and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need the full tree or screenshots, and `get-state` when you need app state (observations carry none).
 - **One target per command.** Specify exactly ONE of: a11y ref (`e5`), testId, or CSS selector.
 - **Errors are structured.** Check the `error.code` field to decide recovery strategy (see Error Codes below).
@@ -85,7 +85,9 @@ After a mutating action, the response includes fresh screen data:
 }
 ```
 
-You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed. Note that refs in compacted observations may be summary nodes (e.g., `"55 options (refs e2–e56)"`) when there are 3+ options under a combobox or listbox.
+You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed. Refs are numbered in screen order: on an unchanged screen they stay the same, but when elements appear or disappear above an element its ref can change. With `--observe diff`, those elements are listed in the diff with their new refs, so always take refs from the latest response. Note that refs in compacted observations may be summary nodes (e.g., `"55 options (refs e2–e56)"`) when there are 3+ options under a combobox or listbox.
+
+**Timeouts cancel the call:** when a call times out (`Tool execution timed out`), it is cancelled. It stops at its next step and cannot overwrite the refs of later calls. The action itself may still have happened, so run `describe-screen` before retrying.
 
 **Quick reference:**
 
