@@ -1,0 +1,22 @@
+SKILL.md
+  s_71bbccb6358d9b::t_6d51d7e0418242 98,475
+README.md
+  s_71bbccb6358d9b::t_ad9a4cf252d00c 413
+  s_71bbccb6358d9b::t_6d51d7e0418242 554,560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "392f205978f30528d6698d7f44dbc37f3384af7c",
+  "prompts": {},
+  "sessions": {
+    "s_71bbccb6358d9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e97442e39ffe9jzU3u2sis1NJ0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
