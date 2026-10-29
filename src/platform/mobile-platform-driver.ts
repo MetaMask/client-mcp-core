@@ -118,6 +118,9 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
    * @param within - Must be undefined — scoped search is not supported on mobile.
+   * @param signal - When aborted during the target wait, throws instead of
+   * tapping. device-mcp takes no signal: a wait or tap that is already
+   * running inside the backend is not cancelled.
    * @returns Click result with success status and target info.
    */
   async click(
@@ -126,11 +129,14 @@ export class MobilePlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<ClickActionResult> {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
+    // The request may have timed out while we waited for the target.
+    signal?.throwIfAborted();
     const remaining = deadline - Date.now();
     await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
     return { clicked: true, target: `${targetType}:${targetValue}` };
@@ -143,6 +149,9 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param timeoutMs - Maximum wait time in milliseconds.
    * @param within - Must be undefined — scoped search is not supported on mobile.
+   * @param signal - When aborted during the target wait or after the focus
+   * tap, throws instead of tapping or typing. device-mcp takes no signal: a
+   * wait, tap or typeText that is already running is not cancelled.
    * @returns Type result with success status and text length.
    */
   async type(
@@ -152,13 +161,16 @@ export class MobilePlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     timeoutMs: number,
     within?: WithinScope,
+    signal?: AbortSignal,
   ): Promise<TypeActionResult> {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
     await this.#backend.waitForElement(query, timeoutMs);
+    signal?.throwIfAborted();
     let remaining = deadline - Date.now();
     await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
+    signal?.throwIfAborted();
     remaining = deadline - Date.now();
     await withTimeout(this.#backend.typeText(text), remaining, 'typeText');
     return {

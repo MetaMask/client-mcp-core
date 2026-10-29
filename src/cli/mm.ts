@@ -1866,7 +1866,9 @@ Global Options:
                       Overrides MM_PROJECT and git-based discovery.
   --observe <level>   Observation returned after the call: none | diff | full.
                       Default: diff for mutating commands and run-steps,
-                      none for reads, discovery and cdp.
+                      none for reads, discovery and cdp. none does not
+                      refresh refs: run describe-screen before using refs
+                      again.
   --pretty            Indent JSON output. Default: one line per result when
                       stdout is not a terminal (agents, pipes), indented on a
                       terminal.

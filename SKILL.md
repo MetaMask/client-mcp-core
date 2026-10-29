@@ -51,6 +51,10 @@ mm navigate-home --observe full  # after navigation: get the whole screen
 mm get-state --observe full    # a read that also returns an observation
 ```
 
+**After `--observe none`, refs are not refreshed.** If the call changed the screen, the refs you have still describe the previous screen. A ref backed by a testId fails loudly (`MM_TARGET_NOT_FOUND`), but a ref built from role and name, a DOM path or a mobile label can click a **different element**. After `--observe none`, target by `--testid`, or run `mm describe-screen` before you use refs again.
+
+**Only mutating and batch calls wait for animations** (browser, up to 1 s) before they observe. `mm describe-screen` and a read with `--observe full` read the page at once, so `mm click … --observe none && mm get-state --observe full` can catch a screen mid-animation. To get a settled screen after an action, let the action observe: `mm click … --observe full`.
+
 Observations contain `testIds` and `a11y` only — no app `state`. Call `mm get-state` for state.
 
 On mobile, each observation and `describe-screen` comes from one device snapshot. The Android system status bar and navigation bar and the Expo DevLauncher "Tools" button (iOS `gearshape.fill`) are not part of the app and are removed from `testIds` and `a11y`. Other system windows, such as the biometric prompt (`com.android.systemui:id/biometric_*`), are kept.
@@ -91,7 +95,7 @@ After a mutating action, the response includes fresh screen data:
 
 You can use the `ref` values from `observations.a11y.nodes` for the next interaction — no `describe-screen` needed. Refs are numbered in screen order: on an unchanged screen they stay the same, but when elements appear or disappear above an element its ref can change. With `--observe diff`, those elements are listed in the diff with their new refs, so always take refs from the latest response. Note that refs in compacted observations may be summary nodes (e.g., `"55 options (refs e2–e56)"`) when there are 3+ options under a combobox or listbox.
 
-**Timeouts cancel the call:** when a call times out (`Tool execution timed out`), it is cancelled. It stops at its next step and cannot overwrite the refs of later calls. The action itself may still have happened, so run `describe-screen` before retrying.
+**Timeouts cancel the call:** when a call times out (`Tool execution timed out`), it is cancelled. It stops at its next step and cannot overwrite the refs of later calls. A `click` or `type` that timed out while waiting for its target does not click or type. An action that already started may still have happened (browser: Playwright's checks inside the click; mobile: a tap in progress is not stopped), so run `describe-screen` before retrying.
 
 **Quick reference:**
 
@@ -468,7 +472,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` to set an overall deadline — if exceeded, remaining steps are marked as skipped and partial results are returned immediately. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The whole `run_steps` call is stopped after 30 s (the request limit), so use a lower `batchTimeoutMs` (for example 20000) to get partial results, and split longer flows into several batches. The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 

@@ -692,6 +692,101 @@ describe('MobilePlatformDriver', () => {
     });
   });
 
+  describe('abort during the target wait', () => {
+    it('does not tap when the signal aborts while waiting', async () => {
+      const controller = new AbortController();
+      const reason = new Error('Tool execution timed out after 30000ms');
+      const backend = createMockBackend({
+        waitForElement: vi.fn().mockImplementation(async () => {
+          controller.abort(reason);
+          return makeElement();
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click(
+          'testId',
+          'confirm',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toBe(reason);
+      expect(backend.tapElement).not.toHaveBeenCalled();
+    });
+
+    it('does not tap or type when the signal aborts while waiting', async () => {
+      const controller = new AbortController();
+      const backend = createMockBackend({
+        waitForElement: vi.fn().mockImplementation(async () => {
+          controller.abort(new Error('timed out'));
+          return makeElement();
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.type(
+          'testId',
+          'input',
+          'text',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toThrowError('timed out');
+      expect(backend.tapElement).not.toHaveBeenCalled();
+      expect(backend.typeText).not.toHaveBeenCalled();
+    });
+
+    it('taps and types when the signal is not aborted', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+      const { signal } = new AbortController();
+
+      await driver.click('testId', 'btn', new Map(), 5000, undefined, signal);
+      await driver.type(
+        'testId',
+        'input',
+        'text',
+        new Map(),
+        5000,
+        undefined,
+        signal,
+      );
+
+      expect(backend.tapElement).toHaveBeenCalledTimes(2);
+      expect(backend.typeText).toHaveBeenCalledWith('text');
+    });
+
+    it('does not type when the signal aborts during the focus tap', async () => {
+      const controller = new AbortController();
+      const backend = createMockBackend({
+        tapElement: vi.fn().mockImplementation(async () => {
+          controller.abort(new Error('timed out'));
+          return { success: true, x: 1, y: 1, targetDescription: 'input' };
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.type(
+          'testId',
+          'input',
+          'text',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toThrowError('timed out');
+      expect(backend.typeText).not.toHaveBeenCalled();
+    });
+  });
+
   describe('type', () => {
     it('waits, taps to focus, then types', async () => {
       const backend = createMockBackend();

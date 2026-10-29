@@ -591,10 +591,13 @@ export const runStepsInputSchema = z.object({
     .number()
     .int()
     .min(1000)
-    .max(300_000)
+    .max(30_000)
     .describe(
       'Overall timeout for the batch in milliseconds. ' +
-        'When exceeded, remaining steps are marked as skipped and partial results are returned.',
+        'When exceeded, remaining steps are marked as skipped and partial results are returned. ' +
+        'The deadline is checked between steps. Capped at 30 000, the default request limit of ' +
+        'the queue and the CLI; to get partial results, leave room for the step in progress ' +
+        'and the observation (e.g. 20 000).',
     )
     .optional(),
   // Removed in favour of `observe`. Rejected (not ignored) so old callers

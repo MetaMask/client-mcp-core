@@ -18,8 +18,11 @@ export const MAX_QUEUE_TIMEOUT_MS = 600_000;
 
 /**
  * Cap on the wait for animations to settle after a mutating browser call.
- * Only running, finite animations of elements in the viewport are waited
- * for; infinite ones (spinners, the fox, skeleton shimmer) are ignored.
+ * Only running, finite animations of elements are waited for (also off
+ * screen or at zero size, e.g. a drawer sliding in); infinite ones (spinners,
+ * the fox, skeleton shimmer) are ignored. A long finite animation anywhere on
+ * the page (a slow off-screen carousel, a Web Animations API animation on a
+ * hidden element) can add up to this cap to a mutating call.
  */
 export const ANIMATION_SETTLE_TIMEOUT_MS = 1_000;
 

@@ -1280,5 +1280,44 @@ describe('interaction', () => {
         expect(waitSpy).not.toHaveBeenCalled();
       },
     );
+
+    it.each([
+      [
+        'click',
+        async (context: ToolContext) =>
+          clickTool({ testId: 'confirm' }, context),
+        'click',
+      ],
+      [
+        'type',
+        async (context: ToolContext) =>
+          typeTool({ testId: 'input', text: 'x' }, context),
+        'fill',
+      ],
+    ] as const)(
+      '%s returns MM_REQUEST_ABORTED and does not act when the request times out during the target wait',
+      async (_name, run, action) => {
+        const controller = new AbortController();
+        const locator = createMockLocator();
+        vi.spyOn(discoveryModule, 'waitForTarget').mockImplementation(
+          async () => {
+            controller.abort(new Error('Tool execution timed out'));
+            return locator as any;
+          },
+        );
+        const context = {
+          ...createMockContext(),
+          signal: controller.signal,
+        } as ToolContext;
+
+        const result = await run(context);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_REQUEST_ABORTED);
+        }
+        expect(locator[action]).not.toHaveBeenCalled();
+      },
+    );
   });
 });
