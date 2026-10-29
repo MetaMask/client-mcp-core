@@ -1,0 +1,27 @@
+README.md
+  s_a5669a88512bd6::t_488c4c2475bcb6 243
+src/platform/mobile-platform-driver.dispose.test.ts
+  s_a5669a88512bd6::t_48b2321c73a23e 26
+src/platform/mobile-platform-driver.ts
+  s_a5669a88512bd6::t_fb32e7e13333e0 117-121,123-128
+package.json
+  s_a5669a88512bd6::t_6c610ce16ec710 65
+yarn.lock
+  s_a5669a88512bd6::t_003587b480459a 929,971-973,979
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5993c9ea5a47416f773b8a510ca3248f83212ffa",
+  "prompts": {},
+  "sessions": {
+    "s_a5669a88512bd6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e789a2104ffe06hlduzSXbwT7w",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
