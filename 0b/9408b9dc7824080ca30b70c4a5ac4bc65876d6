@@ -1,0 +1,14 @@
+src/platform/device-mcp-runtime.test.ts
+  h_d6a04d82b61d5e 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b9408b9dc7824080ca30b70c4a5ac4bc65876d6",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
