@@ -10,7 +10,7 @@ vi.mock('@metamask/device-mcp', async (importOriginal) => {
 
 describe('device-mcp runtime loading', () => {
   it('does not load device-mcp when the package entry point is imported', async () => {
-    const core = await import('../index.js');
+    const core = await import('..');
 
     expect(core.MobilePlatformDriver).toBeDefined();
     expect(core.PlaywrightPlatformDriver).toBeDefined();
