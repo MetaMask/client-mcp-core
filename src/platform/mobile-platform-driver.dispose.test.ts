@@ -23,7 +23,7 @@ describe('MobilePlatformDriver disposal', () => {
     expect(disposeB).toHaveBeenCalledTimes(1);
   });
 
-  it('supports device-mcp versions without disposal', async () => {
+  it('completes for backends without a disposal hook', async () => {
     const driver = new MobilePlatformDriver({
       platform: 'ios',
     } as DeviceBackend);
