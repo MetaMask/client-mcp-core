@@ -114,17 +114,18 @@ export class MobilePlatformDriver implements IPlatformDriver {
     this.#excludeDevOverlay = options.excludeDevOverlay ?? true;
   }
 
-  /** Release only this backend's resources; compatible with older device-mcp releases. */
+  /**
+   * Release only this backend's resources. `DeviceBackend.dispose()` is
+   * optional: backends without it (for example the ADB backend) have nothing
+   * to release.
+   */
   async dispose(): Promise<void> {
-    const backend = this.#backend as DeviceBackend & {
-      dispose?(): Promise<void>;
-    };
-    this.#disposing ??= Promise.resolve()
-      .then(async () => backend.dispose?.())
-      .catch((error: unknown) => {
-        this.#disposing = undefined;
-        throw error;
-      });
+    this.#disposing ??= (async (): Promise<void> => {
+      await this.#backend.dispose?.();
+    })().catch((error: unknown) => {
+      this.#disposing = undefined;
+      throw error;
+    });
     await this.#disposing;
   }
 
