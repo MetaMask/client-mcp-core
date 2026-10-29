@@ -1,0 +1,35 @@
+src/tools/discovery-tools.test.ts
+  s_bd6f37fe795f81::t_55aa730a496d8a 468-501
+src/platform/mobile-platform-driver.test.ts
+  s_bd6f37fe795f81::t_10211c22bee5f5 467-492,511,531,572,589,618,638,649,667,682,700,717,734,752,905
+  s_bd6f37fe795f81::t_78b0d75258c848 508-510
+  s_bd6f37fe795f81::t_7f45ba0145937f 528-530
+  s_bd6f37fe795f81::t_de5f9e1d0d6446 569-571
+  s_bd6f37fe795f81::t_55fe742e718e2b 586-588
+  s_bd6f37fe795f81::t_e8167439a637bc 615-617
+  s_bd6f37fe795f81::t_64890171c9b8ed 635-637
+  s_bd6f37fe795f81::t_50fac2d95a42e7 646-648
+  s_bd6f37fe795f81::t_4abeff73277064 664-666
+  s_bd6f37fe795f81::t_f32016a17ac91b 679-681
+  s_bd6f37fe795f81::t_34875b9735a57e 697-699
+  s_bd6f37fe795f81::t_2ebef367b00ad8 714-716
+  s_bd6f37fe795f81::t_c8c29b7034535f 731-733
+  s_bd6f37fe795f81::t_dd8b214b68fd76 749-751
+  s_bd6f37fe795f81::t_554e27e263b7ab 902-904
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d87bc14f9c317b59e283d7d9e0afa71a89bbab73",
+  "prompts": {},
+  "sessions": {
+    "s_bd6f37fe795f81": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e7cee5b80ffeN0vBXe3dWVUa7e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
