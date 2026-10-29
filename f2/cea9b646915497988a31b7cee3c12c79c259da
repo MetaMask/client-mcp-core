@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_a5669a88512bd6::t_873cdf38e0646d 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2cea9b646915497988a31b7cee3c12c79c259da",
+  "prompts": {},
+  "sessions": {
+    "s_a5669a88512bd6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e789a2104ffe06hlduzSXbwT7w",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
