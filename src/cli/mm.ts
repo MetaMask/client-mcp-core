@@ -15,6 +15,12 @@ import {
   releaseStartupLock,
   removeDaemonState,
 } from '../server/daemon-state.js';
+import {
+  defaultHintForError,
+  ErrorCodes,
+  exitCodeForError,
+  isRetryableError,
+} from '../tools/types/errors.js';
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
 import { computeTimeoutBudget } from '../utils/timeout-budget.js';
@@ -61,6 +67,86 @@ type RuntimeCommand = {
 };
 
 /**
+ * An error with a code, thrown by the CLI or rebuilt from a daemon error
+ * response. {@link fail} prints it.
+ */
+export class CliError extends Error {
+  readonly code: string;
+
+  readonly hint: string | undefined;
+
+  readonly meta: unknown;
+
+  /**
+   * @param code - The error code (an `ErrorCodes` value, a daemon code or a
+   * consumer `MM_*` code).
+   * @param message - A human-readable description.
+   * @param options - Optional details.
+   * @param options.hint - What to do next.
+   * @param options.meta - The daemon's request timing, when it answered.
+   */
+  constructor(
+    code: string,
+    message: string,
+    options?: { hint?: string; meta?: unknown },
+  ) {
+    super(message);
+    this.name = 'CliError';
+    this.code = code;
+    this.hint = options?.hint;
+    this.meta = options?.meta;
+  }
+}
+
+/**
+ * Ends the CLI with a failure: prints one JSON line on stdout,
+ * `{"ok":false,"error":{"code","message","hint"?,"retryable"},"meta"?}`, and
+ * exits with the code that {@link exitCodeForError} gives for `code`. On a
+ * terminal stderr it also prints `Error: <message>` for the human reader.
+ * Every non-zero exit of the CLI goes through this function.
+ *
+ * @param code - The error code.
+ * @param message - A human-readable description.
+ * @param options - Optional details.
+ * @param options.hint - What to do next. Defaults to the code's default hint.
+ * @param options.meta - The daemon's request timing, when it answered.
+ * @returns Never; the process exits.
+ */
+export function fail(
+  code: string,
+  message: string,
+  options?: { hint?: string; meta?: unknown },
+): never {
+  const hint = options?.hint ?? defaultHintForError(code);
+  const body = {
+    ok: false,
+    error: {
+      code,
+      message,
+      ...(hint === undefined ? {} : { hint }),
+      retryable: isRetryableError(code),
+    },
+    ...(options?.meta === undefined ? {} : { meta: options.meta }),
+  };
+  process.stdout.write(`${formatJsonOutput(body)}\n`);
+  if (process.stderr.isTTY) {
+    process.stderr.write(`Error: ${message}\n`);
+  }
+  return process.exit(exitCodeForError(code));
+}
+
+/**
+ * Ends the CLI with a usage or validation failure (`MM_INVALID_INPUT`,
+ * exit 2).
+ *
+ * @param message - What is wrong, or the usage line.
+ * @returns Never; the process exits.
+ */
+export function failUsage(message: string): never {
+  return fail(ErrorCodes.MM_INVALID_INPUT, message);
+}
+
+/**
  * Extracts and consumes the `--project <path>` flag from argv, returning
  * the remaining args and the extracted project path (if any).
  *
@@ -77,8 +163,7 @@ export function extractProjectFlag(argv: string[]): {
   }
   const value = argv[idx + 1];
   if (!value || value.startsWith('--')) {
-    process.stderr.write('Error: --project requires a path value\n');
-    process.exit(1);
+    failUsage('--project requires a path value');
   }
   const remaining = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
   return { args: remaining, projectPath: value };
@@ -101,10 +186,7 @@ export function extractObserveFlag(argv: string[]): {
   }
   const value = argv[idx + 1];
   if (!OBSERVE_LEVELS.includes(value as ObserveLevel)) {
-    process.stderr.write(
-      `Error: --observe requires one of: ${OBSERVE_LEVELS.join(', ')}\n`,
-    );
-    process.exit(1);
+    failUsage(`--observe requires one of: ${OBSERVE_LEVELS.join(', ')}`);
   }
   const remaining = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
   return { args: remaining, observe: value as ObserveLevel };
@@ -280,21 +362,16 @@ export async function resolveWorktreeRoot(
     try {
       real = await fs.realpath(resolved);
     } catch {
-      process.stderr.write(`Error: project path does not exist: ${resolved}\n`);
-      process.exit(1);
+      failUsage(`project path does not exist: ${resolved}`);
     }
 
     try {
       const stat = await fs.stat(real);
       if (!stat.isDirectory()) {
-        process.stderr.write(
-          `Error: project path is not a directory: ${real}\n`,
-        );
-        process.exit(1);
+        failUsage(`project path is not a directory: ${real}`);
       }
     } catch {
-      process.stderr.write(`Error: cannot access project path: ${real}\n`);
-      process.exit(1);
+      failUsage(`cannot access project path: ${real}`);
     }
 
     return real;
@@ -312,10 +389,9 @@ export async function resolveWorktreeRoot(
       .toString()
       .trim();
   } catch {
-    process.stderr.write(
-      'Error: not in a git repository. Use --project <path> or set MM_PROJECT to target a project.\n',
+    return failUsage(
+      'not in a git repository. Use --project <path> or set MM_PROJECT to target a project.',
     );
-    return process.exit(1);
   }
 }
 
@@ -403,8 +479,7 @@ export function resolveWithinFromArgs(
   }
   const val = args[withinIdx + 1];
   if (!val || val.startsWith('--')) {
-    process.stderr.write('Error: --within requires a value\n');
-    process.exit(1);
+    failUsage('--within requires a value');
   }
 
   // "testid:value" → testId, "selector:value" → selector, otherwise auto-detect
@@ -433,8 +508,7 @@ export function resolveTargetFromArgs(
   if (selectorIdx >= 0) {
     const val = args[selectorIdx + 1];
     if (!val || val.startsWith('--')) {
-      process.stderr.write('Error: --selector requires a value\n');
-      process.exit(1);
+      failUsage('--selector requires a value');
     }
     return { selector: val };
   }
@@ -443,16 +517,14 @@ export function resolveTargetFromArgs(
   if (testIdIdx >= 0) {
     const val = args[testIdIdx + 1];
     if (!val || val.startsWith('--')) {
-      process.stderr.write('Error: --testid requires a value\n');
-      process.exit(1);
+      failUsage('--testid requires a value');
     }
     return { testId: val };
   }
 
   const target = getPositionalTarget(args);
   if (!target) {
-    process.stderr.write('Error: element target is required\n');
-    process.exit(1);
+    failUsage('element target is required');
   }
   return /^e[0-9]+$/u.test(target) ? { a11yRef: target } : { testId: target };
 }
@@ -578,10 +650,9 @@ export async function routeCommand(
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
-        process.stderr.write(
-          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--dismiss-keyboard]\n',
+        failUsage(
+          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--dismiss-keyboard]',
         );
-        process.exit(1);
       }
       await sendInteractionRequest(
         port,
@@ -603,17 +674,15 @@ export async function routeCommand(
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
-        process.stderr.write(
-          'Usage: mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
+        failUsage(
+          'Usage: mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
         );
-        process.exit(1);
       }
       const text = hasExplicitTypeTarget
         ? typePositionals[0]
         : typePositionals[1];
       if (text === undefined) {
-        process.stderr.write('Usage: mm type <ref> <text>\n');
-        process.exit(1);
+        failUsage('Usage: mm type <ref> <text>');
       }
       await sendInteractionRequest(port, '/tool/type', args, { text });
       break;
@@ -625,10 +694,9 @@ export async function routeCommand(
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
-        process.stderr.write(
-          'Usage: mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
+        failUsage(
+          'Usage: mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
         );
-        process.exit(1);
       }
       await sendInteractionRequest(port, '/tool/get_text', args);
       break;
@@ -649,18 +717,16 @@ export async function routeCommand(
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
-        process.stderr.write(
-          'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
+        failUsage(
+          'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
         );
-        process.exit(1);
       }
       await sendInteractionRequest(port, '/tool/wait_for', args);
       break;
     }
     case 'navigate':
       if (!args[0]) {
-        process.stderr.write('Usage: mm navigate <url>\n');
-        process.exit(1);
+        failUsage('Usage: mm navigate <url>');
       }
       await sendRequest(port, 'POST', '/tool/navigate', {
         screen: 'url',
@@ -683,8 +749,7 @@ export async function routeCommand(
       break;
     case 'set-context':
       if (!args[0] || (args[0] !== 'e2e' && args[0] !== 'prod')) {
-        process.stderr.write('Usage: mm set-context <e2e|prod>\n');
-        process.exit(1);
+        failUsage('Usage: mm set-context <e2e|prod>');
       }
       await sendRequest(port, 'POST', '/tool/set_context', {
         context: args[0],
@@ -712,10 +777,9 @@ export async function routeCommand(
         !tabRole && !tabUrl ? getPositionalTarget(args) : undefined;
       const resolvedRole = tabRole ?? positionalRole;
       if (!resolvedRole && !tabUrl) {
-        process.stderr.write(
-          'Usage: mm switch-to-tab <role> | --role <role> | --url <url>\n',
+        failUsage(
+          'Usage: mm switch-to-tab <role> | --role <role> | --url <url>',
         );
-        process.exit(1);
       }
       await sendRequest(port, 'POST', '/tool/switch_to_tab', {
         ...(resolvedRole ? { role: resolvedRole } : {}),
@@ -727,10 +791,7 @@ export async function routeCommand(
       const closeRole = parseStringFlag(args, '--role');
       const closeUrl = parseStringFlag(args, '--url');
       if (!closeRole && !closeUrl) {
-        process.stderr.write(
-          'Usage: mm close-tab --role <role> | --url <url>\n',
-        );
-        process.exit(1);
+        failUsage('Usage: mm close-tab --role <role> | --url <url>');
       }
       await sendRequest(port, 'POST', '/tool/close_tab', {
         ...(closeRole ? { role: closeRole } : {}),
@@ -741,12 +802,10 @@ export async function routeCommand(
     case 'clipboard': {
       const clipAction = args[0];
       if (!clipAction || (clipAction !== 'read' && clipAction !== 'write')) {
-        process.stderr.write('Usage: mm clipboard <read|write> [text]\n');
-        process.exit(1);
+        failUsage('Usage: mm clipboard <read|write> [text]');
       }
       if (clipAction === 'write' && !args[1]) {
-        process.stderr.write('Usage: mm clipboard write <text>\n');
-        process.exit(1);
+        failUsage('Usage: mm clipboard write <text>');
       }
       await sendRequest(port, 'POST', '/tool/clipboard', {
         action: clipAction,
@@ -756,10 +815,7 @@ export async function routeCommand(
     }
     case 'seed-contract': {
       if (!args[0]) {
-        process.stderr.write(
-          'Usage: mm seed-contract <name> [--hardfork <fork>]\n',
-        );
-        process.exit(1);
+        failUsage('Usage: mm seed-contract <name> [--hardfork <fork>]');
       }
       const hardfork = parseStringFlag(args, '--hardfork');
       await sendRequest(port, 'POST', '/tool/seed_contract', {
@@ -774,10 +830,9 @@ export async function routeCommand(
           !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--hardfork',
       );
       if (contractNames.length === 0) {
-        process.stderr.write(
-          'Usage: mm seed-contracts <name1> <name2> ... [--hardfork <fork>]\n',
+        failUsage(
+          'Usage: mm seed-contracts <name1> <name2> ... [--hardfork <fork>]',
         );
-        process.exit(1);
       }
       const seedHardfork = parseStringFlag(args, '--hardfork');
       await sendRequest(port, 'POST', '/tool/seed_contracts', {
@@ -788,8 +843,7 @@ export async function routeCommand(
     }
     case 'get-contract-address':
       if (!args[0]) {
-        process.stderr.write('Usage: mm get-contract-address <name>\n');
-        process.exit(1);
+        failUsage('Usage: mm get-contract-address <name>');
       }
       await sendRequest(port, 'POST', '/tool/get_contract_address', {
         contractName: args[0],
@@ -814,26 +868,16 @@ export async function routeCommand(
     }
     case 'run-steps':
       if (!args[0]) {
-        process.stderr.write(
-          'Usage: mm run-steps \'{"steps":[{"tool":"click","args":{"a11yRef":"e1"}}]}\'\n',
+        failUsage(
+          'Usage: mm run-steps \'{"steps":[{"tool":"click","args":{"a11yRef":"e1"}}]}\'',
         );
-        process.exit(1);
       }
-      try {
-        await sendRequest(
-          port,
-          'POST',
-          '/tool/run_steps',
-          JSON.parse(args[0]) as Record<string, unknown>,
-        );
-      } catch (error) {
-        if (error instanceof SyntaxError) {
-          process.stderr.write(`Error: invalid JSON — ${error.message}\n`);
-          process.exit(1);
-        }
-        /* istanbul ignore next -- non-SyntaxError path depends on delegated failures */
-        throw error;
-      }
+      await sendRequest(
+        port,
+        'POST',
+        '/tool/run_steps',
+        parseJsonArgument(args[0], 'run-steps') as Record<string, unknown>,
+      );
       break;
     case 'mock-network': {
       await routeMockNetworkCommand(args, port);
@@ -842,7 +886,7 @@ export async function routeCommand(
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
-        process.stderr.write(
+        failUsage(
           'Usage: mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <port>] [--app-id <id>]\n' +
             '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\'\n' +
             '  mm cdp Network.enable\n' +
@@ -850,9 +894,8 @@ export async function routeCommand(
             '  # mobile (Hermes): --metro-port / --app-id override the Metro target\n' +
             '  mm cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --app-id io.metamask\n' +
             '  # mobile (Android WebView): drive the in-app browser DOM\n' +
-            '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\' --target android-webview\n',
+            '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\' --target android-webview',
         );
-        process.exit(1);
       }
       const cdpTimeout = parseIntFlag(args, '--timeout');
       const cdpMetroPort = parseIntFlag(args, '--metro-port');
@@ -864,10 +907,7 @@ export async function routeCommand(
         cdpTarget !== 'hermes' &&
         cdpTarget !== 'android-webview'
       ) {
-        process.stderr.write(
-          'Error: --target must be "hermes" or "android-webview"\n',
-        );
-        process.exit(1);
+        failUsage('--target must be "hermes" or "android-webview"');
       }
       const cdpParamsRaw =
         args[1] !== undefined && !args[1].startsWith('--')
@@ -886,10 +926,7 @@ export async function routeCommand(
           }
           cdpParams = parsed as Record<string, unknown>;
         } catch {
-          process.stderr.write(
-            `Error: invalid JSON params — expected a JSON object\n`,
-          );
-          process.exit(1);
+          failUsage(`invalid JSON params — expected a JSON object`);
         }
       }
       await sendRequest(port, 'POST', '/tool/cdp', {
@@ -923,10 +960,9 @@ export async function routeCommand(
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
-        process.stderr.write(
-          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction auto|down|up] [--maxAttempts <n>]\n',
+        failUsage(
+          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction auto|down|up] [--maxAttempts <n>]',
         );
-        process.exit(1);
       }
       const scrollDirection = parseStringFlag(args, '--direction');
       const scrollMaxAttempts = parseIntFlag(args, '--maxAttempts');
@@ -942,10 +978,9 @@ export async function routeCommand(
       const swipeDirection =
         parseStringFlag(args, '--direction') ?? getPositionalTarget(args);
       if (!swipeDirection) {
-        process.stderr.write(
-          'Usage: mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]\n',
+        failUsage(
+          'Usage: mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]',
         );
-        process.exit(1);
       }
       const swipeStartX = parseIntFlag(args, '--startX');
       const swipeStartY = parseIntFlag(args, '--startY');
@@ -965,10 +1000,9 @@ export async function routeCommand(
         !args.includes('--selector') &&
         !args.includes('--testid')
       ) {
-        process.stderr.write(
-          'Usage: mm long-press <ref> [--selector <css>] [--testid <id>] [--duration <ms>]\n',
+        failUsage(
+          'Usage: mm long-press <ref> [--selector <css>] [--testid <id>] [--duration <ms>]',
         );
-        process.exit(1);
       }
       const pressDuration = parseIntFlag(args, '--duration');
       await sendInteractionRequest(port, '/tool/long_press', args, {
@@ -983,8 +1017,7 @@ export async function routeCommand(
       const tapX = tapXFlag ?? parseInt(tapPositionals[0], 10);
       const tapY = tapYFlag ?? parseInt(tapPositionals[1], 10);
       if (Number.isNaN(tapX) || Number.isNaN(tapY)) {
-        process.stderr.write('Usage: mm tap-coordinates <x> <y>\n');
-        process.exit(1);
+        failUsage('Usage: mm tap-coordinates <x> <y>');
       }
       await sendRequest(port, 'POST', '/tool/tap_coordinates', {
         x: tapX,
@@ -1005,22 +1038,19 @@ export async function routeCommand(
       break;
     case 'open-app':
       if (!args[0]) {
-        process.stderr.write('Usage: mm open-app <bundleId>\n');
-        process.exit(1);
+        failUsage('Usage: mm open-app <bundleId>');
       }
       await sendRequest(port, 'POST', '/tool/open_app', { bundleId: args[0] });
       break;
     case 'close-app':
       if (!args[0]) {
-        process.stderr.write('Usage: mm close-app <bundleId>\n');
-        process.exit(1);
+        failUsage('Usage: mm close-app <bundleId>');
       }
       await sendRequest(port, 'POST', '/tool/close_app', { bundleId: args[0] });
       break;
     case 'press-button':
       if (!args[0]) {
-        process.stderr.write('Usage: mm press-button <button>\n');
-        process.exit(1);
+        failUsage('Usage: mm press-button <button>');
       }
       await sendRequest(port, 'POST', '/tool/press_button', {
         button: args[0],
@@ -1029,12 +1059,10 @@ export async function routeCommand(
     case 'device-context': {
       const ctxAction = args[0];
       if (!ctxAction || (ctxAction !== 'list' && ctxAction !== 'switch')) {
-        process.stderr.write('Usage: mm device-context <list|switch> [name]\n');
-        process.exit(1);
+        failUsage('Usage: mm device-context <list|switch> [name]');
       }
       if (ctxAction === 'switch' && !args[1]) {
-        process.stderr.write('Usage: mm device-context switch <name>\n');
-        process.exit(1);
+        failUsage('Usage: mm device-context switch <name>');
       }
       await sendRequest(port, 'POST', '/tool/device_context', {
         action: ctxAction,
@@ -1048,14 +1076,10 @@ export async function routeCommand(
         !devClipAction ||
         (devClipAction !== 'read' && devClipAction !== 'write')
       ) {
-        process.stderr.write(
-          'Usage: mm device-clipboard <read|write> [text]\n',
-        );
-        process.exit(1);
+        failUsage('Usage: mm device-clipboard <read|write> [text]');
       }
       if (devClipAction === 'write' && !args[1]) {
-        process.stderr.write('Usage: mm device-clipboard write <text>\n');
-        process.exit(1);
+        failUsage('Usage: mm device-clipboard write <text>');
       }
       await sendRequest(port, 'POST', '/tool/device_clipboard', {
         action: devClipAction,
@@ -1066,10 +1090,7 @@ export async function routeCommand(
     case 'screen-recording': {
       const recAction = args[0];
       if (!recAction || (recAction !== 'start' && recAction !== 'stop')) {
-        process.stderr.write(
-          'Usage: mm screen-recording <start|stop> [--output <path>]\n',
-        );
-        process.exit(1);
+        failUsage('Usage: mm screen-recording <start|stop> [--output <path>]');
       }
       const recOutput = parseStringFlag(args, '--output');
       await sendRequest(port, 'POST', '/tool/screen_recording', {
@@ -1095,10 +1116,7 @@ export async function routeCommand(
       await sendRequest(port, 'POST', '/tool/generate_locators', {});
       break;
     default:
-      process.stderr.write(
-        `Error: unknown command '${command}'. Run 'mm --help' for usage.\n`,
-      );
-      process.exit(1);
+      failUsage(`unknown command '${command}'. Run 'mm --help' for usage.`);
   }
 }
 
@@ -1117,10 +1135,7 @@ export async function routeMockNetworkCommand(
   if (action === 'add') {
     const rawRule = args[1];
     if (!rawRule) {
-      process.stderr.write(
-        "Usage: mm mock-network add '<json-rule-or-config>'\n",
-      );
-      process.exit(1);
+      failUsage("Usage: mm mock-network add '<json-rule-or-config>'");
     }
 
     const parsed = parseJsonArgument(rawRule, 'mock-network add');
@@ -1150,10 +1165,7 @@ export async function routeMockNetworkCommand(
     return;
   }
 
-  process.stderr.write(
-    'Usage: mm mock-network <add|clear|list|requests> [options]\n',
-  );
-  process.exit(1);
+  failUsage('Usage: mm mock-network <add|clear|list|requests> [options]');
 }
 
 /**
@@ -1220,9 +1232,22 @@ export async function daemonFetch(
 
     if (!response.ok || data.ok === false) {
       const errorData = data.error as
-        | { code?: string; message?: string }
+        | { code?: unknown; message?: unknown; hint?: unknown }
         | undefined;
-      throw new Error(errorData?.message ?? 'Request failed');
+      throw new CliError(
+        typeof errorData?.code === 'string' && errorData.code !== ''
+          ? errorData.code
+          : ErrorCodes.MM_INTERNAL_ERROR,
+        typeof errorData?.message === 'string'
+          ? errorData.message
+          : 'Request failed',
+        {
+          ...(typeof errorData?.hint === 'string'
+            ? { hint: errorData.hint }
+            : {}),
+          ...(data.meta === undefined ? {} : { meta: data.meta }),
+        },
+      );
     }
 
     return data;
@@ -1302,8 +1327,17 @@ export async function sendRequest(
       return;
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
-        process.stderr.write(`Error: request timed out after ${timeout}ms\n`);
-        process.exit(1);
+        fail(
+          ErrorCodes.MM_REQUEST_TIMEOUT,
+          `request timed out after ${timeout}ms; state unknown`,
+        );
+      }
+
+      if (error instanceof CliError) {
+        fail(error.code, error.message, {
+          ...(error.hint === undefined ? {} : { hint: error.hint }),
+          ...(error.meta === undefined ? {} : { meta: error.meta }),
+        });
       }
 
       if (isTransientError(error) && attempt < SEND_MAX_RETRIES) {
@@ -1312,17 +1346,55 @@ export async function sendRequest(
       }
 
       const errorText = error instanceof Error ? error.message : String(error);
-      process.stderr.write(`Error: ${errorText}\n`);
-      process.exit(1);
+      if (isTransientError(error)) {
+        failConnection(error, errorText);
+      }
+      fail(ErrorCodes.MM_INTERNAL_ERROR, errorText);
     }
   }
 
   const lastErrorText =
     lastError instanceof Error ? lastError.message : String(lastError);
-  process.stderr.write(
-    `Error: request failed after ${SEND_MAX_RETRIES + 1} attempts: ${lastErrorText}\n`,
+  failConnection(
+    lastError,
+    `request failed after ${SEND_MAX_RETRIES + 1} attempts: ${lastErrorText}`,
   );
-  process.exit(1);
+}
+
+/**
+ * Reads the network error code of a failed `fetch`. Node puts it on
+ * `error.cause.code` (`String(error)` is only `TypeError: fetch failed`).
+ *
+ * @param error - The caught error.
+ * @returns The code (for example `ECONNREFUSED`), or undefined.
+ */
+export function getNetworkErrorCode(error: unknown): string | undefined {
+  const withCode = error as
+    | { code?: unknown; cause?: { code?: unknown } }
+    | null
+    | undefined;
+  const code = withCode?.cause?.code ?? withCode?.code;
+  if (typeof code === 'string') {
+    return code;
+  }
+  return /\b(ECONNREFUSED|ECONNRESET|EPIPE|UND_ERR_SOCKET)\b/u.exec(
+    String(error),
+  )?.[1];
+}
+
+/**
+ * Ends the CLI after a failed connection to the daemon: refused means no
+ * daemon listens (`MM_DAEMON_NOT_RUNNING`); any other failure can come after
+ * the daemon got the request (`MM_DAEMON_CONNECTION_LOST`).
+ *
+ * @param error - The network error.
+ * @param message - The message to print.
+ * @returns Never; the process exits.
+ */
+function failConnection(error: unknown, message: string): never {
+  return getNetworkErrorCode(error) === 'ECONNREFUSED'
+    ? fail(ErrorCodes.MM_DAEMON_NOT_RUNNING, message)
+    : fail(ErrorCodes.MM_DAEMON_CONNECTION_LOST, message);
 }
 
 /**
@@ -1357,10 +1429,10 @@ export async function discoverDaemon(
   }
 
   if (!AUTO_START_COMMANDS.has(command)) {
-    process.stderr.write(
-      'Error: no daemon running. Run `mm launch` to start.\n',
+    fail(
+      ErrorCodes.MM_DAEMON_NOT_RUNNING,
+      'no daemon running. Run `mm launch` to start.',
     );
-    process.exit(1);
   }
 
   return autoStartDaemon(worktreeRoot);
@@ -1418,10 +1490,10 @@ export async function handleServe(
 ): Promise<void> {
   const existing = await readDaemonState(worktreeRoot);
   if (existing && (await isDaemonAlive(existing))) {
-    process.stderr.write(
-      `Error: daemon already running on port ${existing.port} (PID ${existing.pid})\n`,
+    fail(
+      ErrorCodes.MM_DAEMON_ALREADY_RUNNING,
+      `daemon already running on port ${existing.port} (PID ${existing.pid})`,
     );
-    process.exit(1);
   }
 
   if (existing) {
@@ -1518,11 +1590,11 @@ export async function handleStop(
     return;
   }
 
-  process.stderr.write(
-    'Error: daemon is not running but .mm-server state file exists (stale).\n' +
-      'Use `mm stop --force` to remove the stale state.\n',
+  fail(
+    ErrorCodes.MM_DAEMON_NOT_RUNNING,
+    'daemon is not running but .mm-server state file exists (stale).\n' +
+      'Use `mm stop --force` to remove the stale state.',
   );
-  process.exit(1);
 }
 
 /**
@@ -1557,26 +1629,26 @@ export async function readDaemonConfig(
   const result = await explorer.search(worktreeRoot);
 
   if (!result || result.isEmpty) {
-    process.stderr.write(
-      `Error: No mm-client-cli config found. Create ${CONFIG_MODULE_NAME}.config.ts in your project root.\n`,
+    fail(
+      ErrorCodes.MM_INVALID_CONFIG,
+      `No mm-client-cli config found. Create ${CONFIG_MODULE_NAME}.config.ts in your project root.`,
     );
-    process.exit(1);
   }
 
   const config = result.config as MmClientCliConfig;
   if (!config.daemon) {
-    process.stderr.write(
-      `Error: No daemon entry point configured. Add 'daemon' to ${result.filepath}.\n`,
+    fail(
+      ErrorCodes.MM_INVALID_CONFIG,
+      `No daemon entry point configured. Add 'daemon' to ${result.filepath}.`,
     );
-    process.exit(1);
   }
 
   const runtime = config.runtime ?? 'tsx';
   if (!SUPPORTED_RUNTIMES.has(runtime)) {
-    process.stderr.write(
-      `Error: Unsupported runtime '${runtime}'. Supported runtimes are 'node' and 'tsx'.\n`,
+    fail(
+      ErrorCodes.MM_INVALID_CONFIG,
+      `Unsupported runtime '${runtime}'. Supported runtimes are 'node' and 'tsx'.`,
     );
-    process.exit(1);
   }
 
   return {
@@ -1612,10 +1684,10 @@ export function resolveRuntime(
         getArgs: (daemonPath) => [tsxCli, daemonPath],
       };
     } catch {
-      process.stderr.write(
-        `Error: Runtime 'tsx' is not installed in ${worktreeRoot}. Install it or set "mm.runtime" in package.json.\n`,
+      fail(
+        ErrorCodes.MM_DEPENDENCIES_MISSING,
+        `Runtime 'tsx' is not installed in ${worktreeRoot}. Install it or set "mm.runtime" in package.json.`,
       );
-      process.exit(1);
     }
   }
 
@@ -1638,7 +1710,8 @@ export async function waitForDaemon(
       return state;
     }
   }
-  throw new Error(
+  throw new CliError(
+    ErrorCodes.MM_DAEMON_START_FAILED,
     `Daemon failed to start within ${DAEMON_START_TIMEOUT_MS / 1000} seconds`,
   );
 }
@@ -1719,9 +1792,7 @@ export function parseJsonArgument(raw: string, label: string): unknown {
     return JSON.parse(raw) as unknown;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Error: invalid JSON for ${label} — ${message}\n`);
-    process.exit(1);
-    throw error;
+    return failUsage(`invalid JSON for ${label} — ${message}`);
   }
 }
 
@@ -1761,10 +1832,7 @@ export async function readSelfOnboardingInput(
   source: Readable,
 ): Promise<{ srp: string; password?: string }> {
   if ('isTTY' in source && source.isTTY === true) {
-    process.stderr.write(
-      'Error: --self-onboarding requires the secret recovery phrase on stdin\n',
-    );
-    process.exit(1);
+    failUsage('--self-onboarding requires the secret recovery phrase on stdin');
   }
 
   const chunks: Buffer[] = [];
@@ -1777,10 +1845,9 @@ export async function readSelfOnboardingInput(
   }
   const [phraseLine = '', password = '', ...extra] = lines;
   if (extra.length > 0) {
-    process.stderr.write(
-      'Error: self-onboarding stdin takes the phrase and an optional password line only\n',
+    failUsage(
+      'self-onboarding stdin takes the phrase and an optional password line only',
     );
-    process.exit(1);
   }
 
   const words = phraseLine
@@ -1788,10 +1855,9 @@ export async function readSelfOnboardingInput(
     .split(/\s+/u)
     .filter((word) => word.length > 0);
   if (words.length !== 12 && words.length !== 24) {
-    process.stderr.write(
-      'Error: self-onboarding requires a 12 or 24 word secret recovery phrase\n',
+    failUsage(
+      'self-onboarding requires a 12 or 24 word secret recovery phrase',
     );
-    process.exit(1);
   }
   const srp = words.join(' ');
 
@@ -1799,10 +1865,9 @@ export async function readSelfOnboardingInput(
     return { srp };
   }
   if (password.length < MIN_VAULT_PASSWORD_LENGTH) {
-    process.stderr.write(
-      `Error: self-onboarding password must be at least ${MIN_VAULT_PASSWORD_LENGTH} characters\n`,
+    failUsage(
+      `self-onboarding password must be at least ${MIN_VAULT_PASSWORD_LENGTH} characters`,
     );
-    process.exit(1);
   }
   return { srp, password };
 }
@@ -1823,47 +1888,37 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
     } else if (arg === '--context') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write('Error: --context requires a value (e2e|prod)\n');
-        process.exit(1);
+        failUsage('--context requires a value (e2e|prod)');
       }
       result.context = args[i];
     } else if (arg === '--state') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write(
-          'Error: --state requires a value (default|onboarding|custom)\n',
-        );
-        process.exit(1);
+        failUsage('--state requires a value (default|onboarding|custom)');
       }
       result.stateMode = args[i];
     } else if (arg === '--extension-path') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write('Error: --extension-path requires a value\n');
-        process.exit(1);
+        failUsage('--extension-path requires a value');
       }
       result.extensionPath = args[i];
     } else if (arg === '--platform') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write(
-          'Error: --platform requires a value (browser|ios|android)\n',
-        );
-        process.exit(1);
+        failUsage('--platform requires a value (browser|ios|android)');
       }
       result.platform = args[i];
     } else if (arg === '--device-id') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write('Error: --device-id requires a value\n');
-        process.exit(1);
+        failUsage('--device-id requires a value');
       }
       result.deviceId = args[i];
     } else if (arg === '--app-bundle') {
       i += 1;
       if (!args[i] || args[i].startsWith('--')) {
-        process.stderr.write('Error: --app-bundle requires a path\n');
-        process.exit(1);
+        failUsage('--app-bundle requires a path');
       }
       result.appBundlePath = args[i];
     } else if (arg === '--metro-port') {
@@ -1877,10 +1932,7 @@ export function parseLaunchArgs(args: string[]): Record<string, unknown> {
         port < 1 ||
         port > 65535
       ) {
-        process.stderr.write(
-          'Error: --metro-port requires a valid port (1-65535)\n',
-        );
-        process.exit(1);
+        failUsage('--metro-port requires a valid port (1-65535)');
       }
       result.metroPort = port;
     } else if (arg === '--reinstall') {
@@ -1995,6 +2047,21 @@ Mobile (iOS/Android only):
   mm device-logs [--duration <seconds>] [--filter <text>]
   mm generate-locators
 
+Errors:
+  A failed command prints one JSON line on stdout and exits non-zero:
+    {"ok":false,"error":{"code":"MM_...","message":"...","hint":"...","retryable":false},"meta":{...}}
+  Branch on error.code or the exit code. stderr is for human logs only.
+
+Exit Codes:
+  0  ok
+  1  anything else (internal error, tool failure)
+  2  usage or validation (bad flag, bad JSON, schema); nothing ran
+  3  no session, daemon not running, daemon connection lost
+  4  target not found or not actionable
+  5  timeout (for click, type and request timeouts the action state is unknown)
+  6  platform, device, Metro or Hermes not available
+  7  daemon version mismatch (reserved)
+
 Examples:
   mm launch                                          (from inside project)
   mm --project ../metamask-extension launch          (from parent folder)
@@ -2005,8 +2072,12 @@ Examples:
 /* istanbul ignore next -- CLI entry point, tested via exported functions */
 /* istanbul ignore next -- top-level fatal handler is not exercised in tests */
 const handleFatalCliError = (error: unknown): void => {
-  process.stderr.write(`Fatal: ${String(error)}\n`);
-  process.exit(1);
+  if (error instanceof CliError) {
+    fail(error.code, error.message, {
+      ...(error.hint === undefined ? {} : { hint: error.hint }),
+    });
+  }
+  fail(ErrorCodes.MM_INTERNAL_ERROR, `Fatal: ${String(error)}`);
 };
 
 /* istanbul ignore next -- CLI entry point, tested via exported functions */

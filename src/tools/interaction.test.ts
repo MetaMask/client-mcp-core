@@ -330,7 +330,9 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toContain('state unknown');
         expect(result.error.message).toContain('describe-screen');
+        expect(result.error.message).not.toContain('may have completed');
       }
     });
 
@@ -658,6 +660,7 @@ describe('interaction', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_TYPE_TIMEOUT);
+        expect(result.error.message).toContain('state unknown');
       }
     });
 

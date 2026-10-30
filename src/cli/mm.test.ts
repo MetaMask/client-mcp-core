@@ -15,7 +15,10 @@ import {
   extractObserveFlag,
   extractPrettyFlag,
   extractProjectFlag,
+  fail,
+  failUsage,
   formatJsonOutput,
+  getNetworkErrorCode,
   resolvePretty,
   setObserveLevel,
   setPrettyOutput,
@@ -95,6 +98,44 @@ vi.mock('cosmiconfig', () => ({
 let exitSpy: MockInstance;
 let stderrSpy: MockInstance;
 let stdoutSpy: MockInstance;
+
+type FailureLine = {
+  ok: false;
+  error: { code: string; message: string; hint?: string; retryable: boolean };
+  meta?: unknown;
+};
+
+/**
+ * Returns the JSON failure lines the CLI printed on stdout.
+ *
+ * @returns The parsed `{"ok":false,...}` lines, in order.
+ */
+function failureLines(): FailureLine[] {
+  return stdoutSpy.mock.calls
+    .map((call) => String(call[0]))
+    .filter((line) => line.startsWith('{"ok":false'))
+    .map((line) => JSON.parse(line) as FailureLine);
+}
+
+/**
+ * Asserts that the CLI failed with one JSON line on stdout and exited with
+ * the given code.
+ *
+ * @param message - The expected message, or an asymmetric matcher.
+ * @param exitCode - The expected process exit code.
+ * @returns The failure line.
+ */
+function expectFailure(message: unknown, exitCode: number): FailureLine {
+  const lines = failureLines();
+  expect(lines.length).toBeGreaterThan(0);
+  const line = lines[0];
+  expect(line.ok).toBe(false);
+  expect(line.error.message).toStrictEqual(message);
+  expect(typeof line.error.code).toBe('string');
+  expect(typeof line.error.retryable).toBe('boolean');
+  expect(exitSpy).toHaveBeenCalledWith(exitCode);
+  return line;
+}
 const mockCreateRequire = vi.mocked(createRequire);
 const mockResolveRuntime = vi.fn();
 
@@ -167,18 +208,14 @@ describe('extractProjectFlag', () => {
     expect(() => extractProjectFlag(['--project'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --project requires a path value\n',
-    );
+    expectFailure('--project requires a path value', 2);
   });
 
   it('exits when --project value starts with --', () => {
     expect(() => extractProjectFlag(['--project', '--force'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --project requires a path value\n',
-    );
+    expectFailure('--project requires a path value', 2);
   });
 });
 
@@ -208,9 +245,7 @@ describe('extractObserveFlag', () => {
     [['--observe', '--force']],
   ])('exits on a missing or invalid value: %j', (argv) => {
     expect(() => extractObserveFlag(argv)).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --observe requires one of: none, diff, full\n',
-    );
+    expectFailure('--observe requires one of: none, diff, full', 2);
   });
 });
 
@@ -360,9 +395,7 @@ describe('resolveTargetFromArgs', () => {
     expect(() => resolveTargetFromArgs(['--selector'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --selector requires a value\n',
-    );
+    expectFailure('--selector requires a value', 2);
   });
 
   it('exits when --selector value starts with --', () => {
@@ -375,16 +408,12 @@ describe('resolveTargetFromArgs', () => {
     expect(() => resolveTargetFromArgs(['--testid'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --testid requires a value\n',
-    );
+    expectFailure('--testid requires a value', 2);
   });
 
   it('exits when no target provided', () => {
     expect(() => resolveTargetFromArgs([])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: element target is required\n',
-    );
+    expectFailure('element target is required', 2);
   });
 
   it('skips flag-value pairs and finds positional target', () => {
@@ -442,9 +471,7 @@ describe('resolveWithinFromArgs', () => {
     expect(() => resolveWithinFromArgs(['--within'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --within requires a value\n',
-    );
+    expectFailure('--within requires a value', 2);
   });
 
   it('exits when --within value starts with --', () => {
@@ -493,6 +520,33 @@ describe('getPositionalArgs', () => {
 
   it('returns empty array when only known flags present', () => {
     expect(getPositionalArgs(['--timeout', '5000'])).toStrictEqual([]);
+  });
+});
+
+describe('getNetworkErrorCode', () => {
+  it('reads the code from error.cause (Node fetch)', () => {
+    expect(
+      getNetworkErrorCode(
+        new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } }),
+      ),
+    ).toBe('ECONNREFUSED');
+  });
+
+  it('reads the code from error.code', () => {
+    expect(
+      getNetworkErrorCode(Object.assign(new Error('x'), { code: 'EPIPE' })),
+    ).toBe('EPIPE');
+  });
+
+  it('falls back to the code in the message', () => {
+    expect(getNetworkErrorCode(new Error('connect ECONNRESET 1.2.3.4'))).toBe(
+      'ECONNRESET',
+    );
+  });
+
+  it('returns undefined when there is no code', () => {
+    expect(getNetworkErrorCode(new TypeError('fetch failed'))).toBeUndefined();
+    expect(getNetworkErrorCode(undefined)).toBeUndefined();
   });
 });
 
@@ -570,9 +624,7 @@ describe('parseJsonArgument', () => {
     expect(() => parseJsonArgument('{bad}', 'test')).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('invalid JSON for test'),
-    );
+    expectFailure(expect.stringContaining('invalid JSON for test'), 2);
   });
 });
 
@@ -649,8 +701,9 @@ describe('readSelfOnboardingInput', () => {
     await expect(readSelfOnboardingInput(source)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --self-onboarding requires the secret recovery phrase on stdin\n',
+    expectFailure(
+      '--self-onboarding requires the secret recovery phrase on stdin',
+      2,
     );
     const written = stderrSpy.mock.calls
       .map((call) => String(call[0]))
@@ -662,8 +715,9 @@ describe('readSelfOnboardingInput', () => {
     await expect(
       readSelfOnboardingInput(Readable.from(['one two three\n'])),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: self-onboarding requires a 12 or 24 word secret recovery phrase\n',
+    expectFailure(
+      'self-onboarding requires a 12 or 24 word secret recovery phrase',
+      2,
     );
   });
 
@@ -671,9 +725,7 @@ describe('readSelfOnboardingInput', () => {
     await expect(
       readSelfOnboardingInput(Readable.from([`${RECOVERY_PHRASE}\nshort\n`])),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: self-onboarding password must be at least 8 characters\n',
-    );
+    expectFailure('self-onboarding password must be at least 8 characters', 2);
     const written = stderrSpy.mock.calls
       .map((call) => String(call[0]))
       .join('');
@@ -687,8 +739,9 @@ describe('readSelfOnboardingInput', () => {
         Readable.from([`${RECOVERY_PHRASE}\n${VAULT_PASSWORD}\nextra\n`]),
       ),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: self-onboarding stdin takes the phrase and an optional password line only\n',
+    expectFailure(
+      'self-onboarding stdin takes the phrase and an optional password line only',
+      2,
     );
     const written = stderrSpy.mock.calls
       .map((call) => String(call[0]))
@@ -746,9 +799,7 @@ describe('parseLaunchArgs', () => {
 
   it('exits for --state without value', () => {
     expect(() => parseLaunchArgs(['--state'])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --state requires a value (default|onboarding|custom)\n',
-    );
+    expectFailure('--state requires a value (default|onboarding|custom)', 2);
   });
 
   it('exits for --state with flag as value', () => {
@@ -761,9 +812,7 @@ describe('parseLaunchArgs', () => {
     expect(() => parseLaunchArgs(['--extension-path'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --extension-path requires a value\n',
-    );
+    expectFailure('--extension-path requires a value', 2);
   });
 
   it('parses --context value', () => {
@@ -783,9 +832,7 @@ describe('parseLaunchArgs', () => {
 
   it('exits for --context without value', () => {
     expect(() => parseLaunchArgs(['--context'])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --context requires a value (e2e|prod)\n',
-    );
+    expectFailure('--context requires a value (e2e|prod)', 2);
   });
 
   it('exits for --context with flag as value', () => {
@@ -824,9 +871,7 @@ describe('parseLaunchArgs', () => {
 
   it('exits for --platform without value', () => {
     expect(() => parseLaunchArgs(['--platform'])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --platform requires a value (browser|ios|android)\n',
-    );
+    expectFailure('--platform requires a value (browser|ios|android)', 2);
   });
 
   it('exits for --platform with flag as value', () => {
@@ -837,9 +882,7 @@ describe('parseLaunchArgs', () => {
 
   it('exits for --device-id without value', () => {
     expect(() => parseLaunchArgs(['--device-id'])).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --device-id requires a value\n',
-    );
+    expectFailure('--device-id requires a value', 2);
   });
 
   it('parses mobile-specific launch flags', () => {
@@ -886,9 +929,7 @@ describe('parseLaunchArgs', () => {
     expect(() => parseLaunchArgs(['--app-bundle'])).toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --app-bundle requires a path\n',
-    );
+    expectFailure('--app-bundle requires a path', 2);
   });
 
   it('exits for --app-bundle with flag as value', () => {
@@ -903,9 +944,7 @@ describe('parseLaunchArgs', () => {
       expect(() => parseLaunchArgs(['--metro-port', port])).toThrowError(
         'process.exit',
       );
-      expect(stderrSpy).toHaveBeenCalledWith(
-        'Error: --metro-port requires a valid port (1-65535)\n',
-      );
+      expectFailure('--metro-port requires a valid port (1-65535)', 2);
     },
   );
 
@@ -998,8 +1037,9 @@ describe('resolveRuntime', () => {
     });
 
     expect(() => resolveRuntime('/root', 'tsx')).toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
+    expectFailure(
       expect.stringContaining("Runtime 'tsx' is not installed in /root"),
+      6,
     );
   });
 
@@ -1130,8 +1170,9 @@ describe('readDaemonConfig', () => {
     await expect(readDaemonConfig('/mock/worktree')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      "Error: Unsupported runtime 'swc-node'. Supported runtimes are 'node' and 'tsx'.\n",
+    expectFailure(
+      "Unsupported runtime 'swc-node'. Supported runtimes are 'node' and 'tsx'.",
+      2,
     );
   });
 
@@ -1141,9 +1182,7 @@ describe('readDaemonConfig', () => {
     await expect(readDaemonConfig('/project')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('No mm-client-cli config found'),
-    );
+    expectFailure(expect.stringContaining('No mm-client-cli config found'), 2);
   });
 
   it('exits when config file is empty', async () => {
@@ -1156,9 +1195,7 @@ describe('readDaemonConfig', () => {
     await expect(readDaemonConfig('/project')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('No mm-client-cli config found'),
-    );
+    expectFailure(expect.stringContaining('No mm-client-cli config found'), 2);
   });
 
   it('exits when daemon is not configured', async () => {
@@ -1171,8 +1208,9 @@ describe('readDaemonConfig', () => {
     await expect(readDaemonConfig('/project')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
+    expectFailure(
       expect.stringContaining('No daemon entry point configured'),
+      2,
     );
   });
 });
@@ -1209,9 +1247,7 @@ describe('resolveWorktreeRoot', () => {
     await expect(resolveWorktreeRoot('/bad/path')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('project path does not exist'),
-    );
+    expectFailure(expect.stringContaining('project path does not exist'), 2);
   });
 
   it('exits when path is not a directory', async () => {
@@ -1223,8 +1259,9 @@ describe('resolveWorktreeRoot', () => {
     await expect(resolveWorktreeRoot('/some/file.txt')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
+    expectFailure(
       expect.stringContaining('project path is not a directory'),
+      2,
     );
   });
 
@@ -1235,9 +1272,7 @@ describe('resolveWorktreeRoot', () => {
     await expect(resolveWorktreeRoot('/some/path')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('cannot access project path'),
-    );
+    expectFailure(expect.stringContaining('cannot access project path'), 2);
   });
 
   it('finds the nearest .git entry above the cwd without running git', async () => {
@@ -1323,9 +1358,7 @@ describe('resolveWorktreeRoot', () => {
     await expect(resolveWorktreeRoot(undefined)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('not in a git repository'),
-    );
+    expectFailure(expect.stringContaining('not in a git repository'), 2);
 
     process.env.MM_PROJECT = origEnv;
   });
@@ -1451,7 +1484,7 @@ describe('sendRequest', () => {
     await expect(
       sendRequest(3000, 'POST', '/tool/click', {}),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith('Error: No session\n');
+    expectFailure('No session', 1);
   });
 
   it('exits on ok:false in response body', async () => {
@@ -1466,7 +1499,7 @@ describe('sendRequest', () => {
     await expect(
       sendRequest(3000, 'POST', '/tool/click', {}),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith('Error: Tool failed\n');
+    expectFailure('Tool failed', 1);
   });
 
   it('retries transient errors', async () => {
@@ -1493,9 +1526,35 @@ describe('sendRequest', () => {
     await expect(
       sendRequest(3000, 'GET', '/health', null),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('ECONNREFUSED'),
+    expectFailure(expect.stringContaining('ECONNREFUSED'), 3);
+  });
+
+  it('reports a refused connection as MM_DAEMON_NOT_RUNNING, exit 3', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } }),
     );
+
+    await expect(
+      sendRequest(3000, 'GET', '/health', null),
+    ).rejects.toThrowError('process.exit');
+
+    const line = expectFailure('fetch failed', 3);
+    expect(line.error.code).toBe('MM_DAEMON_NOT_RUNNING');
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('reports a reset connection as MM_DAEMON_CONNECTION_LOST, exit 3', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }),
+    );
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', {}),
+    ).rejects.toThrowError('process.exit');
+
+    const line = expectFailure(expect.stringContaining('fetch failed'), 3);
+    expect(line.error.code).toBe('MM_DAEMON_CONNECTION_LOST');
+    expect(line.error.hint).toContain('may have run');
   });
 
   it('exits immediately for non-transient errors', async () => {
@@ -1506,9 +1565,7 @@ describe('sendRequest', () => {
     await expect(
       sendRequest(3000, 'GET', '/health', null),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('some other error'),
-    );
+    expectFailure(expect.stringContaining('some other error'), 1);
   });
 
   it('exits on request timeout (AbortError)', async () => {
@@ -1519,12 +1576,11 @@ describe('sendRequest', () => {
     await expect(sendRequest(3000, 'POST', '/launch', {})).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('request timed out'),
-    );
+    expectFailure(expect.stringContaining('request timed out'), 5);
   });
 
-  it('prints plain error message on tool failure', async () => {
+  it('prints the daemon error code, hint and meta as one JSON line on stdout', async () => {
+    const meta = { totalMs: 12, queueMs: 0, toolMs: 11, observationMs: 0 };
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 400,
@@ -1534,6 +1590,7 @@ describe('sendRequest', () => {
           code: 'MM_TARGET_NOT_FOUND',
           message: 'Element not found',
         },
+        meta,
       }),
     } as Response);
 
@@ -1541,7 +1598,119 @@ describe('sendRequest', () => {
       sendRequest(3000, 'POST', '/tool/click', { testId: 'btn' }),
     ).rejects.toThrowError('process.exit');
 
-    expect(stderrSpy).toHaveBeenCalledWith('Error: Element not found\n');
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(stdoutSpy.mock.calls[0][0]))).toStrictEqual({
+      ok: false,
+      error: {
+        code: 'MM_TARGET_NOT_FOUND',
+        message: 'Element not found',
+        hint: 'Run `mm describe-screen` to get fresh refs.',
+        retryable: false,
+      },
+      meta,
+    });
+    expect(exitSpy).toHaveBeenCalledWith(4);
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps a hint sent by the daemon', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: false,
+        error: { code: 'MM_CLICK_FAILED', message: 'x', hint: 'daemon hint' },
+      }),
+    } as Response);
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', {}),
+    ).rejects.toThrowError('process.exit');
+
+    expect(expectFailure('x', 4).error.hint).toBe('daemon hint');
+  });
+
+  it.each([
+    ['VALIDATION_ERROR', 2],
+    ['TOOL_NOT_FOUND', 2],
+    ['SERVER_NOT_STARTED', 3],
+    ['MM_NO_ACTIVE_SESSION', 3],
+    ['MM_TARGET_OBSCURED', 4],
+    ['MM_CLICK_TIMEOUT', 5],
+    ['MM_DEVICE_ACTION_FAILED', 6],
+    ['TOOL_EXECUTION_FAILED', 1],
+    ['MM_CONSUMER_SPECIFIC_CODE', 1],
+  ])('maps daemon code %s to exit %i', async (code, exitCode) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ ok: false, error: { code, message: 'm' } }),
+    } as Response);
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', {}),
+    ).rejects.toThrowError('process.exit');
+
+    expect(expectFailure('m', exitCode).error.code).toBe(code);
+  });
+
+  it('uses MM_INTERNAL_ERROR when the daemon sends no code', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ ok: false, error: { message: 'm' } }),
+    } as Response);
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', {}),
+    ).rejects.toThrowError('process.exit');
+
+    expect(expectFailure('m', 1).error.code).toBe('MM_INTERNAL_ERROR');
+  });
+
+  it('marks a request timeout as state unknown, not retryable, exit 5', async () => {
+    const abortError = new Error('aborted');
+    abortError.name = 'AbortError';
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(abortError);
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', {}, { requestTimeoutMs: 500 }),
+    ).rejects.toThrowError('process.exit');
+
+    const line = expectFailure(
+      'request timed out after 500ms; state unknown',
+      5,
+    );
+    expect(line.error.code).toBe('MM_REQUEST_TIMEOUT');
+    expect(line.error.retryable).toBe(false);
+    expect(line.error.hint).toContain('describe-screen');
+  });
+
+  it('also writes the message to stderr when stderr is a terminal', async () => {
+    const isTTY = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    Object.defineProperty(process.stderr, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+    try {
+      expect(() => fail('MM_INVALID_INPUT', 'bad flag')).toThrowError(
+        'process.exit',
+      );
+      expect(stderrSpy).toHaveBeenCalledWith('Error: bad flag\n');
+      expectFailure('bad flag', 2);
+    } finally {
+      if (isTTY) {
+        Object.defineProperty(process.stderr, 'isTTY', isTTY);
+      } else {
+        delete (process.stderr as { isTTY?: boolean }).isTTY;
+      }
+    }
+  });
+
+  it('indents the failure line with pretty output', () => {
+    setPrettyOutput(true);
+
+    expect(() => failUsage('bad')).toThrowError('process.exit');
+
+    expect(String(stdoutSpy.mock.calls[0][0])).toContain('\n  "error"');
   });
 
   it('falls back to data when no result key', async () => {
@@ -1566,7 +1735,7 @@ describe('sendRequest', () => {
     await expect(sendRequest(3000, 'POST', '/tool/x', {})).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith('Error: Request failed\n');
+    expectFailure('Request failed', 1);
   });
 
   it('reaches the final fallback after repeated transient failures when exit does not throw', async () => {
@@ -1578,10 +1747,16 @@ describe('sendRequest', () => {
 
     await sendRequest(3000, 'GET', '/health', null);
 
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('request failed after 4 attempts'),
-    );
-    expect(process.exit).toHaveBeenCalledWith(1);
+    // exit does not throw here, so every attempt reaches fail(); the last
+    // line is the final fallback.
+    const lines = failureLines();
+    expect(lines[lines.length - 1].error).toStrictEqual({
+      code: 'MM_DAEMON_NOT_RUNNING',
+      message: expect.stringContaining('request failed after 4 attempts'),
+      hint: 'Run `mm launch` to start.',
+      retryable: false,
+    });
+    expect(process.exit).toHaveBeenLastCalledWith(3);
   });
 
   it('merges observations into object result', async () => {
@@ -1798,9 +1973,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('click', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm click'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm click'), 2);
   });
 
   it('routes type with ref and text', async () => {
@@ -1863,7 +2036,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('type', ['e1'], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith('Usage: mm type <ref> <text>\n');
+    expectFailure('Usage: mm type <ref> <text>', 2);
   });
 
   it('routes describe-screen', async () => {
@@ -2012,9 +2185,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('set-context', ['other'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Usage: mm set-context <e2e|prod>\n',
-    );
+    expectFailure('Usage: mm set-context <e2e|prod>', 2);
   });
 
   it('exits when set-context has no value', async () => {
@@ -2363,9 +2534,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('run-steps', ['{bad json}'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('invalid JSON'),
-    );
+    expectFailure(expect.stringContaining('invalid JSON'), 2);
   });
 
   it('routes mock-network add with a JSON rule', async () => {
@@ -2440,18 +2609,14 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('mock-network', ['add'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm mock-network add'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm mock-network add'), 2);
   });
 
   it('exits when mock-network has an unknown action', async () => {
     await expect(
       routeCommand('mock-network', ['unknown'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm mock-network'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm mock-network'), 2);
   });
 
   it('routes cdp with method and params', async () => {
@@ -2503,18 +2668,14 @@ describe('routeCommand', () => {
     await expect(routeCommand('cdp', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm cdp'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm cdp'), 2);
   });
 
   it('exits when cdp has invalid JSON params', async () => {
     await expect(
       routeCommand('cdp', ['Runtime.evaluate', '{bad json}'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('invalid JSON'),
-    );
+    expectFailure(expect.stringContaining('invalid JSON'), 2);
   });
 
   it('routes cdp with --target android-webview and --url-filter', async () => {
@@ -2560,9 +2721,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('cdp', ['Runtime.evaluate', '--target', 'bogus'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('--target must be'),
-    );
+    expectFailure(expect.stringContaining('--target must be'), 2);
   });
 
   it('routes scroll-to-element with a11y ref', async () => {
@@ -2607,9 +2766,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('scroll-to-element', [], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm scroll-to-element'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm scroll-to-element'), 2);
   });
 
   it('routes device-swipe with positional direction', async () => {
@@ -2654,9 +2811,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('device-swipe', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm device-swipe'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm device-swipe'), 2);
   });
 
   it('routes long-press with a11y ref', async () => {
@@ -2683,9 +2838,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('long-press', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm long-press'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm long-press'), 2);
   });
 
   it('routes tap-coordinates with positionals', async () => {
@@ -2712,9 +2865,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('tap-coordinates', ['100'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm tap-coordinates'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm tap-coordinates'), 2);
   });
 
   it('routes dismiss-keyboard', async () => {
@@ -2763,9 +2914,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('open-app', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm open-app'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm open-app'), 2);
   });
 
   it('routes close-app with bundleId', async () => {
@@ -2782,9 +2931,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('close-app', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm close-app'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm close-app'), 2);
   });
 
   it('routes press-button with button name', async () => {
@@ -2801,9 +2948,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('press-button', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm press-button'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm press-button'), 2);
   });
 
   it('routes device-context list', async () => {
@@ -2830,9 +2975,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('device-context', ['bogus'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm device-context'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm device-context'), 2);
   });
 
   it('exits when device-context switch has no name', async () => {
@@ -2865,9 +3008,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('device-clipboard', ['bogus'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm device-clipboard'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm device-clipboard'), 2);
   });
 
   it('exits when device-clipboard write has no text', async () => {
@@ -2917,9 +3058,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('screen-recording', ['bogus'], 3000),
     ).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Usage: mm screen-recording'),
-    );
+    expectFailure(expect.stringContaining('Usage: mm screen-recording'), 2);
   });
 
   it('routes device-logs with no args', async () => {
@@ -2959,9 +3098,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining("unknown command 'unknown-cmd'"),
-    );
+    expectFailure(expect.stringContaining("unknown command 'unknown-cmd'"), 2);
   });
 
   it.each([
@@ -2973,9 +3110,7 @@ describe('routeCommand', () => {
     await expect(routeCommand(command, [], 3000)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`unknown command '${command}'`),
-    );
+    expectFailure(expect.stringContaining(`unknown command '${command}'`), 2);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
@@ -3082,9 +3217,7 @@ describe('discoverDaemon', () => {
     );
 
     expect(removeDaemonState).toHaveBeenCalledWith('/root');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('no daemon running'),
-    );
+    expectFailure(expect.stringContaining('no daemon running'), 3);
   });
 
   it('exits for non-auto-start commands when no daemon', async () => {
@@ -3094,9 +3227,7 @@ describe('discoverDaemon', () => {
     await expect(discoverDaemon('/root', 'status')).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('no daemon running'),
-    );
+    expectFailure(expect.stringContaining('no daemon running'), 3);
   });
 });
 
@@ -3217,9 +3348,7 @@ describe('main', () => {
     process.argv = ['node', 'mm', 'serve'];
 
     await expect(main()).rejects.toThrowError('process.exit');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('daemon already running'),
-    );
+    expectFailure(expect.stringContaining('daemon already running'), 1);
 
     process.argv = origArgv;
   });
@@ -3716,9 +3845,7 @@ describe('handleServe', () => {
     await expect(handleServe('/root', false)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('daemon already running'),
-    );
+    expectFailure(expect.stringContaining('daemon already running'), 1);
   });
 
   it('starts daemon in background mode', async () => {
@@ -3915,9 +4042,7 @@ describe('handleStop', () => {
     await expect(handleStop('/root', false)).rejects.toThrowError(
       'process.exit',
     );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining('mm stop --force'),
-    );
+    expectFailure(expect.stringContaining('mm stop --force'), 3);
   });
 
   it('removes stale state file with --force', async () => {

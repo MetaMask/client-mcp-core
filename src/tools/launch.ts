@@ -1,6 +1,5 @@
 import type { LaunchInput, LaunchPrerequisite, LaunchResult } from './types';
 import { ErrorCodes } from './types';
-import type { ErrorCode } from './types/errors.js';
 import { createToolError, createToolSuccess } from './utils.js';
 import { cleanupSession } from '../server/cleanup-session.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
@@ -79,16 +78,14 @@ export async function launchTool(
   } catch (error) {
     const message = extractErrorMessage(error);
 
-    // Preserve a consumer-thrown error code when it is a known ErrorCode.
+    // Preserve a consumer-thrown `MM_*` error code, known or not.
     // Consumers (e.g. mobile session managers) classify launch failures far
     // more precisely than this handler can — collapsing everything into
     // MM_LAUNCH_FAILED would discard that signal before it reaches the agent.
-    const errorCode = (error as { code?: string }).code;
-    if (
-      errorCode &&
-      (Object.values(ErrorCodes) as string[]).includes(errorCode)
-    ) {
-      return createToolError(errorCode as ErrorCode, message);
+    // The CLI maps a code it does not know to exit 1.
+    const errorCode = (error as { code?: unknown }).code;
+    if (typeof errorCode === 'string' && /^MM_[A-Z0-9_]+$/u.test(errorCode)) {
+      return createToolError(errorCode, message);
     }
 
     if (message.includes('EADDRINUSE') || message.includes('port')) {

@@ -388,7 +388,7 @@ describe('launchTool', () => {
       }
     });
 
-    it('falls back to MM_LAUNCH_FAILED for an unknown error code', async () => {
+    it('preserves a consumer-specific MM_* error code', async () => {
       const context = createMockContext({ hasActive: false });
       vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
         Object.assign(new Error('device exploded'), {
@@ -400,10 +400,28 @@ describe('launchTool', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_LAUNCH_FAILED);
-        expect(result.error.message).toContain('device exploded');
+        expect(result.error.code).toBe('MM_CONSUMER_SPECIFIC_CODE');
+        expect(result.error.message).toBe('device exploded');
       }
     });
+
+    it.each([['ENOENT'], ['mm_lowercase'], [42]])(
+      'falls back to MM_LAUNCH_FAILED for a non-MM_* code %s',
+      async (code) => {
+        const context = createMockContext({ hasActive: false });
+        vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
+          Object.assign(new Error('device exploded'), { code }),
+        );
+
+        const result = await launchTool({ stateMode: 'default' }, context);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_LAUNCH_FAILED);
+          expect(result.error.message).toContain('device exploded');
+        }
+      },
+    );
 
     it('forwards mobile launch options to the session manager', async () => {
       const context = createMockContext({ hasActive: false });
