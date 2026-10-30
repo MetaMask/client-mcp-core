@@ -15,7 +15,8 @@ export const ErrorCodes = {
   MM_NOTIFICATION_TIMEOUT: 'MM_NOTIFICATION_TIMEOUT',
 
   MM_TARGET_NOT_FOUND: 'MM_TARGET_NOT_FOUND',
-  MM_TARGET_NOT_VISIBLE: 'MM_TARGET_NOT_VISIBLE', // found, but not brought into the viewport (scroll_to_element)
+  MM_TARGET_NOT_VISIBLE: 'MM_TARGET_NOT_VISIBLE', // found, but not in the viewport (scroll_to_element, mobile tap)
+  MM_TARGET_OBSCURED: 'MM_TARGET_OBSCURED', // another element (keyboard, sheet, overlay) is on top of the target; nothing was tapped
   MM_CLICK_FAILED: 'MM_CLICK_FAILED',
   MM_TYPE_FAILED: 'MM_TYPE_FAILED',
   MM_GETTEXT_FAILED: 'MM_GETTEXT_FAILED',

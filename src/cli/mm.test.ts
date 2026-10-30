@@ -1737,6 +1737,33 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes click with --dismiss-keyboard', async () => {
+    await routeCommand(
+      'click',
+      ['--testid', 'log-in-button', '--dismiss-keyboard'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: JSON.stringify({
+          testId: 'log-in-button',
+          dismissKeyboard: true,
+        }),
+      }),
+    );
+  });
+
+  it('does not read --dismiss-keyboard as the click target', async () => {
+    await routeCommand('click', ['--dismiss-keyboard', 'e3'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e3', dismissKeyboard: true }),
+      }),
+    );
+  });
+
   it('routes click with --selector', async () => {
     await routeCommand('click', ['--selector', '.btn'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(
