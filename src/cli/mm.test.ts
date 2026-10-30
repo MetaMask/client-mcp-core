@@ -26,6 +26,7 @@ import {
   resolveWithinFromArgs,
   getPositionalTarget,
   getPositionalArgs,
+  isConnectionError,
   isTransientError,
   parseIntFlag,
   parseStringFlag,
@@ -551,29 +552,61 @@ describe('getNetworkErrorCode', () => {
 });
 
 describe('isTransientError', () => {
-  it('returns true for ECONNREFUSED', () => {
-    expect(isTransientError(new Error('ECONNREFUSED'))).toBe(true);
+  const fetchError = (cause: unknown): TypeError =>
+    new TypeError('fetch failed', { cause });
+
+  it('returns true for a refused connection (Node fetch cause.code)', () => {
+    expect(isTransientError(fetchError({ code: 'ECONNREFUSED' }))).toBe(true);
   });
 
-  it('returns true for ECONNRESET', () => {
-    expect(isTransientError(new Error('ECONNRESET'))).toBe(true);
+  it('returns true when every address of an AggregateError refused', () => {
+    expect(
+      isTransientError(
+        fetchError({
+          errors: [{ code: 'ECONNREFUSED' }, { code: 'ECONNREFUSED' }],
+        }),
+      ),
+    ).toBe(true);
   });
 
-  it('returns true for EPIPE', () => {
-    expect(isTransientError(new Error('EPIPE'))).toBe(true);
+  it('returns false when one address of an AggregateError did not refuse', () => {
+    expect(
+      isTransientError(
+        fetchError({
+          errors: [{ code: 'ECONNREFUSED' }, { code: 'ECONNRESET' }],
+        }),
+      ),
+    ).toBe(false);
   });
 
-  it('returns true for UND_ERR_SOCKET', () => {
-    expect(isTransientError(new Error('UND_ERR_SOCKET'))).toBe(true);
-  });
+  it.each([['ECONNRESET'], ['EPIPE'], ['UND_ERR_SOCKET']])(
+    'returns false for %s (the daemon may have got the request)',
+    (code) => {
+      expect(isTransientError(fetchError({ code }))).toBe(false);
+      expect(isTransientError(new Error(code))).toBe(false);
+    },
+  );
 
-  it('returns true for fetch failed', () => {
-    expect(isTransientError(new Error('fetch failed'))).toBe(true);
+  it('returns false for a bare fetch failed and other errors', () => {
+    expect(isTransientError(new TypeError('fetch failed'))).toBe(false);
+    expect(isTransientError(new Error('timeout'))).toBe(false);
+    expect(isTransientError(new Error('404 not found'))).toBe(false);
+  });
+});
+
+describe('isConnectionError', () => {
+  it('returns true for network failures', () => {
+    expect(
+      isConnectionError(
+        new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }),
+      ),
+    ).toBe(true);
+    expect(isConnectionError(new TypeError('fetch failed'))).toBe(true);
+    expect(isConnectionError(new TypeError('terminated'))).toBe(true);
   });
 
   it('returns false for other errors', () => {
-    expect(isTransientError(new Error('timeout'))).toBe(false);
-    expect(isTransientError(new Error('404 not found'))).toBe(false);
+    expect(isConnectionError(new SyntaxError('Unexpected token'))).toBe(false);
   });
 });
 
@@ -1502,12 +1535,14 @@ describe('sendRequest', () => {
     expectFailure('Tool failed', 1);
   });
 
-  it('retries transient errors', async () => {
+  it('retries a refused connection', async () => {
     let attempts = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       attempts += 1;
       if (attempts <= 2) {
-        throw new Error('ECONNREFUSED');
+        throw new TypeError('fetch failed', {
+          cause: { code: 'ECONNREFUSED' },
+        });
       }
       return {
         ok: true,
@@ -1520,15 +1555,6 @@ describe('sendRequest', () => {
     expect(attempts).toBe(3);
   });
 
-  it('exits after max retries for transient errors', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
-
-    await expect(
-      sendRequest(3000, 'GET', '/health', null),
-    ).rejects.toThrowError('process.exit');
-    expectFailure(expect.stringContaining('ECONNREFUSED'), 3);
-  });
-
   it('reports a refused connection as MM_DAEMON_NOT_RUNNING, exit 3', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(
       new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } }),
@@ -1538,7 +1564,10 @@ describe('sendRequest', () => {
       sendRequest(3000, 'GET', '/health', null),
     ).rejects.toThrowError('process.exit');
 
-    const line = expectFailure('fetch failed', 3);
+    const line = expectFailure(
+      'daemon refused the connection on port 3000 (ECONNREFUSED) after 4 attempts',
+      3,
+    );
     expect(line.error.code).toBe('MM_DAEMON_NOT_RUNNING');
     expect(fetch).toHaveBeenCalledTimes(4);
   });
@@ -1552,9 +1581,99 @@ describe('sendRequest', () => {
       sendRequest(3000, 'POST', '/tool/click', {}),
     ).rejects.toThrowError('process.exit');
 
-    const line = expectFailure(expect.stringContaining('fetch failed'), 3);
+    const line = expectFailure(
+      'connection to the daemon failed (ECONNRESET): fetch failed; the action may have run, check state',
+      3,
+    );
     expect(line.error.code).toBe('MM_DAEMON_CONNECTION_LOST');
     expect(line.error.hint).toContain('may have run');
+    expect(line.error.retryable).toBe(false);
+    // Never resent: the daemon may already have tapped.
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([['EPIPE'], ['UND_ERR_SOCKET']])(
+    'does not resend after %s',
+    async (code) => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+        new TypeError('fetch failed', { cause: { code } }),
+      );
+
+      await expect(
+        sendRequest(3000, 'POST', '/tool/click', {}),
+      ).rejects.toThrowError('process.exit');
+
+      expect(expectFailure(expect.stringContaining(code), 3).error.code).toBe(
+        'MM_DAEMON_CONNECTION_LOST',
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not resend a bare fetch failed without a code', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('fetch failed'),
+    );
+
+    await expect(
+      sendRequest(3000, 'POST', '/tool/click', {}),
+    ).rejects.toThrowError('process.exit');
+
+    expect(
+      expectFailure(
+        'connection to the daemon failed: fetch failed; the action may have run, check state',
+        3,
+      ).error.code,
+    ).toBe('MM_DAEMON_CONNECTION_LOST');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits longer before each resend of a refused request', async () => {
+    const sleeps: number[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      fn: () => void,
+      ms?: number,
+    ) => {
+      if (ms !== undefined && ms < 1000) {
+        sleeps.push(ms);
+        fn();
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } }),
+    );
+
+    await expect(
+      sendRequest(3000, 'GET', '/health', null),
+    ).rejects.toThrowError('process.exit');
+
+    expect(sleeps).toStrictEqual([200, 400, 600]);
+  });
+
+  it('retries a refused connection against a closed port, then fails clearly', async () => {
+    const { createServer } = await import('node:net');
+    const server = createServer();
+    const port = await new Promise<number>((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        resolve((server.address() as { port: number }).port);
+      });
+    });
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    await expect(
+      sendRequest(port, 'GET', '/health', null),
+    ).rejects.toThrowError('process.exit');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    const line = expectFailure(
+      `daemon refused the connection on port ${port} (ECONNREFUSED) after 4 attempts`,
+      3,
+    );
+    expect(line.error.code).toBe('MM_DAEMON_NOT_RUNNING');
   });
 
   it('exits immediately for non-transient errors', async () => {
@@ -1736,27 +1855,6 @@ describe('sendRequest', () => {
       'process.exit',
     );
     expectFailure('Request failed', 1);
-  });
-
-  it('reaches the final fallback after repeated transient failures when exit does not throw', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
-    exitSpy.mockRestore();
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
-      return undefined as never;
-    }) as never);
-
-    await sendRequest(3000, 'GET', '/health', null);
-
-    // exit does not throw here, so every attempt reaches fail(); the last
-    // line is the final fallback.
-    const lines = failureLines();
-    expect(lines[lines.length - 1].error).toStrictEqual({
-      code: 'MM_DAEMON_NOT_RUNNING',
-      message: expect.stringContaining('request failed after 4 attempts'),
-      hint: 'Run `mm launch` to start.',
-      retryable: false,
-    });
-    expect(process.exit).toHaveBeenLastCalledWith(3);
   });
 
   it('merges observations into object result', async () => {

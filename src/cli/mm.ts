@@ -1169,21 +1169,39 @@ export async function routeMockNetworkCommand(
 }
 
 /**
- * Checks whether a fetch error is transient and worth retrying.
- * Only network-level failures are retried — HTTP responses (even errors) are not.
+ * Checks whether a failed request is safe to send again: only a refused
+ * connection (`ECONNREFUSED`), because the daemon never accepted the request.
+ * A reset, broken pipe or socket error can come after the daemon got the
+ * request, so a resend could run a click twice; those are not retried.
+ * HTTP responses (even errors) are never retried.
  *
  * @param error - The caught error from a fetch attempt.
- * @returns Whether the error is transient.
+ * @returns Whether the request can be sent again.
  */
 export function isTransientError(error: unknown): boolean {
+  const inner = (error as { cause?: { errors?: unknown } } | null | undefined)
+    ?.cause?.errors;
+  // `localhost` can resolve to several addresses; Node then reports an
+  // AggregateError. Retry only when every address refused.
+  if (Array.isArray(inner) && inner.length > 0) {
+    return inner.every((item) => getNetworkErrorCode(item) === 'ECONNREFUSED');
+  }
+  return getNetworkErrorCode(error) === 'ECONNREFUSED';
+}
+
+/**
+ * Checks whether an error is a network failure of the request to the daemon
+ * (as opposed to a bad response body or a bug).
+ *
+ * @param error - The caught error from a fetch attempt.
+ * @returns Whether the connection failed.
+ */
+export function isConnectionError(error: unknown): boolean {
+  if (getNetworkErrorCode(error) !== undefined) {
+    return true;
+  }
   const message = String(error);
-  return (
-    message.includes('ECONNREFUSED') ||
-    message.includes('ECONNRESET') ||
-    message.includes('EPIPE') ||
-    message.includes('UND_ERR_SOCKET') ||
-    message.includes('fetch failed')
-  );
+  return message.includes('fetch failed') || message.includes('terminated');
 }
 
 /**
@@ -1258,8 +1276,10 @@ export async function daemonFetch(
 
 /**
  * Sends an HTTP request to the daemon and prints the response.
- * Retries transient network errors (ECONNREFUSED, ECONNRESET, etc.)
- * with linear backoff up to SEND_MAX_RETRIES times.
+ * Retries only a refused connection (ECONNREFUSED: the daemon never got the
+ * request), with linear backoff up to SEND_MAX_RETRIES times. Any other
+ * connection failure fails at once with MM_DAEMON_CONNECTION_LOST, because
+ * the daemon may already have run the action.
  *
  * @param port - The daemon HTTP server port.
  * @param method - The HTTP method to use.
@@ -1340,24 +1360,28 @@ export async function sendRequest(
         });
       }
 
-      if (isTransientError(error) && attempt < SEND_MAX_RETRIES) {
+      if (isTransientError(error)) {
+        // Refused: the daemon never got the request, so a resend is safe.
         lastError = error;
         continue;
       }
 
       const errorText = error instanceof Error ? error.message : String(error);
-      if (isTransientError(error)) {
-        failConnection(error, errorText);
+      if (isConnectionError(error)) {
+        const code = getNetworkErrorCode(error);
+        fail(
+          ErrorCodes.MM_DAEMON_CONNECTION_LOST,
+          `connection to the daemon failed${code ? ` (${code})` : ''}: ${errorText}; the action may have run, check state`,
+        );
       }
       fail(ErrorCodes.MM_INTERNAL_ERROR, errorText);
     }
   }
 
-  const lastErrorText =
-    lastError instanceof Error ? lastError.message : String(lastError);
-  failConnection(
-    lastError,
-    `request failed after ${SEND_MAX_RETRIES + 1} attempts: ${lastErrorText}`,
+  const code = getNetworkErrorCode(lastError) ?? 'ECONNREFUSED';
+  fail(
+    ErrorCodes.MM_DAEMON_NOT_RUNNING,
+    `daemon refused the connection on port ${port} (${code}) after ${SEND_MAX_RETRIES + 1} attempts`,
   );
 }
 
@@ -1380,21 +1404,6 @@ export function getNetworkErrorCode(error: unknown): string | undefined {
   return /\b(ECONNREFUSED|ECONNRESET|EPIPE|UND_ERR_SOCKET)\b/u.exec(
     String(error),
   )?.[1];
-}
-
-/**
- * Ends the CLI after a failed connection to the daemon: refused means no
- * daemon listens (`MM_DAEMON_NOT_RUNNING`); any other failure can come after
- * the daemon got the request (`MM_DAEMON_CONNECTION_LOST`).
- *
- * @param error - The network error.
- * @param message - The message to print.
- * @returns Never; the process exits.
- */
-function failConnection(error: unknown, message: string): never {
-  return getNetworkErrorCode(error) === 'ECONNREFUSED'
-    ? fail(ErrorCodes.MM_DAEMON_NOT_RUNNING, message)
-    : fail(ErrorCodes.MM_DAEMON_CONNECTION_LOST, message);
 }
 
 /**
