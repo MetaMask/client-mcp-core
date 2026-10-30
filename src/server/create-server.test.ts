@@ -11,10 +11,12 @@ import {
   buildResponseBody,
   resolveObserveLevel,
   screenAfterResponse,
+  withScreenChanged,
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
+import type { IPlatformDriver } from '../platform/types.js';
 import { toolRegistry } from '../tools/registry.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
 import { waitForAnimationsToSettle } from '../tools/utils/discovery.js';
@@ -3268,6 +3270,74 @@ describe('createServer abort, ref generations and observations', () => {
       expect(mockSM.setRefMap).not.toHaveBeenCalled();
     });
   });
+});
+
+describe('withScreenChanged', () => {
+  const before = [{ ref: 'e1', role: 'button', name: 'Go', path: [] }];
+  const same = [{ ref: 'e7', role: 'button', name: 'Go', path: [] }];
+  const other = [{ ref: 'e1', role: 'button', name: 'Back', path: [] }];
+  const obs = (nodes: unknown[]): StepRecordObservation =>
+    ({ testIds: [], a11y: { nodes } }) as unknown as StepRecordObservation;
+  const mobile = { getPlatform: () => 'ios' } as unknown as IPlatformDriver;
+  const browser = {
+    getPlatform: () => 'browser',
+  } as unknown as IPlatformDriver;
+  const ok = {
+    ok: true as const,
+    result: { clicked: true, target: 'testId:x' },
+  };
+
+  it('reports a changed screen', () => {
+    expect(
+      withScreenChanged('click', ok, obs(other), before, mobile),
+    ).toStrictEqual({
+      ok: true,
+      result: { clicked: true, target: 'testId:x', screenChanged: true },
+    });
+  });
+
+  it('reports an unchanged screen, ignoring refs', () => {
+    expect(
+      withScreenChanged('click', ok, obs(same), before, mobile),
+    ).toMatchObject({ result: { screenChanged: false } });
+  });
+
+  it.each([
+    ['another tool', 'type', ok, obs(other), before, mobile],
+    [
+      'a failed click',
+      'click',
+      { ok: false as const, error: { code: 'X', message: 'm' } },
+      obs(other),
+      before,
+      mobile,
+    ],
+    ['no observation', 'click', ok, undefined, before, mobile],
+    ['no earlier screen', 'click', ok, obs(other), null, mobile],
+    ['the browser', 'click', ok, obs(other), before, browser],
+    ['no driver', 'click', ok, obs(other), before, undefined],
+    [
+      'a non-object result',
+      'click',
+      { ok: true as const, result: 'x' },
+      obs(other),
+      before,
+      mobile,
+    ],
+  ])(
+    'leaves the result unchanged for %s',
+    (_name, tool, result, observations, screen, driver) => {
+      expect(
+        withScreenChanged(
+          tool,
+          result as never,
+          observations,
+          screen as never,
+          driver,
+        ),
+      ).toBe(result);
+    },
+  );
 });
 
 describe('screenAfterResponse', () => {

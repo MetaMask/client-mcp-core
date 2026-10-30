@@ -579,11 +579,18 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
+          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--dismiss-keyboard]\n',
         );
         process.exit(1);
       }
-      await sendInteractionRequest(port, '/tool/click', args);
+      await sendInteractionRequest(
+        port,
+        '/tool/click',
+        args.filter((arg) => arg !== '--dismiss-keyboard'),
+        args.includes('--dismiss-keyboard')
+          ? { dismissKeyboard: true }
+          : undefined,
+      );
       break;
     }
     case 'type': {

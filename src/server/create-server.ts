@@ -158,6 +158,49 @@ export function screenAfterResponse(
 }
 
 /**
+ * Adds `screenChanged` to a successful mobile `click` result when an
+ * observation was collected: whether the observed screen differs (refs
+ * ignored) from the last screen the agent received before the click. Not
+ * added without an observation or without an earlier screen to compare.
+ *
+ * @param toolName - The tool name.
+ * @param result - The tool response.
+ * @param observations - The observation collected after the tool, if any.
+ * @param screenBefore - The last screen the agent received before the tool.
+ * @param driver - The platform driver of the request.
+ * @returns The response, with `screenChanged` when it applies.
+ */
+export function withScreenChanged(
+  toolName: string,
+  result: ToolResponse,
+  observations: StepRecordObservation | undefined,
+  screenBefore: A11yNodeTrimmed[] | null,
+  driver: IPlatformDriver | undefined,
+): ToolResponse {
+  if (
+    toolName !== 'click' ||
+    !result.ok ||
+    !observations ||
+    !screenBefore ||
+    !driver ||
+    driver.getPlatform() === 'browser' ||
+    typeof result.result !== 'object' ||
+    result.result === null
+  ) {
+    return result;
+  }
+  return {
+    ok: true,
+    result: {
+      ...(result.result as Record<string, unknown>),
+      screenChanged:
+        screenSignature(observations.a11y.nodes) !==
+        screenSignature(screenBefore),
+    },
+  };
+}
+
+/**
  * Merges a tool result with observation data into the HTTP response body.
  *
  * @param toolResult - The raw result returned by a tool function.
@@ -708,6 +751,9 @@ export function createServer(config: ServerConfig): ServerInstance {
           timer.markToolEnd();
 
           const level = resolveObserveLevel(category, inputRecord, result);
+          // Captured now: the observation below must compare with the
+          // screen the agent had before this click.
+          const screenBefore = lastScreen;
           let obs: StepRecordObservation | undefined;
           if (
             level !== 'none' &&
@@ -726,7 +772,13 @@ export function createServer(config: ServerConfig): ServerInstance {
           }
 
           return {
-            toolResult: result,
+            toolResult: withScreenChanged(
+              toolName,
+              result,
+              obs,
+              screenBefore,
+              context.driver,
+            ),
             observeLevel: level,
             observations: obs,
           };

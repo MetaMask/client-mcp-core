@@ -54,6 +54,16 @@ export function classifyInteractionError(
 } {
   const message = extractErrorMessage(error);
 
+  // Typed device-mcp errors first: their messages can contain "not found"
+  // or "timed out" text that the patterns below would misread.
+  const deviceCode = (error as { code?: unknown } | null | undefined)?.code;
+  if (deviceCode === 'TARGET_OBSCURED') {
+    return { code: ErrorCodes.MM_TARGET_OBSCURED, message };
+  }
+  if (deviceCode === 'ELEMENT_NOT_IN_VIEWPORT') {
+    return { code: ErrorCodes.MM_TARGET_NOT_VISIBLE, message };
+  }
+
   // Page-closed takes priority — the browser/context is gone, so no other
   // classification is meaningful.
   for (const pattern of ERROR_PATTERNS.pageClosed) {

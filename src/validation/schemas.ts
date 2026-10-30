@@ -471,6 +471,13 @@ export const clickInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    dismissKeyboard: z
+      .boolean()
+      .optional()
+      .describe(
+        'Mobile: when the software keyboard covers the target ' +
+          '(MM_TARGET_OBSCURED), dismiss it and tap once more',
+      ),
   }),
 );
 

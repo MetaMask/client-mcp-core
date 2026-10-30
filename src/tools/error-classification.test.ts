@@ -121,6 +121,33 @@ describe('error-classification', () => {
   });
 
   describe('classifyInteractionError', () => {
+    describe('with a typed device-mcp error', () => {
+      it('maps TARGET_OBSCURED to MM_TARGET_OBSCURED even when the text says "not found"', () => {
+        const error = Object.assign(
+          new Error('TARGET_OBSCURED: Button id="not found" is covered'),
+          { code: 'TARGET_OBSCURED' },
+        );
+
+        expect(
+          classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED),
+        ).toStrictEqual({
+          code: ErrorCodes.MM_TARGET_OBSCURED,
+          message: 'TARGET_OBSCURED: Button id="not found" is covered',
+        });
+      });
+
+      it('maps ELEMENT_NOT_IN_VIEWPORT to MM_TARGET_NOT_VISIBLE', () => {
+        const error = Object.assign(
+          new Error('Element is outside the 1080x2400 viewport'),
+          { code: 'ELEMENT_NOT_IN_VIEWPORT' },
+        );
+
+        expect(
+          classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED).code,
+        ).toBe(ErrorCodes.MM_TARGET_NOT_VISIBLE);
+      });
+    });
+
     describe('when error indicates target not found', () => {
       it('returns TARGET_NOT_FOUND for "Unknown a11yRef"', () => {
         // Arrange

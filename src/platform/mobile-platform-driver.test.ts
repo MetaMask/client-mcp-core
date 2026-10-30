@@ -464,6 +464,126 @@ describe('MobilePlatformDriver', () => {
   });
 
   describe('click', () => {
+    const obscured = (keyboard: boolean): Error =>
+      Object.assign(new Error('TARGET_OBSCURED: covered'), {
+        code: 'TARGET_OBSCURED',
+        keyboard,
+      });
+
+    it('dismisses the keyboard and taps again with dismissKeyboard', async () => {
+      const before = makeElement({ identifier: 'log-in-button' });
+      const after = makeElement({
+        identifier: 'log-in-button',
+        frame: { x: 16, y: 700, width: 370, height: 48 },
+      });
+      const backend = createMockBackend({
+        waitForElement: vi
+          .fn()
+          .mockResolvedValueOnce(before)
+          .mockResolvedValueOnce(after),
+        tapElement: vi
+          .fn()
+          .mockRejectedValueOnce(obscured(true))
+          .mockResolvedValueOnce({
+            success: true,
+            x: 1,
+            y: 2,
+            targetDescription: '',
+          }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const result = await driver.click(
+        'testId',
+        'log-in-button',
+        new Map(),
+        5000,
+        undefined,
+        undefined,
+        { dismissKeyboard: true },
+      );
+
+      expect(result).toStrictEqual({
+        clicked: true,
+        target: 'testId:log-in-button',
+        keyboardDismissed: true,
+      });
+      expect(backend.dismissKeyboard).toHaveBeenCalledTimes(1);
+      // The second tap uses the element read after the keyboard closed.
+      expect(vi.mocked(backend.tapElement).mock.calls).toStrictEqual([
+        [{ identifier: 'log-in-button' }, { element: before }],
+        [{ identifier: 'log-in-button' }, { element: after }],
+      ]);
+    });
+
+    it('does not dismiss the keyboard without the option', async () => {
+      const backend = createMockBackend({
+        tapElement: vi.fn().mockRejectedValue(obscured(true)),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click('testId', 'log-in-button', new Map(), 5000),
+      ).rejects.toMatchObject({ code: 'TARGET_OBSCURED' });
+      expect(backend.dismissKeyboard).not.toHaveBeenCalled();
+      expect(backend.tapElement).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not dismiss the keyboard when an overlay (not the keyboard) covers the target', async () => {
+      const backend = createMockBackend({
+        tapElement: vi.fn().mockRejectedValue(obscured(false)),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click('testId', 'x', new Map(), 5000, undefined, undefined, {
+          dismissKeyboard: true,
+        }),
+      ).rejects.toMatchObject({ code: 'TARGET_OBSCURED', keyboard: false });
+      expect(backend.dismissKeyboard).not.toHaveBeenCalled();
+    });
+
+    it('fails when the target is still covered after the keyboard is dismissed', async () => {
+      const backend = createMockBackend({
+        tapElement: vi.fn().mockRejectedValue(obscured(true)),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click('testId', 'x', new Map(), 5000, undefined, undefined, {
+          dismissKeyboard: true,
+        }),
+      ).rejects.toMatchObject({ code: 'TARGET_OBSCURED' });
+      expect(backend.dismissKeyboard).toHaveBeenCalledTimes(1);
+      expect(backend.tapElement).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not tap again when the request is aborted while dismissing', async () => {
+      const controller = new AbortController();
+      const backend = createMockBackend({
+        tapElement: vi.fn().mockRejectedValue(obscured(true)),
+        dismissKeyboard: vi.fn(async () => {
+          controller.abort();
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.click(
+          'testId',
+          'x',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+          {
+            dismissKeyboard: true,
+          },
+        ),
+      ).rejects.toThrowError('This operation was aborted');
+      expect(backend.tapElement).toHaveBeenCalledTimes(1);
+    });
+
     it('taps the element that waitForElement returned (one snapshot)', async () => {
       const found = makeElement({
         identifier: 'submit-btn',
