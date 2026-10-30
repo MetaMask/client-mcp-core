@@ -22,6 +22,16 @@ export type ClickActionResult = {
   clicked: boolean;
   target: string;
   pageClosedAfterClick?: boolean;
+  /** Mobile: the keyboard covered the target and was dismissed first. */
+  keyboardDismissed?: boolean;
+};
+
+export type ClickOptions = {
+  /**
+   * Mobile: when the software keyboard covers the target, dismiss it and tap
+   * once more. Ignored by the browser driver.
+   */
+  dismissKeyboard?: boolean;
 };
 
 export type TypeActionResult = {
@@ -89,6 +99,7 @@ export type IPlatformDriver = {
     timeoutMs: number,
     within?: WithinScope,
     signal?: AbortSignal,
+    options?: ClickOptions,
   ): Promise<ClickActionResult>;
 
   /**

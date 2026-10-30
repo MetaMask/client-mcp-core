@@ -84,6 +84,14 @@ export type ClickResult = {
   clicked: boolean;
   target: string;
   pageClosedAfterClick?: boolean;
+  /** Mobile: the keyboard covered the target and was dismissed first. */
+  keyboardDismissed?: boolean;
+  /**
+   * Mobile, with an observation: whether the screen after the click differs
+   * from the last screen the agent received. `false` is a hint (many taps
+   * change nothing, e.g. the open tab), not an error.
+   */
+  screenChanged?: boolean;
 };
 
 export type TypeResult = {

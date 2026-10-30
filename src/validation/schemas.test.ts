@@ -18,6 +18,7 @@ import {
   mockNetworkInputSchema,
   launchInputSchema,
   scrollToElementInputSchema,
+  clickInputSchema,
   deviceSwipeInputSchema,
   tapCoordinatesInputSchema,
   dismissAlertInputSchema,
@@ -593,6 +594,22 @@ describe('launchInputSchema', () => {
 });
 
 describe('device tool schemas', () => {
+  describe('clickInputSchema dismissKeyboard', () => {
+    it('accepts dismissKeyboard', () => {
+      expect(
+        clickInputSchema.safeParse({ testId: 'x', dismissKeyboard: true })
+          .success,
+      ).toBe(true);
+    });
+
+    it('rejects a non-boolean dismissKeyboard', () => {
+      expect(
+        clickInputSchema.safeParse({ testId: 'x', dismissKeyboard: 'yes' })
+          .success,
+      ).toBe(false);
+    });
+  });
+
   describe('scrollToElementInputSchema', () => {
     it('accepts a target with direction and maxAttempts', () => {
       const result = scrollToElementInputSchema.safeParse({

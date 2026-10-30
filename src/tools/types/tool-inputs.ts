@@ -103,6 +103,11 @@ export type WithinTarget = {
 export type ClickInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /**
+   * Mobile: when the software keyboard covers the target, dismiss it and
+   * tap once more.
+   */
+  dismissKeyboard?: boolean;
 };
 
 export type TypeInput = TargetSelection & {

@@ -17,6 +17,7 @@ import type {
   IPlatformDriver,
   TargetType,
   ClickActionResult,
+  ClickOptions,
   TypeActionResult,
   GetTextActionResult,
   PlatformScreenshotOptions,
@@ -143,6 +144,11 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param signal - When aborted during the target wait, throws instead of
    * tapping. device-mcp takes no signal: a wait or tap that is already
    * running inside the backend is not cancelled.
+   * @param options - Click options.
+   * @param options.dismissKeyboard - When device-mcp refuses the tap because
+   * the keyboard covers the target (`TARGET_OBSCURED`, `keyboard: true`),
+   * dismiss the keyboard and tap once more. The element is looked up again,
+   * because closing the keyboard can move the layout.
    * @returns Click result with success status and target info.
    */
   async click(
@@ -152,6 +158,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
     timeoutMs: number,
     within?: WithinScope,
     signal?: AbortSignal,
+    options?: ClickOptions,
   ): Promise<ClickActionResult> {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
@@ -159,13 +166,37 @@ export class MobilePlatformDriver implements IPlatformDriver {
     const element = await this.#backend.waitForElement(query, timeoutMs);
     // The request may have timed out while we waited for the target.
     signal?.throwIfAborted();
-    const remaining = deadline - Date.now();
+    const target = `${targetType}:${targetValue}`;
+    try {
+      await withTimeout(
+        this.#tapResolved(query, element),
+        deadline - Date.now(),
+        'tapElement',
+      );
+      return { clicked: true, target };
+    } catch (error) {
+      if (!options?.dismissKeyboard || !isKeyboardObscured(error)) {
+        throw error;
+      }
+    }
+    // Nothing was tapped: the keyboard was on top of the target.
     await withTimeout(
-      this.#tapResolved(query, element),
-      remaining,
+      this.#backend.dismissKeyboard(),
+      deadline - Date.now(),
+      'dismissKeyboard',
+    );
+    signal?.throwIfAborted();
+    const moved = await this.#backend.waitForElement(
+      query,
+      Math.max(0, deadline - Date.now()),
+    );
+    signal?.throwIfAborted();
+    await withTimeout(
+      this.#tapResolved(query, moved),
+      deadline - Date.now(),
       'tapElement',
     );
-    return { clicked: true, target: `${targetType}:${targetValue}` };
+    return { clicked: true, target, keyboardDismissed: true };
   }
 
   /**
@@ -865,6 +896,18 @@ function toHermesTargetInfo(target: HermesTarget): HermesTargetInfo {
 function isMetroDownError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('ECONNREFUSED') || message.includes('fetch failed');
+}
+
+/**
+ * Whether device-mcp refused a tap because the software keyboard covers the
+ * target (`TargetObscuredError` with `keyboard: true`).
+ *
+ * @param error - The thrown error.
+ * @returns True for a keyboard-obscured tap.
+ */
+function isKeyboardObscured(error: unknown): boolean {
+  const value = error as { code?: unknown; keyboard?: unknown } | null;
+  return value?.code === 'TARGET_OBSCURED' && value.keyboard === true;
 }
 
 /**
