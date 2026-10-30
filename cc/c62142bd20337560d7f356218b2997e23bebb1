@@ -1,0 +1,50 @@
+CHANGELOG.md
+  h_d6a04d82b61d5e 16
+README.md
+  h_d6a04d82b61d5e 627-636,804-805
+SKILL.md
+  h_d6a04d82b61d5e 305-310,690-734
+src/cli/mm.test.ts
+  h_d6a04d82b61d5e 1740-1766
+src/cli/mm.ts
+  h_d6a04d82b61d5e 582,586-593
+src/platform/mobile-platform-driver.test.ts
+  h_d6a04d82b61d5e 467-586
+src/platform/mobile-platform-driver.ts
+  h_d6a04d82b61d5e 20,147-151,161,169-182,184-196,199,901-912
+src/platform/types.ts
+  h_d6a04d82b61d5e 25-34,102
+src/server/create-server.test.ts
+  h_d6a04d82b61d5e 14,19,3275-3342
+src/server/create-server.ts
+  h_d6a04d82b61d5e 160-202,754-756,775-781
+src/tools/driver-delegation.test.ts
+  h_d6a04d82b61d5e 217,221-251
+src/tools/error-classification.test.ts
+  h_d6a04d82b61d5e 124-150
+src/tools/error-classification.ts
+  h_d6a04d82b61d5e 57-66
+src/tools/interaction.ts
+  h_d6a04d82b61d5e 153
+src/tools/types/errors.ts
+  h_d6a04d82b61d5e 18-19
+src/tools/types/tool-inputs.ts
+  h_d6a04d82b61d5e 106-110
+src/tools/types/tool-outputs.ts
+  h_d6a04d82b61d5e 87-94
+src/validation/schemas.test.ts
+  h_d6a04d82b61d5e 21,597-612
+src/validation/schemas.ts
+  h_d6a04d82b61d5e 474-480
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ccc62142bd20337560d7f356218b2997e23bebb1",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
