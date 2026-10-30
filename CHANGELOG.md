@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING:** `scroll_to_element` `direction` is now the content direction (`down` reveals content below; it was the finger direction) and defaults to `auto`. The result adds `swipes`, `inViewport` and `bounds`; a target that is found but not brought into view fails with the new `MM_TARGET_NOT_VISIBLE`, and one never found with `MM_TARGET_NOT_FOUND`. The viewport check needs a device-mcp release with MetaMask/device-mcp#50; with device-mcp 0.7.0 only `bounds` is returned.
 - Mobile `click` and `type` tap the element that the target wait found, so a tap takes one device snapshot instead of two (needs a device-mcp release with `tapElement(query, { element })`; older releases ignore the option). `describe_screen` reads the app state and the screen at the same time on mobile.
 
+### Fixed
+
+- `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
+
 ## [0.13.1]
 
 ### Fixed
