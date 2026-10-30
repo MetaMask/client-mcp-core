@@ -1,0 +1,25 @@
+src/cli/mm.ts
+  s_bd6f37fe795f81::t_217584e36c6ae0 1279-1282
+  s_bd6f37fe795f81::t_18813d8de4c646 1172-1176,1179,1182-1202,1204
+  s_bd6f37fe795f81::t_6bad42945018b5 1363-1364,1370-1375,1381-1384
+src/cli/mm.test.ts
+  s_bd6f37fe795f81::t_7739ecf09af329 1568
+  s_bd6f37fe795f81::t_faba756dcf9725 1567
+  s_bd6f37fe795f81::t_a50555b523d009 1569-1570
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8ce6aa77d6255f3427a5ff5eb25f50b0efaa9b9",
+  "prompts": {},
+  "sessions": {
+    "s_bd6f37fe795f81": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e7cee5b80ffeN0vBXe3dWVUa7e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
