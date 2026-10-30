@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
 - Dispose session-owned drivers after consumer cleanup, including cleanup errors, forced relaunch, failed launch, daemon shutdown, and server startup rollback. Retain failed disposals in one server-owned lifecycle, so the next cleanup or daemon stop retries them.
 
 ## [0.12.0]

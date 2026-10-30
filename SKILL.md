@@ -761,7 +761,7 @@ Use `error.code` to decide what to do:
 | `MM_DEVICE_NOT_AVAILABLE`           | Mobile-only tool invoked without a mobile driver                                         | Launch a mobile (iOS/Android) session first                                                               |
 | `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` | Tool gated off the active platform                                                       | Use the tool on its supported platform (browser vs mobile)                                                |
 | `MM_DAEMON_NOT_RUNNING`             | No daemon, or it refused the connection                                                  | Run `mm launch`                                                                                           |
-| `MM_DAEMON_CONNECTION_LOST`         | Connection failed after the request was sent                                             | The action may have run: `mm describe-screen` before you retry                                            |
+| `MM_DAEMON_CONNECTION_LOST`         | Connection failed after the request was sent (never resent by `mm`)                      | The action may have run: `mm describe-screen` before you retry                                            |
 | `MM_REQUEST_TIMEOUT`                | The CLI stopped waiting for the daemon                                                   | Action state unknown: `mm describe-screen` before you retry                                               |
 | `VALIDATION_ERROR`                  | Input failed the tool schema                                                             | Fix the arguments (exit 2)                                                                                |
 
