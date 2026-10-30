@@ -1,0 +1,68 @@
+src/tools/interaction.test.ts
+  s_bd6f37fe795f81::t_47952254b33169 333,335
+  s_bd6f37fe795f81::t_7333994eb39015 663
+src/tools/launch.test.ts
+  s_bd6f37fe795f81::t_c16c6235f1c700 391,403-404,408-424
+  s_bd6f37fe795f81::t_e44ab8b029c285 425
+src/tools/types/errors.test.ts
+  s_bd6f37fe795f81::t_90b00ff6de2afb 1-97
+src/tools/types/errors.ts
+  s_bd6f37fe795f81::t_f085bd7679f19c 24-25,56-68,74-231
+src/tools/launch.ts
+  s_bd6f37fe795f81::t_d02c142789ff97 81,85-88
+src/tools/interaction.ts
+  s_bd6f37fe795f81::t_4a19ef7d6f2bff 165
+  s_bd6f37fe795f81::t_7d8f30667a18d8 211
+src/cli/mm.test.ts
+  s_bd6f37fe795f81::t_7739ecf09af329 718,1530,1532-1548,1550-1557,2039,2868,2917,2934,2978,3011,3061
+  s_bd6f37fe795f81::t_eed6e103b6f56c 101-138
+  s_bd6f37fe795f81::t_3a0e3d28fc59d4 529,533,537,541,545,550,742-743,815,885,1582-1583,1593,1601-1711,1753-1754,1758,2619
+  s_bd6f37fe795f81::t_f9a8bc8c7387c1 18-19,21
+  s_bd6f37fe795f81::t_9d49cf1494f3a8 526-528
+  s_bd6f37fe795f81::t_470bffc849d33e 530-532
+  s_bd6f37fe795f81::t_7f434c996ef421 534-536
+  s_bd6f37fe795f81::t_737b833aab91b8 538-540
+  s_bd6f37fe795f81::t_74cda25a624b21 542-544
+  s_bd6f37fe795f81::t_76ad9705ff6cd1 546-549
+  s_bd6f37fe795f81::t_054c95cd8a71ce 551-552
+  s_bd6f37fe795f81::t_0b7bb3f3974ea3 719-720
+  s_bd6f37fe795f81::t_93cde81c85fed4 744
+  s_bd6f37fe795f81::t_53198ed92fbf17 1529
+  s_bd6f37fe795f81::t_f95e36350dcb14 1531
+  s_bd6f37fe795f81::t_f3f472671a8f6b 1712-1713
+  s_bd6f37fe795f81::t_ea55c59d87c1a8 1750-1752
+  s_bd6f37fe795f81::t_9c165da1960412 1755-1757
+  s_bd6f37fe795f81::t_d017bf0ccd48e4 1759
+src/cli/mm.ts
+  s_bd6f37fe795f81::t_cc9fc1a8211db4 1432-1434,1493,1632,1640,1648
+  s_bd6f37fe795f81::t_05625162cce47f 70-148
+  s_bd6f37fe795f81::t_7b10da44657bc8 1235,1237-1250
+  s_bd6f37fe795f81::t_03ec72619921c2 875-880
+  s_bd6f37fe795f81::t_f1070be878f8d0 69
+  s_bd6f37fe795f81::t_5cd742892171c0 18-23
+  s_bd6f37fe795f81::t_5dab360997f242 1330-1340,1349-1352,1358-1360,1362-1397,2079
+  s_bd6f37fe795f81::t_3afa80895c7a6c 1795
+  s_bd6f37fe795f81::t_04a96e9cef3772 2050-2064
+  s_bd6f37fe795f81::t_d29a1bd7fa6912 1494-1495
+  s_bd6f37fe795f81::t_9d39bed2bc35f2 1633-1634
+  s_bd6f37fe795f81::t_cae697ceb01354 1641-1642
+  s_bd6f37fe795f81::t_5ca4a8ca6e97c0 1649-1650
+  s_bd6f37fe795f81::t_eb368790ea41d3 2076-2078
+  s_bd6f37fe795f81::t_ae87be9207fc84 2080
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c55c61d2b7a708e8c7f5afe5439f4278a9cb1994",
+  "prompts": {},
+  "sessions": {
+    "s_bd6f37fe795f81": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e7cee5b80ffeN0vBXe3dWVUa7e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
