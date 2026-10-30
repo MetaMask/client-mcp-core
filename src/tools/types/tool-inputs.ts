@@ -236,7 +236,8 @@ export type SetContextInput = {
 };
 
 export type ScrollToElementInput = TargetSelection & {
-  direction?: 'up' | 'down';
+  /** Content direction: `down` reveals content below. Default `auto`. */
+  direction?: 'up' | 'down' | 'auto';
   maxAttempts?: number;
   timeoutMs?: number;
   within?: WithinTarget;

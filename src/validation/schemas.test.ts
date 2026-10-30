@@ -626,6 +626,15 @@ describe('device tool schemas', () => {
       expect(result.success).toBe(false);
     });
 
+    it('accepts direction auto', () => {
+      expect(
+        scrollToElementInputSchema.safeParse({
+          testId: 'foo',
+          direction: 'auto',
+        }).success,
+      ).toBe(true);
+    });
+
     it('rejects an invalid direction', () => {
       const result = scrollToElementInputSchema.safeParse({
         testId: 'foo',

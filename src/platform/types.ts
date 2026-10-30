@@ -30,6 +30,16 @@ export type TypeActionResult = {
   textLength: number;
 };
 
+/**
+ * What `scrollToElement` did. `swipes` and `inViewport` come from device-mcp
+ * releases that check the viewport; older releases report only the element.
+ */
+export type ScrollToElementOutcome = {
+  swipes?: number;
+  inViewport?: boolean;
+  bounds?: { x: number; y: number; width: number; height: number };
+};
+
 export type GetTextActionResult = {
   text: string;
   target: string;
@@ -161,17 +171,18 @@ export type IPlatformDriver = {
   /**
    * Browser: waits for the target to be visible, then scrolls it into view
    * (`direction` and `maxAttempts` are ignored). Mobile: swipes until the
-   * target is visible (`timeoutMs` is ignored, `within` is rejected).
+   * target is inside the viewport (`timeoutMs` is ignored, `within` is
+   * rejected).
    */
   scrollToElement?(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
-    direction?: 'up' | 'down',
+    direction?: 'up' | 'down' | 'auto',
     maxAttempts?: number,
     timeoutMs?: number,
     within?: WithinScope,
-  ): Promise<void>;
+  ): Promise<ScrollToElementOutcome>;
 
   // ---- Mobile-specific (optional) ----
 
