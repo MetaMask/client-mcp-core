@@ -744,10 +744,11 @@ them — for example by refusing `--reinstall` when no `--app-bundle` is supplie
 or by requiring `--allow-fox-code-mismatch` before replacing an app whose
 identity differs from the installed one.
 
-When a consumer's `launch()` throws an error carrying a `code` that is a known
-[`ErrorCode`](#error-classification), the `launch` tool preserves it instead of
-collapsing it into `MM_LAUNCH_FAILED`, so precise device/prerequisite failures
-reach the agent intact.
+When a consumer's `launch()` throws an error carrying an `MM_*` `code` (a known
+[`ErrorCode`](#error-classification) or a consumer-specific one), the `launch`
+tool preserves it instead of collapsing it into `MM_LAUNCH_FAILED`, so precise
+device/prerequisite failures reach the agent intact. The CLI maps a code it does
+not know to exit 1.
 
 #### Mobile device actions (iOS/Android only)
 
@@ -842,6 +843,51 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_DEVICE_ACTION_FAILED`           | A mobile device action (swipe, tap, app control, clipboard, etc.) failed                                |
 | `MM_DEVICE_NOT_AVAILABLE`           | A mobile-only tool was invoked without a mobile driver capability                                       |
 | `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` | Tool gated off the active platform (browser-only tool on mobile, or mobile-only tool on browser)        |
+| **CLI (set by `mm`, not a tool)**   |                                                                                                         |
+| `MM_DAEMON_NOT_RUNNING`             | No daemon, or the daemon refused the connection                                                         |
+| `MM_DAEMON_START_FAILED`            | The daemon did not become ready in time                                                                 |
+| `MM_DAEMON_ALREADY_RUNNING`         | `mm serve` while a daemon is running                                                                    |
+| `MM_DAEMON_CONNECTION_LOST`         | The connection failed after the request was sent; the action may have run                               |
+| `MM_REQUEST_TIMEOUT`                | The CLI stopped waiting for the daemon; the action state is unknown                                     |
+
+The daemon HTTP server also sets `VALIDATION_ERROR` (schema), `TOOL_NOT_FOUND`,
+`SERVER_NOT_STARTED`, `TOOL_EXECUTION_FAILED` and `INTERNAL_ERROR`
+(`DaemonErrorCodes`).
+
+### CLI failure output and exit codes
+
+A failed `mm` command prints one JSON line on **stdout** and exits non-zero.
+stderr is for human logs only (on a terminal it also gets `Error: <message>`).
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "MM_TARGET_NOT_FOUND",
+    "message": "...",
+    "hint": "Run `mm describe-screen` to get fresh refs.",
+    "retryable": false
+  },
+  "meta": { "totalMs": 512 }
+}
+```
+
+`hint` is optional. `retryable` is true only when running the same command
+again, unchanged, is safe (the call only reads, or nothing ran); it is false for
+click, type and request timeouts because the action state is unknown. `meta` is
+present when the daemon answered. `exitCodeForError()` in
+`src/tools/types/errors.ts` is the one map from error code to exit code:
+
+| Exit | Meaning                                                          | Codes (examples)                                                                                              |
+| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 0    | ok                                                               |                                                                                                               |
+| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                            |
+| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`               |
+| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                |
+| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`   |
+| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`            |
+| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` |
+| 7    | daemon version mismatch (reserved)                               |                                                                                                               |
 
 ## Development
 

@@ -162,7 +162,7 @@ export async function clickTool(
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
       return createToolError(
         ErrorCodes.MM_CLICK_TIMEOUT,
-        `Click timed out after ${timeoutMs}ms. Note: the click action may have completed in the background after this timeout. Run describe-screen to verify current page state before retrying.`,
+        `Click timed out after ${timeoutMs}ms; state unknown. Run describe-screen to check the screen before retrying.`,
       );
     }
     return createToolError(errorInfo.code, errorInfo.message);
@@ -208,7 +208,7 @@ export async function typeTool(
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
       return createToolError(
         ErrorCodes.MM_TYPE_TIMEOUT,
-        `Type timed out after ${timeoutMs}ms.`,
+        `Type timed out after ${timeoutMs}ms; state unknown. Run describe-screen to check the field before retrying.`,
       );
     }
     return createToolError(errorInfo.code, errorInfo.message);

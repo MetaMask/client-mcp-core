@@ -25,7 +25,7 @@ Cleanup also disposes the session driver's owned resources after consumer app/se
 - **Always `describe-screen` before interacting.** Refs like `e1`, `e2` are ephemeral — use the refs from the latest response (`describe-screen` or the `observations` of your last action).
 - **Always `describe-screen` after interacting** — OR use inline `observations` from mutating tool responses. Mutating tools (click, type, navigate, etc.) return an `observations` object with fresh `testIds` and `a11y` refs. You can use these refs directly for the next interaction without calling `describe-screen`. Call `describe-screen` when you need the full tree or screenshots, and `get-state` when you need app state (observations carry none).
 - **One target per command.** Specify exactly ONE of: a11y ref (`e5`), testId, or CSS selector.
-- **Errors are structured.** Check the `error.code` field to decide recovery strategy (see Error Codes below).
+- **Errors are structured.** A failed command prints one JSON line on stdout (`{"ok":false,"error":{"code","message","hint"?,"retryable"}}`) and exits non-zero. Branch on `error.code` or the exit code (see Error Codes below), not on stderr text. Never repeat a click or type that failed with exit 5 before you check the screen.
 
 ## Observation Behavior
 
@@ -685,7 +685,35 @@ Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a targ
 
 ## Error Codes
 
-When a command fails, the response includes `error.code`. Use this to decide what to do:
+When a command fails, `mm` prints one JSON line on **stdout** and exits non-zero:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "MM_TARGET_NOT_FOUND",
+    "message": "...",
+    "hint": "Run `mm describe-screen` to get fresh refs.",
+    "retryable": false
+  },
+  "meta": { "totalMs": 512 }
+}
+```
+
+`hint` (optional) says what to do next. `retryable: true` means you can run the same command again unchanged. It is never true for a click, type or request timeout: the action state is unknown, so check the screen first.
+
+| Exit | Meaning                                                | Do                                                                    |
+| ---- | ------------------------------------------------------ | --------------------------------------------------------------------- |
+| 0    | ok                                                     |                                                                       |
+| 1    | anything else (internal, tool failure)                 | Read `error.message`                                                  |
+| 2    | usage or validation; nothing ran                       | Fix the command                                                       |
+| 3    | no session, daemon not running, daemon connection lost | `mm launch`; after `MM_DAEMON_CONNECTION_LOST` check the screen first |
+| 4    | target not found or not actionable                     | `mm describe-screen`, then re-target / scroll / dismiss the keyboard  |
+| 5    | timeout (click/type/request: action state unknown)     | `mm describe-screen` before any retry                                 |
+| 6    | platform, device, Metro or Hermes not available        | Check the device, Metro and the build                                 |
+| 7    | daemon version mismatch (reserved)                     |                                                                       |
+
+Use `error.code` to decide what to do:
 
 | Code                                | Meaning                                                                                  | Recovery                                                                                                  |
 | ----------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -700,7 +728,7 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_CLICK_FAILED`                   | Click failed after finding element                                                       | Element may be obscured; try waiting or scrolling                                                         |
 | `MM_TARGET_OBSCURED`                | Mobile: another element (keyboard, sheet, overlay) covers the target; nothing was tapped | Keyboard: `mm dismiss-keyboard` or `mm click ... --dismiss-keyboard`. Overlay: close it first             |
 | `MM_TARGET_NOT_VISIBLE`             | Mobile: target found but outside the screen                                              | `mm scroll-to-element <ref>`, then click                                                                  |
-| `MM_CLICK_TIMEOUT`                  | Click action timed out (element found, click hung)                                       | Run `mm describe-screen` to verify if click completed; retry with `--timeout` or different approach       |
+| `MM_CLICK_TIMEOUT`                  | Click action timed out (element found, click hung); state unknown                        | Run `mm describe-screen` to check if the click ran before you retry                                       |
 | `MM_TYPE_FAILED`                    | Type failed after finding element                                                        | Element may not be an input; verify with describe-screen                                                  |
 | `MM_TYPE_TIMEOUT`                   | Fill action timed out                                                                    | Run `mm describe-screen` to verify state; retry with `--timeout`                                          |
 | `MM_GETTEXT_FAILED`                 | getText operational failure (non-timeout)                                                | Element may be detached; run `mm describe-screen` and re-target                                           |
@@ -732,6 +760,10 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_DEVICE_ACTION_FAILED`           | A mobile device action failed                                                            | Check the target/args; ensure the device/emulator is responsive                                           |
 | `MM_DEVICE_NOT_AVAILABLE`           | Mobile-only tool invoked without a mobile driver                                         | Launch a mobile (iOS/Android) session first                                                               |
 | `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` | Tool gated off the active platform                                                       | Use the tool on its supported platform (browser vs mobile)                                                |
+| `MM_DAEMON_NOT_RUNNING`             | No daemon, or it refused the connection                                                  | Run `mm launch`                                                                                           |
+| `MM_DAEMON_CONNECTION_LOST`         | Connection failed after the request was sent                                             | The action may have run: `mm describe-screen` before you retry                                            |
+| `MM_REQUEST_TIMEOUT`                | The CLI stopped waiting for the daemon                                                   | Action state unknown: `mm describe-screen` before you retry                                               |
+| `VALIDATION_ERROR`                  | Input failed the tool schema                                                             | Fix the arguments (exit 2)                                                                                |
 
 ## Available Contracts (E2E only)
 
