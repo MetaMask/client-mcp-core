@@ -245,6 +245,12 @@ export type GetContextResult = {
 export type ScrollToElementResult = {
   scrolled: boolean;
   target: string;
+  /** Swipes performed (0 when the element was already in view). */
+  swipes?: number;
+  /** Always true on success (the element is inside the viewport). */
+  inViewport?: boolean;
+  /** The element's frame after scrolling, in device points. */
+  bounds?: { x: number; y: number; width: number; height: number };
 };
 
 export type DeviceSwipeResult = {

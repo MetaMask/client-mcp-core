@@ -165,7 +165,7 @@ describe('scrollToElementTool', () => {
   });
 
   it('delegates to driver.scrollToElement and returns the target', async () => {
-    const scrollToElement = vi.fn().mockResolvedValue(undefined);
+    const scrollToElement = vi.fn().mockResolvedValue({});
     const context = createContext({ driver: { scrollToElement } });
 
     const result = await scrollToElementTool(
@@ -200,6 +200,50 @@ describe('scrollToElementTool', () => {
     if (!result.ok) {
       expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
     }
+  });
+
+  it('returns swipes, inViewport and bounds', async () => {
+    const bounds = { x: 16, y: 646, width: 370, height: 24 };
+    const scrollToElement = vi
+      .fn()
+      .mockResolvedValue({ swipes: 2, inViewport: true, bounds });
+    const context = createContext({ driver: { scrollToElement } });
+
+    const result = await scrollToElementTool({ testId: 'foo' }, context);
+
+    expect(result).toStrictEqual({
+      ok: true,
+      result: {
+        scrolled: true,
+        target: 'testId:foo',
+        swipes: 2,
+        inViewport: true,
+        bounds,
+      },
+    });
+  });
+
+  it.each([
+    ['ELEMENT_NOT_IN_VIEWPORT', ErrorCodes.MM_TARGET_NOT_VISIBLE],
+    ['ELEMENT_NOT_FOUND', ErrorCodes.MM_TARGET_NOT_FOUND],
+  ])('maps device-mcp %s to %s', async (code, expected) => {
+    const error = Object.assign(
+      new Error('Element is outside the 402x874 viewport after 3 swipe(s)'),
+      { code },
+    );
+    const scrollToElement = vi.fn().mockRejectedValue(error);
+    const context = createContext({ driver: { scrollToElement } });
+
+    const result = await scrollToElementTool({ testId: 'foo' }, context);
+
+    expect(result).toStrictEqual({
+      ok: false,
+      error: {
+        code: expected,
+        message:
+          'Scrolling to element failed: Element is outside the 402x874 viewport after 3 swipe(s)',
+      },
+    });
   });
 
   it('returns MM_DEVICE_ACTION_FAILED when the driver throws', async () => {
