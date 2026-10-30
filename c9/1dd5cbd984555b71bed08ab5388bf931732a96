@@ -1,0 +1,40 @@
+CHANGELOG.md
+  h_d6a04d82b61d5e 17
+README.md
+  h_d6a04d82b61d5e 435,757-773,776
+SKILL.md
+  h_d6a04d82b61d5e 594,596-602,661
+src/cli/mm.ts
+  h_d6a04d82b61d5e 920
+src/platform/mobile-platform-driver.test.ts
+  h_d6a04d82b61d5e 1892,1899,1901,1903-1906,1909,1916-1920,1922-1991
+src/platform/mobile-platform-driver.ts
+  h_d6a04d82b61d5e 25,462-478,483,485,487-500,870-893
+src/platform/types.ts
+  h_d6a04d82b61d5e 33-42,161,163
+src/tools/device.test.ts
+  h_d6a04d82b61d5e 168,205-248
+src/tools/device.ts
+  h_d6a04d82b61d5e 151,161,166,172-191
+src/tools/types/errors.ts
+  h_d6a04d82b61d5e 18
+src/tools/types/tool-inputs.ts
+  h_d6a04d82b61d5e 230-231
+src/tools/types/tool-outputs.ts
+  h_d6a04d82b61d5e 248-253
+src/validation/schemas.test.ts
+  h_d6a04d82b61d5e 615-623
+src/validation/schemas.ts
+  h_d6a04d82b61d5e 749,751-754,762
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c91dd5cbd984555b71bed08ab5388bf931732a96",
+  "prompts": {},
+  "humans": {
+    "h_d6a04d82b61d5e": {
+      "author": "cryptotavares <joao.tavares@consensys.net>"
+    }
+  }
+}
