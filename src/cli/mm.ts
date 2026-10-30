@@ -917,7 +917,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction up|down] [--maxAttempts <n>]\n',
+          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction auto|down|up] [--maxAttempts <n>]\n',
         );
         process.exit(1);
       }

@@ -148,7 +148,7 @@ export async function scrollToElementTool(
   }
 
   try {
-    await driver.scrollToElement(
+    const outcome = await driver.scrollToElement(
       resolved.targetType,
       resolved.targetValue,
       context.refMap,
@@ -158,14 +158,35 @@ export async function scrollToElementTool(
     return createToolSuccess<ScrollToElementResult>({
       scrolled: true,
       target: `${resolved.targetType}:${resolved.targetValue}`,
+      ...outcome,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return createToolError(
-      ErrorCodes.MM_DEVICE_ACTION_FAILED,
+      scrollErrorCode(error),
       `Scrolling to element failed: ${message}`,
     );
   }
+}
+
+/**
+ * Error code for a failed scroll: device-mcp's `ScrollToElementError` codes
+ * map to `MM_TARGET_NOT_FOUND` (never in the UI tree) and
+ * `MM_TARGET_NOT_VISIBLE` (found, not brought into view). Anything else is a
+ * device failure.
+ *
+ * @param error - The thrown error.
+ * @returns The tool error code.
+ */
+function scrollErrorCode(error: unknown): string {
+  const code = (error as { code?: unknown } | undefined)?.code;
+  if (code === 'ELEMENT_NOT_FOUND') {
+    return ErrorCodes.MM_TARGET_NOT_FOUND;
+  }
+  if (code === 'ELEMENT_NOT_IN_VIEWPORT') {
+    return ErrorCodes.MM_TARGET_NOT_VISIBLE;
+  }
+  return ErrorCodes.MM_DEVICE_ACTION_FAILED;
 }
 
 /**

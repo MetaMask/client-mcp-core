@@ -1889,35 +1889,106 @@ describe('MobilePlatformDriver', () => {
   });
 
   describe('scrollToElement', () => {
-    it('resolves target and delegates', async () => {
+    it('maps the content direction to the opposite finger direction', async () => {
       const backend = createMockBackend({
         scrollToElement: vi.fn().mockResolvedValue(makeElement()),
       });
       const driver = new MobilePlatformDriver(backend);
       const refMap = new Map([['e1', 'identifier:footer']]);
 
+      // Content down (reveal below) = finger up.
       await driver.scrollToElement('a11yRef', 'e1', refMap, 'down', 5);
+      await driver.scrollToElement('a11yRef', 'e1', refMap, 'up', 5);
 
-      expect(backend.scrollToElement).toHaveBeenCalledWith(
-        { identifier: 'footer' },
-        'down',
-        5,
-      );
+      expect(vi.mocked(backend.scrollToElement).mock.calls).toStrictEqual([
+        [{ identifier: 'footer' }, 'up', 5],
+        [{ identifier: 'footer' }, 'down', 5],
+      ]);
     });
 
-    it('resolves testId target', async () => {
+    it('leaves the direction to device-mcp by default (auto)', async () => {
       const backend = createMockBackend({
         scrollToElement: vi.fn().mockResolvedValue(makeElement()),
       });
       const driver = new MobilePlatformDriver(backend);
 
       await driver.scrollToElement('testId', 'terms-section', new Map());
-
-      expect(backend.scrollToElement).toHaveBeenCalledWith(
-        { identifier: 'terms-section' },
-        undefined,
-        undefined,
+      await driver.scrollToElement(
+        'testId',
+        'terms-section',
+        new Map(),
+        'auto',
       );
+
+      expect(vi.mocked(backend.scrollToElement).mock.calls).toStrictEqual([
+        [{ identifier: 'terms-section' }, undefined, undefined],
+        [{ identifier: 'terms-section' }, undefined, undefined],
+      ]);
+    });
+
+    it('returns swipes, inViewport and bounds from a viewport-checking device-mcp', async () => {
+      const element = makeElement({
+        frame: { x: 16, y: 646, width: 370, height: 24 },
+      });
+      const backend = createMockBackend({
+        scrollToElement: vi.fn().mockResolvedValue({
+          element,
+          swipes: 1,
+          inViewport: true,
+        }) as unknown as DeviceBackend['scrollToElement'],
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const outcome = await driver.scrollToElement('testId', 'row', new Map());
+
+      expect(outcome).toStrictEqual({
+        swipes: 1,
+        inViewport: true,
+        bounds: { x: 16, y: 646, width: 370, height: 24 },
+      });
+    });
+
+    it('returns only the bounds from device-mcp 0.7.0 (element only)', async () => {
+      const backend = createMockBackend({
+        scrollToElement: vi
+          .fn()
+          .mockResolvedValue(
+            makeElement({ frame: { x: 1, y: 996, width: 2, height: 3 } }),
+          ),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      expect(
+        await driver.scrollToElement('testId', 'row', new Map()),
+      ).toStrictEqual({ bounds: { x: 1, y: 996, width: 2, height: 3 } });
+    });
+
+    it('returns nothing for an object without a frame', async () => {
+      const backend = createMockBackend({
+        scrollToElement: vi
+          .fn()
+          .mockResolvedValue({}) as unknown as DeviceBackend['scrollToElement'],
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      expect(
+        await driver.scrollToElement('testId', 'row', new Map()),
+      ).toStrictEqual({});
+    });
+
+    it('returns nothing for an unexpected backend result', async () => {
+      const backend = createMockBackend({
+        scrollToElement: vi
+          .fn()
+          .mockResolvedValue(
+            undefined,
+          ) as unknown as DeviceBackend['scrollToElement'],
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      expect(
+        await driver.scrollToElement('testId', 'row', new Map()),
+      ).toStrictEqual({});
     });
   });
 

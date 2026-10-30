@@ -591,9 +591,15 @@ These commands require a mobile session (`mm launch --platform ios|android`). On
 session they return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`. Element-targeting commands accept
 the same `<ref>` / `--testid` / `--selector` targeting as `mm click`.
 
-#### `mm scroll-to-element <ref> [--direction up|down] [--maxAttempts <n>]`
+#### `mm scroll-to-element <ref> [--direction auto|down|up] [--maxAttempts <n>]`
 
-Scrolls the screen until the target element becomes visible.
+Swipes until the target is inside the viewport (being in the UI tree is not
+enough; React Native keeps off-screen rows in the tree), so a following `click`
+can tap it. Returns `{scrolled, swipes, inViewport, bounds}`. `--direction` is
+the content direction: `down` reveals content below. The default `auto` picks
+it from where the element is. Errors: `MM_TARGET_NOT_VISIBLE` (found but still
+outside the viewport after `--maxAttempts` swipes or at the end of the list;
+the message has its last frame), `MM_TARGET_NOT_FOUND` (never in the UI tree).
 
 #### `mm device-swipe --direction <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]`
 
@@ -652,7 +658,7 @@ for every interactive element on the current screen. Read-only — useful when a
 mobile automation to pick stable selectors.
 
 ```bash
-mm scroll-to-element e12 --direction down
+mm scroll-to-element e12
 mm device-swipe --direction up --distance 400
 mm open-app io.metamask
 mm device-context switch WEBVIEW_1

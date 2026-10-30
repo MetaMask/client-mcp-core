@@ -30,6 +30,16 @@ export type TypeActionResult = {
   textLength: number;
 };
 
+/**
+ * What `scrollToElement` did. `swipes` and `inViewport` come from device-mcp
+ * releases that check the viewport; older releases report only the element.
+ */
+export type ScrollToElementOutcome = {
+  swipes?: number;
+  inViewport?: boolean;
+  bounds?: { x: number; y: number; width: number; height: number };
+};
+
 export type GetTextActionResult = {
   text: string;
   target: string;
@@ -148,9 +158,9 @@ export type IPlatformDriver = {
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
-    direction?: 'up' | 'down',
+    direction?: 'up' | 'down' | 'auto',
     maxAttempts?: number,
-  ): Promise<void>;
+  ): Promise<ScrollToElementOutcome>;
 
   longPress?(
     targetType: TargetType,
