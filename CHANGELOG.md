@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0]
+
+### Uncategorized
+
+- chore: bump @metamask/device-mcp to ^0.7.0 ([#72](https://github.com/MetaMask/client-mcp-core/pull/72))
+- feat: dispose session-owned platform drivers on teardown ([#70](https://github.com/MetaMask/client-mcp-core/pull/70))
+- fix!: review follow-ups: off-screen animations, no late clicks, batchTimeoutMs cap ([#71](https://github.com/MetaMask/client-mcp-core/pull/71))
+- chore: bump @metamask/device-mcp to ^0.6.0 ([#69](https://github.com/MetaMask/client-mcp-core/pull/69))
+- feat: print one-line JSON by default; add --pretty ([#68](https://github.com/MetaMask/client-mcp-core/pull/68))
+- feat: flat mobile a11y tree without layout-only nodes ([#44](https://github.com/MetaMask/client-mcp-core/pull/44))
+- feat: filter mobile status/nav bars and dev overlay; viewport from snapshot ([#67](https://github.com/MetaMask/client-mcp-core/pull/67))
+- fix: make each Extension ref resolve to exactly one element ([#66](https://github.com/MetaMask/client-mcp-core/pull/66))
+- perf: settle only on visible finite animations; collect testIds in one call ([#65](https://github.com/MetaMask/client-mcp-core/pull/65))
+- feat: cancel timed-out tasks; late ref writes cannot overwrite newer refs ([#64](https://github.com/MetaMask/client-mcp-core/pull/64))
+- feat: per-call observe level; no state in observations ([#62](https://github.com/MetaMask/client-mcp-core/pull/62))
+- feat: collect observations only for mutating and batch tools ([#61](https://github.com/MetaMask/client-mcp-core/pull/61))
+- feat: remove the knowledge store ([#60](https://github.com/MetaMask/client-mcp-core/pull/60))
+- feat: drop priorKnowledge from describe_screen ([#59](https://github.com/MetaMask/client-mcp-core/pull/59))
+- chore: bump @metamask/device-mcp to ^0.5.0 ([#58](https://github.com/MetaMask/client-mcp-core/pull/58))
+- feat: add meta.timing to every daemon response ([#57](https://github.com/MetaMask/client-mcp-core/pull/57))
+
 ### Added
 
 - Add optional platform-driver disposal and forward mobile disposal to lifecycle-capable device-mcp backends.
@@ -121,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.9.0...v0.10.0
