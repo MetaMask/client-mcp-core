@@ -55,8 +55,14 @@ export async function launchTool(
       sessionManager.setContext(input.context);
     }
 
+    // Let the host redirect artifact output (e.g. screenshots) via env var,
+    // falling back to the configured artifacts directory.
+    const artifactsDir =
+      process.env.MM_ARTIFACTS_DIR ??
+      context.workflowContext.config?.artifactsDir;
+
     const result = await sessionManager
-      .launch(input)
+      .launch(artifactsDir === undefined ? input : { ...input, artifactsDir })
       .catch(async (error: unknown) => {
         // Preserve the launch error after best-effort cleanup of a partial session.
         try {
