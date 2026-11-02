@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1]
+
+### Fixed
+
+- ci: pin Node.js to 24.22.1 in .nvmrc ([#81](https://github.com/MetaMask/client-mcp-core/pull/81))
+
 ## [0.13.0]
 
 ### Added
@@ -136,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.10.0...v0.11.0
