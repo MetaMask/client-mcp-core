@@ -9,11 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.13.1]
 
-### Uncategorized
+### Fixed
 
 - ci: pin Node.js to 24.22.1 in .nvmrc ([#81](https://github.com/MetaMask/client-mcp-core/pull/81))
-- 0.13.0 ([#80](https://github.com/MetaMask/client-mcp-core/pull/80))
-- chore: bump @metamask/device-mcp to ^0.5.0 ([#58](https://github.com/MetaMask/client-mcp-core/pull/58))
 
 ## [0.13.0]
 
