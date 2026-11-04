@@ -77,6 +77,14 @@ export type SessionLaunchInput = {
   resetAppData?: boolean;
   /** Mobile only: bypass the consumer app-identity compatibility guard (dangerous). */
   allowFoxCodeMismatch?: boolean;
+  /**
+   * Directory for session artifacts such as screenshots. Core resolves it
+   * from the `MM_ARTIFACTS_DIR` environment variable first, then the workflow
+   * context's `config.artifactsDir`, so a host can redirect artifact output
+   * without changing consumer code. Session managers should forward it to
+   * their launcher (for example as the screenshot output directory).
+   */
+  artifactsDir?: string;
 };
 
 /**
