@@ -1,6 +1,7 @@
 import {
   classifyClickError,
   classifyGetTextError,
+  classifyInspectError,
   classifyTypeError,
   classifyWaitError,
 } from './error-classification.js';
@@ -9,6 +10,8 @@ import type {
   ClickResult,
   GetTextInput,
   GetTextResult,
+  InspectInput,
+  InspectResult,
   TypeInput,
   TypeResult,
   WaitForInput,
@@ -16,7 +19,10 @@ import type {
   WithinTarget,
 } from './types';
 import { ErrorCodes } from './types';
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
+import {
+  DEFAULT_INSPECT_STYLES,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
+} from './utils/constants.js';
 import type { TargetType } from './utils/discovery.js';
 import { validateTargetSelection } from './utils/targets.js';
 import {
@@ -51,7 +57,7 @@ type ValidatedInteraction = {
  * @returns Either an error response or the validated target.
  */
 function validateInteraction<TResult>(
-  input: ClickInput | TypeInput | WaitForInput | GetTextInput,
+  input: ClickInput | TypeInput | WaitForInput | GetTextInput | InspectInput,
   context: ToolContext,
 ): { error: ToolResponse<TResult> } | ValidatedInteraction {
   const missingSession = requireActiveSession<TResult>(context);
@@ -285,6 +291,57 @@ export async function getTextTool(
       return createToolError(
         ErrorCodes.MM_GETTEXT_TIMEOUT,
         `GetText timed out after ${timeoutMs}ms.`,
+      );
+    }
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+}
+
+/**
+ * Reads the attributes, disabled and read-only flags, and computed styles of
+ * an element identified by ref, test ID, or selector, so that elements can
+ * be compared without a screenshot.
+ *
+ * @param input - The target element, styles to read, and timeout options.
+ * @param context - The tool execution context.
+ * @returns The inspection of the matched element.
+ */
+export async function inspectTool(
+  input: InspectInput,
+  context: ToolContext,
+): Promise<ToolResponse<InspectResult>> {
+  const validated = validateInteraction<InspectResult>(input, context);
+  if ('error' in validated) {
+    return validated.error;
+  }
+
+  const { driver } = validated;
+  if (!driver.inspect) {
+    return createToolError(
+      ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      `Tool "inspect" is not supported on ${driver.getPlatform()} platform`,
+    );
+  }
+
+  const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
+  const { targetType, targetValue } = validated.target;
+
+  try {
+    const result = await driver.inspect(
+      targetType,
+      targetValue,
+      context.refMap,
+      timeoutMs,
+      input.styles ?? DEFAULT_INSPECT_STYLES,
+      resolveWithinScope(input.within),
+    );
+    return createToolSuccess(result);
+  } catch (error) {
+    const errorInfo = classifyInspectError(error);
+    if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
+      return createToolError(
+        ErrorCodes.MM_WAIT_TIMEOUT,
+        `Inspect timed out after ${timeoutMs}ms.`,
       );
     }
     return createToolError(errorInfo.code, errorInfo.message);

@@ -36,6 +36,16 @@ export type GetTextActionResult = {
   length: number;
 };
 
+export type InspectActionResult = {
+  target: string;
+  tagName: string;
+  attributes: Record<string, string>;
+  disabled: boolean;
+  readOnly: boolean;
+  styles: Record<string, string>;
+  effectiveOpacity: number;
+};
+
 export type PlatformScreenshotOptions = {
   name: string;
   fullPage?: boolean;
@@ -111,6 +121,19 @@ export type IPlatformDriver = {
     timeoutMs: number,
     within?: WithinScope,
   ): Promise<GetTextActionResult>;
+
+  /**
+   * Waits for the target, then reads its attributes, disabled and read-only
+   * flags, and the computed value of each of `styles`. Browser only.
+   */
+  inspect?(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    timeoutMs: number,
+    styles: string[],
+    within?: WithinScope,
+  ): Promise<InspectActionResult>;
 
   getAccessibilityTree(
     rootSelector?: string,

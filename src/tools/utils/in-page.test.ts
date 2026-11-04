@@ -11,7 +11,9 @@ import * as inPage from './in-page.js';
 import {
   animationsSettled,
   buildUniqueSelectorInPage,
+  captureMarkedElementInPage,
   collectTestIdsInPage,
+  inspectCapturedElementInPage,
   waitUntilInPage,
 } from './in-page.js';
 
@@ -723,7 +725,9 @@ describe('in-page function source', () => {
     expect(inPageFunctions.map(([name]) => name).sort()).toStrictEqual([
       'animationsSettled',
       'buildUniqueSelectorInPage',
+      'captureMarkedElementInPage',
       'collectTestIdsInPage',
+      'inspectCapturedElementInPage',
       'waitUntilInPage',
     ]);
   });
@@ -1242,5 +1246,223 @@ describe('buildUniqueSelectorInPage', () => {
     expect(uniqueSelector(document, second, globals)).toBe(
       'button:nth-of-type(2)',
     );
+  });
+});
+
+type InspectNode = {
+  nodeType: number;
+  localName?: string;
+  readOnly?: boolean;
+  attributes?: { name: string; value: string }[];
+  styles?: Record<string, string>;
+  parentElement?: InspectNode | null;
+  parentNode?: InspectNode | null;
+  host?: InspectNode;
+  getAttribute?: (name: string) => string | null;
+};
+
+type MarkListener = (event: {
+  target: unknown;
+  composedPath: () => unknown[];
+}) => void;
+
+/**
+ * Builds a fake element for the inspection functions.
+ *
+ * @param options - Element properties.
+ * @param options.localName - The tag name, lowercase.
+ * @param options.attributes - Attribute names and values, in order.
+ * @param options.styles - Computed style values by property name.
+ * @param options.readOnly - The `readOnly` property (inputs only).
+ * @param options.parent - The parent element or shadow root.
+ * @returns The element.
+ */
+function inspectElement(
+  options: {
+    localName?: string;
+    attributes?: Record<string, string>;
+    styles?: Record<string, string>;
+    readOnly?: boolean;
+    parent?: InspectNode | null;
+  } = {},
+): InspectNode {
+  const attributes = Object.entries(options.attributes ?? {}).map(
+    ([name, value]) => ({ name, value }),
+  );
+  const parent = options.parent ?? null;
+  return {
+    nodeType: 1,
+    localName: options.localName ?? 'div',
+    readOnly: options.readOnly,
+    attributes,
+    styles: options.styles ?? {},
+    parentElement: parent?.nodeType === 1 ? parent : null,
+    parentNode: parent,
+    getAttribute: (name) =>
+      attributes.find((attribute) => attribute.name === name)?.value ?? null,
+  };
+}
+
+/**
+ * Compiles the capture and inspection functions in one context (they share
+ * its global object, like the isolated world) over a fake document that
+ * records its `eventType` listeners.
+ *
+ * @returns The compiled functions and a way to fire the mark event.
+ */
+function createInspectionWorld(): {
+  capture: (eventType: string, key: string) => void;
+  inspect: typeof inspectCapturedElementInPage;
+  mark: (target: unknown, path?: unknown[]) => void;
+  listenerCount: () => number;
+} {
+  const listeners = new Map<string, Set<MarkListener>>();
+  const fakeDocument = {
+    addEventListener: (type: string, listener: MarkListener, capture: true) => {
+      expect(capture).toBe(true);
+      const set = listeners.get(type) ?? new Set();
+      set.add(listener);
+      listeners.set(type, set);
+    },
+    removeEventListener: (type: string, listener: MarkListener) => {
+      listeners.get(type)?.delete(listener);
+    },
+  };
+  const fakeWindow = {
+    getComputedStyle: (target: InspectNode) => ({
+      opacity: target.styles?.opacity ?? '1',
+      getPropertyValue: (name: string) => target.styles?.[name] ?? '',
+    }),
+  };
+  const context = vm.createContext({
+    document: fakeDocument,
+    window: fakeWindow,
+  });
+  const compile = <TFn>(fn: (...args: never[]) => unknown): TFn =>
+    vm.runInContext(`(${fn.toString()})`, context) as TFn;
+  const inspect = compile<typeof inspectCapturedElementInPage>(
+    inspectCapturedElementInPage,
+  );
+  return {
+    capture: compile(captureMarkedElementInPage),
+    // Round-trip through JSON like returnByValue does.
+    inspect: (key, styleNames) =>
+      JSON.parse(JSON.stringify(inspect(key, styleNames))),
+    mark: (target, path = [target]) => {
+      for (const listener of [...(listeners.get('mark') ?? [])]) {
+        listener({ target, composedPath: () => path });
+      }
+    },
+    listenerCount: () => listeners.get('mark')?.size ?? 0,
+  };
+}
+
+describe('captureMarkedElementInPage and inspectCapturedElementInPage', () => {
+  it('reads the first marked element and stops listening', () => {
+    const world = createInspectionWorld();
+    const input = inspectElement({
+      localName: 'input',
+      attributes: { 'data-testid': 'nickname', readonly: '' },
+      styles: { color: 'rgb(18, 18, 18)', opacity: '1' },
+      readOnly: true,
+    });
+
+    world.capture('mark', 'k1');
+    world.mark(input);
+    world.mark(inspectElement({ localName: 'span' }));
+
+    expect(world.listenerCount()).toBe(0);
+    expect(world.inspect('k1', ['color', 'opacity'])).toStrictEqual({
+      tagName: 'input',
+      attributes: { 'data-testid': 'nickname', readonly: '' },
+      readOnly: true,
+      styles: { color: 'rgb(18, 18, 18)', opacity: '1' },
+      effectiveOpacity: 1,
+    });
+  });
+
+  it('returns null and stops listening when no element was marked', () => {
+    const world = createInspectionWorld();
+
+    world.capture('mark', 'k1');
+
+    expect(world.inspect('k1', ['color'])).toBeNull();
+    expect(world.listenerCount()).toBe(0);
+  });
+
+  it('returns null for an unknown key, and a key is read only once', () => {
+    const world = createInspectionWorld();
+    world.capture('mark', 'k1');
+    world.mark(inspectElement());
+
+    expect(world.inspect('other', [])).toBeNull();
+    expect(world.inspect('k1', [])).not.toBeNull();
+    expect(world.inspect('k1', [])).toBeNull();
+  });
+
+  it('takes the element from the composed path, inside an open shadow root', () => {
+    const world = createInspectionWorld();
+    const host = inspectElement({ localName: 'x-field' });
+    const inner = inspectElement({ localName: 'input' });
+
+    world.capture('mark', 'k1');
+    world.mark(host, [inner, host]);
+
+    expect(world.inspect('k1', [])?.tagName).toBe('input');
+  });
+
+  it('reports readOnly from aria-readonly, and false for other elements', () => {
+    const world = createInspectionWorld();
+    world.capture('mark', 'aria');
+    world.mark(inspectElement({ attributes: { 'aria-readonly': 'true' } }));
+    world.capture('mark', 'plain');
+    world.mark(inspectElement({ attributes: { 'aria-readonly': 'false' } }));
+
+    expect(world.inspect('aria', [])?.readOnly).toBe(true);
+    expect(world.inspect('plain', [])?.readOnly).toBe(false);
+  });
+
+  it('reads camelCase style names as CSS properties, keyed as requested', () => {
+    const world = createInspectionWorld();
+    world.capture('mark', 'k1');
+    world.mark(
+      inspectElement({
+        styles: {
+          'background-color': 'rgb(255, 255, 255)',
+          '--mm-Token': 'red',
+          '-webkit-appearance': 'none',
+        },
+      }),
+    );
+
+    expect(
+      world.inspect('k1', [
+        'backgroundColor',
+        '--mm-Token',
+        'WebkitAppearance',
+        'unknown-property',
+      ])?.styles,
+    ).toStrictEqual({
+      backgroundColor: 'rgb(255, 255, 255)',
+      '--mm-Token': 'red',
+      WebkitAppearance: 'none',
+      'unknown-property': '',
+    });
+  });
+
+  it('multiplies the opacity of the element and its ancestors, across shadow hosts', () => {
+    const world = createInspectionWorld();
+    const outer = inspectElement({ styles: { opacity: '0.5' } });
+    const host = inspectElement({ parent: outer, styles: { opacity: '0.6' } });
+    const shadowRoot: InspectNode = { nodeType: 11, host, parentNode: null };
+    const field = inspectElement({
+      parent: shadowRoot,
+      styles: { opacity: '1' },
+    });
+
+    world.capture('mark', 'k1');
+    world.mark(field);
+
+    expect(world.inspect('k1', [])?.effectiveOpacity).toBe(0.3);
   });
 });

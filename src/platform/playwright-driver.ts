@@ -6,6 +6,7 @@ import type {
   ClickActionResult,
   TypeActionResult,
   GetTextActionResult,
+  InspectActionResult,
   PlatformScreenshotOptions,
   PlatformType,
   WithinScope,
@@ -26,6 +27,7 @@ import {
   collectTrimmedA11ySnapshot,
   waitForTarget,
 } from '../tools/utils/discovery.js';
+import { inspectLocator } from '../tools/utils/inspect.js';
 
 /**
  * Browser CDP methods that would destroy the page/session and break every
@@ -160,6 +162,16 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     }
 
     signal?.throwIfAborted();
+    // `fill` waits for a read-only or disabled element to become editable,
+    // until the timeout. `isEditable` checks once.
+    if (!(await locator.isEditable({ timeout: remaining }))) {
+      const reason = (await locator.isDisabled({ timeout: remaining }))
+        ? 'disabled'
+        : 'readonly';
+      throw new Error(
+        `element is not editable (${reason}): ${targetType}:${targetValue}`,
+      );
+    }
     await locator.fill(text, { timeout: remaining });
 
     return {
@@ -239,6 +251,49 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       target: `${targetType}:${targetValue}`,
       length: text.length,
     };
+  }
+
+  /**
+   * Read an element's attributes, disabled and read-only flags, and computed
+   * styles (see `inspectLocator`).
+   *
+   * @param targetType - The type of target identifier.
+   * @param targetValue - The target value used for element lookup.
+   * @param refMap - Map of a11y refs to selectors.
+   * @param timeoutMs - Maximum time in milliseconds.
+   * @param styles - Computed style properties to read.
+   * @param within - Optional parent scope.
+   * @returns The inspection and target descriptor.
+   */
+  async inspect(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    timeoutMs: number,
+    styles: string[],
+    within?: WithinScope,
+  ): Promise<InspectActionResult> {
+    const page = this.#getPage();
+    const deadline = Date.now() + timeoutMs;
+
+    const locator = await waitForTarget(
+      page,
+      targetType,
+      targetValue,
+      refMap,
+      timeoutMs,
+      within,
+    );
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `Timeout ${timeoutMs}ms exceeded: visibility wait consumed entire budget for ${targetType}:${targetValue}`,
+      );
+    }
+
+    const inspection = await inspectLocator(page, locator, styles, remaining);
+    return { target: `${targetType}:${targetValue}`, ...inspection };
   }
 
   /**

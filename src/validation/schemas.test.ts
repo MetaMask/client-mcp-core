@@ -14,6 +14,7 @@ import {
   closeTabInputSchema,
   clipboardInputSchema,
   navigateInputSchema,
+  inspectInputSchema,
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   launchInputSchema,
@@ -823,6 +824,46 @@ describe('device tool schemas', () => {
   });
 });
 
+describe('inspectInputSchema', () => {
+  it('defaults styles and timeout', () => {
+    const parsed = inspectInputSchema.parse({ testId: 'nickname' });
+
+    expect(parsed.styles).toStrictEqual([
+      'color',
+      'background-color',
+      'opacity',
+      'cursor',
+    ]);
+    expect(parsed.timeoutMs).toBe(15000);
+  });
+
+  it('accepts styles and within', () => {
+    const parsed = inspectInputSchema.parse({
+      a11yRef: 'e3',
+      styles: ['color', 'opacity'],
+      within: { testId: 'form' },
+    });
+
+    expect(parsed.styles).toStrictEqual(['color', 'opacity']);
+  });
+
+  it('rejects an empty style list or style name', () => {
+    expect(
+      inspectInputSchema.safeParse({ testId: 'x', styles: [] }).success,
+    ).toBe(false);
+    expect(
+      inspectInputSchema.safeParse({ testId: 'x', styles: [''] }).success,
+    ).toBe(false);
+  });
+
+  it('requires exactly one target', () => {
+    expect(inspectInputSchema.safeParse({}).success).toBe(false);
+    expect(
+      inspectInputSchema.safeParse({ testId: 'x', selector: '#x' }).success,
+    ).toBe(false);
+  });
+});
+
 describe('observe field', () => {
   it('accepts none, diff and full', () => {
     for (const level of ['none', 'diff', 'full']) {
@@ -841,6 +882,7 @@ describe('observe field', () => {
       type: { testId: 'input', text: 'hi' },
       wait_for: { testId: 'btn' },
       get_text: { testId: 'btn' },
+      inspect: { testId: 'btn' },
       seed_contract: { contractName: 'hst' },
       seed_contracts: { contracts: ['hst'] },
       get_contract_address: { contractName: 'hst' },
