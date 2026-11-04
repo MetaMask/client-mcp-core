@@ -16,6 +16,12 @@ export type StepRecordObservation = {
       unchanged: number;
     };
   };
+  /**
+   * Browser, after a call that waits for animations: false when finite
+   * animations were still running when the wait ended. Infinite animations
+   * (spinners) and network requests are not checked.
+   */
+  animationsSettled?: boolean;
 };
 
 /**

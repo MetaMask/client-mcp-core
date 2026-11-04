@@ -1199,6 +1199,39 @@ describe('createServer with active session', () => {
       expect(waitForAnimationsToSettle).toHaveBeenCalledWith(page, 1_000, 250);
     });
 
+    it.each([true, false])(
+      'reports animationsSettled %s from the settle wait',
+      async (settled) => {
+        vi.mocked(waitForAnimationsToSettle).mockResolvedValueOnce(settled);
+        mockSM.getPage.mockReturnValue({
+          waitForLoadState: vi.fn(async () => undefined),
+        } as never);
+        mockSM.getPlatformDriver.mockReturnValue({
+          getPlatform: () => 'browser',
+          cdp: vi.fn().mockResolvedValue({ ok: true, result: { value: 2 } }),
+        });
+
+        const { body } = await post('/tool/cdp', {
+          method: 'Runtime.evaluate',
+          observe: 'full',
+        });
+
+        expect(body.observations?.animationsSettled).toBe(settled);
+      },
+    );
+
+    it('omits animationsSettled when the call does not wait for animations', async () => {
+      mockSM.getPage.mockReturnValue({
+        waitForLoadState: vi.fn(async () => undefined),
+        url: () => '',
+      } as never);
+
+      const { body } = await post('/tool/get_state', { observe: 'full' });
+
+      expect(body.observations).toBeDefined();
+      expect(body.observations).not.toHaveProperty('animationsSettled');
+    });
+
     it('get_state with observe full does not wait for animations', async () => {
       vi.mocked(waitForAnimationsToSettle).mockClear();
       const page = {

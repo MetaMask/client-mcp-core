@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
+
 ## [0.13.1]
 
 ### Fixed
