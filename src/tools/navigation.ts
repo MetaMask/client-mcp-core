@@ -8,6 +8,8 @@ import type {
   CloseTabResult,
   NavigateInput,
   NavigateResult,
+  ReloadInput,
+  ReloadResult,
   SwitchToTabInput,
   SwitchToTabResult,
   WaitForNotificationInput,
@@ -73,6 +75,37 @@ export async function navigateTool(
 
     return createToolSuccess({
       navigated: true,
+      currentUrl: context.page.url(),
+    });
+  } catch (error) {
+    const errorInfo = classifyNavigationError(error);
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+}
+
+/**
+ * Reloads the active page. The URL, including its hash route, is kept, and
+ * in-memory page state such as cached API responses is discarded, so the
+ * page fetches again (through any network mocks).
+ *
+ * @param _input - No options.
+ * @param context - The tool execution context.
+ * @returns The reload result with the current URL.
+ */
+export async function reloadTool(
+  _input: ReloadInput,
+  context: ToolContext,
+): Promise<ToolResponse<ReloadResult>> {
+  const missingSession = requireActiveSession<ReloadResult>(context);
+  if (missingSession) {
+    return missingSession;
+  }
+
+  try {
+    await context.page.reload();
+
+    return createToolSuccess({
+      reloaded: true,
       currentUrl: context.page.url(),
     });
   } catch (error) {

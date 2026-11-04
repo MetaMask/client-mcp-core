@@ -39,13 +39,13 @@ Every tool accepts an `observe` level (CLI: global `--observe <level>` flag; HTT
 
 The default depends on the tool's category:
 
-| Category      | Examples                                                                                                                                                                                                                                   | Default `observe` |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
-| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                            | `none`            |
-| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                            | `none`            |
-| **CDP**       | cdp                                                                                                                                                                                                                                        | `none`            |
-| **Batch**     | run_steps                                                                                                                                                                                                                                  | `diff`            |
+| Category      | Examples                                                                                                                                                                                                                                           | Default `observe` |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| **Mutating**  | click, type, navigate, reload, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
+| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                                    | `none`            |
+| **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                                    | `none`            |
+| **CDP**       | cdp                                                                                                                                                                                                                                                | `none`            |
+| **Batch**     | run_steps                                                                                                                                                                                                                                          | `diff`            |
 
 ```bash
 mm click e3 --observe none     # chaining clicks: skip the observation
@@ -378,6 +378,14 @@ Navigates the extension tab to the settings page.
 mm navigate-settings
 ```
 
+#### `mm reload`
+
+Reloads the active page and keeps its URL (including the hash route), so you stay on the same screen. Use it after adding or changing a network mock: the Extension caches API data (e.g. Activity) in memory, and only a reload makes it fetch again. `mm navigate-home` does not clear that cache, because going to `home.html` from `home.html#/...` only changes the hash. Refs from before the reload are stale; use the observation in the response or run `mm describe-screen`.
+
+```
+mm reload
+```
+
 #### `mm switch-to-tab`
 
 Switches the active page to a tab matching a given role or URL prefix. Supports a positional role as the first argument.
@@ -508,6 +516,11 @@ mm mock-network add '{"routes":[...]}'
 ```
 
 Unmatched same-origin requests are continued unchanged.
+
+A mock only affects requests made after it is added. Data the Extension already fetched stays cached in memory, and waiting or going Home and back does not fetch it again. So:
+
+- Add mocks before you first open the screen that uses them.
+- After you add, change or clear a rule for data that is already loaded, run `mm reload`, then check `mm mock-network requests` for a hit.
 
 #### `mm mock-network clear`
 

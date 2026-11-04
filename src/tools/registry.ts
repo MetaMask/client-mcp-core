@@ -39,6 +39,7 @@ import { mockNetworkTool } from './mock-network.js';
 import {
   closeTabTool,
   navigateTool,
+  reloadTool,
   switchToTabTool,
   waitForNotificationTool,
 } from './navigation.js';
@@ -64,6 +65,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['cleanup', cleanupTool],
   ['get_state', getStateTool],
   ['navigate', navigateTool],
+  ['reload', reloadTool],
   ['wait_for_notification', waitForNotificationTool],
   ['switch_to_tab', switchToTabTool],
   ['close_tab', closeTabTool],
@@ -123,10 +125,11 @@ export type ToolCategory =
   | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (25)
+  // MUTATING (26)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
+  reload: 'mutating',
   launch: 'mutating',
   cleanup: 'mutating',
   switch_to_tab: 'mutating',
@@ -195,6 +198,7 @@ const BROWSER_ONLY_TOOLS = new Set([
   'wait_for_notification',
   'clipboard',
   'mock_network',
+  'reload',
   'build',
 ]);
 

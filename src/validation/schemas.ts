@@ -372,6 +372,8 @@ export const navigateInputSchema = z
     },
   );
 
+export const reloadInputSchema = z.object({});
+
 export const waitForNotificationInputSchema = z.object({
   timeoutMs: z
     .number()
@@ -916,6 +918,7 @@ export const toolSchemas = {
   cleanup: withObserve(cleanupInputSchema),
   get_state: withObserve(getStateInputSchema),
   navigate: withObserve(navigateInputSchema),
+  reload: withObserve(reloadInputSchema),
   wait_for_notification: withObserve(waitForNotificationInputSchema),
   switch_to_tab: withObserve(switchToTabInputSchema),
   close_tab: withObserve(closeTabInputSchema),
@@ -963,6 +966,7 @@ export type LaunchInputZ = z.infer<typeof launchInputSchema>;
 export type CleanupInputZ = z.infer<typeof cleanupInputSchema>;
 export type GetStateInputZ = z.infer<typeof getStateInputSchema>;
 export type NavigateInputZ = z.infer<typeof navigateInputSchema>;
+export type ReloadInputZ = z.infer<typeof reloadInputSchema>;
 export type WaitForNotificationInputZ = z.infer<
   typeof waitForNotificationInputSchema
 >;

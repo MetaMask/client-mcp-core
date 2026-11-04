@@ -63,6 +63,8 @@ export type NavigateInput = {
   url?: string;
 };
 
+export type ReloadInput = Record<string, never>;
+
 export type WaitForNotificationInput = {
   timeoutMs?: number;
 };

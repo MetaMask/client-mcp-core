@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes
+
 ## [0.13.1]
 
 ### Fixed
