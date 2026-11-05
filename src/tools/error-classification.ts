@@ -16,6 +16,7 @@ const ERROR_PATTERNS = {
     'Timeout waiting for selector',
   ],
   timeout: ['Timeout', 'exceeded', 'timed out'],
+  notEditable: ['element is not editable'],
   navigation: ['Navigation failed', 'net::ERR'],
   pageClosed: [
     'Target page, context or browser has been closed',
@@ -100,6 +101,10 @@ export function classifyTypeError(error: unknown): {
   code: string;
   message: string;
 } {
+  const message = extractErrorMessage(error);
+  if (ERROR_PATTERNS.notEditable.some((pattern) => message.includes(pattern))) {
+    return { code: ErrorCodes.MM_ELEMENT_NOT_EDITABLE, message };
+  }
   return classifyInteractionError(error, ErrorCodes.MM_TYPE_FAILED);
 }
 
@@ -127,6 +132,19 @@ export function classifyGetTextError(error: unknown): {
   message: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_GETTEXT_FAILED);
+}
+
+/**
+ * Classify an inspect error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
+ */
+export function classifyInspectError(error: unknown): {
+  code: string;
+  message: string;
+} {
+  return classifyInteractionError(error, ErrorCodes.MM_INSPECT_FAILED);
 }
 
 /**

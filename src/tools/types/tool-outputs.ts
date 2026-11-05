@@ -41,6 +41,11 @@ export type NavigateResult = {
   currentUrl: string;
 };
 
+export type ReloadResult = {
+  reloaded: boolean;
+  currentUrl: string;
+};
+
 export type WaitForNotificationResult = {
   found: boolean;
   pageUrl: string;
@@ -101,6 +106,17 @@ export type GetTextResult = {
   text: string;
   target: string;
   length: number;
+};
+
+export type InspectResult = {
+  target: string;
+  tagName: string;
+  attributes: Record<string, string>;
+  disabled: boolean;
+  readOnly: boolean;
+  styles: Record<string, string>;
+  /** Opacity of the element times that of its ancestors. */
+  effectiveOpacity: number;
 };
 
 export type StepResult = {

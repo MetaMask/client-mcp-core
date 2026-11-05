@@ -63,6 +63,8 @@ export type NavigateInput = {
   url?: string;
 };
 
+export type ReloadInput = Record<string, never>;
+
 export type WaitForNotificationInput = {
   timeoutMs?: number;
 };
@@ -117,6 +119,13 @@ export type WaitForInput = TargetSelection & {
 };
 
 export type GetTextInput = TargetSelection & {
+  timeoutMs?: number;
+  within?: WithinTarget;
+};
+
+export type InspectInput = TargetSelection & {
+  /** Computed style properties to read. Defaults to `DEFAULT_INSPECT_STYLES`. */
+  styles?: string[];
   timeoutMs?: number;
   within?: WithinTarget;
 };

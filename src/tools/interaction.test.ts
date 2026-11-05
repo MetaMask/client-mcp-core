@@ -10,12 +10,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   clickTool,
   getTextTool,
+  inspectTool,
   typeTool,
   waitForTool,
 } from './interaction.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
+import { DEFAULT_INSPECT_STYLES } from './utils/constants.js';
 import * as discoveryModule from './utils/discovery.js';
+import * as inspectModule from './utils/inspect.js';
 import * as targetsModule from './utils/targets.js';
 import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
@@ -26,6 +29,8 @@ function createMockLocator() {
     fill: vi.fn().mockResolvedValue(undefined),
     waitFor: vi.fn().mockResolvedValue(undefined),
     textContent: vi.fn().mockResolvedValue('Hello World'),
+    isEditable: vi.fn().mockResolvedValue(true),
+    isDisabled: vi.fn().mockResolvedValue(false),
   };
 }
 
@@ -771,6 +776,181 @@ describe('interaction', () => {
         expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
       }
     });
+
+    it('fails fast with MM_ELEMENT_NOT_EDITABLE for a read-only element', async () => {
+      const locator = createMockLocator();
+      locator.isEditable.mockResolvedValue(false);
+      const context = createMockContext();
+
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await typeTool(
+        { testId: 'address', text: 'value' },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_ELEMENT_NOT_EDITABLE);
+        expect(result.error.message).toBe(
+          'element is not editable (readonly): testId:address',
+        );
+      }
+      expect(locator.fill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inspectTool', () => {
+    const inspection = {
+      tagName: 'input',
+      attributes: { 'data-testid': 'nickname' },
+      disabled: false,
+      readOnly: true,
+      styles: { color: 'rgb(18, 18, 18)' },
+      effectiveOpacity: 1,
+    };
+
+    it('inspects the target with the default styles', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const inspectSpy = vi
+        .spyOn(inspectModule, 'inspectLocator')
+        .mockResolvedValue(inspection);
+
+      const result = await inspectTool({ testId: 'nickname' }, context);
+
+      expect(result).toStrictEqual({
+        ok: true,
+        result: { target: 'testId:nickname', ...inspection },
+      });
+      expect(inspectSpy).toHaveBeenCalledWith(
+        page,
+        locator,
+        DEFAULT_INSPECT_STYLES,
+        expect.any(Number),
+      );
+    });
+
+    it('passes the requested styles, timeout and within scope', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const inspectSpy = vi
+        .spyOn(inspectModule, 'inspectLocator')
+        .mockResolvedValue(inspection);
+
+      await inspectTool(
+        {
+          a11yRef: 'e4',
+          styles: ['color', 'opacity'],
+          timeoutMs: 3000,
+          within: { testId: 'form' },
+        },
+        context,
+      );
+
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'a11yRef',
+        'e4',
+        context.refMap,
+        3000,
+        { type: 'testId', value: 'form' },
+      );
+      expect(inspectSpy).toHaveBeenCalledWith(
+        page,
+        locator,
+        ['color', 'opacity'],
+        expect.any(Number),
+      );
+    });
+
+    it('returns error when no target specified', async () => {
+      const result = await inspectTool({} as any, createMockContext());
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+      }
+    });
+
+    it('returns error when no session active', async () => {
+      const result = await inspectTool(
+        { testId: 'nickname' },
+        createMockContext({ hasActive: false }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+
+    it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM when the driver cannot inspect', async () => {
+      const context = createMockContext();
+      const driver = context.driver as any;
+      context.driver = {
+        ...driver,
+        inspect: undefined,
+        getPlatform: () => 'ios',
+      };
+
+      const result = await inspectTool({ testId: 'nickname' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(
+          ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        );
+        expect(result.error.message).toContain('ios');
+      }
+    });
+
+    it('returns MM_WAIT_TIMEOUT when the element does not appear', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        createTimeoutError('Timeout 5ms exceeded during waitForTarget'),
+      );
+
+      const result = await inspectTool(
+        { testId: 'missing', timeoutMs: 5 },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+        expect(result.error.message).toBe('Inspect timed out after 5ms.');
+      }
+    });
+
+    it('returns MM_INSPECT_FAILED when the element cannot be read', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        createMockLocator() as any,
+      );
+      vi.spyOn(inspectModule, 'inspectLocator').mockRejectedValue(
+        new Error('Could not inspect the element'),
+      );
+
+      const result = await inspectTool(
+        { testId: 'nickname' },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_INSPECT_FAILED);
+        expect(result.error.message).toContain('Could not inspect the element');
+      }
+    });
   });
 
   describe('waitForTool', () => {
@@ -1259,6 +1439,10 @@ describe('interaction', () => {
       [
         'get_text',
         async (context: ToolContext) => getTextTool({ testId: 'a' }, context),
+      ],
+      [
+        'inspect',
+        async (context: ToolContext) => inspectTool({ testId: 'a' }, context),
       ],
     ])(
       '%s returns MM_REQUEST_ABORTED without touching the page when aborted',

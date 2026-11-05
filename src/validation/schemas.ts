@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
+import { DEFAULT_INSPECT_STYLES } from '../tools/utils/constants.js';
 
 export const observeLevelSchema = z
   .enum(['none', 'diff', 'full'])
@@ -372,6 +373,8 @@ export const navigateInputSchema = z
     },
   );
 
+export const reloadInputSchema = z.object({});
+
 export const waitForNotificationInputSchema = z.object({
   timeoutMs: z
     .number()
@@ -502,6 +505,28 @@ export const waitForInputSchema = targetSelectionSchema.and(
 
 export const getTextInputSchema = targetSelectionSchema.and(
   z.object({
+    timeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(60000)
+      .default(15000)
+      .describe('Timeout to wait for element to become visible'),
+    within: withinTargetSchema.optional(),
+  }),
+);
+
+export const inspectInputSchema = targetSelectionSchema.and(
+  z.object({
+    styles: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(50)
+      .default([...DEFAULT_INSPECT_STYLES])
+      .describe(
+        'Computed style properties to read (e.g., color, opacity). ' +
+          `Default: ${DEFAULT_INSPECT_STYLES.join(', ')}.`,
+      ),
     timeoutMs: z
       .number()
       .int()
@@ -916,6 +941,7 @@ export const toolSchemas = {
   cleanup: withObserve(cleanupInputSchema),
   get_state: withObserve(getStateInputSchema),
   navigate: withObserve(navigateInputSchema),
+  reload: withObserve(reloadInputSchema),
   wait_for_notification: withObserve(waitForNotificationInputSchema),
   switch_to_tab: withObserve(switchToTabInputSchema),
   close_tab: withObserve(closeTabInputSchema),
@@ -927,6 +953,7 @@ export const toolSchemas = {
   type: withObserve(typeInputSchema),
   wait_for: withObserve(waitForInputSchema),
   get_text: withObserve(getTextInputSchema),
+  inspect: withObserve(inspectInputSchema),
   seed_contract: withObserve(seedContractInputSchema),
   seed_contracts: withObserve(seedContractsInputSchema),
   get_contract_address: withObserve(getContractAddressInputSchema),
@@ -963,6 +990,7 @@ export type LaunchInputZ = z.infer<typeof launchInputSchema>;
 export type CleanupInputZ = z.infer<typeof cleanupInputSchema>;
 export type GetStateInputZ = z.infer<typeof getStateInputSchema>;
 export type NavigateInputZ = z.infer<typeof navigateInputSchema>;
+export type ReloadInputZ = z.infer<typeof reloadInputSchema>;
 export type WaitForNotificationInputZ = z.infer<
   typeof waitForNotificationInputSchema
 >;
@@ -976,6 +1004,7 @@ export type ClickInputZ = z.infer<typeof clickInputSchema>;
 export type TypeInputZ = z.infer<typeof typeInputSchema>;
 export type WaitForInputZ = z.infer<typeof waitForInputSchema>;
 export type GetTextInputZ = z.infer<typeof getTextInputSchema>;
+export type InspectInputZ = z.infer<typeof inspectInputSchema>;
 export type RunStepsInputZ = z.infer<typeof runStepsInputSchema>;
 export type SwitchToTabInputZ = z.infer<typeof switchToTabInputSchema>;
 export type CloseTabInputZ = z.infer<typeof closeTabInputSchema>;

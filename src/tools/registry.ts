@@ -31,6 +31,7 @@ import { hermesTargetsTool } from './hermes.js';
 import {
   clickTool,
   getTextTool,
+  inspectTool,
   typeTool,
   waitForTool,
 } from './interaction.js';
@@ -39,6 +40,7 @@ import { mockNetworkTool } from './mock-network.js';
 import {
   closeTabTool,
   navigateTool,
+  reloadTool,
   switchToTabTool,
   waitForNotificationTool,
 } from './navigation.js';
@@ -64,6 +66,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['cleanup', cleanupTool],
   ['get_state', getStateTool],
   ['navigate', navigateTool],
+  ['reload', reloadTool],
   ['wait_for_notification', waitForNotificationTool],
   ['switch_to_tab', switchToTabTool],
   ['close_tab', closeTabTool],
@@ -75,6 +78,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['type', typeTool],
   ['wait_for', waitForTool],
   ['get_text', getTextTool],
+  ['inspect', inspectTool],
   ['seed_contract', seedContractTool],
   ['seed_contracts', seedContractsTool],
   ['get_contract_address', getContractAddressTool],
@@ -123,10 +127,11 @@ export type ToolCategory =
   | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (25)
+  // MUTATING (26)
   click: 'mutating',
   type: 'mutating',
   navigate: 'mutating',
+  reload: 'mutating',
   launch: 'mutating',
   cleanup: 'mutating',
   switch_to_tab: 'mutating',
@@ -149,7 +154,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   press_button: 'mutating',
   device_context: 'mutating',
   device_clipboard: 'mutating',
-  // READONLY (14)
+  // READONLY (13)
   hermes_targets: 'readonly',
   get_window_size: 'readonly',
   get_alert_text: 'readonly',
@@ -157,6 +162,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   device_logs: 'readonly',
   generate_locators: 'readonly',
   get_text: 'readonly',
+  inspect: 'readonly',
   get_state: 'readonly',
   get_context: 'readonly',
   // set_context is blocked while a session is active (MM_CONTEXT_SWITCH_BLOCKED),
@@ -195,7 +201,9 @@ const BROWSER_ONLY_TOOLS = new Set([
   'wait_for_notification',
   'clipboard',
   'mock_network',
+  'reload',
   'build',
+  'inspect',
 ]);
 
 /**
