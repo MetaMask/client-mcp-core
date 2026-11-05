@@ -2073,6 +2073,69 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes inspect with positional ref', async () => {
+    await routeCommand('inspect', ['e3'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/inspect',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e3' }),
+      }),
+    );
+  });
+
+  it('routes inspect with --styles before the target', async () => {
+    await routeCommand('inspect', ['--styles', 'color, opacity,', 'e3'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/inspect',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e3', styles: ['color', 'opacity'] }),
+      }),
+    );
+  });
+
+  it('routes inspect with --testid, --styles, --timeout and --within', async () => {
+    await routeCommand(
+      'inspect',
+      [
+        '--testid',
+        'nickname',
+        '--styles',
+        'color',
+        '--timeout',
+        '3000',
+        '--within',
+        'testid:form',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/inspect',
+      expect.objectContaining({
+        body: JSON.stringify({
+          testId: 'nickname',
+          styles: ['color'],
+          timeoutMs: 3000,
+          within: { testId: 'form' },
+        }),
+      }),
+    );
+  });
+
+  it('exits when inspect has no target', async () => {
+    await expect(routeCommand('inspect', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+  });
+
+  it('exits when inspect --styles has no property names', async () => {
+    await expect(
+      routeCommand('inspect', ['e3', '--styles', ','], 3000),
+    ).rejects.toThrowError('process.exit');
+    await expect(
+      routeCommand('inspect', ['e3', '--styles'], 3000),
+    ).rejects.toThrowError('process.exit');
+  });
+
   it('routes close-tab with --role', async () => {
     await routeCommand('close-tab', ['--role', 'dapp'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(

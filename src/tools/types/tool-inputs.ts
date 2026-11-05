@@ -121,6 +121,13 @@ export type GetTextInput = TargetSelection & {
   within?: WithinTarget;
 };
 
+export type InspectInput = TargetSelection & {
+  /** Computed style properties to read. Defaults to `DEFAULT_INSPECT_STYLES`. */
+  styles?: string[];
+  timeoutMs?: number;
+  within?: WithinTarget;
+};
+
 export type RunStepsInput = {
   steps: {
     tool: string;

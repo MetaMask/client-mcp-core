@@ -18,6 +18,8 @@ export const ErrorCodes = {
   MM_CLICK_FAILED: 'MM_CLICK_FAILED',
   MM_TYPE_FAILED: 'MM_TYPE_FAILED',
   MM_GETTEXT_FAILED: 'MM_GETTEXT_FAILED',
+  MM_INSPECT_FAILED: 'MM_INSPECT_FAILED',
+  MM_ELEMENT_NOT_EDITABLE: 'MM_ELEMENT_NOT_EDITABLE', // type target is readonly or disabled
   MM_WAIT_TIMEOUT: 'MM_WAIT_TIMEOUT',
   MM_CLICK_TIMEOUT: 'MM_CLICK_TIMEOUT', // click action timed out (element found, click hung)
   MM_TYPE_TIMEOUT: 'MM_TYPE_TIMEOUT', // fill action timed out

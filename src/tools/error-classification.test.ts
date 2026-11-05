@@ -11,6 +11,7 @@ import {
   classifyInteractionError,
   classifyClickError,
   classifyTypeError,
+  classifyInspectError,
   classifyWaitError,
   classifyNavigationError,
   classifyTabError,
@@ -309,7 +310,42 @@ describe('error-classification', () => {
     });
   });
 
+  describe('classifyInspectError', () => {
+    it('returns INSPECT_FAILED for errors that match no pattern', () => {
+      const result = classifyInspectError(new Error('Could not inspect'));
+
+      expect(result).toStrictEqual({
+        code: ErrorCodes.MM_INSPECT_FAILED,
+        message: 'Operation failed: Could not inspect',
+      });
+    });
+
+    it('returns WAIT_TIMEOUT for timeouts', () => {
+      expect(classifyInspectError(new Error('Timeout 5ms exceeded')).code).toBe(
+        ErrorCodes.MM_WAIT_TIMEOUT,
+      );
+    });
+  });
+
   describe('classifyTypeError', () => {
+    describe('when the element is not editable', () => {
+      it('returns ELEMENT_NOT_EDITABLE code with the message unchanged', () => {
+        // Arrange
+        const error = new Error(
+          'element is not editable (readonly): testId:address',
+        );
+
+        // Act
+        const result = classifyTypeError(error);
+
+        // Assert
+        expect(result).toStrictEqual({
+          code: ErrorCodes.MM_ELEMENT_NOT_EDITABLE,
+          message: 'element is not editable (readonly): testId:address',
+        });
+      });
+    });
+
     describe('when error indicates target not found', () => {
       it('returns TARGET_NOT_FOUND code', () => {
         // Arrange

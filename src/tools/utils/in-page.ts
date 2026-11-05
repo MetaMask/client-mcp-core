@@ -23,6 +23,129 @@ export type InPageTestIdItem = {
 };
 
 /**
+ * An element as read by `inspectCapturedElementInPage`.
+ */
+export type InPageElementInspection = {
+  /** Lowercase tag name. */
+  tagName: string;
+  /** Every attribute, by name, in DOM order. */
+  attributes: Record<string, string>;
+  /** `readOnly` of an input or textarea, or `aria-readonly="true"`. */
+  readOnly: boolean;
+  /** Computed value of each requested property (`''` when unknown). */
+  styles: Record<string, string>;
+  /**
+   * Computed opacity of the element times that of every ancestor (shadow
+   * hosts included), rounded to 3 decimals: what the user sees, also when
+   * an ancestor fades the element.
+   */
+  effectiveOpacity: number;
+};
+
+/**
+ * Starts recording the element that the next Playwright locator call on the
+ * page resolves to. Before it runs a locator call, Playwright dispatches
+ * `eventType` (its bubbling, composed `__playwright_mark_target__` event) on
+ * the resolved element. A capture listener on the document records the
+ * first such element under `key` in this world's global object, then
+ * removes itself. `inspectCapturedElementInPage` reads the record.
+ *
+ * Runs in the page: must stay self-contained.
+ *
+ * @param eventType - The event Playwright dispatches on the target.
+ * @param key - Where to keep the record in this world's global object.
+ */
+export function captureMarkedElementInPage(
+  eventType: string,
+  key: string,
+): void {
+  const capture: { element: unknown; stop: () => void } = {
+    element: null,
+    stop: () => undefined,
+  };
+  const listener = (event: Event): void => {
+    capture.stop();
+    // The first entry is the element itself, also inside an open shadow
+    // root, where `target` is retargeted to the host.
+    capture.element = event.composedPath()[0] ?? event.target;
+  };
+  capture.stop = (): void =>
+    document.removeEventListener(eventType, listener, true);
+  (globalThis as unknown as Record<string, unknown>)[key] = capture;
+  document.addEventListener(eventType, listener, true);
+}
+
+/**
+ * Reads the element recorded under `key` by `captureMarkedElementInPage`,
+ * then drops the record and stops its listener, so each record is read
+ * once.
+ *
+ * Style names are read with `getPropertyValue`: camelCase names
+ * (`backgroundColor`) are read as their CSS property (`background-color`),
+ * custom properties (`--x`) as given. Results keep the requested names.
+ *
+ * Runs in the page: must stay self-contained.
+ *
+ * @param key - The key given to `captureMarkedElementInPage`.
+ * @param styleNames - The computed style properties to read.
+ * @returns The inspection, or null when no element was recorded.
+ */
+export function inspectCapturedElementInPage(
+  key: string,
+  styleNames: string[],
+): InPageElementInspection | null {
+  const store = globalThis as unknown as Record<string, unknown>;
+  const capture = store[key] as
+    | { element: unknown; stop: () => void }
+    | undefined;
+  delete store[key];
+  if (!capture) {
+    return null;
+  }
+  capture.stop();
+  const element = capture.element as Element | null;
+  if (element?.nodeType !== 1) {
+    return null;
+  }
+
+  const attributes: Record<string, string> = {};
+  for (const { name, value } of Array.from(element.attributes)) {
+    attributes[name] = value;
+  }
+
+  const computed = window.getComputedStyle(element);
+  const styles: Record<string, string> = {};
+  for (const name of styleNames) {
+    const property = name.startsWith('--')
+      ? name
+      : name.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`);
+    styles[name] = computed.getPropertyValue(property);
+  }
+
+  let effectiveOpacity = 1;
+  for (let current: Element | null = element; current; ) {
+    const opacity = parseFloat(window.getComputedStyle(current).opacity);
+    if (!Number.isNaN(opacity)) {
+      effectiveOpacity *= opacity;
+    }
+    const parent: Node | null = current.parentNode;
+    current =
+      current.parentElement ??
+      (parent?.nodeType === 11 ? (parent as ShadowRoot).host : null);
+  }
+
+  return {
+    tagName: element.localName,
+    attributes,
+    readOnly:
+      (element as HTMLInputElement).readOnly ||
+      element.getAttribute('aria-readonly') === 'true',
+    styles,
+    effectiveOpacity: Math.round(effectiveOpacity * 1000) / 1000,
+  };
+}
+
+/**
  * Reports whether the page's animations have settled.
  *
  * Only animations that will end are counted: an animation keeps the page

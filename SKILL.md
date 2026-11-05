@@ -42,7 +42,7 @@ The default depends on the tool's category:
 | Category      | Examples                                                                                                                                                                                                                                   | Default `observe` |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
 | **Mutating**  | click, type, navigate, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
-| **Read-only** | get_state, get_text, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                            | `none`            |
+| **Read-only** | get_state, get_text, inspect, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                   | `none`            |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                            | `none`            |
 | **CDP**       | cdp                                                                                                                                                                                                                                        | `none`            |
 | **Batch**     | run_steps                                                                                                                                                                                                                                  | `diff`            |
@@ -313,6 +313,8 @@ mm type e5 "0x1234abcd..."
 mm type e5 "0x1234abcd..." --timeout 10000
 ```
 
+On the browser, a read-only or disabled field fails at once with `MM_ELEMENT_NOT_EDITABLE` (`element is not editable (readonly): <target>` or `(disabled)`) instead of waiting for the timeout. To check that a field is read-only, `mm type` into it and expect this error, or read the flags with `mm inspect`.
+
 #### `mm get-text <ref>`
 
 Reads the text content of an element. Returns the inner text, target descriptor, and character length. Useful for asserting visible values without screenshots. Categorized as read-only (no observations in response). Accepts `--timeout <ms>` to set the total time budget. Default: 15s.
@@ -325,6 +327,20 @@ mm get-text --testid balance-amount --timeout 5000
 ```
 
 Returns: `text` (string content), `target` (descriptor like `testId:balance-amount`), `length` (character count).
+
+#### `mm inspect <ref>`
+
+Reads an element's attributes, its `disabled` and `readOnly` flags, and computed styles, so that styling can be checked with values instead of by eye from a screenshot. Browser only; read-only (no observations in response). Accepts `--styles <prop,prop>` (default: `color,background-color,opacity,cursor`), `--timeout <ms>` (default: 15s) and `--within <scope>`.
+
+```
+mm inspect e5
+mm inspect --testid nickname-input --styles color,opacity
+mm inspect --testid address-input --within "testid:account-details" --styles color,opacity,background-color
+```
+
+Returns: `target`, `tagName`, `attributes` (every attribute, by name), `disabled` (native, fieldset or `aria-disabled`), `readOnly` (`readonly` property or `aria-readonly="true"`), `styles` (computed value of each requested property, keyed as requested; `''` for unknown properties), `effectiveOpacity` (the element's opacity times that of every ancestor, so a field faded by a parent shows it).
+
+To check that a field "is not faded", inspect it and the field the plan compares it to (e.g. the Nickname field) with the same `--styles`, and compare the values: `styles.color`, `styles.opacity` and `effectiveOpacity` should match. Do not compare against unrelated text. Prefer `mm inspect` over `mm cdp Runtime.evaluate` for attributes and styles.
 
 #### `mm wait-for <ref>`
 
@@ -661,7 +677,7 @@ mm device-logs --filter MetaMask --duration 30
 
 ## Element Targeting
 
-Every interaction command (`click`, `type`, `get-text`, `wait-for`) needs a target. You must provide exactly ONE of:
+Every interaction command (`click`, `type`, `get-text`, `inspect`, `wait-for`) needs a target. You must provide exactly ONE of:
 
 | Method           | Format              | Stability                       | When to use                                          |
 | ---------------- | ------------------- | ------------------------------- | ---------------------------------------------------- |
@@ -689,6 +705,8 @@ When a command fails, the response includes `error.code`. Use this to decide wha
 | `MM_CLICK_TIMEOUT`                  | Click action timed out (element found, click hung)                   | Run `mm describe-screen` to verify if click completed; retry with `--timeout` or different approach       |
 | `MM_TYPE_FAILED`                    | Type failed after finding element                                    | Element may not be an input; verify with describe-screen                                                  |
 | `MM_TYPE_TIMEOUT`                   | Fill action timed out                                                | Run `mm describe-screen` to verify state; retry with `--timeout`                                          |
+| `MM_ELEMENT_NOT_EDITABLE`           | Type target is read-only or disabled (browser; fails at once)        | Expected when verifying a read-only field; otherwise check the target with `mm inspect`                   |
+| `MM_INSPECT_FAILED`                 | inspect could not read the element (non-timeout)                     | Run `mm describe-screen` and re-target; fall back to `mm cdp` only if it persists                         |
 | `MM_GETTEXT_FAILED`                 | getText operational failure (non-timeout)                            | Element may be detached; run `mm describe-screen` and re-target                                           |
 | `MM_GETTEXT_TIMEOUT`                | textContent action timed out                                         | Retry with `--timeout`                                                                                    |
 | `MM_CLIPBOARD_PERMISSION_DENIED`    | Clipboard permission denied by browser                               | Check browser permissions; try CDP approach                                                               |
