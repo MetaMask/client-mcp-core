@@ -2389,6 +2389,7 @@ describe('routeCommand', () => {
     await expect(routeCommand('inspect', [], 3000)).rejects.toThrowError(
       'process.exit',
     );
+    expectFailure(expect.stringContaining('Usage: mm inspect'), 2);
   });
 
   it('exits when inspect --styles has no property names', async () => {
@@ -2398,6 +2399,7 @@ describe('routeCommand', () => {
     await expect(
       routeCommand('inspect', ['e3', '--styles'], 3000),
     ).rejects.toThrowError('process.exit');
+    expectFailure('--styles requires comma-separated CSS property names', 2);
   });
 
   it('routes close-tab with --role', async () => {
