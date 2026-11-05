@@ -57,7 +57,12 @@ mm get-state --observe full    # a read that also returns an observation
 
 **Only mutating and batch calls wait for animations** (browser, up to 1 s) before they observe. `mm describe-screen` and a read with `--observe full` read the page at once, so `mm click … --observe none && mm get-state --observe full` can catch a screen mid-animation. To get a settled screen after an action, let the action observe: `mm click … --observe full`.
 
-Observations contain `testIds` and `a11y` only — no app `state`. Call `mm get-state` for state.
+**Do not add `sleep` after commands.** After a mutating call, the browser observation has `observations.animationsSettled`: `true` when the page loaded and its finite animations ended within the 1 s wait, `false` when some were still running. It does not cover infinite spinners or data loaded from the network. So:
+
+- `animationsSettled: true` and the screen you expect: go on.
+- `animationsSettled: false`, or you are waiting for something that loads (a new screen, a list, a toast): `mm wait-for` the element you expect, e.g. `mm wait-for --testid activity-list` or `mm wait-for --selector "text=Copied"`. It returns as soon as the element is visible, so it is both faster and more reliable than a fixed sleep.
+
+Observations contain `testIds`, `a11y` and (browser, after a mutating or batch call) `animationsSettled` — no app `state`. Call `mm get-state` for state.
 
 On mobile, each observation and `describe-screen` comes from one device snapshot. The Android system status bar and navigation bar and the Expo DevLauncher "Tools" button (iOS `gearshape.fill`) are not part of the app and are removed from `testIds` and `a11y`. Other system windows, such as the biometric prompt (`com.android.systemui:id/biometric_*`), are kept.
 
@@ -344,12 +349,15 @@ To check that a field "is not faded", inspect it and the field the plan compares
 
 #### `mm wait-for <ref>`
 
-Blocks until an element becomes visible. Default timeout: 15s.
+Blocks until an element becomes visible, and returns as soon as it is. Default timeout: 15s. Use it instead of `sleep` whenever you wait for the UI.
 
 ```
 mm wait-for e7 [--timeout <ms>]
 mm wait-for --testid confirm-btn --within "testid:dialog-container"
+mm wait-for --selector "text=Copied"
 ```
+
+On the browser, `--selector` takes any Playwright selector, so `text=<text>` waits for visible text (a toast, a status message). The text match is case-insensitive and matches a substring; use `text="<text>"` with quotes for an exact match.
 
 #### `mm wait-for-notification`
 

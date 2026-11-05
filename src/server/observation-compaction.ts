@@ -266,5 +266,8 @@ export function diffObservation(
         unchanged: unchangedCount,
       },
     },
+    ...(current.animationsSettled === undefined
+      ? {}
+      : { animationsSettled: current.animationsSettled }),
   };
 }

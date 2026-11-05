@@ -392,6 +392,24 @@ describe('nodeChanged', () => {
 });
 
 describe('diffObservation', () => {
+  it('keeps animationsSettled from the current observation', () => {
+    const stable = createNode('e1', 'button', { name: 'Continue' });
+    const added = createNode('e2', 'button', { name: 'Cancel' });
+    const previous = {
+      ...createObservation([stable]),
+      animationsSettled: true,
+    };
+    const current = {
+      ...createObservation([stable, added]),
+      animationsSettled: false,
+    };
+
+    const result = diffObservation(current, previous);
+
+    expect(result.animationsSettled).toBe(false);
+    expect(result.a11y.nodes).toStrictEqual([added]);
+  });
+
   it('diffs mobile nodes that have no path', () => {
     const strip = ({ path: _path, ...node }: A11yNodeTrimmed) => node;
     const send = strip(createNode('e1', 'button', { name: 'Send' }));

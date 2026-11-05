@@ -76,6 +76,7 @@ type ObservedTree = {
   testIds: TestIdItem[];
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
+  animationsSettled?: boolean;
 };
 
 /**
@@ -482,12 +483,13 @@ export function createServer(config: ServerConfig): ServerInstance {
     signal: AbortSignal,
   ): Promise<ObservedTree> {
     const page = config.sessionManager.getPage();
+    let animationsSettled: boolean | undefined;
     if (category !== 'readonly' && category !== 'discovery') {
       await page.waitForLoadState('domcontentloaded').catch(() => undefined);
       signal.throwIfAborted();
       // Waits only for running, finite animations of elements (infinite
       // spinners are ignored), checked once per frame, capped at 1 s.
-      await waitForAnimationsToSettle(
+      animationsSettled = await waitForAnimationsToSettle(
         page,
         ANIMATION_SETTLE_TIMEOUT_MS,
         ANIMATION_SETTLE_GRACE_MS,
@@ -497,7 +499,11 @@ export function createServer(config: ServerConfig): ServerInstance {
     const testIds = await collectTestIds(page, OBSERVATION_TESTID_LIMIT);
     signal.throwIfAborted();
     const tree = await collectTrimmedA11ySnapshot(page);
-    return { testIds, ...tree };
+    return {
+      testIds,
+      ...tree,
+      ...(animationsSettled === undefined ? {} : { animationsSettled }),
+    };
   }
 
   /**
@@ -542,7 +548,10 @@ export function createServer(config: ServerConfig): ServerInstance {
     signal.throwIfAborted();
 
     refs.set(tree.refMap, 'observation');
-    return createDefaultObservation(tree.testIds, tree.nodes);
+    const observation = createDefaultObservation(tree.testIds, tree.nodes);
+    return tree.animationsSettled === undefined
+      ? observation
+      : { ...observation, animationsSettled: tree.animationsSettled };
   }
 
   /**

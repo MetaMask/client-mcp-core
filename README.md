@@ -543,7 +543,7 @@ All responses follow a consistent shape:
 
 ```typescript
 // Success
-{ ok: true, result: T, observations?: { testIds, a11y } }
+{ ok: true, result: T, observations?: { testIds, a11y, animationsSettled? } }
 
 // Error
 { ok: false, error: { code: string, message: string } }
@@ -565,9 +565,11 @@ When `observe` is absent, the default comes from the tool category: `diff` for *
 
 On the browser, only mutating, batch and `cdp` calls wait for animations to settle (up to 1 s; every running finite animation counts, also off screen, so a long finite animation adds up to 1 s) before the observation. A read-only or discovery call with `observe: 'diff'` or `'full'` (and `describe_screen`) reads the page at once, so right after a `none` mutation it can catch an animation in progress. To get a settled observation, let the mutation itself observe (`diff` or `full`) instead of chaining it with `none`.
 
+When a call waited for animations, its observation has `animationsSettled`: `true` when no finite animation was running at the end of the wait, `false` when the 1 s cap was hit. Infinite animations (spinners) and network requests are not checked, so to wait for content that loads, use `wait_for` on the expected element (on the browser, `selector: 'text=Copied'` waits for visible text). Calls that do not wait, and mobile observations, omit the field.
+
 For `run_steps`, the top-level `observe` sets the level of the one observation collected after the batch. Without it, the `observe` in the last executed step's `args` is used; per-step `observe` on other steps is ignored. `includeObservations` was removed.
 
-Observations contain `testIds` and `a11y` only. They do not include app state; call `get_state` for that.
+Observations contain `testIds`, `a11y` and, when the call waited for animations, `animationsSettled`. They do not include app state; call `get_state` for that.
 
 A call that times out is cancelled: its signal is aborted, it stops at its next step, it collects no observation, and its refs are dropped. `click` and `type` check the signal again after they wait for the target, so a call that timed out during that wait does not click or type. An action that already started is not cancelled. On the browser, the action includes Playwright's own checks inside `locator.click` / `locator.fill` (stable, enabled, not covered), which can wait up to the rest of the call's `timeoutMs`. On mobile, `@metamask/device-mcp` takes no signal: its element wait, tap and `typeText` run until they end, and the driver checks the signal between them.
 
