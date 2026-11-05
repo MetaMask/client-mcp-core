@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import {
   navigateTool,
+  reloadTool,
   waitForNotificationTool,
   switchToTabTool,
   closeTabTool,
@@ -22,6 +23,7 @@ function createMockPage(url = 'about:blank') {
     url: vi.fn().mockReturnValue(url),
     bringToFront: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
+    reload: vi.fn().mockResolvedValue(null),
   };
 }
 
@@ -166,6 +168,56 @@ describe('navigation', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+  });
+
+  describe('reloadTool', () => {
+    it('reloads the active page and returns its URL', async () => {
+      const page = createMockPage(
+        'chrome-extension://ext-123/home.html#/activity',
+      );
+      const context = createMockContext({ page });
+
+      const result = await reloadTool({}, context);
+
+      expect(result).toStrictEqual({
+        ok: true,
+        result: {
+          reloaded: true,
+          currentUrl: 'chrome-extension://ext-123/home.html#/activity',
+        },
+      });
+      expect(page.reload).toHaveBeenCalledTimes(1);
+      expect(context.sessionManager.navigateToHome).not.toHaveBeenCalled();
+    });
+
+    it('returns error when no active session', async () => {
+      const page = createMockPage();
+      const context = createMockContext({ hasActive: false, page });
+
+      const result = await reloadTool({}, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+      expect(page.reload).not.toHaveBeenCalled();
+    });
+
+    it('returns a navigation error when the reload fails', async () => {
+      const page = createMockPage();
+      page.reload.mockRejectedValue(
+        new Error('Target page, context or browser has been closed'),
+      );
+      const context = createMockContext({ page });
+
+      const result = await reloadTool({}, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_NAVIGATION_FAILED);
+        expect(result.error.message).toContain('has been closed');
       }
     });
   });

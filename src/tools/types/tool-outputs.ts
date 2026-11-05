@@ -41,6 +41,11 @@ export type NavigateResult = {
   currentUrl: string;
 };
 
+export type ReloadResult = {
+  reloaded: boolean;
+  currentUrl: string;
+};
+
 export type WaitForNotificationResult = {
   found: boolean;
   pageUrl: string;

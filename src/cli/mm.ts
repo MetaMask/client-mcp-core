@@ -659,6 +659,9 @@ export async function routeCommand(
     case 'navigate-home':
       await sendRequest(port, 'POST', '/tool/navigate', { screen: 'home' });
       break;
+    case 'reload':
+      await sendRequest(port, 'POST', '/tool/reload', {});
+      break;
     case 'navigate-settings':
       await sendRequest(port, 'POST', '/tool/navigate', {
         screen: 'settings',
@@ -1942,6 +1945,7 @@ Navigation:
   mm navigate <url>
   mm navigate-home
   mm navigate-settings
+  mm reload
   mm switch-to-tab <role> | --role <role> | --url <url>
   mm close-tab --role <role> | --url <url>
 

@@ -1877,6 +1877,14 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes reload', async () => {
+    await routeCommand('reload', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/reload',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
   it('routes navigate-settings', async () => {
     await routeCommand('navigate-settings', [], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(
