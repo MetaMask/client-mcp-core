@@ -4,7 +4,7 @@
  * Tests session launch with various states and error scenarios.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { launchTool } from './launch.js';
 import type { LaunchInput } from './types';
@@ -190,6 +190,67 @@ describe('launchTool', () => {
       await launchTool(input, context);
 
       expect(context.sessionManager.setContext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('artifacts directory', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('passes MM_ARTIFACTS_DIR to the session manager when set', async () => {
+      vi.stubEnv('MM_ARTIFACTS_DIR', '/tmp/host-artifacts');
+      const context = createMockContext({ hasActive: false });
+      const input: LaunchInput = { stateMode: 'default' };
+
+      const result = await launchTool(input, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.launch).toHaveBeenCalledWith({
+        ...input,
+        artifactsDir: '/tmp/host-artifacts',
+      });
+    });
+
+    it('falls back to config.artifactsDir when MM_ARTIFACTS_DIR is not set', async () => {
+      const context = createMockContext({ hasActive: false });
+      context.workflowContext = {
+        config: {
+          environment: 'e2e',
+          extensionName: 'Test',
+          artifactsDir: './config-artifacts',
+        },
+      };
+      const input: LaunchInput = { stateMode: 'default' };
+
+      const result = await launchTool(input, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.launch).toHaveBeenCalledWith({
+        ...input,
+        artifactsDir: './config-artifacts',
+      });
+    });
+
+    it('prefers MM_ARTIFACTS_DIR over config.artifactsDir', async () => {
+      vi.stubEnv('MM_ARTIFACTS_DIR', '/tmp/host-artifacts');
+      const context = createMockContext({ hasActive: false });
+      context.workflowContext = {
+        config: {
+          environment: 'e2e',
+          extensionName: 'Test',
+          artifactsDir: './config-artifacts',
+        },
+      };
+      const input: LaunchInput = { stateMode: 'default' };
+
+      const result = await launchTool(input, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.launch).toHaveBeenCalledWith({
+        ...input,
+        artifactsDir: '/tmp/host-artifacts',
+      });
     });
   });
 

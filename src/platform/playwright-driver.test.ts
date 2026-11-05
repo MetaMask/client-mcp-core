@@ -4,6 +4,7 @@ import { PlaywrightPlatformDriver } from './playwright-driver.js';
 import type { IPlatformDriver } from './types.js';
 import { createMockSessionManager } from '../tools/test-utils/mock-factories.js';
 import * as discoveryModule from '../tools/utils/discovery.js';
+import * as inspectModule from '../tools/utils/inspect.js';
 
 function createMockLocator() {
   return {
@@ -11,6 +12,8 @@ function createMockLocator() {
     fill: vi.fn().mockResolvedValue(undefined),
     waitFor: vi.fn().mockResolvedValue(undefined),
     textContent: vi.fn().mockResolvedValue('Hello World'),
+    isEditable: vi.fn().mockResolvedValue(true),
+    isDisabled: vi.fn().mockResolvedValue(false),
   };
 }
 
@@ -285,6 +288,120 @@ describe('PlaywrightPlatformDriver', () => {
         driver.type('testId', 'input', 'text', new Map(), 5),
       ).rejects.toThrowError('visibility wait consumed entire budget');
       expect(locator.fill).not.toHaveBeenCalled();
+    });
+
+    it('checks that the element is editable before filling it', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1000);
+
+      const driver = createDriver();
+      await driver.type('testId', 'input', 'text', new Map(), 5000);
+
+      expect(locator.isEditable).toHaveBeenCalledWith({ timeout: 5000 });
+      expect(locator.fill).toHaveBeenCalledWith('text', { timeout: 5000 });
+    });
+
+    it('fails fast without filling a read-only element', async () => {
+      const locator = createMockLocator();
+      locator.isEditable.mockResolvedValue(false);
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.type('testId', 'address', 'text', new Map(), 5000),
+      ).rejects.toThrowError(
+        'element is not editable (readonly): testId:address',
+      );
+      expect(locator.fill).not.toHaveBeenCalled();
+    });
+
+    it('fails fast without filling a disabled element', async () => {
+      const locator = createMockLocator();
+      locator.isEditable.mockResolvedValue(false);
+      locator.isDisabled.mockResolvedValue(true);
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.type('testId', 'address', 'text', new Map(), 5000),
+      ).rejects.toThrowError(
+        'element is not editable (disabled): testId:address',
+      );
+      expect(locator.fill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inspect', () => {
+    const inspection = {
+      tagName: 'input',
+      attributes: { 'data-testid': 'nickname' },
+      disabled: false,
+      readOnly: false,
+      styles: { color: 'rgb(18, 18, 18)' },
+      effectiveOpacity: 1,
+    };
+
+    it('inspects the target with the remaining budget', async () => {
+      const page = createMockPage();
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const inspectSpy = vi
+        .spyOn(inspectModule, 'inspectLocator')
+        .mockResolvedValue(inspection);
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1200);
+
+      const driver = createDriver(page);
+      const result = await driver.inspect?.(
+        'testId',
+        'nickname',
+        new Map(),
+        5000,
+        ['color'],
+        { type: 'testId', value: 'form' },
+      );
+
+      expect(result).toStrictEqual({
+        target: 'testId:nickname',
+        ...inspection,
+      });
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'testId',
+        'nickname',
+        expect.any(Map),
+        5000,
+        { type: 'testId', value: 'form' },
+      );
+      expect(inspectSpy).toHaveBeenCalledWith(page, locator, ['color'], 4800);
+    });
+
+    it('throws when budget exhausted by waitForTarget', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        createMockLocator() as any,
+      );
+      const inspectSpy = vi.spyOn(inspectModule, 'inspectLocator');
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(6000);
+
+      const driver = createDriver();
+      await expect(
+        driver.inspect?.('testId', 'el', new Map(), 5, []),
+      ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(inspectSpy).not.toHaveBeenCalled();
     });
   });
 

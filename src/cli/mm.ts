@@ -425,6 +425,7 @@ const VALUE_FLAGS = new Set([
   '--selector',
   '--testid',
   '--within',
+  '--styles',
   '--direction',
   '--maxAttempts',
   '--duration',
@@ -586,6 +587,39 @@ export async function routeCommand(
         process.exit(1);
       }
       await sendInteractionRequest(port, '/tool/get_text', args);
+      break;
+    }
+    case 'inspect': {
+      const inspectTarget = getPositionalTarget(args);
+      if (
+        !inspectTarget &&
+        !args.includes('--selector') &&
+        !args.includes('--testid')
+      ) {
+        process.stderr.write(
+          'Usage: mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]\n',
+        );
+        process.exit(1);
+      }
+      let styles: string[] | undefined;
+      if (args.includes('--styles')) {
+        styles = (parseStringFlag(args, '--styles') ?? '')
+          .split(',')
+          .map((name) => name.trim())
+          .filter((name) => name.length > 0);
+        if (styles.length === 0) {
+          process.stderr.write(
+            'Error: --styles requires comma-separated CSS property names\n',
+          );
+          process.exit(1);
+        }
+      }
+      await sendInteractionRequest(
+        port,
+        '/tool/inspect',
+        args,
+        styles ? { styles } : undefined,
+      );
       break;
     }
     case 'describe-screen':
@@ -1897,6 +1931,10 @@ Interaction:
   mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
   mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
   mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+                      Attributes, disabled/readOnly flags and computed styles
+                      (browser only). Default styles: color, background-color,
+                      opacity, cursor.
   mm describe-screen
   mm screenshot [--name <name>]
   mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]

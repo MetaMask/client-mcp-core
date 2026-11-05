@@ -16,6 +16,7 @@ describe('isBrowserOnlyTool', () => {
     expect(isBrowserOnlyTool('mock_network')).toBe(true);
     expect(isBrowserOnlyTool('reload')).toBe(true);
     expect(isBrowserOnlyTool('build')).toBe(true);
+    expect(isBrowserOnlyTool('inspect')).toBe(true);
   });
 
   it('returns false for cross-platform tools', () => {

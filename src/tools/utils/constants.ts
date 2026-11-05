@@ -97,6 +97,17 @@ export const TEXT_PREVIEW_MAX_LENGTH = 100;
 /** Minimum number of option nodes under a combobox/listbox to trigger collapsing */
 export const OPTION_COLLAPSE_MIN_COUNT = 3;
 
+/**
+ * Computed styles `inspect` reads when none are requested: the properties
+ * that make a field look faded or disabled.
+ */
+export const DEFAULT_INSPECT_STYLES = [
+  'color',
+  'background-color',
+  'opacity',
+  'cursor',
+];
+
 // ============================================================================
 // Mobile accessibility tree
 // ============================================================================

@@ -108,6 +108,17 @@ export type GetTextResult = {
   length: number;
 };
 
+export type InspectResult = {
+  target: string;
+  tagName: string;
+  attributes: Record<string, string>;
+  disabled: boolean;
+  readOnly: boolean;
+  styles: Record<string, string>;
+  /** Opacity of the element times that of its ancestors. */
+  effectiveOpacity: number;
+};
+
 export type StepResult = {
   tool: string;
   ok: boolean;

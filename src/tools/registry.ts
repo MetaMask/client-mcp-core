@@ -31,6 +31,7 @@ import { hermesTargetsTool } from './hermes.js';
 import {
   clickTool,
   getTextTool,
+  inspectTool,
   typeTool,
   waitForTool,
 } from './interaction.js';
@@ -77,6 +78,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['type', typeTool],
   ['wait_for', waitForTool],
   ['get_text', getTextTool],
+  ['inspect', inspectTool],
   ['seed_contract', seedContractTool],
   ['seed_contracts', seedContractsTool],
   ['get_contract_address', getContractAddressTool],
@@ -152,7 +154,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   press_button: 'mutating',
   device_context: 'mutating',
   device_clipboard: 'mutating',
-  // READONLY (14)
+  // READONLY (13)
   hermes_targets: 'readonly',
   get_window_size: 'readonly',
   get_alert_text: 'readonly',
@@ -160,6 +162,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   device_logs: 'readonly',
   generate_locators: 'readonly',
   get_text: 'readonly',
+  inspect: 'readonly',
   get_state: 'readonly',
   get_context: 'readonly',
   // set_context is blocked while a session is active (MM_CONTEXT_SWITCH_BLOCKED),
@@ -200,6 +203,7 @@ const BROWSER_ONLY_TOOLS = new Set([
   'mock_network',
   'reload',
   'build',
+  'inspect',
 ]);
 
 /**

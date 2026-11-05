@@ -41,7 +41,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(44);
+    expect(toolRegistry.size).toBe(45);
   });
 
   it('stores only functions as values', () => {
@@ -92,6 +92,10 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     expect(getToolCategory('get_context')).toBe('readonly');
   });
 
+  it('getToolCategory returns readonly for inspect', () => {
+    expect(getToolCategory('inspect')).toBe('readonly');
+  });
+
   it('getToolCategory returns discovery for describe_screen', () => {
     expect(getToolCategory('describe_screen')).toBe('discovery');
   });
@@ -115,6 +119,7 @@ describe('isBrowserOnlyTool', () => {
     'mock_network',
     'reload',
     'build',
+    'inspect',
   ])('returns true for %s', (toolName) => {
     expect(isBrowserOnlyTool(toolName)).toBe(true);
   });
