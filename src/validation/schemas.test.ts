@@ -605,6 +605,19 @@ describe('device tool schemas', () => {
       expect(result.success).toBe(true);
     });
 
+    it('keeps timeoutMs and within', () => {
+      const result = scrollToElementInputSchema.safeParse({
+        testId: 'row',
+        timeoutMs: 3000,
+        within: { testId: 'list' },
+      });
+
+      expect(result.success && result.data).toMatchObject({
+        timeoutMs: 3000,
+        within: { testId: 'list' },
+      });
+    });
+
     it('rejects when no target selector is provided', () => {
       const result = scrollToElementInputSchema.safeParse({
         direction: 'down',

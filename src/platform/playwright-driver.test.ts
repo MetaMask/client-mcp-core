@@ -14,6 +14,7 @@ function createMockLocator() {
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
     isDisabled: vi.fn().mockResolvedValue(false),
+    scrollIntoViewIfNeeded: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -416,6 +417,81 @@ describe('PlaywrightPlatformDriver', () => {
       await driver.waitForElement('testId', 'loading', new Map(), 5000);
 
       expect(discoveryModule.waitForTarget).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('scrollToElement', () => {
+    it('waits for the target within the scope, then scrolls it into view', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await driver.scrollToElement?.(
+        'testId',
+        'row',
+        new Map(),
+        undefined,
+        undefined,
+        5000,
+        { type: 'testId', value: 'list' },
+      );
+
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        expect.anything(),
+        'testId',
+        'row',
+        expect.any(Map),
+        5000,
+        { type: 'testId', value: 'list' },
+      );
+      expect(locator.scrollIntoViewIfNeeded).toHaveBeenCalledWith({
+        timeout: expect.any(Number),
+      });
+    });
+
+    it('defaults to the interaction timeout', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const driver = createDriver();
+      await driver.scrollToElement?.('testId', 'row', new Map());
+
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        expect.anything(),
+        'testId',
+        'row',
+        expect.any(Map),
+        15000,
+        undefined,
+      );
+    });
+
+    it('throws when budget exhausted by waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(6000);
+
+      const driver = createDriver();
+      await expect(
+        driver.scrollToElement?.(
+          'testId',
+          'row',
+          new Map(),
+          undefined,
+          undefined,
+          5,
+        ),
+      ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(locator.scrollIntoViewIfNeeded).not.toHaveBeenCalled();
     });
   });
 

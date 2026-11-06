@@ -158,6 +158,21 @@ export type IPlatformDriver = {
 
   cdp(input: CdpInput): Promise<CdpOutcome>;
 
+  /**
+   * Browser: waits for the target to be visible, then scrolls it into view
+   * (`direction` and `maxAttempts` are ignored). Mobile: swipes until the
+   * target is visible (`timeoutMs` is ignored, `within` is rejected).
+   */
+  scrollToElement?(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    direction?: 'up' | 'down',
+    maxAttempts?: number,
+    timeoutMs?: number,
+    within?: WithinScope,
+  ): Promise<void>;
+
   // ---- Mobile-specific (optional) ----
 
   swipe?(
@@ -165,14 +180,6 @@ export type IPlatformDriver = {
     startX?: number,
     startY?: number,
     distance?: number,
-  ): Promise<void>;
-
-  scrollToElement?(
-    targetType: TargetType,
-    targetValue: string,
-    refMap: Map<string, string>,
-    direction?: 'up' | 'down',
-    maxAttempts?: number,
   ): Promise<void>;
 
   longPress?(

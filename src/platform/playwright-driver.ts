@@ -22,6 +22,7 @@ import { ErrorCodes } from '../tools/types/errors.js';
 import type { CdpInput } from '../tools/types/tool-inputs.js';
 import type { CdpOutcome } from '../tools/types/tool-outputs.js';
 import { withCdpSession } from '../tools/utils/cdp.js';
+import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../tools/utils/constants.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
@@ -206,6 +207,48 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       timeoutMs,
       within,
     );
+  }
+
+  /**
+   * Scroll an element into view after waiting for visibility.
+   *
+   * @param targetType - The type of target identifier.
+   * @param targetValue - The target value used for element lookup.
+   * @param refMap - Map of a11y refs to selectors.
+   * @param _direction - Unused on the browser (mobile swipe direction).
+   * @param _maxAttempts - Unused on the browser (mobile swipe attempts).
+   * @param timeoutMs - Maximum time in milliseconds.
+   * @param within - Optional parent scope.
+   */
+  async scrollToElement(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    _direction?: 'up' | 'down',
+    _maxAttempts?: number,
+    timeoutMs: number = DEFAULT_INTERACTION_TIMEOUT_MS,
+    within?: WithinScope,
+  ): Promise<void> {
+    const page = this.#getPage();
+    const deadline = Date.now() + timeoutMs;
+
+    const locator = await waitForTarget(
+      page,
+      targetType,
+      targetValue,
+      refMap,
+      timeoutMs,
+      within,
+    );
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `Timeout ${timeoutMs}ms exceeded: visibility wait consumed entire budget for ${targetType}:${targetValue}`,
+      );
+    }
+
+    await locator.scrollIntoViewIfNeeded({ timeout: remaining });
   }
 
   /**

@@ -916,7 +916,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         process.stderr.write(
-          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction up|down] [--maxAttempts <n>]\n',
+          'Usage: mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--timeout <ms>] [--within <scope>] [--direction up|down] [--maxAttempts <n>]\n',
         );
         process.exit(1);
       }
@@ -1939,6 +1939,7 @@ Interaction:
   mm screenshot [--name <name>]
   mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
   mm wait-for-notification [--timeout <ms>]
+  mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--timeout <ms>] [--within <scope>] [--direction up|down] [--maxAttempts <n>]
   mm clipboard <read|write> [text]
 
 Navigation:
@@ -1976,7 +1977,6 @@ Advanced:
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 
 Mobile (iOS/Android only):
-  mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--direction up|down] [--maxAttempts <n>]
   mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]
   mm long-press <ref> [--selector <css>] [--testid <id>] [--duration <ms>]
   mm tap-coordinates <x> <y>

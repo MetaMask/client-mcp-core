@@ -1,3 +1,5 @@
+import { classifyInteractionError } from './error-classification.js';
+import { resolveWithinScope } from './interaction.js';
 import type {
   CloseAppInput,
   DeviceClipboardInput,
@@ -32,6 +34,7 @@ import type {
   ScrollToElementResult,
   TapCoordinatesResult,
 } from './types/tool-outputs.js';
+import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
 import { resolveWithinArtifactsDir } from './utils/paths.js';
 import { validateTargetSelection } from './utils/targets.js';
 import type { TargetType } from './utils/type-guards.js';
@@ -117,11 +120,11 @@ export async function getWindowSizeTool(
 }
 
 /**
- * Scrolls the device screen until an element matching the target selection
- * becomes visible. Mobile only (iOS/Android) — the browser platform has no
- * device-level scroll gesture.
+ * Scrolls until an element matching the target selection is visible. On the
+ * browser, waits for the element and scrolls it into view (supports `within`
+ * and `timeoutMs`); on mobile, swipes in `direction` up to `maxAttempts` times.
  *
- * @param input - The target selection plus optional direction and max attempts.
+ * @param input - The target selection plus platform-specific scroll options.
  * @param context - The tool execution context with session and driver access.
  * @returns The scroll result with the resolved target, or an error response.
  */
@@ -138,7 +141,7 @@ export async function scrollToElementTool(
   if (!driver?.scrollToElement) {
     return createToolError(
       ErrorCodes.MM_DEVICE_NOT_AVAILABLE,
-      'scroll_to_element is only available on mobile (iOS/Android) sessions.',
+      'scroll_to_element is not available for this session.',
     );
   }
 
@@ -154,12 +157,21 @@ export async function scrollToElementTool(
       context.refMap,
       input.direction,
       input.maxAttempts,
+      input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS,
+      resolveWithinScope(input.within),
     );
     return createToolSuccess<ScrollToElementResult>({
       scrolled: true,
       target: `${resolved.targetType}:${resolved.targetValue}`,
     });
   } catch (error) {
+    if (driver.getPlatform?.() === 'browser') {
+      const errorInfo = classifyInteractionError(
+        error,
+        ErrorCodes.MM_DEVICE_ACTION_FAILED,
+      );
+      return createToolError(errorInfo.code, errorInfo.message);
+    }
     const message = error instanceof Error ? error.message : String(error);
     return createToolError(
       ErrorCodes.MM_DEVICE_ACTION_FAILED,
