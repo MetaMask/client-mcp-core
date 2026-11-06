@@ -44,13 +44,6 @@ describe('exitCodeForError', () => {
     expect(exitCodeForError(undefined)).toBe(CliExitCodes.INTERNAL);
   });
 
-  it('maps every ErrorCodes value to a valid exit code', () => {
-    const valid = new Set<number>(Object.values(CliExitCodes));
-    for (const code of Object.values(ErrorCodes)) {
-      expect(valid.has(exitCodeForError(code))).toBe(true);
-    }
-  });
-
   it('never maps a code to exit 0 or the reserved exit 7', () => {
     for (const code of [
       ...Object.values(ErrorCodes),

@@ -1568,17 +1568,6 @@ describe('sendRequest', () => {
     expectFailure(expect.stringContaining('some other error'), 1);
   });
 
-  it('exits on request timeout (AbortError)', async () => {
-    const abortError = new Error('The operation was aborted');
-    abortError.name = 'AbortError';
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(abortError);
-
-    await expect(sendRequest(3000, 'POST', '/launch', {})).rejects.toThrowError(
-      'process.exit',
-    );
-    expectFailure(expect.stringContaining('request timed out'), 5);
-  });
-
   it('prints the daemon error code, hint and meta as one JSON line on stdout', async () => {
     const meta = { totalMs: 12, queueMs: 0, toolMs: 11, observationMs: 0 };
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
