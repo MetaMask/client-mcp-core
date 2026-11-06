@@ -372,12 +372,12 @@ mm wait-for-notification [--timeout <ms>]
 Scrolls until the target element is visible. Use it instead of scrolling with `mm cdp` scripts.
 
 - **Browser:** waits for the element (default timeout 15s), then scrolls it into view, including inside a scrollable container. Supports `--timeout` and `--within`. The element must be in the DOM: a virtualized list that renders rows only when they come near the viewport cannot be scrolled to this way.
-- **Mobile:** swipes until the element is visible. Supports `--direction up|down` and `--maxAttempts <n>`; `--within` is not supported.
+- **Mobile:** swipes until the element is inside the viewport (being in the UI tree is not enough; React Native keeps off-screen rows in the tree), so a following `click` can tap it. Returns `{scrolled, swipes, inViewport, bounds}`. `--direction auto|down|up` is the content direction (`down` reveals content below); the default `auto` picks it from where the element is. `--maxAttempts <n>` caps the swipes (default 10). `--within` is not supported. Errors: `MM_TARGET_NOT_VISIBLE` (found but still outside the viewport after `--maxAttempts` swipes or at the end of the list; the message has its last frame), `MM_TARGET_NOT_FOUND` (never in the UI tree).
 
 ```
 mm scroll-to-element --testid import-token-button
 mm scroll-to-element --testid row --within "testid:token-list"
-mm scroll-to-element e12 --direction down        # mobile
+mm scroll-to-element e12                         # mobile: auto direction
 ```
 
 Playwright's `click` already scrolls its target into view, so you do not need this before `mm click`. Use it to bring an element into view before a screenshot, or to reach content further down a list.
@@ -702,7 +702,7 @@ for every interactive element on the current screen. Read-only — useful when a
 mobile automation to pick stable selectors.
 
 ```bash
-mm scroll-to-element e12 --direction down
+mm scroll-to-element e12
 mm device-swipe --direction up --distance 400
 mm open-app io.metamask
 mm device-context switch WEBVIEW_1
