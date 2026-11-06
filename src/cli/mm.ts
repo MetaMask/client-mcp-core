@@ -231,7 +231,7 @@ export function formatJsonOutput(output: unknown): string {
  * @returns The worktree root, or undefined when no `.git` entry is found or
  * `GIT_DIR` / `GIT_WORK_TREE` override git's own discovery.
  */
-export async function findGitWorktreeRoot(): Promise<string | undefined> {
+async function findGitWorktreeRoot(): Promise<string | undefined> {
   if (process.env.GIT_DIR || process.env.GIT_WORK_TREE) {
     return undefined;
   }

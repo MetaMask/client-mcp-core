@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  loadDeviceMcp,
+  resetDeviceMcpForTesting,
+} from './device-mcp-runtime.js';
 
 const loaded = vi.hoisted(() => ({ deviceMcp: false }));
 
@@ -9,6 +14,10 @@ vi.mock('@metamask/device-mcp', async (importOriginal) => {
 });
 
 describe('device-mcp runtime loading', () => {
+  beforeEach(() => {
+    resetDeviceMcpForTesting();
+  });
+
   it('does not load device-mcp when the package entry point is imported', async () => {
     const core = await import('..');
 
@@ -18,9 +27,6 @@ describe('device-mcp runtime loading', () => {
   });
 
   it('loads device-mcp once, on first use', async () => {
-    const { loadDeviceMcp, resetDeviceMcpForTesting } =
-      await import('./device-mcp-runtime.js');
-    resetDeviceMcpForTesting();
     const cjsRequire = vi.fn(require) as unknown as NodeJS.Require;
 
     const first = await loadDeviceMcp(cjsRequire);
@@ -34,24 +40,14 @@ describe('device-mcp runtime loading', () => {
   });
 
   it('uses the module require by default (CommonJS build)', async () => {
-    const { loadDeviceMcp, resetDeviceMcpForTesting } =
-      await import('./device-mcp-runtime.js');
-    resetDeviceMcpForTesting();
-
     const runtime = await loadDeviceMcp();
 
     expect(typeof runtime.HermesSession).toBe('function');
-    resetDeviceMcpForTesting();
   });
 
   it('uses import() when there is no CommonJS require (ESM build)', async () => {
-    const { loadDeviceMcp, resetDeviceMcpForTesting } =
-      await import('./device-mcp-runtime.js');
-    resetDeviceMcpForTesting();
-
     const runtime = await loadDeviceMcp(null);
 
     expect(typeof runtime.HermesSession).toBe('function');
-    resetDeviceMcpForTesting();
   });
 });
