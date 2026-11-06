@@ -214,7 +214,39 @@ describe('tool delegation to context.driver', () => {
         expect.any(Number),
         undefined,
         undefined,
+        undefined,
       );
+    });
+
+    it('clickTool passes dismissKeyboard to the driver', async () => {
+      const driver = createMockDriver();
+      const context = createContextWithDriver(driver);
+
+      await clickTool({ testId: 'btn', dismissKeyboard: true }, context);
+
+      expect(vi.mocked(driver.click).mock.calls[0]?.[6]).toStrictEqual({
+        dismissKeyboard: true,
+      });
+    });
+
+    it('clickTool maps TARGET_OBSCURED to MM_TARGET_OBSCURED', async () => {
+      const driver = createMockDriver();
+      vi.mocked(driver.click).mockRejectedValue(
+        Object.assign(new Error('TARGET_OBSCURED: covered by the keyboard'), {
+          code: 'TARGET_OBSCURED',
+        }),
+      );
+      const context = createContextWithDriver(driver);
+
+      const result = await clickTool({ testId: 'btn' }, context);
+
+      expect(result).toStrictEqual({
+        ok: false,
+        error: {
+          code: 'MM_TARGET_OBSCURED',
+          message: 'TARGET_OBSCURED: covered by the keyboard',
+        },
+      });
     });
 
     it('clickTool and typeTool pass the request signal to the driver', async () => {

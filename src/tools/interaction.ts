@@ -156,6 +156,7 @@ export async function clickTool(
       timeoutMs,
       resolveWithinScope(input.within),
       context.signal,
+      input.dismissKeyboard ? { dismissKeyboard: true } : undefined,
     );
     return createToolSuccess(result);
   } catch (error) {
