@@ -111,7 +111,7 @@ function validateInteraction<TResult>(
  * @param within - The optional within target from tool input.
  * @returns The resolved scope, or undefined if no within target is provided.
  */
-function resolveWithinScope(
+export function resolveWithinScope(
   within: WithinTarget | undefined,
 ): WithinScope | undefined {
   if (!within) {

@@ -238,6 +238,8 @@ export type SetContextInput = {
 export type ScrollToElementInput = TargetSelection & {
   direction?: 'up' | 'down';
   maxAttempts?: number;
+  timeoutMs?: number;
+  within?: WithinTarget;
 };
 
 export type DeviceSwipeInput = {

@@ -772,7 +772,7 @@ export const scrollToElementInputSchema = targetSelectionSchema.and(
     direction: z
       .enum(['up', 'down'])
       .describe(
-        'Finger swipe direction to perform while searching (swipe up scrolls content down)',
+        'Mobile only. Finger swipe direction to perform while searching (swipe up scrolls content down)',
       )
       .optional(),
     maxAttempts: z
@@ -780,7 +780,23 @@ export const scrollToElementInputSchema = targetSelectionSchema.and(
       .int()
       .min(1)
       .max(50)
-      .describe('Maximum number of scroll attempts before giving up')
+      .describe(
+        'Mobile only. Maximum number of scroll attempts before giving up',
+      )
+      .optional(),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(60000)
+      .describe(
+        'Browser only. Timeout to wait for the element to be visible (default 15000)',
+      )
+      .optional(),
+    within: withinTargetSchema
+      .describe(
+        'Browser only. Scope the target search within a parent element.',
+      )
       .optional(),
   }),
 );

@@ -420,6 +420,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * @param refMap - Map of a11y refs to stable identifiers.
    * @param direction - Scroll direction (default: down).
    * @param maxAttempts - Maximum scroll attempts.
+   * @param _timeoutMs - Unused: the scroll is bounded by `maxAttempts`.
+   * @param within - Must be undefined — scoped search is not supported on mobile.
    */
   async scrollToElement(
     targetType: TargetType,
@@ -427,7 +429,10 @@ export class MobilePlatformDriver implements IPlatformDriver {
     refMap: Map<string, string>,
     direction?: 'up' | 'down',
     maxAttempts?: number,
+    _timeoutMs?: number,
+    within?: WithinScope,
   ): Promise<void> {
+    rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     await this.#backend.scrollToElement(query, direction, maxAttempts);
   }

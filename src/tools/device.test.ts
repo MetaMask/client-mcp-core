@@ -179,6 +179,8 @@ describe('scrollToElementTool', () => {
       expect.any(Map),
       'down',
       5,
+      15000,
+      undefined,
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -186,6 +188,45 @@ describe('scrollToElementTool', () => {
         scrolled: true,
         target: 'testId:foo',
       });
+    }
+  });
+
+  it('passes timeoutMs and the within scope to the driver', async () => {
+    const scrollToElement = vi.fn().mockResolvedValue(undefined);
+    const context = createContext({ driver: { scrollToElement } });
+
+    await scrollToElementTool(
+      { testId: 'row', timeoutMs: 3000, within: { testId: 'list' } },
+      context,
+    );
+
+    expect(scrollToElement).toHaveBeenCalledWith(
+      'testId',
+      'row',
+      expect.any(Map),
+      undefined,
+      undefined,
+      3000,
+      { type: 'testId', value: 'list' },
+    );
+  });
+
+  it('classifies browser errors like other interactions', async () => {
+    const scrollToElement = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('Timeout 15000ms exceeded waiting for element'),
+      );
+    const context = createContext({
+      driver: { scrollToElement, getPlatform: () => 'browser' },
+    });
+
+    const result = await scrollToElementTool({ testId: 'missing' }, context);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+      expect(result.error.message).toContain('Timeout 15000ms exceeded');
     }
   });
 

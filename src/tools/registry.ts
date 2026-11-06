@@ -219,7 +219,6 @@ export function isBrowserOnlyTool(toolName: string): boolean {
 const MOBILE_ONLY_TOOLS = new Set([
   'hermes_targets',
   'get_window_size',
-  'scroll_to_element',
   'device_swipe',
   'long_press',
   'tap_coordinates',

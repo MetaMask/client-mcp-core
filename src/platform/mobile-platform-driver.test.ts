@@ -1818,6 +1818,24 @@ describe('MobilePlatformDriver', () => {
         undefined,
       );
     });
+
+    it('rejects a within scope', async () => {
+      const backend = createMockBackend();
+      const driver = new MobilePlatformDriver(backend);
+
+      await expect(
+        driver.scrollToElement(
+          'testId',
+          'row',
+          new Map(),
+          undefined,
+          undefined,
+          undefined,
+          { type: 'testId', value: 'list' },
+        ),
+      ).rejects.toThrowError('not supported on mobile');
+      expect(backend.scrollToElement).not.toHaveBeenCalled();
+    });
   });
 
   describe('longPress', () => {

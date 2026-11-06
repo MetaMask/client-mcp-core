@@ -367,6 +367,21 @@ Waits for the extension notification popup to appear within a timeout. Returns t
 mm wait-for-notification [--timeout <ms>]
 ```
 
+#### `mm scroll-to-element <ref>`
+
+Scrolls until the target element is visible. Use it instead of scrolling with `mm cdp` scripts.
+
+- **Browser:** waits for the element (default timeout 15s), then scrolls it into view, including inside a scrollable container. Supports `--timeout` and `--within`. The element must be in the DOM: a virtualized list that renders rows only when they come near the viewport cannot be scrolled to this way.
+- **Mobile:** swipes until the element is visible. Supports `--direction up|down` and `--maxAttempts <n>`; `--within` is not supported.
+
+```
+mm scroll-to-element --testid import-token-button
+mm scroll-to-element --testid row --within "testid:token-list"
+mm scroll-to-element e12 --direction down        # mobile
+```
+
+Playwright's `click` already scrolls its target into view, so you do not need this before `mm click`. Use it to bring an element into view before a screenshot, or to reach content further down a list.
+
 #### `mm clipboard`
 
 Reads from or writes to the system clipboard via Chrome DevTools Protocol. Useful for pasting seed phrases or copying addresses.
@@ -628,9 +643,7 @@ These commands require a mobile session (`mm launch --platform ios|android`). On
 session they return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`. Element-targeting commands accept
 the same `<ref>` / `--testid` / `--selector` targeting as `mm click`.
 
-#### `mm scroll-to-element <ref> [--direction up|down] [--maxAttempts <n>]`
-
-Scrolls the screen until the target element becomes visible.
+`mm scroll-to-element` also works on mobile; see Element Interaction.
 
 #### `mm device-swipe --direction <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]`
 

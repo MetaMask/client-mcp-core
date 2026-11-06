@@ -47,7 +47,6 @@ describe('isMobileOnlyTool', () => {
   it('returns true for mobile-only tools', () => {
     expect(isMobileOnlyTool('hermes_targets')).toBe(true);
     expect(isMobileOnlyTool('get_window_size')).toBe(true);
-    expect(isMobileOnlyTool('scroll_to_element')).toBe(true);
     expect(isMobileOnlyTool('device_swipe')).toBe(true);
     expect(isMobileOnlyTool('long_press')).toBe(true);
     expect(isMobileOnlyTool('tap_coordinates')).toBe(true);
@@ -67,6 +66,7 @@ describe('isMobileOnlyTool', () => {
   it('returns false for browser-only and cross-platform tools', () => {
     expect(isMobileOnlyTool('cdp')).toBe(false);
     expect(isMobileOnlyTool('click')).toBe(false);
+    expect(isMobileOnlyTool('scroll_to_element')).toBe(false);
     expect(isMobileOnlyTool('navigate')).toBe(false);
     expect(isMobileOnlyTool('screenshot')).toBe(false);
     expect(isMobileOnlyTool('build')).toBe(false);
