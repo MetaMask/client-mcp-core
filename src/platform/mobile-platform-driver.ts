@@ -212,8 +212,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Taps the element that `waitForElement` just found, without a second
-   * snapshot. device-mcp releases without the `element` option ignore it and
-   * snapshot again; the tap still hits the same query.
+   * snapshot. device-mcp 0.7.0 declares `tapElement(query)` only; it ignores
+   * the newer `element` option and snapshots again.
    *
    * @param query - The element query.
    * @param element - The element returned by `waitForElement`.
@@ -223,9 +223,6 @@ export class MobilePlatformDriver implements IPlatformDriver {
     query: ElementQuery,
     element: UIElement,
   ): Promise<unknown> {
-    // device-mcp 0.7.0 declares `tapElement(query)`; the `element` option is
-    // newer (see device-mcp CHANGELOG). Extra arguments are ignored by older
-    // releases.
     const backend = this.#backend as DeviceBackend & {
       tapElement(
         query: ElementQuery,

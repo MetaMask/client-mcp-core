@@ -502,12 +502,8 @@ describe('MobilePlatformDriver', () => {
         5000,
       );
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'submit-btn',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'submit-btn' },
+        { element: makeElement() },
       );
       expect(result).toStrictEqual({
         clicked: true,
@@ -522,12 +518,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('testId', 'confirm-button', new Map(), 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'confirm-button',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'confirm-button' },
+        { element: makeElement() },
       );
     });
 
@@ -563,12 +555,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'bare-id',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'bare-id' },
+        { element: makeElement() },
       );
     });
 
@@ -580,12 +568,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'custom:some-value',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'custom:some-value' },
+        { element: makeElement() },
       );
     });
 
@@ -608,13 +592,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          label: 'OK',
-          type: 'Button',
-        },
-        {
-          element: makeElement(),
-        },
+        { label: 'OK', type: 'Button' },
+        { element: makeElement() },
       );
     });
 
@@ -628,24 +607,14 @@ describe('MobilePlatformDriver', () => {
 
       await driver.click('a11yRef', 'e1', refMap, 5000);
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          label: 'OK',
-          type: 'Button',
-        },
-        {
-          element: makeElement(),
-        },
+        { label: 'OK', type: 'Button' },
+        { element: makeElement() },
       );
 
       await driver.click('a11yRef', 'e2', refMap, 5000);
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          label: 'OK',
-          type: 'StaticText',
-        },
-        {
-          element: makeElement(),
-        },
+        { label: 'OK', type: 'StaticText' },
+        { element: makeElement() },
       );
     });
 
@@ -657,13 +626,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          text: '0.5 ETH',
-          type: 'StaticText',
-        },
-        {
-          element: makeElement(),
-        },
+        { text: '0.5 ETH', type: 'StaticText' },
+        { element: makeElement() },
       );
     });
 
@@ -676,9 +640,7 @@ describe('MobilePlatformDriver', () => {
 
       expect(backend.tapElement).toHaveBeenCalledWith(
         { label: 'OK' },
-        {
-          element: makeElement(),
-        },
+        { element: makeElement() },
       );
     });
 
@@ -690,13 +652,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'custom:something',
-          type: 'Button',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'custom:something', type: 'Button' },
+        { element: makeElement() },
       );
     });
 
@@ -708,12 +665,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'submit-btn',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'submit-btn' },
+        { element: makeElement() },
       );
     });
 
@@ -725,12 +678,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'rawvalue',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'rawvalue' },
+        { element: makeElement() },
       );
     });
 
@@ -742,13 +691,8 @@ describe('MobilePlatformDriver', () => {
       await driver.click('a11yRef', 'e1', refMap, 5000);
 
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          label: 'OK',
-          type: 'Button',
-        },
-        {
-          element: makeElement(),
-        },
+        { label: 'OK', type: 'Button' },
+        { element: makeElement() },
       );
     });
 
@@ -896,12 +840,8 @@ describe('MobilePlatformDriver', () => {
         5000,
       );
       expect(backend.tapElement).toHaveBeenCalledWith(
-        {
-          identifier: 'password-input',
-        },
-        {
-          element: makeElement(),
-        },
+        { identifier: 'password-input' },
+        { element: makeElement() },
       );
       expect(backend.typeText).toHaveBeenCalledWith('secret123');
       expect(result).toStrictEqual({
@@ -1263,9 +1203,7 @@ describe('MobilePlatformDriver', () => {
         await driver.click('a11yRef', 'e1', refMap, 1000);
         expect(backend.tapElement).toHaveBeenCalledWith(
           { identifier: 'send' },
-          {
-            element: makeElement(),
-          },
+          { element: makeElement() },
         );
         await expect(
           driver.click('a11yRef', 'e2', refMap, 1000),

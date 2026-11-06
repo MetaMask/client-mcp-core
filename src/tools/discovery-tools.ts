@@ -129,9 +129,8 @@ export async function describeScreenTool(
 
   try {
     // Mobile: one device snapshot for both the test IDs and the tree, when
-    // the driver supports it. The app-state read does not depend on it, so
-    // the two device round trips run at the same time. The browser keeps the
-    // order: its state read and its tree both use the page.
+    // the driver supports it, read in parallel with the app state. The
+    // browser stays sequential: both reads use the page.
     const [state, screen] = driver.captureScreen
       ? await Promise.all([driver.getAppState(), driver.captureScreen()])
       : [await driver.getAppState(), undefined];
