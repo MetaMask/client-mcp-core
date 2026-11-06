@@ -1333,8 +1333,6 @@ export async function sendRequest(
     COMMAND_TIMEOUTS_MS[commandName] ??
     COMMAND_TIMEOUTS_MS.default;
 
-  let lastError: unknown;
-
   for (let attempt = 0; attempt <= SEND_MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       await sleep(SEND_RETRY_BASE_DELAY_MS * attempt);
@@ -1393,8 +1391,6 @@ export async function sendRequest(
       }
 
       if (isTransientError(error)) {
-        // Refused: the daemon never got the request, so a resend is safe.
-        lastError = error;
         continue;
       }
 
@@ -1410,10 +1406,9 @@ export async function sendRequest(
     }
   }
 
-  const code = getNetworkErrorCode(lastError) ?? 'ECONNREFUSED';
   fail(
     ErrorCodes.MM_DAEMON_NOT_RUNNING,
-    `daemon refused the connection on port ${port} (${code}) after ${SEND_MAX_RETRIES + 1} attempts`,
+    `daemon refused the connection on port ${port} (ECONNREFUSED) after ${SEND_MAX_RETRIES + 1} attempts`,
   );
 }
 

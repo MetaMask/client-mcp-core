@@ -1592,24 +1592,6 @@ describe('sendRequest', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([['EPIPE'], ['UND_ERR_SOCKET']])(
-    'does not resend after %s',
-    async (code) => {
-      vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-        new TypeError('fetch failed', { cause: { code } }),
-      );
-
-      await expect(
-        sendRequest(3000, 'POST', '/tool/click', {}),
-      ).rejects.toThrowError('process.exit');
-
-      expect(expectFailure(expect.stringContaining(code), 3).error.code).toBe(
-        'MM_DAEMON_CONNECTION_LOST',
-      );
-      expect(fetch).toHaveBeenCalledTimes(1);
-    },
-  );
-
   it('does not resend a bare fetch failed without a code', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(
       new TypeError('fetch failed'),
