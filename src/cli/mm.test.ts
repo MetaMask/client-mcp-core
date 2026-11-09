@@ -50,6 +50,11 @@ import {
   sleep,
   main,
 } from './mm.js';
+import {
+  DEFAULT_CDP_TIMEOUT_MS,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
+import { computeTimeoutBudget } from '../utils/timeout-budget.js';
 
 vi.mock('node:child_process', () => ({
   execSync: vi.fn(() => Buffer.from('/mock/worktree\n')),
@@ -1726,6 +1731,7 @@ describe('sendRequest', () => {
     ['MM_NO_ACTIVE_SESSION', 3],
     ['MM_TARGET_OBSCURED', 4],
     ['MM_CLICK_TIMEOUT', 5],
+    ['MM_QUEUE_TIMEOUT', 5],
     ['MM_DEVICE_ACTION_FAILED', 6],
     ['TOOL_EXECUTION_FAILED', 1],
     ['MM_CONSUMER_SPECIFIC_CODE', 1],
@@ -2036,6 +2042,111 @@ describe('routeCommand', () => {
         body: JSON.stringify({ a11yRef: 'e1', timeoutMs: 60000 }),
       }),
     );
+  });
+
+  describe('derived request timeout', () => {
+    /**
+     * Rejects like `fetch` when its abort signal fires.
+     */
+    function abortingFetch(): void {
+      vi.mocked(globalThis.fetch).mockImplementation(
+        async (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              const error = new Error('aborted');
+              error.name = 'AbortError';
+              reject(error);
+            });
+          }),
+      );
+    }
+
+    /**
+     * Runs a command with fake timers and asserts the CLI aborts the request
+     * (exit 5) after exactly `expectedMs`.
+     *
+     * @param command - The command to route.
+     * @param args - Its arguments.
+     * @param expectedMs - The expected HTTP abort timeout.
+     * @returns The error the command exited with.
+     */
+    async function expectAbortAfter(
+      command: string,
+      args: string[],
+      expectedMs: number,
+    ): Promise<string> {
+      vi.useFakeTimers();
+      try {
+        abortingFetch();
+        const pending = routeCommand(command, args, 3000).catch(
+          (error: unknown) => error,
+        );
+
+        await vi.advanceTimersByTimeAsync(expectedMs - 1);
+        expect(exitSpy).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        const error = await pending;
+        expectFailure(
+          `request timed out after ${expectedMs}ms; state unknown`,
+          5,
+        );
+        return (error as Error).message;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it('uses the derived budget for click without --timeout', async () => {
+      expect(
+        await expectAbortAfter(
+          'click',
+          ['e3'],
+          computeTimeoutBudget(DEFAULT_INTERACTION_TIMEOUT_MS).http,
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('uses the derived budget for click with --timeout 2000', async () => {
+      expect(
+        await expectAbortAfter('click', ['e3', '--timeout', '2000'], 19000),
+      ).toBe('process.exit');
+    });
+
+    it('uses the derived budget for cdp', async () => {
+      expect(
+        await expectAbortAfter(
+          'cdp',
+          ['Runtime.evaluate'],
+          computeTimeoutBudget(DEFAULT_CDP_TIMEOUT_MS).http,
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('uses the derived budget for run-steps with batchTimeoutMs', async () => {
+      expect(
+        await expectAbortAfter(
+          'run-steps',
+          [
+            JSON.stringify({
+              steps: [{ tool: 'get_state' }],
+              batchTimeoutMs: 20000,
+            }),
+          ],
+          computeTimeoutBudget(20000).http,
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('keeps the 30 s default for run-steps without batchTimeoutMs', async () => {
+      expect(
+        await expectAbortAfter(
+          'run-steps',
+          [JSON.stringify({ steps: [{ tool: 'get_state' }] })],
+          30_000,
+        ),
+      ).toBe('process.exit');
+    });
   });
 
   it('exits when click has no target', async () => {

@@ -23,14 +23,18 @@ import {
 } from '../tools/types/errors.js';
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
-import { computeTimeoutBudget } from '../utils/timeout-budget.js';
+import {
+  computeTimeoutBudget,
+  resolveActionTimeoutMs,
+} from '../utils/timeout-budget.js';
 import { OBSERVE_LEVELS } from '../validation/observe-level.js';
 import type { ObserveLevel } from '../validation/observe-level.js';
 
 const COMMAND_TIMEOUTS_MS: Record<string, number> = {
+  // launch starts a browser and cleans up first; cleanup tears down services.
   launch: 120_000,
   cleanup: 30_000,
-  cdp: 35_000,
+  // Tools that have an action budget derive their timeout from it instead.
   default: 30_000,
 };
 
@@ -617,15 +621,7 @@ async function sendInteractionRequest(
     body.within = within;
   }
 
-  await sendRequest(
-    port,
-    'POST',
-    toolPath,
-    body,
-    timeoutMs === undefined
-      ? undefined
-      : { requestTimeoutMs: computeTimeoutBudget(timeoutMs).http },
-  );
+  await sendRequest(port, 'POST', toolPath, body);
 }
 
 /**
@@ -1323,6 +1319,10 @@ export async function daemonFetch(
  * connection failure fails at once with MM_DAEMON_CONNECTION_LOST, because
  * the daemon may already have run the action.
  *
+ * The abort timeout comes from the requested override, else from the one
+ * timeout budget shared with the daemon (`computeTimeoutBudget` applied to
+ * the request's action budget), else from the command's fixed timeout.
+ *
  * @param port - The daemon HTTP server port.
  * @param method - The HTTP method to use.
  * @param requestPath - The URL path for the request.
@@ -1338,8 +1338,12 @@ export async function sendRequest(
   options?: { requestTimeoutMs?: number },
 ): Promise<void> {
   const commandName = requestPath.split('/').pop() ?? '';
+  const actionTimeoutMs = resolveActionTimeoutMs(commandName, body);
   const timeout =
     options?.requestTimeoutMs ??
+    (actionTimeoutMs === undefined
+      ? undefined
+      : computeTimeoutBudget(actionTimeoutMs).http) ??
     COMMAND_TIMEOUTS_MS[commandName] ??
     COMMAND_TIMEOUTS_MS.default;
 

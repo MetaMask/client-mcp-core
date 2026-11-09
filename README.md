@@ -466,7 +466,7 @@ This accessibility-first approach provides reliable element targeting that survi
 
 Refs are numbered in tree order each time the daemon reads the screen (`describe_screen`, `accessibility_snapshot`, or an observation). The same screen gives the same refs, so an unchanged screen diffs as unchanged. When elements appear or disappear above an element, its ref can change: use the refs from the latest response. When a call returns both a tree and an observation (for example `describe_screen` with `observe`), the observation's refs are the ones that resolve. `list_testids` does not change refs.
 
-On mobile, after a mutating or batch call, the daemon may take the snapshot again after 300 ms: while it shows a busy element (a label ending in `, busy`, an Android `ProgressBar`, or an iOS `ActivityIndicator` / `ProgressIndicator` / `UIActivityIndicatorView`), and at most once when it still equals the previous screen (not when the first snapshot took 1 s or more: the screen already had that time to change). In total at most 3 extra snapshots, and no wait that would end more than about 2 s after the first snapshot started. The test IDs come from the same snapshot as the tree. `describe_screen` on mobile also takes one snapshot for both.
+On mobile, after a mutating or batch call, the daemon may take the snapshot again after 300 ms: while it shows a busy element (a label ending in `, busy`, an Android `ProgressBar`, or an iOS `ActivityIndicator` / `ProgressIndicator` / `UIActivityIndicatorView`), once when it still looks like a screen tearing down (the tree lost a large part of its nodes but kept most of the previous screen's test IDs; on Android a navigating tap can be observed as the old screen, half removed), and at most once when it still equals the previous screen (not when the first snapshot took 1 s or more: the screen already had that time to change). In total at most 3 extra snapshots, and no wait that would end more than about 2 s after the first snapshot started. The test IDs come from the same snapshot as the tree. `describe_screen` on mobile also takes one snapshot for both.
 
 On mobile, each observation, `describe_screen`, `list_testids` and `accessibility_snapshot` takes one device snapshot (plus the settle retries above). The consumer's `DeviceBackend` takes the snapshot. With the `@metamask/device-mcp` ADB backend (0.6.0 or later), Android snapshots use a signed test-only helper APK by default (`helper-first`). The backend installs it on the device the first time, so the first snapshot takes longer. To use only `uiautomator dump`, set `DEVICE_MCP_ADB_SNAPSHOT=dump` or the backend's `adb.snapshotMode` option. See the device-mcp README. The viewport for `visible` comes from the snapshot's root frames; the device window size is read at most once per session (and not refreshed after a rotation), only when a snapshot has no root frame. Elements that are not part of the app are removed from the tree, the refs, the test IDs and `generate_locators`: on Android, the system status bar and navigation bar windows (a full-width or full-height bar window whose ids are all `com.android.systemui:id/*`; other System UI windows such as the biometric prompt stay); on both platforms, the Expo DevLauncher "Tools" button of development builds (iOS `gearshape.fill` and its "Tools" text). Pass `{ excludeDevOverlay: false }` as the third `MobilePlatformDriver` argument to keep the DevLauncher button. Taps and waits inside `@metamask/device-mcp` still search the whole snapshot.
 
@@ -853,6 +853,7 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_REQUEST_ABORTED`                | Internal: a cancelled (timed-out) call stopped; the caller gets the timeout error                       |
 | `MM_INTERNAL_ERROR`                 | Internal server error                                                                                   |
 | `MM_BATCH_TIMEOUT`                  | `batchTimeoutMs` deadline exceeded in run_steps                                                         |
+| `MM_QUEUE_TIMEOUT`                  | The daemon stopped the request before it finished; the action may have run                              |
 | `MM_CDP_BLOCKED`                    | CDP method is blocked (destructive to session); on mobile the Hermes blocklist maps here too            |
 | `MM_CDP_FAILED`                     | CDP command execution failed or timed out (on mobile, the underlying `HERMES_*` code is in the message) |
 | `MM_HERMES_FAILED`                  | `hermes_targets` discovery failed (underlying `HERMES_*` code is in the message)                        |
@@ -870,6 +871,12 @@ Tool errors are classified into specific error codes for structured handling:
 The daemon HTTP server also sets `VALIDATION_ERROR` (schema), `TOOL_NOT_FOUND`,
 `SERVER_NOT_STARTED`, `TOOL_EXECUTION_FAILED` and `INTERNAL_ERROR`
 (`DaemonErrorCodes`).
+
+A timed-out observation is not a tool error: the action response stays `ok` and
+carries `"observations": {"timedOut": true}`, so the caller knows the screen was
+not read (the diff baseline is not replaced). `MM_QUEUE_TIMEOUT` means the
+daemon's request queue stopped the call before it finished; it is exit 5, not
+retryable, and the action may have run, so check the state before retrying.
 
 ### CLI failure output and exit codes
 
@@ -895,16 +902,16 @@ click, type and request timeouts because the action state is unknown. `meta` is
 present when the daemon answered. `exitCodeForError()` in
 `src/tools/types/errors.ts` is the one map from error code to exit code:
 
-| Exit | Meaning                                                          | Codes (examples)                                                                                              |
-| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 0    | ok                                                               |                                                                                                               |
-| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                            |
-| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`               |
-| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                |
-| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`   |
-| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`            |
-| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` |
-| 7    | daemon version mismatch (reserved)                               |                                                                                                               |
+| Exit | Meaning                                                          | Codes (examples)                                                                                                       |
+| ---- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 0    | ok                                                               |                                                                                                                        |
+| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                                     |
+| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`                        |
+| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                         |
+| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`            |
+| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`, `MM_QUEUE_TIMEOUT` |
+| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`          |
+| 7    | daemon version mismatch (reserved)                               |                                                                                                                        |
 
 ## Development
 

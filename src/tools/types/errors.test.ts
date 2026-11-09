@@ -27,6 +27,7 @@ describe('exitCodeForError', () => {
     [ErrorCodes.MM_WAIT_TIMEOUT, CliExitCodes.TIMEOUT],
     [ErrorCodes.MM_CLICK_TIMEOUT, CliExitCodes.TIMEOUT],
     [ErrorCodes.MM_REQUEST_TIMEOUT, CliExitCodes.TIMEOUT],
+    [ErrorCodes.MM_QUEUE_TIMEOUT, CliExitCodes.TIMEOUT],
     [ErrorCodes.MM_BATCH_TIMEOUT, CliExitCodes.TIMEOUT],
     [ErrorCodes.MM_DEVICE_NOT_AVAILABLE, CliExitCodes.PLATFORM],
     [ErrorCodes.MM_HERMES_FAILED, CliExitCodes.PLATFORM],
@@ -64,6 +65,7 @@ describe('isRetryableError', () => {
   it('never marks an action with unknown state as retryable', () => {
     expect(isRetryableError(ErrorCodes.MM_CLICK_TIMEOUT)).toBe(false);
     expect(isRetryableError(ErrorCodes.MM_TYPE_TIMEOUT)).toBe(false);
+    expect(isRetryableError(ErrorCodes.MM_QUEUE_TIMEOUT)).toBe(false);
     expect(isRetryableError(ErrorCodes.MM_REQUEST_TIMEOUT)).toBe(false);
     expect(isRetryableError(ErrorCodes.MM_DAEMON_CONNECTION_LOST)).toBe(false);
   });
@@ -77,6 +79,9 @@ describe('isRetryableError', () => {
 describe('defaultHintForError', () => {
   it('returns a hint for codes that have one', () => {
     expect(defaultHintForError(ErrorCodes.MM_CLICK_TIMEOUT)).toContain(
+      'state is unknown',
+    );
+    expect(defaultHintForError(ErrorCodes.MM_QUEUE_TIMEOUT)).toContain(
       'state is unknown',
     );
     expect(defaultHintForError(ErrorCodes.MM_NO_ACTIVE_SESSION)).toBe(

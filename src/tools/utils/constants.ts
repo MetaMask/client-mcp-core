@@ -10,6 +10,12 @@
 /** Default timeout for user interactions (click, type, wait_for) - 15 seconds */
 export const DEFAULT_INTERACTION_TIMEOUT_MS = 15000;
 
+/** Default action timeout for `cdp` - 30 seconds */
+export const DEFAULT_CDP_TIMEOUT_MS = 30_000;
+
+/** Default action timeout for `wait_for_notification` - 15 seconds */
+export const DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS = 15_000;
+
 /** Maximum time the RequestQueue finally block waits for a hung task to settle */
 export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
 
@@ -66,6 +72,14 @@ export const MOBILE_SETTLE_MAX_SNAPSHOTS = 3;
  * screens are retried up to `MOBILE_SETTLE_MAX_SNAPSHOTS`.
  */
 export const MOBILE_SETTLE_UNCHANGED_RETRIES = 1;
+
+/**
+ * Mobile observation settle: extra snapshots allowed because the screen looks
+ * like it is still tearing down (see `isScreenInTransition`), after a
+ * navigating tap. One retry covers the Android transition observed in P1-32
+ * (the new screen was complete ~440 ms after the tap).
+ */
+export const MOBILE_SETTLE_TRANSITION_RETRIES = 1;
 
 /**
  * Mobile observation settle: when the first snapshot took at least this long
