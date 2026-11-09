@@ -254,6 +254,25 @@ describe('CdpManager page targets', () => {
     expect(fake.newCDPSession).toHaveBeenCalledTimes(1);
   });
 
+  it('drops the session of a closed page', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const pageEvents = createEmitter();
+    const page = {
+      url: vi.fn(() => PAGE_URL),
+      once: pageEvents.on,
+    } as unknown as Page;
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
+
+    await manager.getSession({ kind: 'page', page });
+    pageEvents.emit('close', page);
+    await manager.getSession({ kind: 'page', page });
+
+    expect(detached).toHaveBeenCalledTimes(1);
+    expect(fake.newCDPSession).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps one session per page', async () => {
     const fake = createContext();
     const manager = new CdpManager(fake.context);

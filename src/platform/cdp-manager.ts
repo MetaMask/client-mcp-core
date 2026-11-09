@@ -556,6 +556,8 @@ export class CdpManager {
     };
     this.#pageEntries.set(page, entry);
     this.#entries.add(entry);
+    // A closed page's session is dead: forget it so closed tabs do not pile up.
+    page.once?.('close', () => this.#drop(entry));
     return entry;
   }
 
