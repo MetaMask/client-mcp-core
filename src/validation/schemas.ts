@@ -630,11 +630,12 @@ export const runStepsInputSchema = z.object({
     .min(1000)
     .max(30_000)
     .describe(
-      'Overall timeout for the batch in milliseconds. ' +
+      'Overall deadline for the batch in milliseconds. ' +
         'When exceeded, remaining steps are marked as skipped and partial results are returned. ' +
-        'The deadline is checked between steps. Capped at 30 000. The daemon queue and the CLI ' +
-        'wait for this budget plus the observation and a margin; to get partial results, leave ' +
-        'room for the step in progress (each step has its own timeout, e.g. 20 000).',
+        'The deadline is checked between steps, so the step in progress always finishes: each step ' +
+        'keeps its own timeout (15 000 by default; `wait_for` accepts up to 120 000). ' +
+        'The daemon queue and the CLI cover this deadline plus the slowest step, so a batch that ' +
+        'stops at its deadline still returns its partial results. Capped at 30 000.',
     )
     .optional(),
   // Removed in favour of `observe`. Rejected (not ignored) so old callers

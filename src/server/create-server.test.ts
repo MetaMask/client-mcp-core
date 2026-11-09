@@ -20,7 +20,10 @@ import type { IPlatformDriver } from '../platform/types.js';
 import { toolRegistry } from '../tools/registry.js';
 import { exitCodeForError } from '../tools/types/errors.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
-import { OBSERVATION_TIMEOUT_MS } from '../tools/utils/constants.js';
+import {
+  OBSERVATION_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 import { waitForAnimationsToSettle } from '../tools/utils/discovery.js';
 import type {
   DaemonState,
@@ -2353,6 +2356,21 @@ describe('createServer abort, ref generations and observations', () => {
         diff?: { added: string[]; removed: string[]; unchanged: number };
       };
     };
+    result?: {
+      steps: {
+        tool: string;
+        ok: boolean;
+        error?: { code: string };
+        meta?: { skipped?: boolean };
+      }[];
+      summary: {
+        ok: boolean;
+        total: number;
+        succeeded: number;
+        failed: number;
+        skipped: number;
+      };
+    };
   };
   type Tree = { nodes: Node[]; refMap: Map<string, string> };
 
@@ -2639,6 +2657,100 @@ describe('createServer abort, ref generations and observations', () => {
         removed: [],
         unchanged: 2,
       });
+    });
+  });
+
+  describe('P1-20: one timeout budget', () => {
+    /**
+     * Registers a step tool that blocks until `release()` is called, and
+     * resolves `entered` once the daemon is running it.
+     *
+     * @returns The `entered` promise and the `release` callback.
+     */
+    function addGatedStep(): {
+      entered: Promise<void>;
+      release: () => void;
+    } {
+      let markEntered!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve;
+      });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      addTool('test_slow_step', async () => {
+        markEntered();
+        await gate;
+        return { ok: true, result: {} };
+      });
+      return { entered, release };
+    }
+
+    it('publishes the effective queue default in the daemon state', async () => {
+      await startServer();
+      expect(state.requestTimeoutMs).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    });
+
+    it('publishes a configured queue default for the CLI to nest above', async () => {
+      await startServer({ requestTimeoutMs: 180_000 });
+      expect(state.requestTimeoutMs).toBe(180_000);
+    });
+
+    it('returns partial results when a step runs past the batch deadline', async () => {
+      await startServer();
+      vi.useFakeTimers();
+      const step = addGatedStep();
+      addTool('test_next_step', async () => ({ ok: true, result: {} }));
+
+      const pending = post('/tool/run_steps', {
+        observe: 'none',
+        batchTimeoutMs: 25_000,
+        steps: [{ tool: 'test_slow_step' }, { tool: 'test_next_step' }],
+      });
+      await step.entered;
+      // Without the slowest step the queue expired at 35 s (deadline +
+      // observation + margin); the step is still running past the deadline.
+      await vi.advanceTimersByTimeAsync(40_000);
+      step.release();
+
+      const { status, body } = await pending;
+      expect(status).toBe(200);
+      expect(body.error).toBeUndefined();
+      expect(
+        body.result?.steps.map((result) => [result.tool, result.ok]),
+      ).toStrictEqual([
+        ['test_slow_step', true],
+        ['test_next_step', false],
+      ]);
+      expect(body.result?.steps[1]?.error?.code).toBe('MM_BATCH_TIMEOUT');
+      expect(body.result?.steps[1]?.meta?.skipped).toBe(true);
+      expect(body.result?.summary).toMatchObject({
+        succeeded: 1,
+        failed: 1,
+        skipped: 1,
+      });
+    });
+
+    it('never gives run_steps less than the configured queue default', async () => {
+      await startServer({ requestTimeoutMs: 40_000 });
+      vi.useFakeTimers();
+      const step = addGatedStep();
+
+      const pending = post('/tool/run_steps', {
+        observe: 'none',
+        batchTimeoutMs: 1_000,
+        steps: [{ tool: 'test_slow_step' }],
+      });
+      await step.entered;
+      // The derived queue would be 26 s; the configured 40 s default wins.
+      await vi.advanceTimersByTimeAsync(30_000);
+      step.release();
+
+      const { status, body } = await pending;
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.result?.summary).toMatchObject({ succeeded: 1, failed: 0 });
     });
   });
 

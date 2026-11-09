@@ -16,6 +16,9 @@ export const DEFAULT_CDP_TIMEOUT_MS = 30_000;
 /** Default action timeout for `wait_for_notification` - 15 seconds */
 export const DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS = 15_000;
 
+/** Default per-request execution timeout of the RequestQueue - 30 seconds */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 /** Maximum time the RequestQueue finally block waits for a hung task to settle */
 export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
 

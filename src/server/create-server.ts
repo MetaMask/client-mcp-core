@@ -10,7 +10,11 @@ import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RefStore } from './ref-store.js';
 import type { RefHandle } from './ref-store.js';
-import { RequestQueue, QueueTimeoutError } from './request-queue.js';
+import {
+  RequestQueue,
+  QueueTimeoutError,
+  resolveQueueTimeoutMs,
+} from './request-queue.js';
 import {
   RequestTimer,
   requestStartOf,
@@ -323,7 +327,10 @@ export function resolveObserveLevel(
  */
 export function createServer(config: ServerConfig): ServerInstance {
   const app = express();
-  const queue = new RequestQueue(config.requestTimeoutMs);
+  // Effective queue default: also published in the daemon state so the CLI
+  // can nest its HTTP abort above it (see resolveCliHttpTimeoutMs).
+  const queueDefaultMs = resolveQueueTimeoutMs(config.requestTimeoutMs);
+  const queue = new RequestQueue(queueDefaultMs);
   const refStore = new RefStore(config.sessionManager);
   const nonce = randomUUID();
   // One owner for driver disposal retries across tools, stop() and rollback.
@@ -780,10 +787,16 @@ export function createServer(config: ServerConfig): ServerInstance {
     const actionTimeoutMs = resolveActionTimeoutMs(toolName, inputRecord, {
       platform: config.sessionManager.getPlatformDriver?.()?.getPlatform(),
     });
-    const queueTimeoutMs =
+    let queueTimeoutMs =
       actionTimeoutMs === undefined
         ? undefined
         : computeTimeoutBudget(actionTimeoutMs).queue;
+    // run_steps checks its deadline only between steps, so a slow step can run
+    // past it. Its budget covers the slowest step; never give a batch less
+    // than the queue default it had before the budget existed.
+    if (queueTimeoutMs !== undefined && toolName === 'run_steps') {
+      queueTimeoutMs = Math.max(queueTimeoutMs, queueDefaultMs);
+    }
 
     try {
       timer.markEnqueued();
@@ -1020,6 +1033,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           nonce,
           version: pkg.version,
           subPorts,
+          requestTimeoutMs: queueDefaultMs,
         };
 
         await writeDaemonState(worktreeRoot, state);
