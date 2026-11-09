@@ -595,15 +595,21 @@ mm mock-network requests [--limit <n>]
 | ------------- | ------------------------------------------ |
 | `--limit <n>` | Maximum number of recent records to return |
 
-#### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
+#### `mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
-Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`).
+Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`). On the browser, `--target` selects the active page (`page`, default) or the Extension service worker (`sw`); browser commands share a persistent CDP session per target, and `--fresh` uses a one-shot session detached after the command.
 
 ```bash
-# Browser
+# Browser — page (default)
 mm cdp Runtime.evaluate '{"expression":"document.title"}'
 mm cdp Network.enable
 mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
+
+# Browser — Extension service worker (the background where state lives)
+mm cdp Runtime.evaluate '{"expression":"typeof globalThis.stateHooks","returnByValue":true}' --target sw
+
+# Browser — one-shot session, detached after the command
+mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --fresh
 
 # Mobile (Hermes, default) — evaluate JS in the running React Native app
 mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.metamask --metro-port 8081
@@ -617,7 +623,8 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 | `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile) |
 | `[params-json]` | Optional JSON object with method-specific parameters                                                                      |
 | `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                  |
-| `--target`      | **Mobile only** — `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Ignored on browser.        |
+| `--target`      | Browser: `page` (default) or `sw` (Extension service worker). Mobile: `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Each platform rejects the other's targets with `MM_INVALID_INPUT`. |
+| `--fresh`       | **Browser only** — run the command on a one-shot CDP session and detach it afterwards instead of the persistent session. |
 | `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                          |
 | `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port (default: 8081). Ignored on browser.                   |
 | `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier. Ignored on browser.                               |
@@ -626,13 +633,15 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 
 | Aspect            | Browser (Playwright)                                                                             | Mobile — Hermes (`--target hermes`, default)                                                     | Mobile — Android WebView (`--target android-webview`)                                                           |
 | ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Target            | The page's Chrome DevTools session                                                               | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
+| Target            | The active page or the Extension service worker (`--target sw`), each on a persistent session   | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
 | Available domains | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, …)                                     | JS-engine subset only (`Runtime`, `Debugger`, `Log`, `HeapProfiler`) — no `DOM`/`Page`/`Network` | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, `Input`)                                              |
 | Use it for        | Web page DOM in the browser                                                                      | The React Native app's own JavaScript                                                            | The web page DOM inside the app's in-app browser                                                                |
 | Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`                |
 | Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      | `Runtime.evaluate` nests the value at `result.result.value`                                                     |
 
-Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
+Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
+
+Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). Each platform rejects the other platform's `--target` values with `MM_INVALID_INPUT`. The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
 #### `mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]`
 

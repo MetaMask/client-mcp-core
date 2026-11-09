@@ -2859,6 +2859,44 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes cdp with --target page', async () => {
+    await routeCommand('cdp', ['Runtime.evaluate', '--target', 'page'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          target: 'page',
+        }),
+      }),
+    );
+  });
+
+  it('routes cdp with --target sw and --fresh', async () => {
+    await routeCommand(
+      'cdp',
+      [
+        'Runtime.evaluate',
+        '{"expression":"typeof globalThis.stateHooks"}',
+        '--target',
+        'sw',
+        '--fresh',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/cdp',
+      expect.objectContaining({
+        body: JSON.stringify({
+          method: 'Runtime.evaluate',
+          params: { expression: 'typeof globalThis.stateHooks' },
+          target: 'sw',
+          fresh: true,
+        }),
+      }),
+    );
+  });
+
   it('exits when cdp --target is invalid', async () => {
     await expect(
       routeCommand('cdp', ['Runtime.evaluate', '--target', 'bogus'], 3000),

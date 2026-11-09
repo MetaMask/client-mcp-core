@@ -30,6 +30,7 @@ import {
   screenRecordingInputSchema,
   deviceLogsInputSchema,
   generateLocatorsInputSchema,
+  cdpInputSchema,
   observeLevelSchema,
   omitObserve,
   runStepsInputSchema,
@@ -860,6 +861,33 @@ describe('device tool schemas', () => {
 
       expect(result.success).toBe(true);
     });
+  });
+});
+
+describe('cdpInputSchema', () => {
+  it('accepts every platform target and leaves target optional', () => {
+    expect(cdpInputSchema.parse({ method: 'Runtime.evaluate' })).toMatchObject({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+    });
+    expect(cdpInputSchema.parse({ method: 'x' }).target).toBeUndefined();
+
+    for (const target of ['page', 'sw', 'hermes', 'android-webview']) {
+      expect(cdpInputSchema.parse({ method: 'x', target }).target).toBe(target);
+    }
+  });
+
+  it('rejects an unknown target', () => {
+    expect(
+      cdpInputSchema.safeParse({ method: 'x', target: 'bogus' }).success,
+    ).toBe(false);
+  });
+
+  it('accepts the fresh flag', () => {
+    expect(cdpInputSchema.parse({ method: 'x', fresh: true }).fresh).toBe(true);
+    expect(
+      cdpInputSchema.safeParse({ method: 'x', fresh: 'yes' }).success,
+    ).toBe(false);
   });
 });
 

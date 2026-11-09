@@ -649,14 +649,33 @@ describe('PlaywrightPlatformDriver', () => {
   });
 
   describe('cdp', () => {
-    function createCdpPage(cdpSession: {
-      send: ReturnType<typeof vi.fn>;
-      detach: ReturnType<typeof vi.fn>;
-    }) {
+    const EXTENSION_ID = 'abcdefghijklmnopabcdefghijklmnop';
+    const SW_URL = `chrome-extension://${EXTENSION_ID}/background.js`;
+
+    function createCdpPage(
+      cdpSession: {
+        send: ReturnType<typeof vi.fn>;
+        detach: ReturnType<typeof vi.fn>;
+      },
+      contextOverride: Record<string, unknown> = {},
+    ) {
+      const context = {
+        newCDPSession: vi.fn().mockResolvedValue(cdpSession),
+        pages: vi.fn(() => [
+          { url: () => `chrome-extension://${EXTENSION_ID}/home.html` },
+        ]),
+        serviceWorkers: vi.fn(() => []),
+        on: vi.fn(),
+        off: vi.fn(),
+        browser: vi.fn(() => null),
+        ...contextOverride,
+      };
       return {
-        context: vi.fn().mockReturnValue({
-          newCDPSession: vi.fn().mockResolvedValue(cdpSession),
-        }),
+        url: vi
+          .fn()
+          .mockReturnValue(`chrome-extension://${EXTENSION_ID}/home.html`),
+        context: vi.fn().mockReturnValue(context),
+        contextMock: context,
       };
     }
 
@@ -681,7 +700,62 @@ describe('PlaywrightPlatformDriver', () => {
         expression: 'document.title',
         returnByValue: true,
       });
-      expect(cdpSession.detach).toHaveBeenCalled();
+      expect(cdpSession.detach).not.toHaveBeenCalled();
+    });
+
+    it('reuses one persistent session across calls (AC1)', async () => {
+      const cdpSession = {
+        send: vi.fn().mockResolvedValue({ ok: true }),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const page = createCdpPage(cdpSession);
+      const driver = createDriver(page);
+
+      await driver.cdp({ method: 'Runtime.enable', timeoutMs: TIMEOUT_MS });
+      await driver.cdp({
+        method: 'Runtime.evaluate',
+        params: { expression: '1+1' },
+        timeoutMs: TIMEOUT_MS,
+      });
+
+      expect(page.contextMock.newCDPSession).toHaveBeenCalledTimes(1);
+      expect(cdpSession.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('detaches the persistent session on dispose', async () => {
+      const cdpSession = {
+        send: vi.fn().mockResolvedValue({ ok: true }),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const driver = createDriver(createCdpPage(cdpSession));
+
+      await driver.cdp({ method: 'Runtime.enable', timeoutMs: TIMEOUT_MS });
+      await driver.dispose?.();
+
+      expect(cdpSession.detach).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses a one-shot session with fresh and detaches it', async () => {
+      const cdpSession = {
+        send: vi.fn().mockResolvedValue({ ok: true }),
+        detach: vi.fn().mockResolvedValue(undefined),
+      };
+      const page = createCdpPage(cdpSession);
+      const driver = createDriver(page);
+
+      await driver.cdp({
+        method: 'Runtime.evaluate',
+        timeoutMs: TIMEOUT_MS,
+        fresh: true,
+      });
+      await driver.cdp({
+        method: 'Runtime.evaluate',
+        timeoutMs: TIMEOUT_MS,
+        fresh: true,
+      });
+
+      expect(page.contextMock.newCDPSession).toHaveBeenCalledTimes(2);
+      expect(cdpSession.detach).toHaveBeenCalledTimes(2);
     });
 
     it('sends a CDP command with no params', async () => {
@@ -698,6 +772,108 @@ describe('PlaywrightPlatformDriver', () => {
 
       expect(outcome.ok).toBe(true);
       expect(cdpSession.send).toHaveBeenCalledWith('Network.enable', {});
+    });
+
+    it.each(['hermes', 'android-webview'] as const)(
+      'rejects the mobile-only target %s with MM_INVALID_INPUT',
+      async (target) => {
+        const cdpSession = { send: vi.fn(), detach: vi.fn() };
+        const page = createCdpPage(cdpSession);
+        const driver = createDriver(page);
+
+        const outcome = await driver.cdp({
+          method: 'Runtime.evaluate',
+          timeoutMs: TIMEOUT_MS,
+          target,
+        });
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+          expect(outcome.code).toBe('MM_INVALID_INPUT');
+          expect(outcome.message).toContain(target);
+          expect(outcome.message).toContain('Browser targets: page, sw');
+        }
+        expect(page.contextMock.newCDPSession).not.toHaveBeenCalled();
+      },
+    );
+
+    it('sends --target sw to the extension service worker', async () => {
+      const listeners = new Map<string, Set<(payload: never) => void>>();
+      const browserSession = {
+        send: vi.fn(
+          async (method: string, params?: Record<string, unknown>) => {
+            if (method === 'Target.getTargets') {
+              return {
+                targetInfos: [
+                  { type: 'service_worker', url: SW_URL, targetId: 'target-1' },
+                ],
+              };
+            }
+            if (method === 'Target.attachToTarget') {
+              return { sessionId: 'session-1' };
+            }
+            if (method === 'Target.sendMessageToTarget') {
+              const message = JSON.parse(String(params?.message)) as {
+                id: number;
+              };
+              for (const listener of listeners.get(
+                'Target.receivedMessageFromTarget',
+              ) ?? []) {
+                listener({
+                  sessionId: 'session-1',
+                  message: JSON.stringify({
+                    id: message.id,
+                    result: { result: { value: 'object' } },
+                  }),
+                } as never);
+              }
+            }
+            return {};
+          },
+        ),
+        detach: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn((event: string, listener: (payload: never) => void) => {
+          let set = listeners.get(event);
+          if (!set) {
+            set = new Set();
+            listeners.set(event, set);
+          }
+          set.add(listener);
+        }),
+        off: vi.fn((event: string, listener: (payload: never) => void) => {
+          listeners.get(event)?.delete(listener);
+        }),
+      };
+      const page = createCdpPage(
+        { send: vi.fn(), detach: vi.fn() },
+        {
+          serviceWorkers: vi.fn(() => [{ url: vi.fn(() => SW_URL) }]),
+          browser: vi.fn(() => ({
+            newBrowserCDPSession: vi.fn().mockResolvedValue(browserSession),
+          })),
+        },
+      );
+      const driver = createDriver(page);
+
+      const outcome = await driver.cdp({
+        method: 'Runtime.evaluate',
+        params: { expression: 'typeof globalThis.stateHooks' },
+        timeoutMs: TIMEOUT_MS,
+        target: 'sw',
+      });
+
+      expect(outcome).toStrictEqual({
+        ok: true,
+        result: { result: { value: 'object' } },
+      });
+      expect(page.contextMock.newCDPSession).not.toHaveBeenCalled();
+      expect(browserSession.send).toHaveBeenCalledWith(
+        'Target.attachToTarget',
+        {
+          targetId: 'target-1',
+          flatten: false,
+        },
+      );
     });
 
     it.each([
@@ -719,7 +895,7 @@ describe('PlaywrightPlatformDriver', () => {
       expect(cdpSession.send).not.toHaveBeenCalled();
     });
 
-    it('returns MM_CDP_FAILED on CDP error and still detaches', async () => {
+    it('returns MM_CDP_FAILED on CDP error and keeps the session', async () => {
       const cdpSession = {
         send: vi
           .fn()
@@ -739,7 +915,7 @@ describe('PlaywrightPlatformDriver', () => {
         expect(outcome.message).toContain('Nonexistent.method');
         expect(outcome.message).toContain('Protocol error');
       }
-      expect(cdpSession.detach).toHaveBeenCalled();
+      expect(cdpSession.detach).not.toHaveBeenCalled();
     });
 
     it('returns MM_CDP_FAILED for non-Error throwables', async () => {

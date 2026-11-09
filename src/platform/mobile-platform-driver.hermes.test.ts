@@ -422,6 +422,33 @@ describe('MobilePlatformDriver webview cdp routing', () => {
     expect(webviewCdp).not.toHaveBeenCalled();
   });
 
+  it.each(['page', 'sw'] as const)(
+    'rejects the browser-only target %s with MM_INVALID_INPUT',
+    async (target) => {
+      const webviewCdp = vi.fn();
+      const driver = new MobilePlatformDriver(
+        createBackend('android', { webviewCdp }),
+      );
+
+      const outcome = await driver.cdp({
+        method: 'Runtime.evaluate',
+        timeoutMs: 30_000,
+        target,
+      });
+
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.code).toBe('MM_INVALID_INPUT');
+        expect(outcome.message).toContain(target);
+        expect(outcome.message).toContain(
+          'Mobile targets: hermes, android-webview',
+        );
+      }
+      expect(webviewCdp).not.toHaveBeenCalled();
+      expect(mocks.runHermesCdp).not.toHaveBeenCalled();
+    },
+  );
+
   it('maps the WebView blocked-method code to MM_CDP_BLOCKED', async () => {
     const webviewCdp = vi.fn().mockResolvedValue({
       ok: false,

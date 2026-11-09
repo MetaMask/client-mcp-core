@@ -175,11 +175,17 @@ export type CdpInput = {
    */
   appId?: string;
   /**
-   * Mobile only: which CDP target to drive. `'hermes'` (the default) targets
-   * the React Native JS runtime via Metro; `'android-webview'` targets a
-   * debuggable in-app Android WebView via adb. Ignored on the browser platform.
+   * The CDP target. Browser: `'page'` (default) is the active page,
+   * `'sw'` is the Extension service worker. Mobile: `'hermes'` (default) is
+   * the React Native JS runtime via Metro, `'android-webview'` is a
+   * debuggable in-app Android WebView via adb.
    */
-  target?: 'hermes' | 'android-webview';
+  target?: 'page' | 'sw' | 'hermes' | 'android-webview';
+  /**
+   * Browser only: use a one-shot CDP session for this command and detach it
+   * afterwards, instead of the persistent session shared across calls.
+   */
+  fresh?: boolean;
   /**
    * `android-webview` only: select the WebView page whose URL contains this
    * substring when multiple WebView pages are open.
