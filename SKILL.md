@@ -66,6 +66,8 @@ Observations contain `testIds`, `a11y` and (browser, after a mutating or batch c
 
 On mobile, each observation and `describe-screen` comes from one device snapshot. The Android system status bar and navigation bar and the Expo DevLauncher "Tools" button (iOS `gearshape.fill`) are not part of the app and are removed from `testIds` and `a11y`. Other system windows, such as the biometric prompt (`com.android.systemui:id/biometric_*`), are kept.
 
+On Android, a navigating tap can be observed while the new screen is still mounting: the screen-level test IDs are already there but much of the tree is not (P1-32 saw 51 of 360 nodes). The settle retries a screen that is still tearing down (the old screen's test IDs with most of its nodes gone), not one that is still filling in. When an observation looks partial, run `mm describe-screen` before acting on it.
+
 **Observation Compaction:** Observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
 
 **Diff-Based Observations:** After the first observation sets a baseline, later calls at level `diff` return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
@@ -79,6 +81,8 @@ On mobile, each observation and `describe-screen` comes from one device snapshot
 ```
 
 The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next observation is a full compact one (no `diff` field). A `full` observation also becomes the new baseline; `none` leaves the baseline unchanged. When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
+
+**Observation timeout:** an observation that takes longer than 8 s never fails the action. The response stays `ok` and carries `observations: { "timedOut": true }` with no tree, and it does not replace the diff baseline. Treat the screen as unknown and run `mm describe-screen` before using refs.
 
 ### Using inline observations (mutating tools)
 
@@ -527,7 +531,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The whole `run_steps` call is stopped after 30 s (the request limit), so use a lower `batchTimeoutMs` (for example 20000) to get partial results, and split longer flows into several batches. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The daemon queue and the CLI wait cover the `batchTimeoutMs` deadline plus the observation, so a batch that stops at its deadline still returns its partial results; without `batchTimeoutMs` the CLI keeps its 30 s default. The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
@@ -818,6 +822,7 @@ Use `error.code` to decide what to do:
 | `MM_DAEMON_NOT_RUNNING`             | No daemon, or it refused the connection                                                  | Run `mm launch`                                                                                           |
 | `MM_DAEMON_CONNECTION_LOST`         | Connection failed after the request was sent (never resent by `mm`)                      | The action may have run: `mm describe-screen` before you retry                                            |
 | `MM_REQUEST_TIMEOUT`                | The CLI stopped waiting for the daemon                                                   | Action state unknown: `mm describe-screen` before you retry                                               |
+| `MM_QUEUE_TIMEOUT`                  | The daemon stopped the request before it finished; the action may have run               | Action state unknown: `mm describe-screen` before you retry                                               |
 | `VALIDATION_ERROR`                  | Input failed the tool schema                                                             | Fix the arguments (exit 2)                                                                                |
 
 ## Available Contracts (E2E only)
