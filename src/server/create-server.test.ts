@@ -18,7 +18,9 @@ import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { IPlatformDriver } from '../platform/types.js';
 import { toolRegistry } from '../tools/registry.js';
+import { exitCodeForError } from '../tools/types/errors.js';
 import type { StepRecordObservation } from '../tools/types/observation.js';
+import { OBSERVATION_TIMEOUT_MS } from '../tools/utils/constants.js';
 import { waitForAnimationsToSettle } from '../tools/utils/discovery.js';
 import type {
   DaemonState,
@@ -170,6 +172,18 @@ describe('buildResponseBody', () => {
     expect(buildResponseBody(result, obs as any)).toStrictEqual({
       ok: true,
       observations: obs,
+    });
+  });
+
+  it('passes the observation timeout marker through', () => {
+    expect(
+      buildResponseBody({ ok: true, result: { clicked: true } }, {
+        timedOut: true,
+      } as const),
+    ).toStrictEqual({
+      ok: true,
+      result: { clicked: true },
+      observations: { timedOut: true },
     });
   });
 });
@@ -2424,6 +2438,7 @@ describe('createServer abort, ref generations and observations', () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     const running = server;
     server = undefined;
     await running?.stop();
@@ -2459,8 +2474,9 @@ describe('createServer abort, ref generations and observations', () => {
       const { status, body } = await post('/tool/test_slow_tool');
       await done;
 
-      expect(status).toBe(500);
-      expect(body.error?.message).toContain('timed out after 50ms');
+      expect(status).toBe(200);
+      expect(body.error?.code).toBe('MM_QUEUE_TIMEOUT');
+      expect(body.error?.message).toContain('stopped the request after 50ms');
       expect(abortedWhenLate).toBe(true);
       expect(mockSM.setRefMap).not.toHaveBeenCalled();
     });
@@ -2481,7 +2497,8 @@ describe('createServer abort, ref generations and observations', () => {
       const first = await post('/tool/test_tap');
       const second = await post('/tool/test_tap');
 
-      expect(first.status).toBe(500);
+      expect(first.status).toBe(200);
+      expect(first.body.error?.code).toBe('MM_QUEUE_TIMEOUT');
       expect(second.status).toBe(200);
       expect(second.body.observations?.a11y.nodes).toStrictEqual(
         secondTree.nodes,
@@ -2501,10 +2518,11 @@ describe('createServer abort, ref generations and observations', () => {
       await startServer({ requestTimeoutMs: 50, mobile: false });
       addTapTool();
 
-      const { status } = await post('/tool/test_tap');
+      const { status, body } = await post('/tool/test_tap');
       await sleep(150);
 
-      expect(status).toBe(500);
+      expect(status).toBe(200);
+      expect(body.error?.code).toBe('MM_QUEUE_TIMEOUT');
       expect(vi.mocked(discovery.collectTestIds)).not.toHaveBeenCalled();
       expect(mockSM.setRefMap).not.toHaveBeenCalled();
     });
@@ -2526,6 +2544,95 @@ describe('createServer abort, ref generations and observations', () => {
       await sleep(80);
 
       expect(steps).toStrictEqual(['one']);
+    });
+
+    it('returns MM_QUEUE_TIMEOUT as a tool response mapped to exit 5', async () => {
+      await startServer({ requestTimeoutMs: 50 });
+      addTool('test_hang_tool', async () => {
+        await sleep(200);
+        return { ok: true, result: {} };
+      });
+
+      const { status, body } = await post('/tool/test_hang_tool');
+
+      // Not a daemon error: the action may have run, so the caller gets the
+      // normal tool response shape with its own code and hint.
+      expect(status).toBe(200);
+      expect(body.ok).toBe(false);
+      expect(body.error?.code).toBe('MM_QUEUE_TIMEOUT');
+      expect(body.error?.message).toContain('stopped the request after 50ms');
+      expect(body.error?.message).toContain('action may have run');
+      expect(body.error?.hint).toContain('describe-screen');
+      expect(exitCodeForError(body.error?.code)).toBe(5);
+    });
+  });
+
+  describe('P1-20: observation timeout', () => {
+    // Starts a request whose observation hangs at getTestIds, advances the
+    // observation budget, and returns the response. The action itself has
+    // already succeeded when the observation starts.
+    const postWithHangingObservation = async (
+      urlPath: string,
+      requestBody: unknown = {},
+    ): Promise<{ status: number; body: ObsBody }> => {
+      let entered!: () => void;
+      const enteredPromise = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      driver.getTestIds.mockImplementationOnce(async () => {
+        entered();
+        return new Promise<never>(() => {});
+      });
+
+      const pending = post(urlPath, requestBody);
+      await enteredPromise;
+      await vi.advanceTimersByTimeAsync(OBSERVATION_TIMEOUT_MS);
+      return pending;
+    };
+
+    it('returns the timeout marker instead of failing the action', async () => {
+      await startServer();
+      addTapTool();
+      vi.useFakeTimers();
+
+      const { status, body } =
+        await postWithHangingObservation('/tool/test_tap');
+
+      // The click worked; the agent is told the screen was not read.
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.observations).toStrictEqual({ timedOut: true });
+      // A timed-out observation never becomes the screen the agent sees.
+      expect(mockSM.setRefMap).not.toHaveBeenCalled();
+    });
+
+    it('keeps the previous observation as the diff baseline', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildTree(['A', 'B']))
+        .mockResolvedValue(buildTree(['A', 'B', 'C']));
+
+      const first = await post('/tool/click', { testId: 'x' });
+      expect(first.body.observations?.a11y.diff).toBeUndefined();
+
+      // The screen changed, so the mobile settle does not retry; only the
+      // observation hangs.
+      vi.useFakeTimers();
+      const second = await postWithHangingObservation('/tool/click', {
+        testId: 'x',
+      });
+      vi.useRealTimers();
+      expect(second.body.observations).toStrictEqual({ timedOut: true });
+
+      const third = await post('/tool/click', { testId: 'x' });
+
+      // Diffed against the first delivered observation, not the timed-out
+      // one: a timed-out observation is not a baseline.
+      expect(third.body.observations?.a11y.diff).toStrictEqual({
+        added: ['e3'],
+        removed: [],
+        unchanged: 2,
+      });
     });
   });
 
@@ -2723,10 +2830,11 @@ describe('createServer abort, ref generations and observations', () => {
         return { ok: true, result: {} };
       });
 
-      const { status } = await post('/tool/test_slow_clear_tool');
+      const { status, body } = await post('/tool/test_slow_clear_tool');
       await done;
 
-      expect(status).toBe(500);
+      expect(status).toBe(200);
+      expect(body.error?.code).toBe('MM_QUEUE_TIMEOUT');
       expect(mockSM.clearRefMap).not.toHaveBeenCalled();
       expect(storedRefMap).toStrictEqual(new Map([['e1', 'kept']]));
     });
@@ -3100,7 +3208,8 @@ describe('createServer abort, ref generations and observations', () => {
       const described = await post('/tool/describe_screen');
       await sleep(150);
 
-      expect(described.status).toBe(500);
+      expect(described.status).toBe(200);
+      expect(described.body.error?.code).toBe('MM_QUEUE_TIMEOUT');
       // The late describe_screen write was dropped.
       expect(mockSM.setRefMap).not.toHaveBeenCalled();
 
@@ -3295,10 +3404,11 @@ describe('createServer abort, ref generations and observations', () => {
 
       await post('/tool/test_tap');
       mockSM.setRefMap.mockClear();
-      const { status } = await post('/tool/test_tap');
+      const { status, body } = await post('/tool/test_tap');
       await sleep(250);
 
-      expect(status).toBe(500);
+      expect(status).toBe(200);
+      expect(body.error?.code).toBe('MM_QUEUE_TIMEOUT');
       expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
       expect(mockSM.setRefMap).not.toHaveBeenCalled();
     });
@@ -3346,6 +3456,14 @@ describe('withScreenChanged', () => {
       mobile,
     ],
     ['no observation', 'click', ok, undefined, before, mobile],
+    [
+      'a timed-out observation',
+      'click',
+      ok,
+      { timedOut: true } as const,
+      before,
+      mobile,
+    ],
     ['no earlier screen', 'click', ok, obs(other), null, mobile],
     ['the browser', 'click', ok, obs(other), before, browser],
     ['no driver', 'click', ok, obs(other), before, undefined],
@@ -3448,6 +3566,17 @@ describe('screenAfterResponse', () => {
         'get_state',
         { ok: true, result: {} },
         undefined,
+        tree,
+      ),
+    ).toBe(tree);
+  });
+
+  it('keeps the previous tree when the observation timed out', () => {
+    expect(
+      screenAfterResponse(
+        'click',
+        { ok: true, result: { clicked: true } },
+        { timedOut: true } as const,
         tree,
       ),
     ).toBe(tree);

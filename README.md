@@ -845,6 +845,7 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_REQUEST_ABORTED`                | Internal: a cancelled (timed-out) call stopped; the caller gets the timeout error                       |
 | `MM_INTERNAL_ERROR`                 | Internal server error                                                                                   |
 | `MM_BATCH_TIMEOUT`                  | `batchTimeoutMs` deadline exceeded in run_steps                                                         |
+| `MM_QUEUE_TIMEOUT`                  | The daemon stopped the request before it finished; the action may have run                              |
 | `MM_CDP_BLOCKED`                    | CDP method is blocked (destructive to session); on mobile the Hermes blocklist maps here too            |
 | `MM_CDP_FAILED`                     | CDP command execution failed or timed out (on mobile, the underlying `HERMES_*` code is in the message) |
 | `MM_HERMES_FAILED`                  | `hermes_targets` discovery failed (underlying `HERMES_*` code is in the message)                        |
@@ -862,6 +863,12 @@ Tool errors are classified into specific error codes for structured handling:
 The daemon HTTP server also sets `VALIDATION_ERROR` (schema), `TOOL_NOT_FOUND`,
 `SERVER_NOT_STARTED`, `TOOL_EXECUTION_FAILED` and `INTERNAL_ERROR`
 (`DaemonErrorCodes`).
+
+A timed-out observation is not a tool error: the action response stays `ok` and
+carries `"observations": {"timedOut": true}`, so the caller knows the screen was
+not read (the diff baseline is not replaced). `MM_QUEUE_TIMEOUT` means the
+daemon's request queue stopped the call before it finished; it is exit 5, not
+retryable, and the action may have run, so check the state before retrying.
 
 ### CLI failure output and exit codes
 
@@ -887,16 +894,16 @@ click, type and request timeouts because the action state is unknown. `meta` is
 present when the daemon answered. `exitCodeForError()` in
 `src/tools/types/errors.ts` is the one map from error code to exit code:
 
-| Exit | Meaning                                                          | Codes (examples)                                                                                              |
-| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 0    | ok                                                               |                                                                                                               |
-| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                            |
-| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`               |
-| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                |
-| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`   |
-| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`            |
-| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` |
-| 7    | daemon version mismatch (reserved)                               |                                                                                                               |
+| Exit | Meaning                                                          | Codes (examples)                                                                                                       |
+| ---- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 0    | ok                                                               |                                                                                                                        |
+| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                                     |
+| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`                        |
+| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                         |
+| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`            |
+| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`, `MM_QUEUE_TIMEOUT` |
+| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`          |
+| 7    | daemon version mismatch (reserved)                               |                                                                                                                        |
 
 ## Development
 

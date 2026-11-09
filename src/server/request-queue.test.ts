@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { RequestQueue } from './request-queue.js';
+import { RequestQueue, QueueTimeoutError } from './request-queue.js';
 import {
   MAX_QUEUE_TIMEOUT_MS,
   QUEUE_SETTLE_TIMEOUT_MS,
@@ -57,7 +57,7 @@ describe('RequestQueue', () => {
       queue.enqueue(
         async () => new Promise((resolve) => setTimeout(resolve, 500)),
       ),
-    ).rejects.toThrowError('timed out');
+    ).rejects.toThrowError('stopped the request after 50ms');
   });
 
   it('uses a per-request timeout override when provided', async () => {
@@ -65,7 +65,7 @@ describe('RequestQueue', () => {
 
     await expect(
       queue.enqueue(async () => sleep(50), { timeoutMs: 10 }),
-    ).rejects.toThrowError('Tool execution timed out after 10ms');
+    ).rejects.toThrowError('stopped the request after 10ms');
   });
 
   it('remains functional after a timeout rejection', async () => {
@@ -110,7 +110,7 @@ describe('RequestQueue', () => {
         queue.enqueue(async () => sleep(100).then(() => 'done'), {
           timeoutMs: 50,
         }),
-      ).rejects.toThrowError('timed out after 50ms');
+      ).rejects.toThrowError('stopped the request after 50ms');
     }, 1000);
 
     it('uses default timeout when options is omitted', async () => {
@@ -118,7 +118,7 @@ describe('RequestQueue', () => {
 
       await expect(
         queue.enqueue(async () => sleep(100).then(() => 'done')),
-      ).rejects.toThrowError('timed out after 50ms');
+      ).rejects.toThrowError('stopped the request after 50ms');
     }, 1000);
 
     it('preserves serialization guarantee with different timeouts', async () => {
@@ -171,8 +171,10 @@ describe('RequestQueue', () => {
 
       expect(seen?.aborted).toBe(true);
       expect(seen?.reason).toBe(rejection);
+      expect(rejection).toBeInstanceOf(QueueTimeoutError);
+      expect((rejection as QueueTimeoutError).timeoutMs).toBe(20);
       expect((rejection as Error).message).toBe(
-        'Tool execution timed out after 20ms',
+        'The daemon stopped the request after 20ms; the action may have run: check the state before you retry.',
       );
     });
 
@@ -300,9 +302,10 @@ describe('RequestQueue', () => {
 
         await vi.advanceTimersByTimeAsync(QUEUE_SETTLE_TIMEOUT_MS);
         const error = await pending;
-        expect(error).toBeInstanceOf(Error);
+        expect(error).toBeInstanceOf(QueueTimeoutError);
+        expect((error as QueueTimeoutError).timeoutMs).toBe(expectedTimeout);
         expect((error as Error).message).toBe(
-          `Tool execution timed out after ${expectedTimeout}ms`,
+          `The daemon stopped the request after ${expectedTimeout}ms; the action may have run: check the state before you retry.`,
         );
         expect(seen?.reason).toBe(error);
       } finally {

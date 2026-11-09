@@ -22,6 +22,28 @@ function clampQueueTimeout(timeoutMs: number, fallbackMs: number): number {
 }
 
 /**
+ * Rejection of a queued task whose queue timeout expired. The daemon stopped
+ * waiting for the task: the action may already have run, so its state is
+ * unknown. It is not a tool error and not a `TOOL_EXECUTION_FAILED`; the
+ * server turns it into an `MM_QUEUE_TIMEOUT` response.
+ */
+export class QueueTimeoutError extends Error {
+  /** The queue timeout that expired, in milliseconds. */
+  readonly timeoutMs: number;
+
+  /**
+   * @param timeoutMs - The queue timeout that expired.
+   */
+  constructor(timeoutMs: number) {
+    super(
+      `The daemon stopped the request after ${timeoutMs}ms; the action may have run: check the state before you retry.`,
+    );
+    this.name = 'QueueTimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
  * Async mutex for serializing concurrent tool requests.
  * Ensures only one tool executes at a time.
  */
@@ -41,10 +63,10 @@ export class RequestQueue {
    * Enqueues an async task for serial execution with a timeout.
    *
    * Each task gets its own `AbortSignal`. When the task times out, the signal
-   * is aborted (with the timeout error as its reason) before the returned
-   * promise rejects, so the task can stop its remaining work. The queue still
-   * waits up to `QUEUE_SETTLE_TIMEOUT_MS` for the task to settle before the
-   * next task starts.
+   * is aborted (with the {@link QueueTimeoutError} as its reason) before the
+   * returned promise rejects, so the task can stop its remaining work. The
+   * queue still waits up to `QUEUE_SETTLE_TIMEOUT_MS` for the task to settle
+   * before the next task starts.
    *
    * @param fn - The async function to execute. It receives the task's signal.
    * @param options - Optional configuration for the enqueued task.
@@ -74,9 +96,7 @@ export class RequestQueue {
         fnPromise,
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
-            const error = new Error(
-              `Tool execution timed out after ${effectiveTimeout}ms`,
-            );
+            const error = new QueueTimeoutError(effectiveTimeout);
             controller.abort(error);
             reject(error);
           }, effectiveTimeout);

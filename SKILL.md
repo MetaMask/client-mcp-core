@@ -80,6 +80,8 @@ On mobile, each observation and `describe-screen` comes from one device snapshot
 
 The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next observation is a full compact one (no `diff` field). A `full` observation also becomes the new baseline; `none` leaves the baseline unchanged. When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
 
+**Observation timeout:** an observation that takes longer than 8 s never fails the action. The response stays `ok` and carries `observations: { "timedOut": true }` with no tree, and it does not replace the diff baseline. Treat the screen as unknown and run `mm describe-screen` before using refs.
+
 ### Using inline observations (mutating tools)
 
 After a mutating action, the response includes fresh screen data:
@@ -527,7 +529,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The whole `run_steps` call is stopped after 30 s (the request limit), so use a lower `batchTimeoutMs` (for example 20000) to get partial results, and split longer flows into several batches. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The daemon queue and the CLI wait cover the `batchTimeoutMs` deadline plus the observation, so a batch that stops at its deadline still returns its partial results; without `batchTimeoutMs` the CLI keeps its 30 s default. The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
@@ -809,6 +811,7 @@ Use `error.code` to decide what to do:
 | `MM_DAEMON_NOT_RUNNING`             | No daemon, or it refused the connection                                                  | Run `mm launch`                                                                                           |
 | `MM_DAEMON_CONNECTION_LOST`         | Connection failed after the request was sent (never resent by `mm`)                      | The action may have run: `mm describe-screen` before you retry                                            |
 | `MM_REQUEST_TIMEOUT`                | The CLI stopped waiting for the daemon                                                   | Action state unknown: `mm describe-screen` before you retry                                               |
+| `MM_QUEUE_TIMEOUT`                  | The daemon stopped the request before it finished; the action may have run               | Action state unknown: `mm describe-screen` before you retry                                               |
 | `VALIDATION_ERROR`                  | Input failed the tool schema                                                             | Fix the arguments (exit 2)                                                                                |
 
 ## Available Contracts (E2E only)

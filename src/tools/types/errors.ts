@@ -55,6 +55,8 @@ export const ErrorCodes = {
 
   MM_REQUEST_ABORTED: 'MM_REQUEST_ABORTED', // the request timed out; the tool stopped at its next checkpoint
 
+  MM_QUEUE_TIMEOUT: 'MM_QUEUE_TIMEOUT', // the daemon stopped the request; the action may have run
+
   MM_BATCH_TIMEOUT: 'MM_BATCH_TIMEOUT', // run_steps batchTimeoutMs passed; the remaining steps were skipped
 
   MM_CLIPBOARD_PERMISSION_DENIED: 'MM_CLIPBOARD_PERMISSION_DENIED',
@@ -147,6 +149,7 @@ const EXIT_CODE_BY_ERROR: Readonly<Record<string, CliExitCode>> = {
   [ErrorCodes.MM_GETTEXT_TIMEOUT]: CliExitCodes.TIMEOUT,
   [ErrorCodes.MM_NOTIFICATION_TIMEOUT]: CliExitCodes.TIMEOUT,
   [ErrorCodes.MM_REQUEST_ABORTED]: CliExitCodes.TIMEOUT,
+  [ErrorCodes.MM_QUEUE_TIMEOUT]: CliExitCodes.TIMEOUT,
   [ErrorCodes.MM_REQUEST_TIMEOUT]: CliExitCodes.TIMEOUT,
   [ErrorCodes.MM_BATCH_TIMEOUT]: CliExitCodes.TIMEOUT,
 
@@ -216,6 +219,7 @@ const DEFAULT_HINTS: Readonly<Record<string, string>> = {
     'Nothing was tapped. Close the keyboard (`mm click ... --dismiss-keyboard`) or the overlay first.',
   [ErrorCodes.MM_CLICK_TIMEOUT]: STATE_UNKNOWN_HINT,
   [ErrorCodes.MM_TYPE_TIMEOUT]: STATE_UNKNOWN_HINT,
+  [ErrorCodes.MM_QUEUE_TIMEOUT]: STATE_UNKNOWN_HINT,
   [ErrorCodes.MM_REQUEST_TIMEOUT]: STATE_UNKNOWN_HINT,
   [ErrorCodes.MM_REQUEST_ABORTED]: STATE_UNKNOWN_HINT,
 };

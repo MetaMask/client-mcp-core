@@ -10,7 +10,7 @@ import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RefStore } from './ref-store.js';
 import type { RefHandle } from './ref-store.js';
-import { RequestQueue } from './request-queue.js';
+import { RequestQueue, QueueTimeoutError } from './request-queue.js';
 import {
   RequestTimer,
   requestStartOf,
@@ -30,8 +30,15 @@ import {
 } from '../tools/registry.js';
 import type { ToolCategory } from '../tools/registry.js';
 import type { A11yNodeTrimmed, TestIdItem } from '../tools/types/discovery.js';
-import { createDefaultObservation } from '../tools/types/observation.js';
-import type { StepRecordObservation } from '../tools/types/observation.js';
+import { defaultHintForError, ErrorCodes } from '../tools/types/errors.js';
+import {
+  createDefaultObservation,
+  isObservationTimeout,
+} from '../tools/types/observation.js';
+import type {
+  DeliveredObservation,
+  StepRecordObservation,
+} from '../tools/types/observation.js';
 import type { RunStepsInput } from '../tools/types/tool-inputs.js';
 import type { RunStepsResult } from '../tools/types/tool-outputs.js';
 import {
@@ -59,7 +66,10 @@ import type {
   ToolResponse,
 } from '../types/http.js';
 import { extractErrorMessage } from '../utils/errors.js';
-import { computeTimeoutBudget } from '../utils/timeout-budget.js';
+import {
+  computeTimeoutBudget,
+  resolveActionTimeoutMs,
+} from '../utils/timeout-budget.js';
 import type { ObserveLevel, ToolName } from '../validation/schemas.js';
 import {
   observeLevelSchema,
@@ -121,7 +131,8 @@ function routeSetRefMap(
  *
  * @param toolName - The tool name.
  * @param toolResult - The tool response.
- * @param observations - The delivered observation, if any.
+ * @param observations - The delivered observation, if any (not the timeout
+ * marker: it carries no tree).
  * @param previous - The tree held before this response.
  * @param rootSelector - The `rootSelector` of an `accessibility_snapshot`.
  * @returns The tree held now, or null.
@@ -129,14 +140,14 @@ function routeSetRefMap(
 export function screenAfterResponse(
   toolName: string,
   toolResult: ToolResponse,
-  observations: StepRecordObservation | undefined,
+  observations: DeliveredObservation | undefined,
   previous: A11yNodeTrimmed[] | null,
   rootSelector?: unknown,
 ): A11yNodeTrimmed[] | null {
   if (toolName === 'launch' || toolName === 'cleanup') {
     return null;
   }
-  if (observations) {
+  if (observations && !isObservationTimeout(observations)) {
     // The observation is the last tree in the response.
     return observations.a11y.nodes;
   }
@@ -174,7 +185,7 @@ export function screenAfterResponse(
 export function withScreenChanged(
   toolName: string,
   result: ToolResponse,
-  observations: StepRecordObservation | undefined,
+  observations: DeliveredObservation | undefined,
   screenBefore: A11yNodeTrimmed[] | null,
   driver: IPlatformDriver | undefined,
 ): ToolResponse {
@@ -182,6 +193,7 @@ export function withScreenChanged(
     toolName !== 'click' ||
     !result.ok ||
     !observations ||
+    isObservationTimeout(observations) ||
     !screenBefore ||
     !driver ||
     driver.getPlatform() === 'browser' ||
@@ -205,12 +217,13 @@ export function withScreenChanged(
  * Merges a tool result with observation data into the HTTP response body.
  *
  * @param toolResult - The raw result returned by a tool function.
- * @param observations - Optional observation snapshot to attach.
+ * @param observations - Optional observation snapshot, or the timeout
+ * marker, to attach.
  * @returns The response body suitable for res.json().
  */
 export function buildResponseBody(
   toolResult: unknown,
-  observations: StepRecordObservation | undefined,
+  observations: DeliveredObservation | undefined,
 ): unknown {
   if (typeof toolResult !== 'object' || toolResult === null) {
     return toolResult;
@@ -599,7 +612,9 @@ export function createServer(config: ServerConfig): ServerInstance {
 
   /**
    * Runs collectObservation bounded by `OBSERVATION_TIMEOUT_MS`. On timeout
-   * or request abort the collection is aborted, so it stops at the next
+   * the observation is abandoned (the action already succeeded) and the
+   * timeout marker is returned, so the agent knows the screen was not read.
+   * On request abort the collection is aborted, so it stops at the next
    * checkpoint and cannot set refs later.
    *
    * @param context - The tool context of the request.
@@ -607,7 +622,7 @@ export function createServer(config: ServerConfig): ServerInstance {
    * @param category - The tool category.
    * @param refs - The request's RefStore handle.
    * @param requestSignal - The request's abort signal.
-   * @returns The observation, or undefined on failure or timeout.
+   * @returns The observation, the timeout marker, or undefined on failure.
    */
   async function observeWithTimeout(
     context: ToolContext,
@@ -615,7 +630,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     category: ToolCategory,
     refs: RefHandle,
     requestSignal: AbortSignal,
-  ): Promise<StepRecordObservation | undefined> {
+  ): Promise<DeliveredObservation | undefined> {
     const controller = new AbortController();
     const forwardAbort = (): void => controller.abort(requestSignal.reason);
     requestSignal.addEventListener('abort', forwardAbort, { once: true });
@@ -629,10 +644,12 @@ export function createServer(config: ServerConfig): ServerInstance {
           refs,
           controller.signal,
         ),
-        new Promise<undefined>((resolve) => {
+        new Promise<DeliveredObservation>((resolve) => {
           timeoutId = setTimeout(() => {
+            // The action is not failed by its observation: stop collecting
+            // and tell the agent the screen was not read.
             controller.abort(new Error('Observation timed out'));
-            resolve(undefined);
+            resolve({ timedOut: true });
           }, OBSERVATION_TIMEOUT_MS);
         }),
       ]);
@@ -739,11 +756,16 @@ export function createServer(config: ServerConfig): ServerInstance {
     }
 
     const inputRecord = validatedInput as Record<string, unknown>;
-    const toolTimeoutMs = inputRecord?.timeoutMs;
+    // One budget end to end: the action budget of this request, whatever the
+    // input left out, gives the queue timeout (see computeTimeoutBudget).
+    // Tools with no timeout concept keep the RequestQueue default.
+    const actionTimeoutMs = resolveActionTimeoutMs(toolName, inputRecord, {
+      platform: config.sessionManager.getPlatformDriver?.()?.getPlatform(),
+    });
     const queueTimeoutMs =
-      typeof toolTimeoutMs === 'number' && toolTimeoutMs > 0
-        ? computeTimeoutBudget(toolTimeoutMs).queue
-        : undefined;
+      actionTimeoutMs === undefined
+        ? undefined
+        : computeTimeoutBudget(actionTimeoutMs).queue;
 
     try {
       timer.markEnqueued();
@@ -763,7 +785,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           // Captured now: the observation below must compare with the
           // screen the agent had before this click.
           const screenBefore = lastScreen;
-          let obs: StepRecordObservation | undefined;
+          let obs: DeliveredObservation | undefined;
           if (
             level !== 'none' &&
             !signal.aborted &&
@@ -796,13 +818,18 @@ export function createServer(config: ServerConfig): ServerInstance {
       );
 
       // 'full' skips the diff but is still option-collapsed, like the first
-      // observation of a session.
-      const responseObservations = observations
-        ? compactObservation(
-            observations,
-            observeLevel === 'full' ? null : lastObservation,
-          )
-        : undefined;
+      // observation of a session. The timeout marker has no tree to compact.
+      let responseObservations: DeliveredObservation | undefined;
+      if (observations === undefined) {
+        responseObservations = undefined;
+      } else if (isObservationTimeout(observations)) {
+        responseObservations = observations;
+      } else {
+        responseObservations = compactObservation(
+          observations,
+          observeLevel === 'full' ? null : lastObservation,
+        );
+      }
       res.json(
         withMeta(
           buildResponseBody(toolResult, responseObservations),
@@ -817,7 +844,8 @@ export function createServer(config: ServerConfig): ServerInstance {
         toolName === 'cleanup'
       ) {
         lastObservation = null;
-      } else if (observations) {
+      } else if (observations && !isObservationTimeout(observations)) {
+        // A timed-out observation is not a baseline: the screen was not read.
         lastObservation = observations;
       }
       // Updated after the response, like lastObservation: only for responses
@@ -830,6 +858,24 @@ export function createServer(config: ServerConfig): ServerInstance {
         inputRecord?.rootSelector,
       );
     } catch (error) {
+      if (error instanceof QueueTimeoutError) {
+        // The queue stopped the request: the action may have run, so this is
+        // a normal tool failure with its own code, not a daemon error.
+        res.json(
+          withMeta(
+            {
+              ok: false,
+              error: {
+                code: ErrorCodes.MM_QUEUE_TIMEOUT,
+                message: error.message,
+                hint: defaultHintForError(ErrorCodes.MM_QUEUE_TIMEOUT),
+              },
+            },
+            timer.meta(),
+          ),
+        );
+        return;
+      }
       res.status(500).json(
         withMeta(
           {
