@@ -22,11 +22,8 @@ import {
   isRetryableError,
 } from '../tools/types/errors.js';
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
-import type { DaemonState } from '../types/http.js';
-import {
-  computeTimeoutBudget,
-  resolveActionTimeoutMs,
-} from '../utils/timeout-budget.js';
+import type { DaemonEndpoint, DaemonState } from '../types/http.js';
+import { resolveCliHttpTimeoutMs } from '../utils/timeout-budget.js';
 import { OBSERVE_LEVELS } from '../validation/observe-level.js';
 import type { ObserveLevel } from '../validation/observe-level.js';
 
@@ -34,7 +31,9 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
   // launch starts a browser and cleans up first; cleanup tears down services.
   launch: 120_000,
   cleanup: 30_000,
-  // Tools that have an action budget derive their timeout from it instead.
+  // Floor for commands without an action budget. The daemon queue default
+  // plus the queue settle and a margin is usually larger, see
+  // resolveCliHttpTimeoutMs.
   default: 30_000,
 };
 
@@ -452,20 +451,20 @@ export async function main(): Promise<void> {
     if (launchArgs.selfOnboarding === true) {
       Object.assign(launchArgs, await readSelfOnboardingInput(process.stdin));
     }
-    await sendRequest(daemonState.port, 'POST', '/launch', launchArgs);
+    await sendRequest(daemonState, 'POST', '/launch', launchArgs);
     return;
   }
 
   if (command === 'cleanup') {
     const shutdown = args.includes('--shutdown');
-    await sendRequest(daemonState.port, 'POST', '/cleanup', {});
+    await sendRequest(daemonState, 'POST', '/cleanup', {});
     if (shutdown) {
       await shutdownDaemon(worktreeRoot, daemonState);
     }
     return;
   }
 
-  await routeCommand(command, args.slice(1), daemonState.port);
+  await routeCommand(command, args.slice(1), daemonState);
 }
 
 /**
@@ -596,13 +595,13 @@ export function getPositionalArgs(args: string[]): string[] {
 /**
  * Sends an interaction tool request with optional timeout and within scope.
  *
- * @param port - The daemon HTTP server port.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
  * @param toolPath - The tool endpoint path (e.g. '/tool/click').
  * @param args - The CLI arguments for flag parsing.
  * @param extraBody - Additional body fields to merge into the request.
  */
 async function sendInteractionRequest(
-  port: number,
+  daemon: DaemonEndpoint,
   toolPath: string,
   args: string[],
   extraBody?: Record<string, unknown>,
@@ -621,7 +620,7 @@ async function sendInteractionRequest(
     body.within = within;
   }
 
-  await sendRequest(port, 'POST', toolPath, body);
+  await sendRequest(daemon, 'POST', toolPath, body);
 }
 
 /**
@@ -629,16 +628,16 @@ async function sendInteractionRequest(
  *
  * @param command - The CLI command to route.
  * @param args - Additional arguments for the command.
- * @param port - The daemon HTTP server port.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
  */
 export async function routeCommand(
   command: string,
   args: string[],
-  port: number,
+  daemon: DaemonEndpoint,
 ): Promise<void> {
   switch (command) {
     case 'status':
-      await sendRequest(port, 'GET', '/status', null);
+      await sendRequest(daemon, 'GET', '/status', null);
       break;
     case 'click': {
       const target = getPositionalTarget(args);
@@ -652,7 +651,7 @@ export async function routeCommand(
         );
       }
       await sendInteractionRequest(
-        port,
+        daemon,
         '/tool/click',
         args.filter((arg) => arg !== '--dismiss-keyboard'),
         args.includes('--dismiss-keyboard')
@@ -681,7 +680,7 @@ export async function routeCommand(
       if (text === undefined) {
         failUsage('Usage: mm type <ref> <text>');
       }
-      await sendInteractionRequest(port, '/tool/type', args, { text });
+      await sendInteractionRequest(daemon, '/tool/type', args, { text });
       break;
     }
     case 'get-text': {
@@ -695,7 +694,7 @@ export async function routeCommand(
           'Usage: mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
         );
       }
-      await sendInteractionRequest(port, '/tool/get_text', args);
+      await sendInteractionRequest(daemon, '/tool/get_text', args);
       break;
     }
     case 'inspect': {
@@ -720,7 +719,7 @@ export async function routeCommand(
         }
       }
       await sendInteractionRequest(
-        port,
+        daemon,
         '/tool/inspect',
         args,
         styles ? { styles } : undefined,
@@ -728,12 +727,17 @@ export async function routeCommand(
       break;
     }
     case 'describe-screen':
-      await sendRequest(port, 'POST', '/tool/describe_screen', {});
+      await sendRequest(daemon, 'POST', '/tool/describe_screen', {});
       break;
     case 'screenshot': {
       const nameIdx = args.indexOf('--name');
       const name = nameIdx >= 0 ? args[nameIdx + 1] : undefined;
-      await sendRequest(port, 'POST', '/tool/screenshot', name ? { name } : {});
+      await sendRequest(
+        daemon,
+        'POST',
+        '/tool/screenshot',
+        name ? { name } : {},
+      );
       break;
     }
     case 'wait-for': {
@@ -747,53 +751,53 @@ export async function routeCommand(
           'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
         );
       }
-      await sendInteractionRequest(port, '/tool/wait_for', args);
+      await sendInteractionRequest(daemon, '/tool/wait_for', args);
       break;
     }
     case 'navigate':
       if (!args[0]) {
         failUsage('Usage: mm navigate <url>');
       }
-      await sendRequest(port, 'POST', '/tool/navigate', {
+      await sendRequest(daemon, 'POST', '/tool/navigate', {
         screen: 'url',
         url: args[0],
       });
       break;
     case 'navigate-home':
-      await sendRequest(port, 'POST', '/tool/navigate', { screen: 'home' });
+      await sendRequest(daemon, 'POST', '/tool/navigate', { screen: 'home' });
       break;
     case 'reload':
-      await sendRequest(port, 'POST', '/tool/reload', {});
+      await sendRequest(daemon, 'POST', '/tool/reload', {});
       break;
     case 'navigate-settings':
-      await sendRequest(port, 'POST', '/tool/navigate', {
+      await sendRequest(daemon, 'POST', '/tool/navigate', {
         screen: 'settings',
       });
       break;
     case 'get-state':
-      await sendRequest(port, 'POST', '/tool/get_state', {});
+      await sendRequest(daemon, 'POST', '/tool/get_state', {});
       break;
     case 'get-context':
-      await sendRequest(port, 'POST', '/tool/get_context', {});
+      await sendRequest(daemon, 'POST', '/tool/get_context', {});
       break;
     case 'set-context':
       if (!args[0] || (args[0] !== 'e2e' && args[0] !== 'prod')) {
         failUsage('Usage: mm set-context <e2e|prod>');
       }
-      await sendRequest(port, 'POST', '/tool/set_context', {
+      await sendRequest(daemon, 'POST', '/tool/set_context', {
         context: args[0],
       });
       break;
     case 'build': {
       const buildForce = args.includes('--force');
-      await sendRequest(port, 'POST', '/tool/build', {
+      await sendRequest(daemon, 'POST', '/tool/build', {
         ...(buildForce ? { force: true } : {}),
       });
       break;
     }
     case 'wait-for-notification': {
       const notifTimeout = parseIntFlag(args, '--timeout');
-      await sendRequest(port, 'POST', '/tool/wait_for_notification', {
+      await sendRequest(daemon, 'POST', '/tool/wait_for_notification', {
         ...(notifTimeout === undefined ? {} : { timeoutMs: notifTimeout }),
       });
       break;
@@ -810,7 +814,7 @@ export async function routeCommand(
           'Usage: mm switch-to-tab <role> | --role <role> | --url <url>',
         );
       }
-      await sendRequest(port, 'POST', '/tool/switch_to_tab', {
+      await sendRequest(daemon, 'POST', '/tool/switch_to_tab', {
         ...(resolvedRole ? { role: resolvedRole } : {}),
         ...(tabUrl ? { url: tabUrl } : {}),
       });
@@ -822,7 +826,7 @@ export async function routeCommand(
       if (!closeRole && !closeUrl) {
         failUsage('Usage: mm close-tab --role <role> | --url <url>');
       }
-      await sendRequest(port, 'POST', '/tool/close_tab', {
+      await sendRequest(daemon, 'POST', '/tool/close_tab', {
         ...(closeRole ? { role: closeRole } : {}),
         ...(closeUrl ? { url: closeUrl } : {}),
       });
@@ -836,7 +840,7 @@ export async function routeCommand(
       if (clipAction === 'write' && !args[1]) {
         failUsage('Usage: mm clipboard write <text>');
       }
-      await sendRequest(port, 'POST', '/tool/clipboard', {
+      await sendRequest(daemon, 'POST', '/tool/clipboard', {
         action: clipAction,
         ...(clipAction === 'write' ? { text: args[1] } : {}),
       });
@@ -847,7 +851,7 @@ export async function routeCommand(
         failUsage('Usage: mm seed-contract <name> [--hardfork <fork>]');
       }
       const hardfork = parseStringFlag(args, '--hardfork');
-      await sendRequest(port, 'POST', '/tool/seed_contract', {
+      await sendRequest(daemon, 'POST', '/tool/seed_contract', {
         contractName: args[0],
         ...(hardfork ? { hardfork } : {}),
       });
@@ -864,7 +868,7 @@ export async function routeCommand(
         );
       }
       const seedHardfork = parseStringFlag(args, '--hardfork');
-      await sendRequest(port, 'POST', '/tool/seed_contracts', {
+      await sendRequest(daemon, 'POST', '/tool/seed_contracts', {
         contracts: contractNames,
         ...(seedHardfork ? { hardfork: seedHardfork } : {}),
       });
@@ -874,23 +878,23 @@ export async function routeCommand(
       if (!args[0]) {
         failUsage('Usage: mm get-contract-address <name>');
       }
-      await sendRequest(port, 'POST', '/tool/get_contract_address', {
+      await sendRequest(daemon, 'POST', '/tool/get_contract_address', {
         contractName: args[0],
       });
       break;
     case 'list-contracts':
-      await sendRequest(port, 'POST', '/tool/list_contracts', {});
+      await sendRequest(daemon, 'POST', '/tool/list_contracts', {});
       break;
     case 'list-testids': {
       const testIdLimit = parseIntFlag(args, '--limit');
-      await sendRequest(port, 'POST', '/tool/list_testids', {
+      await sendRequest(daemon, 'POST', '/tool/list_testids', {
         ...(testIdLimit === undefined ? {} : { limit: testIdLimit }),
       });
       break;
     }
     case 'accessibility-snapshot': {
       const rootSelector = parseStringFlag(args, '--root');
-      await sendRequest(port, 'POST', '/tool/accessibility_snapshot', {
+      await sendRequest(daemon, 'POST', '/tool/accessibility_snapshot', {
         ...(rootSelector ? { rootSelector } : {}),
       });
       break;
@@ -902,14 +906,14 @@ export async function routeCommand(
         );
       }
       await sendRequest(
-        port,
+        daemon,
         'POST',
         '/tool/run_steps',
         parseJsonArgument(args[0], 'run-steps') as Record<string, unknown>,
       );
       break;
     case 'mock-network': {
-      await routeMockNetworkCommand(args, port);
+      await routeMockNetworkCommand(args, daemon);
       break;
     }
     case 'cdp': {
@@ -967,7 +971,7 @@ export async function routeCommand(
           failUsage(`invalid JSON params — expected a JSON object`);
         }
       }
-      await sendRequest(port, 'POST', '/tool/cdp', {
+      await sendRequest(daemon, 'POST', '/tool/cdp', {
         method: cdpMethod,
         ...(cdpParams ? { params: cdpParams } : {}),
         ...(cdpTimeout === undefined ? {} : { timeoutMs: cdpTimeout }),
@@ -983,7 +987,7 @@ export async function routeCommand(
       const targetsMetroPort = parseIntFlag(args, '--metro-port');
       const targetsAppId = parseStringFlag(args, '--app-id');
       const targetsAll = args.includes('--all');
-      await sendRequest(port, 'POST', '/tool/hermes_targets', {
+      await sendRequest(daemon, 'POST', '/tool/hermes_targets', {
         ...(targetsMetroPort === undefined
           ? {}
           : { metroPort: targetsMetroPort }),
@@ -1005,7 +1009,7 @@ export async function routeCommand(
       }
       const scrollDirection = parseStringFlag(args, '--direction');
       const scrollMaxAttempts = parseIntFlag(args, '--maxAttempts');
-      await sendInteractionRequest(port, '/tool/scroll_to_element', args, {
+      await sendInteractionRequest(daemon, '/tool/scroll_to_element', args, {
         ...(scrollDirection ? { direction: scrollDirection } : {}),
         ...(scrollMaxAttempts === undefined
           ? {}
@@ -1024,7 +1028,7 @@ export async function routeCommand(
       const swipeStartX = parseIntFlag(args, '--startX');
       const swipeStartY = parseIntFlag(args, '--startY');
       const swipeDistance = parseIntFlag(args, '--distance');
-      await sendRequest(port, 'POST', '/tool/device_swipe', {
+      await sendRequest(daemon, 'POST', '/tool/device_swipe', {
         direction: swipeDirection,
         ...(swipeStartX === undefined ? {} : { startX: swipeStartX }),
         ...(swipeStartY === undefined ? {} : { startY: swipeStartY }),
@@ -1044,7 +1048,7 @@ export async function routeCommand(
         );
       }
       const pressDuration = parseIntFlag(args, '--duration');
-      await sendInteractionRequest(port, '/tool/long_press', args, {
+      await sendInteractionRequest(daemon, '/tool/long_press', args, {
         ...(pressDuration === undefined ? {} : { durationMs: pressDuration }),
       });
       break;
@@ -1058,40 +1062,44 @@ export async function routeCommand(
       if (Number.isNaN(tapX) || Number.isNaN(tapY)) {
         failUsage('Usage: mm tap-coordinates <x> <y>');
       }
-      await sendRequest(port, 'POST', '/tool/tap_coordinates', {
+      await sendRequest(daemon, 'POST', '/tool/tap_coordinates', {
         x: tapX,
         y: tapY,
       });
       break;
     }
     case 'dismiss-keyboard':
-      await sendRequest(port, 'POST', '/tool/dismiss_keyboard', {});
+      await sendRequest(daemon, 'POST', '/tool/dismiss_keyboard', {});
       break;
     case 'dismiss-alert':
-      await sendRequest(port, 'POST', '/tool/dismiss_alert', {
+      await sendRequest(daemon, 'POST', '/tool/dismiss_alert', {
         accept: args.includes('--accept'),
       });
       break;
     case 'get-alert-text':
-      await sendRequest(port, 'POST', '/tool/get_alert_text', {});
+      await sendRequest(daemon, 'POST', '/tool/get_alert_text', {});
       break;
     case 'open-app':
       if (!args[0]) {
         failUsage('Usage: mm open-app <bundleId>');
       }
-      await sendRequest(port, 'POST', '/tool/open_app', { bundleId: args[0] });
+      await sendRequest(daemon, 'POST', '/tool/open_app', {
+        bundleId: args[0],
+      });
       break;
     case 'close-app':
       if (!args[0]) {
         failUsage('Usage: mm close-app <bundleId>');
       }
-      await sendRequest(port, 'POST', '/tool/close_app', { bundleId: args[0] });
+      await sendRequest(daemon, 'POST', '/tool/close_app', {
+        bundleId: args[0],
+      });
       break;
     case 'press-button':
       if (!args[0]) {
         failUsage('Usage: mm press-button <button>');
       }
-      await sendRequest(port, 'POST', '/tool/press_button', {
+      await sendRequest(daemon, 'POST', '/tool/press_button', {
         button: args[0],
       });
       break;
@@ -1103,7 +1111,7 @@ export async function routeCommand(
       if (ctxAction === 'switch' && !args[1]) {
         failUsage('Usage: mm device-context switch <name>');
       }
-      await sendRequest(port, 'POST', '/tool/device_context', {
+      await sendRequest(daemon, 'POST', '/tool/device_context', {
         action: ctxAction,
         ...(ctxAction === 'switch' ? { name: args[1] } : {}),
       });
@@ -1120,7 +1128,7 @@ export async function routeCommand(
       if (devClipAction === 'write' && !args[1]) {
         failUsage('Usage: mm device-clipboard write <text>');
       }
-      await sendRequest(port, 'POST', '/tool/device_clipboard', {
+      await sendRequest(daemon, 'POST', '/tool/device_clipboard', {
         action: devClipAction,
         ...(devClipAction === 'write' ? { text: args[1] } : {}),
       });
@@ -1132,7 +1140,7 @@ export async function routeCommand(
         failUsage('Usage: mm screen-recording <start|stop> [--output <path>]');
       }
       const recOutput = parseStringFlag(args, '--output');
-      await sendRequest(port, 'POST', '/tool/screen_recording', {
+      await sendRequest(daemon, 'POST', '/tool/screen_recording', {
         action: recAction,
         ...(recAction === 'start' && recOutput
           ? { outputPath: recOutput }
@@ -1143,7 +1151,7 @@ export async function routeCommand(
     case 'device-logs': {
       const logsDuration = parseIntFlag(args, '--duration');
       const logsFilter = parseStringFlag(args, '--filter');
-      await sendRequest(port, 'POST', '/tool/device_logs', {
+      await sendRequest(daemon, 'POST', '/tool/device_logs', {
         ...(logsDuration === undefined
           ? {}
           : { durationSeconds: logsDuration }),
@@ -1152,7 +1160,7 @@ export async function routeCommand(
       break;
     }
     case 'generate-locators':
-      await sendRequest(port, 'POST', '/tool/generate_locators', {});
+      await sendRequest(daemon, 'POST', '/tool/generate_locators', {});
       break;
     default:
       failUsage(`unknown command '${command}'. Run 'mm --help' for usage.`);
@@ -1163,11 +1171,11 @@ export async function routeCommand(
  * Routes mock-network subcommands to the daemon.
  *
  * @param args - CLI arguments after `mock-network`.
- * @param port - The daemon HTTP server port.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
  */
 export async function routeMockNetworkCommand(
   args: string[],
-  port: number,
+  daemon: DaemonEndpoint,
 ): Promise<void> {
   const action = args[0];
 
@@ -1178,7 +1186,7 @@ export async function routeMockNetworkCommand(
     }
 
     const parsed = parseJsonArgument(rawRule, 'mock-network add');
-    await sendRequest(port, 'POST', '/tool/mock_network', {
+    await sendRequest(daemon, 'POST', '/tool/mock_network', {
       action: 'add',
       ...normalizeMockNetworkAddPayload(parsed),
     });
@@ -1186,18 +1194,20 @@ export async function routeMockNetworkCommand(
   }
 
   if (action === 'clear') {
-    await sendRequest(port, 'POST', '/tool/mock_network', { action: 'clear' });
+    await sendRequest(daemon, 'POST', '/tool/mock_network', {
+      action: 'clear',
+    });
     return;
   }
 
   if (action === 'list') {
-    await sendRequest(port, 'POST', '/tool/mock_network', { action: 'list' });
+    await sendRequest(daemon, 'POST', '/tool/mock_network', { action: 'list' });
     return;
   }
 
   if (action === 'requests') {
     const limit = parseIntFlag(args, '--limit');
-    await sendRequest(port, 'POST', '/tool/mock_network', {
+    await sendRequest(daemon, 'POST', '/tool/mock_network', {
       action: 'requests',
       ...(limit === undefined ? {} : { limit }),
     });
@@ -1320,10 +1330,11 @@ export async function daemonFetch(
  * the daemon may already have run the action.
  *
  * The abort timeout comes from the requested override, else from the one
- * timeout budget shared with the daemon (`computeTimeoutBudget` applied to
- * the request's action budget), else from the command's fixed timeout.
+ * timeout budget shared with the daemon (`resolveCliHttpTimeoutMs`): the
+ * request's action budget, or the daemon queue default published in the
+ * state for tools without one, plus either layer's margin.
  *
- * @param port - The daemon HTTP server port.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
  * @param method - The HTTP method to use.
  * @param requestPath - The URL path for the request.
  * @param body - The request body payload, or null for no body.
@@ -1331,21 +1342,22 @@ export async function daemonFetch(
  * @param options.requestTimeoutMs - Timeout in milliseconds for the HTTP request.
  */
 export async function sendRequest(
-  port: number,
+  daemon: DaemonEndpoint,
   method: string,
   requestPath: string,
   body: unknown,
   options?: { requestTimeoutMs?: number },
 ): Promise<void> {
+  const port = typeof daemon === 'number' ? daemon : daemon.port;
   const commandName = requestPath.split('/').pop() ?? '';
-  const actionTimeoutMs = resolveActionTimeoutMs(commandName, body);
   const timeout =
     options?.requestTimeoutMs ??
-    (actionTimeoutMs === undefined
-      ? undefined
-      : computeTimeoutBudget(actionTimeoutMs).http) ??
-    COMMAND_TIMEOUTS_MS[commandName] ??
-    COMMAND_TIMEOUTS_MS.default;
+    resolveCliHttpTimeoutMs(commandName, body, {
+      queueDefaultMs:
+        typeof daemon === 'number' ? undefined : daemon.requestTimeoutMs,
+      commandTimeoutMs:
+        COMMAND_TIMEOUTS_MS[commandName] ?? COMMAND_TIMEOUTS_MS.default,
+    });
 
   for (let attempt = 0; attempt <= SEND_MAX_RETRIES; attempt++) {
     if (attempt > 0) {

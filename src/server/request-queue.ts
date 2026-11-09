@@ -1,4 +1,5 @@
 import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
   MAX_QUEUE_TIMEOUT_MS,
   QUEUE_SETTLE_TIMEOUT_MS,
 } from '../tools/utils/constants.js';
@@ -19,6 +20,20 @@ function clampQueueTimeout(timeoutMs: number, fallbackMs: number): number {
     return timeoutMs;
   }
   return MAX_QUEUE_TIMEOUT_MS;
+}
+
+/**
+ * Resolves the effective queue timeout a `RequestQueue` will use: the
+ * configured value, or the default when it is missing or invalid.
+ *
+ * @param timeoutMs - The configured timeout, if any.
+ * @returns The effective queue timeout in milliseconds.
+ */
+export function resolveQueueTimeoutMs(timeoutMs?: number): number {
+  return clampQueueTimeout(
+    timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    DEFAULT_REQUEST_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -55,8 +70,8 @@ export class RequestQueue {
   /**
    * @param timeoutMs - Maximum milliseconds a queued task may run.
    */
-  constructor(timeoutMs = 30_000) {
-    this.#timeoutMs = clampQueueTimeout(timeoutMs, 30_000);
+  constructor(timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
+    this.#timeoutMs = resolveQueueTimeoutMs(timeoutMs);
   }
 
   /**
