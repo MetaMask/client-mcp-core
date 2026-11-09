@@ -66,6 +66,8 @@ Observations contain `testIds`, `a11y` and (browser, after a mutating or batch c
 
 On mobile, each observation and `describe-screen` comes from one device snapshot. The Android system status bar and navigation bar and the Expo DevLauncher "Tools" button (iOS `gearshape.fill`) are not part of the app and are removed from `testIds` and `a11y`. Other system windows, such as the biometric prompt (`com.android.systemui:id/biometric_*`), are kept.
 
+On Android, a navigating tap can be observed while the new screen is still mounting: the screen-level test IDs are already there but much of the tree is not (P1-32 saw 51 of 360 nodes). The settle retries a screen that is still tearing down (the old screen's test IDs with most of its nodes gone), not one that is still filling in. When an observation looks partial, run `mm describe-screen` before acting on it.
+
 **Observation Compaction:** Observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
 
 **Diff-Based Observations:** After the first observation sets a baseline, later calls at level `diff` return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:

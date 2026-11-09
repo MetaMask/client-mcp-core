@@ -74,6 +74,14 @@ export const MOBILE_SETTLE_MAX_SNAPSHOTS = 3;
 export const MOBILE_SETTLE_UNCHANGED_RETRIES = 1;
 
 /**
+ * Mobile observation settle: extra snapshots allowed because the screen looks
+ * like it is still tearing down (see `isScreenInTransition`), after a
+ * navigating tap. One retry covers the Android transition observed in P1-32
+ * (the new screen was complete ~440 ms after the tap).
+ */
+export const MOBILE_SETTLE_TRANSITION_RETRIES = 1;
+
+/**
  * Mobile observation settle: when the first snapshot took at least this long
  * (an Android `am instrument` capture can take seconds), the UI already had
  * that time to change, so an unchanged screen is not retried. A busy screen

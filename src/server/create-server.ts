@@ -17,7 +17,11 @@ import {
   setRequestStart,
   withMeta,
 } from './response-timing.js';
-import { isScreenBusy, screenSignature } from './screen-settle.js';
+import {
+  isScreenBusy,
+  isScreenInTransition,
+  screenSignature,
+} from './screen-settle.js';
 import type { ISessionManager } from './session-manager.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
@@ -50,6 +54,7 @@ import {
   MOBILE_SETTLE_MAX_SNAPSHOTS,
   MOBILE_SETTLE_MS,
   MOBILE_SETTLE_SLOW_CAPTURE_MS,
+  MOBILE_SETTLE_TRANSITION_RETRIES,
   MOBILE_SETTLE_UNCHANGED_RETRIES,
   OBSERVATION_TESTID_LIMIT,
   OBSERVATION_TIMEOUT_MS,
@@ -455,11 +460,15 @@ export function createServer(config: ServerConfig): ServerInstance {
    * Takes the mobile accessibility tree and test IDs.
    *
    * After a mutating or batch tool (`settle`), the screen may not have
-   * changed yet, or may show work in progress (for example a "busy" button
-   * while the wallet unlocks). Limits:
+   * changed yet, may still be tearing down, or may show work in progress
+   * (for example a "busy" button while the wallet unlocks). Limits:
    *
    * - Busy (see `isScreenBusy`): wait `MOBILE_SETTLE_MS` and take the
    * snapshot again, while the screen stays busy.
+   * - In transition (see `isScreenInTransition`: the tree lost most of its
+   * nodes but kept the last screen's test IDs, e.g. the old screen half torn
+   * down after a navigating tap on Android): retry
+   * `MOBILE_SETTLE_TRANSITION_RETRIES` time(s).
    * - Unchanged (equals the last screen the agent received, ignoring refs)
    * and not busy: retry at most `MOBILE_SETTLE_UNCHANGED_RETRIES` time(s).
    * Many taps leave the screen as it is (for example tapping the tab that is
@@ -493,8 +502,17 @@ export function createServer(config: ServerConfig): ServerInstance {
         Date.now() - settleStartedAt >= MOBILE_SETTLE_SLOW_CAPTURE_MS;
       const previous = lastScreen ? screenSignature(lastScreen) : null;
       let unchangedRetries = 0;
+      let transitionRetries = 0;
       const shouldRetry = (nodes: A11yNodeTrimmed[]): boolean => {
         if (isScreenBusy(nodes)) {
+          return true;
+        }
+        if (
+          lastScreen !== null &&
+          transitionRetries < MOBILE_SETTLE_TRANSITION_RETRIES &&
+          isScreenInTransition(lastScreen, nodes)
+        ) {
+          transitionRetries += 1;
           return true;
         }
         if (

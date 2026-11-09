@@ -2337,7 +2337,13 @@ describe('createServer observation driver freshness after launch', () => {
 });
 
 describe('createServer abort, ref generations and observations', () => {
-  type Node = { ref: string; role: string; name: string; path: string[] };
+  type Node = {
+    ref: string;
+    role: string;
+    name: string;
+    path: string[];
+    testId?: string;
+  };
   type ObsBody = {
     ok: boolean;
     error?: { code: string; message: string };
@@ -3110,6 +3116,86 @@ describe('createServer abort, ref generations and observations', () => {
 
       // 1 (first click) + 1 + 1 retry (second click).
       expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+    });
+
+    // P1-32: after a navigating tap on Android the first snapshot can still
+    // show the old screen half torn down (home 242 nodes -> 64 nodes with
+    // `wallet-screen` present, the new screen complete ~440 ms later).
+    const buildScreen = (prefix: string, count: number): Tree => ({
+      nodes: Array.from({ length: count }, (_, index) => ({
+        ref: `e${index + 1}`,
+        role: 'android.view.ViewGroup',
+        name: `${prefix}-${index + 1}`,
+        path: [],
+        testId: `${prefix}-${index + 1}`,
+      })),
+      refMap: new Map(),
+    });
+
+    it('retries a screen that is tearing down after a navigating tap', async () => {
+      await startServer();
+      const home = buildScreen('wallet', 40);
+      const torn: Tree = { nodes: home.nodes.slice(0, 12), refMap: new Map() };
+      const explore = buildScreen('explore', 30);
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(home)
+        .mockResolvedValueOnce(torn)
+        .mockResolvedValueOnce(explore);
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = await post('/tool/click', { testId: 'x' });
+
+      // 1 (first click) + 1 torn snapshot + 1 transition retry.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+      expect(body.observations?.a11y.nodes[0].testId).toBe('explore-1');
+    });
+
+    it('retries a torn screen only once', async () => {
+      await startServer();
+      const home = buildScreen('wallet', 40);
+      const torn: Tree = { nodes: home.nodes.slice(0, 12), refMap: new Map() };
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(home)
+        .mockResolvedValueOnce(torn)
+        .mockResolvedValue(torn);
+
+      await post('/tool/click', { testId: 'x' });
+      const { body } = await post('/tool/click', { testId: 'x' });
+
+      // 1 (first click) + 1 torn snapshot + 1 retry, still torn: stop.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
+      // The delivered observation is still the torn tree.
+      expect(body.observations?.a11y.diff).toStrictEqual({
+        added: [],
+        removed: Array.from({ length: 28 }, (_, index) => `e${index + 13}`),
+        unchanged: 12,
+      });
+    });
+
+    it('does not retry a new screen that is not torn down', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildScreen('wallet', 40))
+        .mockResolvedValue(buildScreen('explore', 40));
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x' });
+
+      // A different screen with the same node count is a change, not a
+      // teardown: no retry.
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry a smaller screen with its own test IDs (drawer)', async () => {
+      await startServer();
+      driver.getAccessibilityTree
+        .mockResolvedValueOnce(buildScreen('wallet', 40))
+        .mockResolvedValue(buildScreen('drawer', 12));
+
+      await post('/tool/click', { testId: 'x' });
+      await post('/tool/click', { testId: 'x' });
+
+      expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
     });
 
     it('takes at most three extra snapshots while the screen is busy', async () => {
