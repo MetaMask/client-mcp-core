@@ -6,6 +6,7 @@ import {
   DEFAULT_SW_ATTACH_TIMEOUT_MS,
   STOPPED_WORKER_MESSAGE,
   STOPPED_WORKER_WAIT_MS,
+  SW_TARGET_POLL_MS,
   disposeCdpManager,
   getCdpManager,
   isClosedSessionError,
@@ -16,6 +17,7 @@ const EXTENSION_URL = `chrome-extension://${EXTENSION_ID}/`;
 const SW_URL = `${EXTENSION_URL}background.js`;
 const PAGE_URL = `${EXTENSION_URL}home.html`;
 const TARGET_ID = 'target-1';
+const TARGET_ID_2 = 'target-2';
 const SESSION_ID = 'session-1';
 
 /**
@@ -101,10 +103,18 @@ function createPage(url = PAGE_URL): Page {
   return { url: vi.fn(() => url) } as unknown as Page;
 }
 
+type SwTargetInfo = {
+  type: string;
+  url: string;
+  targetId: string;
+};
+
 type SwOptions = {
   workers?: Worker[];
   pages?: Page[];
   browser?: Browser | null;
+  /** The browser-level target list. Defaults to one Extension SW target. */
+  targets?: SwTargetInfo[];
   /** Answers the service worker command tunneled over the browser session. */
   swReply?: (
     method: string,
@@ -117,6 +127,7 @@ type FakeContext = {
   emitter: ReturnType<typeof createEmitter>;
   newCDPSession: ReturnType<typeof vi.fn>;
   workers: Worker[];
+  targets: SwTargetInfo[];
   browserSession: {
     send: ReturnType<typeof vi.fn>;
     detach: ReturnType<typeof vi.fn>;
@@ -139,16 +150,15 @@ function createContext(options: SwOptions = {}): FakeContext {
   const emittedTargetIds: { targetId: string; flatten: boolean }[] = [];
   const newCDPSession = vi.fn(async () => createCdpSession());
   const workers = options.workers ?? [createWorker()];
+  const targets = options.targets ?? [
+    { type: 'service_worker', url: SW_URL, targetId: TARGET_ID },
+  ];
 
   const browserSession = {
     send: vi.fn(async (method: string, params?: Record<string, unknown>) => {
       switch (method) {
         case 'Target.getTargets':
-          return {
-            targetInfos: [
-              { type: 'service_worker', url: SW_URL, targetId: TARGET_ID },
-            ],
-          };
+          return { targetInfos: targets };
         case 'Target.attachToTarget': {
           emittedTargetIds.push({
             targetId: String(params?.targetId),
@@ -201,6 +211,7 @@ function createContext(options: SwOptions = {}): FakeContext {
     emitter,
     newCDPSession,
     workers,
+    targets,
     browserSession,
     browserEmitter,
     emittedTargetIds,
@@ -703,46 +714,44 @@ describe('CdpManager service worker target', () => {
     ).toHaveLength(1);
   });
 
-  it('waits for the serviceworker event when none is running', async () => {
-    const fake = createContext({ workers: [] });
-    const manager = new CdpManager(fake.context);
-    const worker = createWorker();
+  it('polls for the worker target when none is running', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createContext({ workers: [], targets: [] });
+      const manager = new CdpManager(fake.context);
+      const pending = manager.send(
+        { kind: 'sw' },
+        'Runtime.evaluate',
+        {},
+        { timeoutMs: 5000 },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      fake.targets.push({
+        type: 'service_worker',
+        url: SW_URL,
+        targetId: TARGET_ID,
+      });
+      await vi.advanceTimersByTimeAsync(SW_TARGET_POLL_MS);
 
-    const pending = manager.send(
-      { kind: 'sw' },
-      'Runtime.evaluate',
-      {},
-      {
-        timeoutMs: 1000,
-      },
-    );
-    await flush();
-    fake.emitter.emit('serviceworker', worker);
-
-    expect(await pending).toStrictEqual({ value: 'ok' });
+      expect(await pending).toStrictEqual({ value: 'ok' });
+      expect(fake.emittedTargetIds).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('derives the extension ID from the worker event', async () => {
+  it('derives the extension ID from a live target', async () => {
     const fake = createContext({ workers: [], pages: [] });
     const manager = new CdpManager(fake.context);
-    const worker = createWorker();
 
-    const pending = manager.send(
-      { kind: 'sw' },
-      'Runtime.evaluate',
-      {},
-      {
-        timeoutMs: 1000,
-      },
-    );
-    await flush();
-    fake.emitter.emit('serviceworker', worker);
-
-    expect(await pending).toBeDefined();
+    expect(
+      await manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
+    ).toBeDefined();
+    expect(fake.emittedTargetIds).toHaveLength(1);
   });
 
   it('fails fast with the stopped-worker error when the extension is known', async () => {
-    const fake = createContext({ workers: [] });
+    const fake = createContext({ workers: [], targets: [] });
     const manager = new CdpManager(fake.context);
 
     await expect(
@@ -751,7 +760,7 @@ describe('CdpManager service worker target', () => {
   });
 
   it('times out cleanly when no extension is known at all', async () => {
-    const fake = createContext({ workers: [], pages: [] });
+    const fake = createContext({ workers: [], pages: [], targets: [] });
     const manager = new CdpManager(fake.context);
 
     await expect(
@@ -764,7 +773,7 @@ describe('CdpManager service worker target', () => {
   it('caps the wait at the stopped-worker window once the extension is known', async () => {
     vi.useFakeTimers();
     try {
-      const fake = createContext({ workers: [] });
+      const fake = createContext({ workers: [], targets: [] });
       const manager = new CdpManager(fake.context);
       const pending = manager.send(
         { kind: 'sw' },
@@ -788,7 +797,7 @@ describe('CdpManager service worker target', () => {
   });
 
   it('uses the default wait when no timeout is given', async () => {
-    const fake = createContext({ workers: [] });
+    const fake = createContext({ workers: [], targets: [] });
     const manager = new CdpManager(fake.context);
     const controller = new AbortController();
 
@@ -807,7 +816,7 @@ describe('CdpManager service worker target', () => {
   });
 
   it('aborts the wait for the worker', async () => {
-    const fake = createContext({ workers: [] });
+    const fake = createContext({ workers: [], targets: [] });
     const manager = new CdpManager(fake.context);
     const controller = new AbortController();
 
@@ -827,7 +836,7 @@ describe('CdpManager service worker target', () => {
   });
 
   it('rejects an already aborted wait', async () => {
-    const fake = createContext({ workers: [] });
+    const fake = createContext({ workers: [], targets: [] });
     const manager = new CdpManager(fake.context);
     const controller = new AbortController();
     controller.abort(new Error('stop'));
@@ -844,23 +853,28 @@ describe('CdpManager service worker target', () => {
     ).rejects.toThrowError('stop');
   });
 
-  it('re-attaches after the worker restarts (AC3)', async () => {
+  it('re-attaches to a restarted worker with a new target ID (AC3)', async () => {
     const fake = createContext();
     const manager = new CdpManager(fake.context);
-    const firstWorker = createWorker();
+    const worker = fake.workers[0];
 
     await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
     expect(fake.emittedTargetIds).toHaveLength(1);
 
-    const restarted = createWorker();
-    (fake.context.serviceWorkers as ReturnType<typeof vi.fn>).mockReturnValue([
-      restarted,
-    ]);
-    fake.emitter.emit('serviceworker', restarted);
-
+    // Playwright keeps the same Worker object and emits no event: only the
+    // CDP target changes.
+    fake.targets[0] = {
+      type: 'service_worker',
+      url: SW_URL,
+      targetId: TARGET_ID_2,
+    };
     await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
-    expect(fake.emittedTargetIds).toHaveLength(2);
-    expect(firstWorker).not.toBe(restarted);
+
+    expect(fake.emittedTargetIds.map((entry) => entry.targetId)).toStrictEqual([
+      TARGET_ID,
+      TARGET_ID_2,
+    ]);
+    expect(fake.workers[0]).toBe(worker);
   });
 
   it('drops the session when the attached target detaches', async () => {
@@ -955,19 +969,11 @@ describe('CdpManager service worker target', () => {
   });
 
   it('fails when the worker has no live target', async () => {
-    const fake = createContext();
+    const fake = createContext({ targets: [] });
     const manager = new CdpManager(fake.context);
-    fake.browserSession.send.mockImplementation(
-      async (method: string, params?: Record<string, unknown>) => {
-        if (method === 'Target.getTargets') {
-          return { targetInfos: [] };
-        }
-        return { sessionId: SESSION_ID, ...params };
-      },
-    );
 
     await expect(
-      manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
+      manager.send({ kind: 'sw' }, 'Runtime.evaluate', {}, { timeoutMs: 5 }),
     ).rejects.toThrowError(STOPPED_WORKER_MESSAGE);
   });
 
@@ -1092,49 +1098,53 @@ describe('CdpManager service worker target', () => {
     expect(fake.emittedTargetIds).toHaveLength(1);
   });
 
-  it('replaces the cached entry when discovery finds another worker', async () => {
-    const fake = createContext({ workers: [], pages: [] });
+  it('drops the old target session when a new target ID appears', async () => {
+    const fake = createContext();
     const manager = new CdpManager(fake.context);
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
 
-    const first = manager.send({ kind: 'sw' }, 'Runtime.evaluate');
-    await flush();
-    fake.emitter.emit('serviceworker', createWorker());
-    await first;
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+    fake.targets[0] = {
+      type: 'service_worker',
+      url: SW_URL,
+      targetId: TARGET_ID_2,
+    };
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
 
-    const restarted = createWorker();
-    (fake.context.serviceWorkers as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce([])
-      .mockReturnValue([restarted]);
+    expect(detached).toHaveBeenCalledTimes(1);
+    expect(fake.emittedTargetIds.map((entry) => entry.targetId)).toStrictEqual([
+      TARGET_ID,
+      TARGET_ID_2,
+    ]);
+  });
+
+  it('picks the extension target and skips other service workers', async () => {
+    const fake = createContext({
+      workers: [],
+      pages: [createPage()],
+      targets: [
+        {
+          type: 'service_worker',
+          url: 'https://example.test/sw.js',
+          targetId: 'web-sw',
+        },
+        {
+          type: 'service_worker',
+          url: 'chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz/bg.js',
+          targetId: 'other-ext',
+        },
+        { type: 'service_worker', url: SW_URL, targetId: TARGET_ID },
+        { type: 'page', url: PAGE_URL, targetId: 'page-target' },
+      ],
+    });
+    const manager = new CdpManager(fake.context);
 
     await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
 
-    expect(fake.emittedTargetIds).toHaveLength(2);
-  });
-
-  it('ignores non-extension and mismatched workers while waiting', async () => {
-    const fake = createContext({ workers: [], pages: [createPage()] });
-    const manager = new CdpManager(fake.context);
-
-    const pending = manager.send(
-      { kind: 'sw' },
-      'Runtime.evaluate',
-      {},
-      {
-        timeoutMs: 1000,
-      },
-    );
-    await flush();
-    fake.emitter.emit(
-      'serviceworker',
-      createWorker('https://example.test/sw.js'),
-    );
-    fake.emitter.emit(
-      'serviceworker',
-      createWorker('chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz/bg.js'),
-    );
-    fake.emitter.emit('serviceworker', createWorker());
-
-    expect(await pending).toBeDefined();
+    expect(fake.emittedTargetIds).toStrictEqual([
+      { targetId: TARGET_ID, flatten: false },
+    ]);
   });
 
   it('derives the extension ID from a running service worker', async () => {
@@ -1202,17 +1212,12 @@ describe('CdpManager service worker target', () => {
     );
   });
 
-  it('waits the short window when the listed worker already closed', async () => {
+  it('caps the wait when only a worker was seen before', async () => {
     vi.useFakeTimers();
     try {
-      const fake = createContext({ workers: [] });
+      const fake = createContext({ workers: [], pages: [], targets: [] });
       const manager = new CdpManager(fake.context);
-      const worker = createWorker();
-      fake.emitter.emit('serviceworker', worker);
-      (fake.context.serviceWorkers as ReturnType<typeof vi.fn>).mockReturnValue(
-        [worker],
-      );
-      worker.emitter.emit('close', worker);
+      fake.emitter.emit('serviceworker', createWorker());
 
       const pending = manager.send(
         { kind: 'sw' },
@@ -1229,29 +1234,30 @@ describe('CdpManager service worker target', () => {
     }
   });
 
-  it('reattaches when the cached worker is no longer a live target', async () => {
-    const fake = createContext();
-    const manager = new CdpManager(fake.context);
-    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+  it('surfaces a target-list failure while polling', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createContext({ workers: [], pages: [], targets: [] });
+      const manager = new CdpManager(fake.context);
+      const implementation = fake.browserSession.send.getMockImplementation();
+      let getTargets = 0;
+      fake.browserSession.send.mockImplementation(
+        async (method: string, params?: Record<string, unknown>) => {
+          if (method === 'Target.getTargets' && (getTargets += 1) > 1) {
+            throw new Error('boom');
+          }
+          return implementation?.(method, params);
+        },
+      );
 
-    const restarted = createWorker();
-    (fake.context.serviceWorkers as ReturnType<typeof vi.fn>).mockReturnValue([
-      restarted,
-    ]);
-    const implementation = fake.browserSession.send.getMockImplementation();
-    let getTargets = 0;
-    fake.browserSession.send.mockImplementation(
-      async (method: string, params?: Record<string, unknown>) => {
-        if (method === 'Target.getTargets' && (getTargets += 1) === 1) {
-          return { targetInfos: [] };
-        }
-        return implementation?.(method, params);
-      },
-    );
+      const pending = manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+      const error = pending.catch((reason: Error) => reason);
+      await vi.advanceTimersByTimeAsync(SW_TARGET_POLL_MS);
 
-    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
-
-    expect(fake.emittedTargetIds).toHaveLength(2);
+      expect((await error).message).toBe('boom');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('closes the worker session only for its destroyed target', async () => {

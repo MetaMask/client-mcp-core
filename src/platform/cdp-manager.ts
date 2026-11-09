@@ -39,8 +39,12 @@ export type CdpSession = {
  */
 export type CdpTargetEvent = {
   kind: CdpTargetKind;
-  /** The page of a page target, the worker of a service worker target. */
-  target: Page | PlaywrightWorker;
+  /**
+   * The page of a page target, or the worker of a service worker target when
+   * Playwright reported one. The service worker is identified by its CDP
+   * target, so a worker object may be missing or stale after a restart.
+   */
+  target?: Page | PlaywrightWorker;
 };
 
 /**
@@ -88,6 +92,9 @@ export const DEFAULT_SW_ATTACH_TIMEOUT_MS = 30_000;
  * from CDP: only Extension activity (an open or reloaded page) starts it.
  */
 export const STOPPED_WORKER_WAIT_MS = 2_000;
+
+/** How often to poll the browser target list while waiting for a worker. */
+export const SW_TARGET_POLL_MS = 200;
 
 /**
  * Error for a CDP command that needs the Extension service worker while it is
@@ -375,15 +382,22 @@ type CdpEntryBase = {
 type PageEntry = CdpEntryBase & { page: Page };
 
 type ServiceWorkerEntry = CdpEntryBase & {
-  extensionId: string;
-  worker: PlaywrightWorker;
+  /** The CDP target ID; a restarted worker has a new one. */
+  targetId: string;
+  /**
+   * The Playwright worker, when Playwright reported one. It is only used to
+   * notice the worker stopping: the CDP target list decides liveness.
+   */
+  worker?: PlaywrightWorker;
 };
 
 type CdpEntry = PageEntry | ServiceWorkerEntry;
 
+/** A live `service_worker` target found in the browser target list. */
 type ServiceWorkerTarget = {
   extensionId: string;
-  worker: PlaywrightWorker;
+  targetId: string;
+  url: string;
 };
 
 /**
@@ -407,9 +421,6 @@ export class CdpManager {
   readonly #pageEntries = new WeakMap<Page, PageEntry>();
 
   readonly #workerEntries = new Map<string, ServiceWorkerEntry>();
-
-  /** Workers whose Playwright `close` event already fired. */
-  readonly #closedWorkers = new WeakSet<PlaywrightWorker>();
 
   /** Workers already watched for a `close` event. */
   readonly #observedWorkers = new WeakSet<PlaywrightWorker>();
@@ -552,8 +563,9 @@ export class CdpManager {
   }
 
   /**
-   * Drops the cached session of an extension when a new worker of that
-   * extension appears: the old worker is dead and so is its session.
+   * Marks the Extension as seen and watches a newly reported service worker
+   * for its `close` event. A restarted worker can reuse the same Playwright
+   * object, so liveness is decided by the CDP target list instead.
    *
    * @param worker - The service worker reported by the context.
    */
@@ -564,17 +576,13 @@ export class CdpManager {
     }
     this.#extensionWorkerSeen = true;
     this.#observeWorker(worker);
-    const entry = this.#workerEntries.get(extensionId);
-    if (entry !== undefined && entry.worker !== worker) {
-      this.#drop(entry);
-    }
   };
 
   /**
    * Watches a service worker once for its `close` event. MV3 workers stop
-   * when idle, and Playwright's `close` event is the signal to forget the
-   * cached entry: `context.serviceWorkers()` can keep listing the dead
-   * worker afterwards.
+   * when idle, and Playwright's `close` event is a signal to forget the
+   * cached entry. The browser target list stays the source of truth: a
+   * restarted worker can reuse the same Playwright `Worker` object.
    *
    * @param worker - The service worker to watch.
    */
@@ -584,11 +592,9 @@ export class CdpManager {
     }
     this.#observedWorkers.add(worker);
     worker.once?.('close', () => {
-      this.#closedWorkers.add(worker);
-      for (const entry of this.#workerEntries.values()) {
+      for (const entry of [...this.#workerEntries.values()]) {
         if (entry.worker === worker) {
           this.#drop(entry);
-          return;
         }
       }
     });
@@ -618,7 +624,7 @@ export class CdpManager {
     return {
       entry,
       open: async (): Promise<CdpSession> =>
-        this.#openWorkerSession(entry.worker, () => this.#drop(entry)),
+        this.#openWorkerSession(entry.targetId, () => this.#drop(entry)),
     };
   }
 
@@ -660,146 +666,142 @@ export class CdpManager {
   }
 
   /**
-   * Returns the cached entry of the extension service worker, waiting for
-   * the worker when it is not running yet. A known worker object replaces a
-   * cached entry for the same extension (the worker restarted).
+   * Returns the cached entry of the extension service worker target, waiting
+   * for a live CDP target when the worker is not running. The entry is keyed
+   * by CDP target ID: a restarted worker has a new target ID, so it gets a
+   * new entry and session even when Playwright keeps the same `Worker`
+   * object (or emits no new `serviceworker` event).
    *
    * @param options - Bounded wait for the worker.
    * @returns Its entry.
    */
   async #workerEntry(options: CdpAttachOptions): Promise<ServiceWorkerEntry> {
     const knownExtensionId = this.#extensionId();
-    if (knownExtensionId !== undefined) {
-      const cached = this.#workerEntries.get(knownExtensionId);
-      if (cached) {
-        if (await this.#isLiveWorker(cached.worker)) {
-          return cached;
-        }
-        // The cached worker stopped without a close event reaching us.
-        this.#closedWorkers.add(cached.worker);
-        this.#drop(cached);
-      }
-    }
-    const { extensionId, worker } = await this.#findServiceWorker(
+    const target = await this.#findServiceWorkerTarget(
       knownExtensionId,
       options,
     );
-    this.#observeWorker(worker);
-    const previous = this.#workerEntries.get(extensionId);
-    if (previous) {
-      if (previous.worker === worker) {
-        return previous;
-      }
-      this.#drop(previous);
-    }
     this.#extensionWorkerSeen = true;
+    const cached = this.#workerEntries.get(target.targetId);
+    if (cached) {
+      return cached;
+    }
+    // A different target ID is a different worker: its old session is dead.
+    // The manager tracks one Extension service worker at a time.
+    for (const entry of [...this.#workerEntries.values()]) {
+      this.#drop(entry);
+    }
+    const worker = this.#workerFor(target.url);
+    if (worker !== undefined) {
+      this.#observeWorker(worker);
+    }
     const entry: ServiceWorkerEntry = {
-      extensionId,
+      targetId: target.targetId,
       worker,
       event: { kind: 'sw', target: worker },
     };
-    this.#workerEntries.set(extensionId, entry);
+    this.#workerEntries.set(target.targetId, entry);
     this.#entries.add(entry);
     return entry;
   }
 
   /**
-   * Tells whether a worker is still a live CDP target. A stopped MV3 worker
-   * can stay in `context.serviceWorkers()`, so the browser target list is the
-   * source of truth.
+   * Returns the Playwright worker reported for a URL, when there is one.
    *
-   * @param worker - The service worker to check.
-   * @returns True when a matching `service_worker` target exists.
+   * @param url - The service worker URL.
+   * @returns The worker, or undefined when Playwright has not reported it.
    */
-  async #isLiveWorker(worker: PlaywrightWorker): Promise<boolean> {
-    const browserSession = await this.#getBrowserSession();
-    const { targetInfos } = await browserSession.send('Target.getTargets');
-    const url = worker.url();
-    return (targetInfos as { type: string; url: string }[]).some(
-      (info) => info.type === 'service_worker' && info.url === url,
-    );
+  #workerFor(url: string): PlaywrightWorker | undefined {
+    return this.#context
+      .serviceWorkers()
+      .find((worker) => worker.url() === url);
   }
 
   /**
-   * Finds the extension service worker, waiting for it to appear when it is
-   * not running yet.
+   * Lists the live extension service worker targets. Playwright's
+   * `context.serviceWorkers()` is not authoritative: after an MV3 worker
+   * restart it can keep returning a stale `Worker` (sometimes the same object
+   * with the same URL), so the browser target list decides.
+   *
+   * @returns The live extension service worker targets.
+   */
+  async #serviceWorkerTargets(): Promise<ServiceWorkerTarget[]> {
+    const browserSession = await this.#getBrowserSession();
+    const { targetInfos } = await browserSession.send('Target.getTargets');
+    return (
+      targetInfos as { type: string; url: string; targetId: string }[]
+    ).flatMap((info) => {
+      if (info.type !== 'service_worker') {
+        return [];
+      }
+      const extensionId = extensionIdFromUrl(info.url);
+      return extensionId === undefined
+        ? []
+        : [{ extensionId, targetId: info.targetId, url: info.url }];
+    });
+  }
+
+  /**
+   * Finds a live extension service worker target, polling the browser target
+   * list while the worker is not running. A stopped MV3 worker cannot be
+   * started from CDP: only Extension activity starts it, so once the
+   * Extension is known the wait is short and fails with an actionable error.
    *
    * @param knownExtensionId - The extension ID to filter on, when known.
    * @param options - Bounded wait for the worker.
-   * @returns The worker and its extension ID.
+   * @returns The live target.
    */
-  async #findServiceWorker(
+  async #findServiceWorkerTarget(
     knownExtensionId: string | undefined,
     options: CdpAttachOptions,
   ): Promise<ServiceWorkerTarget> {
-    const matches = (
-      worker: PlaywrightWorker,
-    ): ServiceWorkerTarget | undefined => {
-      if (this.#closedWorkers.has(worker)) {
-        return undefined;
-      }
-      const extensionId = extensionIdFromUrl(worker.url());
-      if (
-        extensionId === undefined ||
-        (knownExtensionId !== undefined && extensionId !== knownExtensionId)
-      ) {
-        return undefined;
-      }
-      return { extensionId, worker };
+    const find = async (): Promise<ServiceWorkerTarget | undefined> => {
+      const targets = await this.#serviceWorkerTargets();
+      return targets.find(
+        (target) =>
+          knownExtensionId === undefined ||
+          target.extensionId === knownExtensionId,
+      );
     };
 
-    const existing = this.#context
-      .serviceWorkers()
-      .map((worker) => {
-        this.#observeWorker(worker);
-        return matches(worker);
-      })
-      .filter((target): target is ServiceWorkerTarget => target !== undefined);
-    if (existing.length > 0) {
-      return existing[existing.length - 1];
+    const existing = await find();
+    if (existing) {
+      return existing;
     }
 
-    const requestedMs = options.timeoutMs ?? DEFAULT_SW_ATTACH_TIMEOUT_MS;
-    // A stopped MV3 worker cannot be started from CDP: only Extension activity
-    // starts it. Once the Extension is known, fail fast with an actionable
-    // error instead of hanging for the full timeout.
     const extensionKnown =
       knownExtensionId !== undefined || this.#extensionWorkerSeen;
+    const requestedMs = options.timeoutMs ?? DEFAULT_SW_ATTACH_TIMEOUT_MS;
     const timeoutMs = extensionKnown
       ? Math.min(requestedMs, STOPPED_WORKER_WAIT_MS)
       : requestedMs;
     const { signal } = options;
-    const context = this.#context;
+    if (signal?.aborted === true) {
+      throw abortError(signal);
+    }
+
     return new Promise<ServiceWorkerTarget>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        finish(() =>
-          reject(
-            extensionKnown
-              ? stoppedWorkerError()
-              : new Error(
-                  `Timed out after ${timeoutMs}ms waiting for the extension service worker`,
-                ),
-          ),
-        );
-      }, timeoutMs);
+      const handles: {
+        timer?: ReturnType<typeof setTimeout>;
+        poll?: ReturnType<typeof setInterval>;
+      } = {};
+
       /**
        * Stops waiting and runs the settling action.
        *
        * @param action - Resolves or rejects the wait.
        */
       function finish(action: () => void): void {
-        clearTimeout(timer);
-        context.off('serviceworker', onWorker);
+        clearTimeout(handles.timer);
+        clearInterval(handles.poll);
         signal?.removeEventListener('abort', onAbort);
         action();
       }
       /**
-       * Settles when the expected extension worker appears.
-       *
-       * @param worker - The reported service worker.
+       * Settles when a live target appears, or fails the wait.
        */
-      function onWorker(worker: PlaywrightWorker): void {
-        const target = matches(worker);
+      async function check(): Promise<void> {
+        const target = await find();
         if (target) {
           finish(() => resolve(target));
         }
@@ -811,12 +813,21 @@ export class CdpManager {
         finish(() => reject(abortError(signal as AbortSignal)));
       }
 
-      if (signal?.aborted === true) {
-        onAbort();
-        return;
-      }
+      handles.timer = setTimeout(() => {
+        finish(() =>
+          reject(
+            extensionKnown
+              ? stoppedWorkerError()
+              : new Error(
+                  `Timed out after ${timeoutMs}ms waiting for the extension service worker`,
+                ),
+          ),
+        );
+      }, timeoutMs);
+      handles.poll = setInterval(() => {
+        check().catch((error: unknown) => finish(() => reject(error)));
+      }, SW_TARGET_POLL_MS);
       signal?.addEventListener('abort', onAbort, { once: true });
-      context.on('serviceworker', onWorker);
     });
   }
 
@@ -835,31 +846,23 @@ export class CdpManager {
    * Opens a session on the service worker target through the browser-level
    * CDP session, because Playwright cannot open one on a `Worker`.
    *
-   * @param worker - The extension service worker.
+   * @param targetId - The CDP target ID of the worker.
    * @param onClose - Called once when the attached target goes away.
    * @returns Its session.
    */
   async #openWorkerSession(
-    worker: PlaywrightWorker,
+    targetId: string,
     onClose: () => void,
   ): Promise<CdpSession> {
     const browserSession = await this.#getBrowserSession();
-    const { targetInfos } = await browserSession.send('Target.getTargets');
-    const url = worker.url();
-    const target = (
-      targetInfos as { type: string; url: string; targetId: string }[]
-    ).find((info) => info.type === 'service_worker' && info.url === url);
-    if (!target) {
-      throw stoppedWorkerError();
-    }
     let sessionId: string;
     try {
       ({ sessionId } = await browserSession.send('Target.attachToTarget', {
-        targetId: target.targetId,
+        targetId,
         flatten: false,
       }));
     } catch (error) {
-      // The target can disappear between the two commands.
+      // The target can disappear between the target list and the attach.
       if (isClosedSessionError(error) || isMissingTargetError(error)) {
         throw stoppedWorkerError();
       }
@@ -868,7 +871,7 @@ export class CdpManager {
     return new ServiceWorkerCdpSession(
       browserSession,
       sessionId,
-      target.targetId,
+      targetId,
       onClose,
     );
   }
@@ -972,11 +975,11 @@ export class CdpManager {
   async #openFreshWorkerSession(
     options: CdpAttachOptions,
   ): Promise<CdpSession> {
-    const { worker } = await this.#findServiceWorker(
+    const target = await this.#findServiceWorkerTarget(
       this.#extensionId(),
       options,
     );
-    return this.#openWorkerSession(worker, () => undefined);
+    return this.#openWorkerSession(target.targetId, () => undefined);
   }
 
   /**
@@ -1064,7 +1067,7 @@ export class CdpManager {
     if ('page' in entry) {
       this.#pageEntries.delete(entry.page);
     } else {
-      this.#workerEntries.delete(entry.extensionId);
+      this.#workerEntries.delete(entry.targetId);
     }
     // Fire-and-forget: callers are synchronous event handlers.
     // eslint-disable-next-line no-void
