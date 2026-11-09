@@ -531,7 +531,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The daemon queue and the CLI wait cover the `batchTimeoutMs` deadline plus the observation, so a batch that stops at its deadline still returns its partial results; without `batchTimeoutMs` the CLI keeps its 30 s default. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps, so the step in progress always finishes with its own timeout; when the deadline is exceeded, remaining steps are marked as skipped and partial results are returned. The daemon queue and the CLI wait for the deadline plus the slowest step's own timeout, so the call never aborts mid-step with `MM_QUEUE_TIMEOUT`; without `batchTimeoutMs` it keeps the daemon queue default (30 s, or 180 s when the host sets it). The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
@@ -607,7 +607,7 @@ Sends a raw Chrome DevTools Protocol command against the active session. This is
 # Browser
 mm cdp Runtime.evaluate '{"expression":"document.title"}'
 mm cdp Network.enable
-mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
+mm cdp DOM.getDocument '{"depth":2}' --timeout 5000
 
 # Mobile (Hermes, default) — evaluate JS in the running React Native app
 mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.metamask --metro-port 8081
