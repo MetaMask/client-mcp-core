@@ -2705,13 +2705,13 @@ describe('createServer abort, ref generations and observations', () => {
 
       const pending = post('/tool/run_steps', {
         observe: 'none',
-        batchTimeoutMs: 1_000,
+        batchTimeoutMs: 25_000,
         steps: [{ tool: 'test_slow_step' }, { tool: 'test_next_step' }],
       });
       await step.entered;
-      // The old budget (batch deadline + observation + margin) expired at
-      // 11 s while the slowest step was still running.
-      await vi.advanceTimersByTimeAsync(11_000);
+      // Without the slowest step the queue expired at 35 s (deadline +
+      // observation + margin); the step is still running past the deadline.
+      await vi.advanceTimersByTimeAsync(40_000);
       step.release();
 
       const { status, body } = await pending;
