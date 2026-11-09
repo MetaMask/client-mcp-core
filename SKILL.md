@@ -622,22 +622,22 @@ mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.
 mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\').click()"}' --target android-webview
 ```
 
-| Argument        | Description                                                                                                               |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile) |
-| `[params-json]` | Optional JSON object with method-specific parameters                                                                      |
-| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                  |
+| Argument        | Description                                                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile)                                                                                             |
+| `[params-json]` | Optional JSON object with method-specific parameters                                                                                                                                                                  |
+| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                                                                                                              |
 | `--target`      | Browser: `page` (default) or `sw` (Extension service worker). Mobile: `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Each platform rejects the other's targets with `MM_INVALID_INPUT`. |
-| `--fresh`       | **Browser only** — run the command on a one-shot CDP session and detach it afterwards instead of the persistent session. |
-| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                          |
-| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port (default: 8081). Ignored on browser.                   |
-| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier. Ignored on browser.                               |
+| `--fresh`       | **Browser only** — run the command on a one-shot CDP session and detach it afterwards instead of the persistent session.                                                                                              |
+| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                                                                                                                      |
+| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port (default: 8081). Ignored on browser.                                                                                                               |
+| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier. Ignored on browser.                                                                                                                           |
 
 **Three CDP targets:** the same command reaches different runtimes.
 
 | Aspect            | Browser (Playwright)                                                                             | Mobile — Hermes (`--target hermes`, default)                                                     | Mobile — Android WebView (`--target android-webview`)                                                           |
 | ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Target            | The active page or the Extension service worker (`--target sw`), each on a persistent session   | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
+| Target            | The active page or the Extension service worker (`--target sw`), each on a persistent session    | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
 | Available domains | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, …)                                     | JS-engine subset only (`Runtime`, `Debugger`, `Log`, `HeapProfiler`) — no `DOM`/`Page`/`Network` | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, `Input`)                                              |
 | Use it for        | Web page DOM in the browser                                                                      | The React Native app's own JavaScript                                                            | The web page DOM inside the app's in-app browser                                                                |
 | Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`                |
