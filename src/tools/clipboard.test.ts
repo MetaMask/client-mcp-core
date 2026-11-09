@@ -30,6 +30,11 @@ function createMockContext(
   const mockPage = {
     context: vi.fn().mockReturnValue({
       newCDPSession: vi.fn().mockResolvedValue(mockCdpSession),
+      on: vi.fn(),
+      off: vi.fn(),
+      pages: vi.fn(() => []),
+      serviceWorkers: vi.fn(() => []),
+      browser: vi.fn(() => null),
     }),
   };
 
@@ -66,10 +71,10 @@ describe('clipboardTool', () => {
         awaitPromise: true,
         userGesture: true,
       });
-      expect(cdpSession.detach).toHaveBeenCalled();
+      expect(cdpSession.detach).not.toHaveBeenCalled();
     });
 
-    it('detaches CDP session even if write fails', async () => {
+    it('keeps the CDP session when write fails', async () => {
       const cdpSession = {
         send: vi.fn().mockRejectedValue(new Error('Write failed')),
         detach: vi.fn().mockResolvedValue(undefined),
@@ -82,7 +87,7 @@ describe('clipboardTool', () => {
       );
 
       expect(result.ok).toBe(false);
-      expect(cdpSession.detach).toHaveBeenCalled();
+      expect(cdpSession.detach).not.toHaveBeenCalled();
     });
   });
 

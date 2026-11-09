@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: `mm cdp --target sw` sends CDP commands to the browser Extension's background service worker, and browser CDP sessions are now persistent per target (active page, service worker) instead of one-shot, so enabled domains and listeners survive across calls; a dead session (page or service-worker restart) is re-attached on the next call. New `mm cdp --fresh` keeps the old one-shot session, detached after the command. Browser and mobile reject the other platform's `--target` values with `MM_INVALID_INPUT`.
 - feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support
 - feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
 - feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes

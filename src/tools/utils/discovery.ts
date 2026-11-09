@@ -975,6 +975,11 @@ function containsBackendNode(
 /**
  * Collect a trimmed accessibility tree snapshot with deterministic refs.
  *
+ * Runs on a short-lived session: the snapshot enables the `Accessibility`
+ * domain and disables it afterwards, so it must not share the persistent
+ * session of the CDP manager (a concurrent or later listener on that session
+ * would see the domain turned off).
+ *
  * @param page The Playwright page to snapshot
  * @param rootSelector Optional CSS selector to scope the snapshot to a specific element
  * @returns Object containing trimmed accessibility nodes and a reference map (e1, e2, etc.)

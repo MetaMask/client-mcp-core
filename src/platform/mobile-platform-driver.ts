@@ -659,11 +659,22 @@ export class MobilePlatformDriver implements IPlatformDriver {
    *   the full Chrome surface (Runtime, DOM, Page, Network, Input). Android
    *   only.
    *
+   * The browser targets (`'page'`, `'sw'`) are rejected with `MM_INVALID_INPUT`.
+   *
    * @param input - The CDP method, params, timeout, and optional target /
    * Metro / appId / urlFilter overrides.
    * @returns A discriminated outcome carrying the raw CDP result or an error.
    */
   async cdp(input: CdpInput): Promise<CdpOutcome> {
+    if (input.target === 'page' || input.target === 'sw') {
+      return {
+        ok: false,
+        code: ErrorCodes.MM_INVALID_INPUT,
+        message:
+          `CDP target "${input.target}" is browser only. ` +
+          'Mobile targets: hermes, android-webview.',
+      };
+    }
     if (input.target === 'android-webview') {
       return this.#webviewCdp(input);
     }
