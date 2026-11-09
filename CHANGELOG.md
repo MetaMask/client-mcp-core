@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: `MobilePlatformDriver` options `metroPort`, `deviceId` and `appId` keep the session's Metro port, device and Hermes app id on the driver, and `IPlatformDriver.setHermesDefaults` lets the launch apply `--metro-port` / `--device-id` after a successful mobile launch; `mm hermes-targets` now reports `sessionMetroPort`, `pinnedDeviceId`, `connected` and `deviceId`.
 - feat: `mm cdp --target sw` sends CDP commands to the browser Extension's background service worker, and browser CDP sessions are now persistent per target (active page, service worker) instead of one-shot, so enabled domains and listeners survive across calls; a dead session (page or service-worker restart) is re-attached on the next call. New `mm cdp --fresh` keeps the old one-shot session, detached after the command. Browser and mobile reject the other platform's `--target` values with `MM_INVALID_INPUT`.
 - feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support
 - feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Mobile `mm cdp` keeps one persistent Hermes connection per session (Metro port and app id) and reuses it across calls instead of opening one WebSocket per call; a per-call `--metro-port` / `--app-id` that differs from the session's uses a one-shot connection, and the device pin still persists per session. Needs a device-mcp release with `HermesClient`; with device-mcp 0.7.0 each call opens its own connection.
 - **BREAKING:** `mm` failures are structured. A failed command prints one JSON line on stdout, `{"ok":false,"error":{"code","message","hint"?,"retryable"},"meta"?}`, instead of `Error: <message>` on stderr, and exits with a code per error class: 2 usage/validation, 3 no session or daemon down/lost, 4 target not found or not actionable, 5 timeout, 6 platform/device unavailable, 1 anything else (7 is reserved for a version mismatch). The daemon's `error.code` now reaches the caller. `exitCodeForError`, `isRetryableError`, `defaultHintForError`, `CliExitCodes` and `DaemonErrorCodes` are exported, and `ErrorCodes` adds `MM_BATCH_TIMEOUT`, the `MM_CLIPBOARD_*` codes and the CLI codes `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_START_FAILED`, `MM_DAEMON_ALREADY_RUNNING`, `MM_DAEMON_CONNECTION_LOST` and `MM_REQUEST_TIMEOUT`. Click and type timeouts say "state unknown". `launch` keeps any `MM_*` code thrown by a consumer, not only known codes.
 - Mobile `click` never reports a tap that hit something else: device-mcp refuses a tap when another element covers the target, and the click fails with the new `MM_TARGET_OBSCURED` (`MM_TARGET_NOT_VISIBLE` when the target is off screen). `click --dismiss-keyboard` closes a covering keyboard and taps once more (`keyboardDismissed: true`). With an observation, a mobile click result has `screenChanged`. The hit-test needs a device-mcp release with MetaMask/device-mcp#51.
 - Start the CLI faster: find the project root without running `git` and do not load zod. Load `@metamask/device-mcp` only when a mobile session uses it, so browser daemons start without it.
@@ -26,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mobile `mm cdp` and `mm hermes-targets` keep the `--metro-port` given at launch. Before, a later command without `--metro-port` fell back to `HERMES_METRO_PORT` or 8081, so it could not connect when Metro ran on another port. A per-call `--metro-port` still wins, and a CDP connection failure now names the Metro port it tried.
 - `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
 
 ## [0.13.1]

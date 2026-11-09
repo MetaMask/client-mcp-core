@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   getPinnedHermesDeviceId: vi.fn(),
   setPinnedHermesDeviceId: vi.fn(),
   HermesSession: vi.fn(),
+  HermesClient: vi.fn(),
+  // device-mcp 0.7.0 has no HermesClient; only the tests that exercise the
+  // persistent client enable it.
+  hasHermesClient: false,
 }));
 
 // The driver loads device-mcp on first use through this module.
@@ -22,6 +26,7 @@ vi.mock('./device-mcp-runtime.js', () => ({
     LEGACY_SYNTHETIC_TITLE:
       'React Native Experimental (Improved Chrome Reloads)',
     HermesSession: mocks.HermesSession,
+    ...(mocks.hasHermesClient ? { HermesClient: mocks.HermesClient } : {}),
   }),
 }));
 
@@ -37,6 +42,7 @@ function createBackend(
 
 describe('MobilePlatformDriver hermes delegation', () => {
   beforeEach(() => {
+    mocks.hasHermesClient = false;
     mocks.HermesSession.mockImplementation(() => ({
       resolve: mocks.resolve,
       getPinnedHermesDeviceId: mocks.getPinnedHermesDeviceId,
@@ -366,6 +372,7 @@ describe('MobilePlatformDriver hermes delegation', () => {
 
 describe('MobilePlatformDriver webview cdp routing', () => {
   beforeEach(() => {
+    mocks.hasHermesClient = false;
     mocks.HermesSession.mockImplementation(() => ({
       resolve: mocks.resolve,
       getPinnedHermesDeviceId: mocks.getPinnedHermesDeviceId,
@@ -509,5 +516,337 @@ describe('MobilePlatformDriver webview cdp routing', () => {
       expect(outcome.code).toBe('MM_CDP_FAILED');
       expect(outcome.message).toContain('WebView CDP is not available');
     }
+  });
+});
+
+type HermesClientStub = {
+  metroPort: number;
+  appId: string;
+  isConnected: boolean;
+  send: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+};
+
+type HermesClientOptions = {
+  metroPort: number;
+  appId: string;
+  pinnedDeviceId?: string;
+  onPin?: (logicalDeviceId: string) => void;
+};
+
+describe('MobilePlatformDriver persistent Hermes client', () => {
+  const clients: HermesClientStub[] = [];
+
+  beforeEach(() => {
+    clients.length = 0;
+    mocks.hasHermesClient = true;
+    mocks.HermesSession.mockImplementation(() => ({
+      resolve: mocks.resolve,
+      getPinnedHermesDeviceId: mocks.getPinnedHermesDeviceId,
+      setPinnedHermesDeviceId: mocks.setPinnedHermesDeviceId,
+    }));
+    mocks.resolve.mockImplementation(
+      ({ metroPort, appId }: { metroPort?: number; appId?: string }) => ({
+        metroPort: metroPort ?? 8081,
+        appId: appId ?? 'io.metamask',
+        pinnedDeviceId: mocks.getPinnedHermesDeviceId(),
+      }),
+    );
+    mocks.getPinnedHermesDeviceId.mockReturnValue(undefined);
+    mocks.HermesClient.mockImplementation(function (
+      this: unknown,
+      options: HermesClientOptions,
+    ): HermesClientStub {
+      const client: HermesClientStub = {
+        metroPort: options.metroPort,
+        appId: options.appId,
+        isConnected: false,
+        send: vi.fn().mockResolvedValue({ ok: true, result: { value: 2 } }),
+        close: vi.fn(),
+      };
+      clients.push(client);
+      return client;
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    mocks.hasHermesClient = false;
+  });
+
+  it('creates one client for the session port and reuses it across calls', async () => {
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+
+    await driver.cdp({
+      method: 'Runtime.evaluate',
+      params: { expression: '1+1' },
+      timeoutMs: 30_000,
+    });
+    await driver.cdp({
+      method: 'Runtime.evaluate',
+      params: { expression: '2+2' },
+      timeoutMs: 30_000,
+    });
+
+    expect(mocks.HermesClient).toHaveBeenCalledTimes(1);
+    expect(mocks.HermesClient).toHaveBeenCalledWith({
+      metroPort: 8085,
+      appId: 'io.metamask',
+      pinnedDeviceId: undefined,
+      onPin: expect.any(Function),
+    });
+    expect(clients[0].send).toHaveBeenCalledTimes(2);
+    expect(mocks.runHermesCdp).not.toHaveBeenCalled();
+  });
+
+  it('uses a one-shot call for a per-call metroPort and keeps the session client', async () => {
+    mocks.runHermesCdp.mockResolvedValue({ ok: true, result: { value: 2 } });
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+
+    await driver.cdp({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+      metroPort: 8087,
+    });
+
+    expect(mocks.HermesClient).not.toHaveBeenCalled();
+    expect(mocks.runHermesCdp).toHaveBeenCalledWith(
+      expect.objectContaining({ metroPort: 8087, appId: 'io.metamask' }),
+    );
+
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(mocks.HermesClient).toHaveBeenCalledTimes(1);
+    expect(mocks.HermesClient).toHaveBeenCalledWith(
+      expect.objectContaining({ metroPort: 8085 }),
+    );
+    expect(mocks.runHermesCdp).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a one-shot call for a per-call appId and keeps the session client', async () => {
+    mocks.runHermesCdp.mockResolvedValue({ ok: true, result: null });
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+      appId: 'app.session',
+    });
+
+    await driver.cdp({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+      appId: 'app.other',
+    });
+
+    expect(mocks.HermesClient).not.toHaveBeenCalled();
+    expect(mocks.runHermesCdp).toHaveBeenCalledWith(
+      expect.objectContaining({ metroPort: 8085, appId: 'app.other' }),
+    );
+
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(mocks.HermesClient).toHaveBeenCalledWith(
+      expect.objectContaining({ metroPort: 8085, appId: 'app.session' }),
+    );
+  });
+
+  it('persists the pin the client resolved on its first probe', async () => {
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    const options = mocks.HermesClient.mock.calls[0][0] as HermesClientOptions;
+    options.onPin?.('device-9');
+
+    expect(mocks.setPinnedHermesDeviceId).toHaveBeenCalledWith('device-9');
+  });
+
+  it('creates the client with the pin the session already keeps', async () => {
+    mocks.getPinnedHermesDeviceId.mockReturnValue('device-7');
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(mocks.HermesClient).toHaveBeenCalledWith(
+      expect.objectContaining({ pinnedDeviceId: 'device-7' }),
+    );
+  });
+
+  it('does not overwrite an existing pin from the client probe', async () => {
+    mocks.getPinnedHermesDeviceId.mockReturnValue('device-existing');
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    const options = mocks.HermesClient.mock.calls[0][0] as HermesClientOptions;
+    options.onPin?.('device-new');
+
+    expect(mocks.setPinnedHermesDeviceId).not.toHaveBeenCalled();
+  });
+
+  it('applies the launch defaults set after the driver is created', async () => {
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+    driver.setHermesDefaults({ metroPort: 8086, deviceId: 'device-launch' });
+
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(mocks.HermesClient).toHaveBeenCalledWith(
+      expect.objectContaining({ metroPort: 8086 }),
+    );
+  });
+
+  it('drops the client when setHermesDefaults changes the session target', async () => {
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    driver.setHermesDefaults({ metroPort: 8086 });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(clients[0].close).toHaveBeenCalledTimes(1);
+    expect(mocks.HermesClient).toHaveBeenCalledTimes(2);
+    expect(mocks.HermesClient).toHaveBeenLastCalledWith(
+      expect.objectContaining({ metroPort: 8086 }),
+    );
+  });
+
+  it('keeps the client when setHermesDefaults only reports the device', async () => {
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    driver.setHermesDefaults({ deviceId: 'device-launch' });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    expect(clients[0].close).not.toHaveBeenCalled();
+    expect(mocks.HermesClient).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the client on dispose', async () => {
+    const disposeBackend = vi.fn().mockResolvedValue(undefined);
+    const driver = new MobilePlatformDriver(
+      createBackend('ios', { dispose: disposeBackend }),
+      'io.metamask',
+      { metroPort: 8085 },
+    );
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+
+    await driver.dispose();
+    await driver.dispose();
+
+    expect(clients[0].close).toHaveBeenCalledTimes(1);
+    expect(disposeBackend).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the Metro port in a failure', async () => {
+    mocks.HermesClient.mockImplementation(function (
+      this: unknown,
+      options: HermesClientOptions,
+    ): HermesClientStub {
+      const client: HermesClientStub = {
+        metroPort: options.metroPort,
+        appId: options.appId,
+        isConnected: false,
+        send: vi.fn().mockResolvedValue({
+          ok: false,
+          code: 'HERMES_TARGET_NOT_FOUND',
+          message: 'No Hermes debug target found',
+        }),
+        close: vi.fn(),
+      };
+      clients.push(client);
+      return client;
+    });
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+
+    const outcome = await driver.cdp({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+    });
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.code).toBe('MM_CDP_FAILED');
+      expect(outcome.message).toContain('HERMES_TARGET_NOT_FOUND');
+      expect(outcome.message).toContain('Metro port 8085');
+    }
+  });
+
+  it('falls back to the one-shot path when device-mcp has no HermesClient', async () => {
+    mocks.hasHermesClient = false;
+    mocks.runHermesCdp.mockResolvedValue({ ok: true, result: { value: 2 } });
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+
+    const outcome = await driver.cdp({
+      method: 'Runtime.evaluate',
+      timeoutMs: 30_000,
+    });
+
+    expect(outcome).toStrictEqual({ ok: true, result: { value: 2 } });
+    expect(mocks.HermesClient).not.toHaveBeenCalled();
+    expect(mocks.runHermesCdp).toHaveBeenCalledWith(
+      expect.objectContaining({ metroPort: 8085 }),
+    );
+  });
+
+  it('reports the session port, pin, connection and device in hermes-targets', async () => {
+    const target = {
+      id: 'page-1',
+      title: 'MetaMask',
+      appId: 'io.metamask',
+      webSocketDebuggerUrl: 'ws://localhost:8085/x',
+      reactNative: { logicalDeviceId: 'dev-1' },
+    };
+    mocks.fetchDiscoveryTargets.mockResolvedValue([target]);
+    mocks.selectHermesTarget.mockReturnValue({ ok: true, target });
+    mocks.getPinnedHermesDeviceId.mockReturnValue('dev-1');
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+      deviceId: 'device-launch',
+    });
+    await driver.cdp({ method: 'Runtime.evaluate', timeoutMs: 30_000 });
+    clients[0].isConnected = true;
+
+    const result = await driver.hermesTargets({});
+
+    expect(result).toMatchObject({
+      metroPort: 8085,
+      sessionMetroPort: 8085,
+      pinnedDeviceId: 'dev-1',
+      connected: true,
+      deviceId: 'device-launch',
+    });
+    expect(mocks.fetchDiscoveryTargets).toHaveBeenCalledWith(
+      8085,
+      expect.any(Number),
+    );
+  });
+
+  it('reports the session port when a per-call metroPort overrides the report', async () => {
+    mocks.fetchDiscoveryTargets.mockRejectedValue(new Error('fetch failed'));
+    const driver = new MobilePlatformDriver(createBackend(), 'io.metamask', {
+      metroPort: 8085,
+    });
+
+    const result = await driver.hermesTargets({ metroPort: 8087 });
+
+    expect(result.metroPort).toBe(8087);
+    expect(result.sessionMetroPort).toBe(8085);
+    expect(result.metroDown).toBe(true);
+    expect(result.connected).toBe(false);
   });
 });
