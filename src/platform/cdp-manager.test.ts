@@ -4,6 +4,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   CdpManager,
   DEFAULT_SW_ATTACH_TIMEOUT_MS,
+  STOPPED_WORKER_MESSAGE,
+  STOPPED_WORKER_WAIT_MS,
   disposeCdpManager,
   getCdpManager,
   isClosedSessionError,
@@ -70,14 +72,23 @@ function createCdpSession(
   };
 }
 
+type FakeWorker = Worker & { emitter: ReturnType<typeof createEmitter> };
+
 /**
- * Creates a fake extension worker.
+ * Creates a fake extension worker that emits `close` like Playwright does.
  *
  * @param url - Its URL.
  * @returns The worker mock.
  */
-function createWorker(url = SW_URL): Worker {
-  return { url: vi.fn(() => url) } as unknown as Worker;
+function createWorker(url = SW_URL): FakeWorker {
+  const emitter = createEmitter();
+  return {
+    url: vi.fn(() => url),
+    on: emitter.on,
+    once: emitter.on,
+    off: emitter.off,
+    emitter,
+  } as unknown as FakeWorker;
 }
 
 /**
@@ -730,8 +741,17 @@ describe('CdpManager service worker target', () => {
     expect(await pending).toBeDefined();
   });
 
-  it('times out cleanly when the worker never appears', async () => {
+  it('fails fast with the stopped-worker error when the extension is known', async () => {
     const fake = createContext({ workers: [] });
+    const manager = new CdpManager(fake.context);
+
+    await expect(
+      manager.send({ kind: 'sw' }, 'Runtime.evaluate', {}, { timeoutMs: 5 }),
+    ).rejects.toThrowError(STOPPED_WORKER_MESSAGE);
+  });
+
+  it('times out cleanly when no extension is known at all', async () => {
+    const fake = createContext({ workers: [], pages: [] });
     const manager = new CdpManager(fake.context);
 
     await expect(
@@ -739,6 +759,28 @@ describe('CdpManager service worker target', () => {
     ).rejects.toThrowError(
       'Timed out after 5ms waiting for the extension service worker',
     );
+  });
+
+  it('caps the wait at the stopped-worker window once the extension is known', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createContext({ workers: [] });
+      const manager = new CdpManager(fake.context);
+      const pending = manager.send(
+        { kind: 'sw' },
+        'Runtime.evaluate',
+        {},
+        { timeoutMs: 30_000 },
+      );
+      const error = pending.catch((reason: Error) => reason);
+
+      await vi.advanceTimersByTimeAsync(STOPPED_WORKER_WAIT_MS - 1);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect((await error).message).toBe(STOPPED_WORKER_MESSAGE);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('waits 30 seconds for the worker by default', () => {
@@ -912,7 +954,7 @@ describe('CdpManager service worker target', () => {
     );
   });
 
-  it('fails when no target matches the worker URL', async () => {
+  it('fails when the worker has no live target', async () => {
     const fake = createContext();
     const manager = new CdpManager(fake.context);
     fake.browserSession.send.mockImplementation(
@@ -926,7 +968,7 @@ describe('CdpManager service worker target', () => {
 
     await expect(
       manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
-    ).rejects.toThrowError(`No service worker target for ${SW_URL}`);
+    ).rejects.toThrowError(STOPPED_WORKER_MESSAGE);
   });
 
   it('sends a fresh command on a detached one-shot worker session', async () => {
@@ -1106,6 +1148,242 @@ describe('CdpManager service worker target', () => {
       await manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
     ).toBeDefined();
     expect(fake.emittedTargetIds).toHaveLength(1);
+  });
+
+  it('enables target discovery once on the browser session', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+
+    expect(
+      fake.browserSession.send.mock.calls.filter(
+        ([method]) => method === 'Target.setDiscoverTargets',
+      ),
+    ).toStrictEqual([['Target.setDiscoverTargets', { discover: true }]]);
+  });
+
+  it('drops the worker session on close and reattaches when it restarts', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const worker = fake.workers[0] as FakeWorker;
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
+
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+    worker.emitter.emit('close', worker);
+    await flush();
+    expect(detached).toHaveBeenCalledTimes(1);
+
+    const restarted = createWorker();
+    (fake.context.serviceWorkers as ReturnType<typeof vi.fn>).mockReturnValue([
+      restarted,
+    ]);
+    fake.emitter.emit('serviceworker', restarted);
+
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+    expect(fake.emittedTargetIds).toHaveLength(2);
+  });
+
+  it('rejects a pending command promptly when the worker closes', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const worker = fake.workers[0] as FakeWorker;
+    const session = await manager.getSession({ kind: 'sw' });
+    fake.browserSession.send.mockImplementation(async () => ({}));
+
+    const pending = session.send('Runtime.evaluate', {});
+    await flush();
+    worker.emitter.emit('close', worker);
+
+    await expect(pending).rejects.toThrowError(
+      'Session closed. The service worker target is gone.',
+    );
+  });
+
+  it('waits the short window when the listed worker already closed', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createContext({ workers: [] });
+      const manager = new CdpManager(fake.context);
+      const worker = createWorker();
+      fake.emitter.emit('serviceworker', worker);
+      (fake.context.serviceWorkers as ReturnType<typeof vi.fn>).mockReturnValue(
+        [worker],
+      );
+      worker.emitter.emit('close', worker);
+
+      const pending = manager.send(
+        { kind: 'sw' },
+        'Runtime.evaluate',
+        {},
+        { timeoutMs: 30_000 },
+      );
+      const error = pending.catch((reason: Error) => reason);
+      await vi.advanceTimersByTimeAsync(STOPPED_WORKER_WAIT_MS);
+
+      expect((await error).message).toBe(STOPPED_WORKER_MESSAGE);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reattaches when the cached worker is no longer a live target', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+
+    const restarted = createWorker();
+    (fake.context.serviceWorkers as ReturnType<typeof vi.fn>).mockReturnValue([
+      restarted,
+    ]);
+    const implementation = fake.browserSession.send.getMockImplementation();
+    let getTargets = 0;
+    fake.browserSession.send.mockImplementation(
+      async (method: string, params?: Record<string, unknown>) => {
+        if (method === 'Target.getTargets' && (getTargets += 1) === 1) {
+          return { targetInfos: [] };
+        }
+        return implementation?.(method, params);
+      },
+    );
+
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+
+    expect(fake.emittedTargetIds).toHaveLength(2);
+  });
+
+  it('closes the worker session only for its destroyed target', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
+
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+    fake.browserEmitter.emit('Target.targetDestroyed', { targetId: 'other' });
+    await flush();
+    expect(detached).not.toHaveBeenCalled();
+
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+    expect(fake.emittedTargetIds).toHaveLength(1);
+
+    fake.browserEmitter.emit('Target.targetDestroyed', { targetId: TARGET_ID });
+    await flush();
+    expect(detached).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps a target that vanishes on attach to the stopped-worker error', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const implementation = fake.browserSession.send.getMockImplementation();
+    fake.browserSession.send.mockImplementation(
+      async (method: string, params?: Record<string, unknown>) => {
+        // A plain string, as some transport layers throw.
+        if (method === 'Target.attachToTarget') {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw 'No target with given id found';
+        }
+        return implementation?.(method, params);
+      },
+    );
+
+    await expect(
+      manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
+    ).rejects.toThrowError(STOPPED_WORKER_MESSAGE);
+  });
+
+  it('surfaces another attach failure', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const implementation = fake.browserSession.send.getMockImplementation();
+    fake.browserSession.send.mockImplementation(
+      async (method: string, params?: Record<string, unknown>) => {
+        if (method === 'Target.attachToTarget') {
+          throw new Error('boom');
+        }
+        return implementation?.(method, params);
+      },
+    );
+
+    await expect(
+      manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
+    ).rejects.toThrowError('boom');
+  });
+
+  it('fails an open worker session when the worker closes while attaching', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const worker = fake.workers[0] as FakeWorker;
+    const implementation = fake.browserSession.send.getMockImplementation();
+    let resolveAttach!: (value: unknown) => void;
+    fake.browserSession.send.mockImplementation(
+      async (method: string, params?: Record<string, unknown>) => {
+        if (method === 'Target.attachToTarget') {
+          return new Promise((resolve) => {
+            resolveAttach = resolve;
+          });
+        }
+        if (method === 'Target.detachFromTarget') {
+          throw new Error('Target closed');
+        }
+        return implementation?.(method, params);
+      },
+    );
+
+    const opening = manager.getSession({ kind: 'sw' });
+    await flush();
+    worker.emitter.emit('close', worker);
+    await flush();
+    resolveAttach({ sessionId: SESSION_ID });
+
+    await expect(opening).rejects.toThrowError(STOPPED_WORKER_MESSAGE);
+  });
+
+  it('ignores the close of a worker without a cached session', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    await manager.send({ kind: 'sw' }, 'Runtime.evaluate');
+
+    const other = createWorker(
+      'chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz/bg.js',
+    );
+    fake.emitter.emit('serviceworker', other);
+    other.emitter.emit('close', other);
+    await flush();
+
+    expect(
+      await manager.send({ kind: 'sw' }, 'Runtime.evaluate'),
+    ).toBeDefined();
+    expect(fake.emittedTargetIds).toHaveLength(1);
+  });
+
+  it('fails an open page session when the page closes while attaching', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const pageEvents = createEmitter();
+    const page = {
+      url: vi.fn(() => PAGE_URL),
+      once: pageEvents.on,
+    } as unknown as Page;
+    const session = createCdpSession();
+    session.detach.mockRejectedValueOnce(new Error('Target closed'));
+    let resolveSession!: (value: FakeCdpSession) => void;
+    fake.newCDPSession.mockReturnValueOnce(
+      new Promise<FakeCdpSession>((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+
+    const opening = manager.getSession({ kind: 'page', page });
+    await flush();
+    pageEvents.emit('close', page);
+    resolveSession(session);
+
+    await expect(opening).rejects.toThrowError(
+      'CDP target closed while attaching',
+    );
+    expect(session.detach).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a browser session detach failure on dispose', async () => {

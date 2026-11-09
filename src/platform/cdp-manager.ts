@@ -82,6 +82,21 @@ export type CdpManagerListener = (event: CdpTargetEvent) => void;
 /** How long to wait for the extension service worker by default. */
 export const DEFAULT_SW_ATTACH_TIMEOUT_MS = 30_000;
 
+/**
+ * How long to wait for a stopped Extension service worker to come back before
+ * failing fast. MV3 stops idle workers, and a stopped worker cannot be woken
+ * from CDP: only Extension activity (an open or reloaded page) starts it.
+ */
+export const STOPPED_WORKER_WAIT_MS = 2_000;
+
+/**
+ * Error for a CDP command that needs the Extension service worker while it is
+ * not running.
+ */
+export const STOPPED_WORKER_MESSAGE =
+  'The Extension service worker is not running (MV3 workers stop when idle). ' +
+  'Interact with the Extension (open or reload an Extension page) to start it, then retry.';
+
 const EXTENSION_URL = /^chrome-extension:\/\/([a-z]{32})\//u;
 
 /**
@@ -104,6 +119,22 @@ export function isClosedSessionError(error: unknown): boolean {
 }
 
 /**
+ * Errors Chrome returns when an attached target disappeared.
+ */
+const MISSING_TARGET_ERROR = /no target with given id|target.*not found/iu;
+
+/**
+ * Tells whether an error means a CDP target disappeared.
+ *
+ * @param error - The error thrown by a CDP call.
+ * @returns True when the target is gone.
+ */
+function isMissingTargetError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return MISSING_TARGET_ERROR.test(message);
+}
+
+/**
  * Extracts the extension ID from a `chrome-extension://` URL.
  *
  * @param url - The URL.
@@ -123,6 +154,15 @@ function abortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason
     : new Error('CDP target wait aborted');
+}
+
+/**
+ * Creates the error used when the Extension service worker is not running.
+ *
+ * @returns The stopped-worker error.
+ */
+function stoppedWorkerError(): Error {
+  return new Error(STOPPED_WORKER_MESSAGE);
 }
 
 type WorkerMessage = {
@@ -150,6 +190,8 @@ class ServiceWorkerCdpSession implements CdpSession {
 
   readonly #sessionId: string;
 
+  readonly #targetId: string;
+
   readonly #onClose: () => void;
 
   readonly #pending = new Map<number, PendingCommand>();
@@ -161,18 +203,23 @@ class ServiceWorkerCdpSession implements CdpSession {
   /**
    * @param browserSession - The browser-level CDP session.
    * @param sessionId - The attached service worker session ID.
+   * @param targetId - The attached service worker target ID.
    * @param onClose - Called once when the attached target goes away.
    */
   constructor(
     browserSession: CDPSession,
     sessionId: string,
+    targetId: string,
     onClose: () => void,
   ) {
     this.#browserSession = browserSession;
     this.#sessionId = sessionId;
+    this.#targetId = targetId;
     this.#onClose = onClose;
     browserSession.on('Target.receivedMessageFromTarget', this.#onMessage);
     browserSession.on('Target.detachedFromTarget', this.#onDetached);
+    // Target discovery reports a destroyed target when the worker stops.
+    browserSession.on('Target.targetDestroyed', this.#onTargetDestroyed);
   }
 
   /**
@@ -264,6 +311,19 @@ class ServiceWorkerCdpSession implements CdpSession {
   };
 
   /**
+   * Marks the session closed when its target is destroyed (the worker
+   * stopped). Requires `Target.setDiscoverTargets`.
+   *
+   * @param event - The `Target.targetDestroyed` payload.
+   * @param event.targetId - The destroyed target.
+   */
+  readonly #onTargetDestroyed = (event: { targetId: string }): void => {
+    if (event.targetId === this.#targetId) {
+      this.#markClosed();
+    }
+  };
+
+  /**
    * Fails every pending command and stops listening for worker messages.
    *
    * @returns False when the session was already closed.
@@ -278,6 +338,7 @@ class ServiceWorkerCdpSession implements CdpSession {
       this.#onMessage,
     );
     this.#browserSession.off('Target.detachedFromTarget', this.#onDetached);
+    this.#browserSession.off('Target.targetDestroyed', this.#onTargetDestroyed);
     for (const pending of this.#pending.values()) {
       pending.reject(this.#closedError());
     }
@@ -307,6 +368,8 @@ type CdpEntryBase = {
   event: CdpTargetEvent;
   session?: CdpSession;
   opening?: Promise<CdpSession>;
+  /** Set when the entry is dropped, so an in-flight open does not revive it. */
+  dropped?: boolean;
 };
 
 type PageEntry = CdpEntryBase & { page: Page };
@@ -345,11 +408,20 @@ export class CdpManager {
 
   readonly #workerEntries = new Map<string, ServiceWorkerEntry>();
 
+  /** Workers whose Playwright `close` event already fired. */
+  readonly #closedWorkers = new WeakSet<PlaywrightWorker>();
+
+  /** Workers already watched for a `close` event. */
+  readonly #observedWorkers = new WeakSet<PlaywrightWorker>();
+
   readonly #entries = new Set<CdpEntry>();
 
   readonly #listeners = new Map<CdpManagerEvent, Set<CdpManagerListener>>();
 
   #browserSession: Promise<CDPSession> | undefined;
+
+  /** Whether an Extension service worker was seen during this manager's life. */
+  #extensionWorkerSeen = false;
 
   #disposed = false;
 
@@ -490,11 +562,37 @@ export class CdpManager {
     if (extensionId === undefined) {
       return;
     }
+    this.#extensionWorkerSeen = true;
+    this.#observeWorker(worker);
     const entry = this.#workerEntries.get(extensionId);
     if (entry !== undefined && entry.worker !== worker) {
       this.#drop(entry);
     }
   };
+
+  /**
+   * Watches a service worker once for its `close` event. MV3 workers stop
+   * when idle, and Playwright's `close` event is the signal to forget the
+   * cached entry: `context.serviceWorkers()` can keep listing the dead
+   * worker afterwards.
+   *
+   * @param worker - The service worker to watch.
+   */
+  #observeWorker(worker: PlaywrightWorker): void {
+    if (this.#observedWorkers.has(worker)) {
+      return;
+    }
+    this.#observedWorkers.add(worker);
+    worker.once?.('close', () => {
+      this.#closedWorkers.add(worker);
+      for (const entry of this.#workerEntries.values()) {
+        if (entry.worker === worker) {
+          this.#drop(entry);
+          return;
+        }
+      }
+    });
+  }
 
   /**
    * Resolves the target's entry and its session opener, waiting for a
@@ -574,13 +672,19 @@ export class CdpManager {
     if (knownExtensionId !== undefined) {
       const cached = this.#workerEntries.get(knownExtensionId);
       if (cached) {
-        return cached;
+        if (await this.#isLiveWorker(cached.worker)) {
+          return cached;
+        }
+        // The cached worker stopped without a close event reaching us.
+        this.#closedWorkers.add(cached.worker);
+        this.#drop(cached);
       }
     }
     const { extensionId, worker } = await this.#findServiceWorker(
       knownExtensionId,
       options,
     );
+    this.#observeWorker(worker);
     const previous = this.#workerEntries.get(extensionId);
     if (previous) {
       if (previous.worker === worker) {
@@ -588,6 +692,7 @@ export class CdpManager {
       }
       this.#drop(previous);
     }
+    this.#extensionWorkerSeen = true;
     const entry: ServiceWorkerEntry = {
       extensionId,
       worker,
@@ -596,6 +701,23 @@ export class CdpManager {
     this.#workerEntries.set(extensionId, entry);
     this.#entries.add(entry);
     return entry;
+  }
+
+  /**
+   * Tells whether a worker is still a live CDP target. A stopped MV3 worker
+   * can stay in `context.serviceWorkers()`, so the browser target list is the
+   * source of truth.
+   *
+   * @param worker - The service worker to check.
+   * @returns True when a matching `service_worker` target exists.
+   */
+  async #isLiveWorker(worker: PlaywrightWorker): Promise<boolean> {
+    const browserSession = await this.#getBrowserSession();
+    const { targetInfos } = await browserSession.send('Target.getTargets');
+    const url = worker.url();
+    return (targetInfos as { type: string; url: string }[]).some(
+      (info) => info.type === 'service_worker' && info.url === url,
+    );
   }
 
   /**
@@ -613,6 +735,9 @@ export class CdpManager {
     const matches = (
       worker: PlaywrightWorker,
     ): ServiceWorkerTarget | undefined => {
+      if (this.#closedWorkers.has(worker)) {
+        return undefined;
+      }
       const extensionId = extensionIdFromUrl(worker.url());
       if (
         extensionId === undefined ||
@@ -625,21 +750,35 @@ export class CdpManager {
 
     const existing = this.#context
       .serviceWorkers()
-      .map((worker) => matches(worker))
+      .map((worker) => {
+        this.#observeWorker(worker);
+        return matches(worker);
+      })
       .filter((target): target is ServiceWorkerTarget => target !== undefined);
     if (existing.length > 0) {
       return existing[existing.length - 1];
     }
 
-    const { timeoutMs = DEFAULT_SW_ATTACH_TIMEOUT_MS, signal } = options;
+    const requestedMs = options.timeoutMs ?? DEFAULT_SW_ATTACH_TIMEOUT_MS;
+    // A stopped MV3 worker cannot be started from CDP: only Extension activity
+    // starts it. Once the Extension is known, fail fast with an actionable
+    // error instead of hanging for the full timeout.
+    const extensionKnown =
+      knownExtensionId !== undefined || this.#extensionWorkerSeen;
+    const timeoutMs = extensionKnown
+      ? Math.min(requestedMs, STOPPED_WORKER_WAIT_MS)
+      : requestedMs;
+    const { signal } = options;
     const context = this.#context;
     return new Promise<ServiceWorkerTarget>((resolve, reject) => {
       const timer = setTimeout(() => {
         finish(() =>
           reject(
-            new Error(
-              `Timed out after ${timeoutMs}ms waiting for the extension service worker`,
-            ),
+            extensionKnown
+              ? stoppedWorkerError()
+              : new Error(
+                  `Timed out after ${timeoutMs}ms waiting for the extension service worker`,
+                ),
           ),
         );
       }, timeoutMs);
@@ -711,13 +850,27 @@ export class CdpManager {
       targetInfos as { type: string; url: string; targetId: string }[]
     ).find((info) => info.type === 'service_worker' && info.url === url);
     if (!target) {
-      throw new Error(`No service worker target for ${url}`);
+      throw stoppedWorkerError();
     }
-    const { sessionId } = await browserSession.send('Target.attachToTarget', {
-      targetId: target.targetId,
-      flatten: false,
-    });
-    return new ServiceWorkerCdpSession(browserSession, sessionId, onClose);
+    let sessionId: string;
+    try {
+      ({ sessionId } = await browserSession.send('Target.attachToTarget', {
+        targetId: target.targetId,
+        flatten: false,
+      }));
+    } catch (error) {
+      // The target can disappear between the two commands.
+      if (isClosedSessionError(error) || isMissingTargetError(error)) {
+        throw stoppedWorkerError();
+      }
+      throw error;
+    }
+    return new ServiceWorkerCdpSession(
+      browserSession,
+      sessionId,
+      target.targetId,
+      onClose,
+    );
   }
 
   /**
@@ -733,7 +886,11 @@ export class CdpManager {
           'CDP service worker targets need a Chromium browser session',
         );
       }
-      return browser.newBrowserCDPSession();
+      const session = await browser.newBrowserCDPSession();
+      // Once per browser session: report target destruction, so a stopped
+      // worker closes its CDP session instead of leaving commands pending.
+      await session.send('Target.setDiscoverTargets', { discover: true });
+      return session;
     })().catch((error: unknown) => {
       this.#browserSession = undefined;
       throw error;
@@ -761,6 +918,14 @@ export class CdpManager {
       if (this.#disposed) {
         await session.detach().catch(() => undefined);
         throw new Error('CDP manager is disposed');
+      }
+      if (entry.dropped === true) {
+        // The target went away while the session was opening: never hand
+        // callers a session on a dead target, they would hang.
+        await session.detach().catch(() => undefined);
+        throw 'worker' in entry
+          ? stoppedWorkerError()
+          : new Error('CDP target closed while attaching');
       }
       entry.session = session;
       this.#emit('targetAttached', entry.event);
@@ -895,6 +1060,7 @@ export class CdpManager {
     if (!this.#entries.delete(entry)) {
       return;
     }
+    entry.dropped = true;
     if ('page' in entry) {
       this.#pageEntries.delete(entry.page);
     } else {
