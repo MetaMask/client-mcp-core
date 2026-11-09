@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeTimeoutBudget,
+  fallbackHttpTimeoutMs,
   resolveActionTimeoutMs,
+  resolveCliHttpTimeoutMs,
   TIMEOUT_OVERHEAD_MS,
 } from './timeout-budget.js';
+import { toolRegistry } from '../tools/registry.js';
 import {
   DEFAULT_CDP_TIMEOUT_MS,
   DEFAULT_INTERACTION_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS,
   OBSERVATION_TIMEOUT_MS,
   QUEUE_SETTLE_TIMEOUT_MS,
@@ -77,9 +81,20 @@ describe('resolveActionTimeoutMs', () => {
     expect(
       resolveActionTimeoutMs('wait_for_notification', { timeoutMs: 3_000 }),
     ).toBe(3_000);
-    expect(resolveActionTimeoutMs('run_steps', { timeoutMs: 4_000 })).toBe(
-      4_000,
-    );
+    expect(resolveActionTimeoutMs('click', { timeoutMs: 4_000 })).toBe(4_000);
+  });
+
+  it('ignores timeoutMs for run_steps', () => {
+    // The daemon schema strips it, so the CLI must not budget from it.
+    expect(
+      resolveActionTimeoutMs('run_steps', { timeoutMs: 4_000 }),
+    ).toBeUndefined();
+    expect(
+      resolveActionTimeoutMs('run_steps', {
+        timeoutMs: 4_000,
+        steps: [{ tool: 'click' }],
+      }),
+    ).toBeUndefined();
   });
 
   it('ignores an unset or non-positive timeoutMs', () => {
@@ -97,14 +112,49 @@ describe('resolveActionTimeoutMs', () => {
     );
   });
 
-  it('uses the batch deadline for run_steps and keeps the default without it', () => {
+  it('covers the batch deadline plus its slowest step for run_steps', () => {
     expect(
-      resolveActionTimeoutMs('run_steps', { batchTimeoutMs: 30_000 }),
-    ).toBe(30_000);
+      resolveActionTimeoutMs('run_steps', {
+        batchTimeoutMs: 30_000,
+        steps: [{ tool: 'get_state' }, { tool: 'click', args: {} }],
+      }),
+    ).toBe(30_000 + DEFAULT_INTERACTION_TIMEOUT_MS);
+    // A step with a longer budget moves the whole batch budget.
+    expect(
+      resolveActionTimeoutMs('run_steps', {
+        batchTimeoutMs: 5_000,
+        steps: [
+          { tool: 'click', args: {} },
+          { tool: 'wait_for', args: { timeoutMs: 60_000 } },
+        ],
+      }),
+    ).toBe(5_000 + 60_000);
+    // Aliases resolve to the real tool before the budget is looked up.
+    expect(
+      resolveActionTimeoutMs('run_steps', {
+        batchTimeoutMs: 1_000,
+        steps: [{ tool: 'scroll-to-element', args: { timeoutMs: 3_000 } }],
+      }),
+    ).toBe(1_000 + 3_000);
+    // No usable step (an invalid body) still assumes one slow step.
+    expect(
+      resolveActionTimeoutMs('run_steps', {
+        batchTimeoutMs: 2_000,
+        steps: [],
+      }),
+    ).toBe(2_000 + DEFAULT_INTERACTION_TIMEOUT_MS);
+  });
+
+  it('keeps the default without a batch deadline', () => {
     expect(
       resolveActionTimeoutMs('run_steps', { batchTimeoutMs: 0 }),
     ).toBeUndefined();
     expect(resolveActionTimeoutMs('run_steps', {})).toBeUndefined();
+    expect(
+      resolveActionTimeoutMs('run_steps', {
+        steps: [{ tool: 'click' }],
+      }),
+    ).toBeUndefined();
   });
 
   it('keeps the queue default for tools with no timeout concept', () => {
@@ -140,4 +190,126 @@ describe('resolveActionTimeoutMs', () => {
       ),
     ).toBe(5_000);
   });
+});
+
+describe('resolveCliHttpTimeoutMs', () => {
+  it('derives the CLI abort from the action budget', () => {
+    expect(
+      resolveCliHttpTimeoutMs('click', {}, { queueDefaultMs: 30_000 }),
+    ).toBe(computeTimeoutBudget(DEFAULT_INTERACTION_TIMEOUT_MS).http);
+    expect(resolveCliHttpTimeoutMs('cdp', {})).toBe(
+      computeTimeoutBudget(DEFAULT_CDP_TIMEOUT_MS).http,
+    );
+    expect(resolveCliHttpTimeoutMs('click', { timeoutMs: 2_000 })).toBe(
+      computeTimeoutBudget(2_000).http,
+    );
+  });
+
+  it('nests above the queue default for tools without an action budget', () => {
+    for (const queueDefaultMs of [DEFAULT_REQUEST_TIMEOUT_MS, 180_000]) {
+      expect(resolveCliHttpTimeoutMs('navigate', {}, { queueDefaultMs })).toBe(
+        fallbackHttpTimeoutMs(queueDefaultMs),
+      );
+      expect(
+        resolveCliHttpTimeoutMs('describe_screen', {}, { queueDefaultMs }),
+      ).toBe(fallbackHttpTimeoutMs(queueDefaultMs));
+      expect(
+        resolveCliHttpTimeoutMs('run_steps', { steps: [] }, { queueDefaultMs }),
+      ).toBe(fallbackHttpTimeoutMs(queueDefaultMs));
+    }
+  });
+
+  it('uses the default queue when the daemon state has no value', () => {
+    // A state file written before the queue default was published.
+    expect(
+      resolveCliHttpTimeoutMs('navigate', {}, { queueDefaultMs: undefined }),
+    ).toBe(fallbackHttpTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS));
+  });
+
+  it('keeps launch and cleanup at least at their command default', () => {
+    expect(
+      resolveCliHttpTimeoutMs('launch', {}, { commandTimeoutMs: 120_000 }),
+    ).toBe(120_000);
+    expect(
+      resolveCliHttpTimeoutMs(
+        'launch',
+        {},
+        {
+          commandTimeoutMs: 120_000,
+          queueDefaultMs: 180_000,
+        },
+      ),
+    ).toBe(fallbackHttpTimeoutMs(180_000));
+    expect(
+      resolveCliHttpTimeoutMs('cleanup', {}, { commandTimeoutMs: 30_000 }),
+    ).toBe(fallbackHttpTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS));
+  });
+
+  it('takes the larger value for a platform-dependent tool', () => {
+    // Mobile scroll_to_element has no action budget, so the daemon keeps the
+    // queue default; the browser has 15 s. The CLI does not know the platform.
+    expect(
+      resolveCliHttpTimeoutMs(
+        'scroll_to_element',
+        {},
+        {
+          queueDefaultMs: 30_000,
+        },
+      ),
+    ).toBe(fallbackHttpTimeoutMs(30_000));
+    expect(
+      resolveCliHttpTimeoutMs(
+        'scroll_to_element',
+        {},
+        {
+          queueDefaultMs: 180_000,
+        },
+      ),
+    ).toBe(fallbackHttpTimeoutMs(180_000));
+    // An explicit timeout is the same on every platform.
+    expect(
+      resolveCliHttpTimeoutMs('scroll_to_element', { timeoutMs: 5_000 }),
+    ).toBe(computeTimeoutBudget(5_000).http);
+  });
+
+  it('covers the queue default for run_steps with a batch deadline', () => {
+    const input = {
+      batchTimeoutMs: 20_000,
+      steps: [{ tool: 'click', args: {} }],
+    };
+    const action = 20_000 + DEFAULT_INTERACTION_TIMEOUT_MS;
+
+    expect(
+      resolveCliHttpTimeoutMs('run_steps', input, {
+        queueDefaultMs: 30_000,
+      }),
+    ).toBe(computeTimeoutBudget(action).http);
+    // The Mobile daemon gives run_steps at least its 180 s queue default.
+    expect(
+      resolveCliHttpTimeoutMs('run_steps', input, {
+        queueDefaultMs: 180_000,
+      }),
+    ).toBe(fallbackHttpTimeoutMs(180_000));
+  });
+
+  it.each([DEFAULT_REQUEST_TIMEOUT_MS, 180_000])(
+    'nests above the daemon queue for every registered tool (%ims daemon)',
+    (queueDefaultMs) => {
+      for (const toolName of toolRegistry.keys()) {
+        const platform = 'android';
+        const action = resolveActionTimeoutMs(toolName, {}, { platform });
+        let daemonQueueMs =
+          action === undefined
+            ? queueDefaultMs
+            : computeTimeoutBudget(action).queue;
+        if (toolName === 'run_steps') {
+          daemonQueueMs = Math.max(daemonQueueMs, queueDefaultMs);
+        }
+
+        expect(
+          resolveCliHttpTimeoutMs(toolName, {}, { queueDefaultMs }),
+        ).toBeGreaterThan(daemonQueueMs + QUEUE_SETTLE_TIMEOUT_MS);
+      }
+    },
+  );
 });

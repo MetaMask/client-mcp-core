@@ -53,8 +53,13 @@ import {
 import {
   DEFAULT_CDP_TIMEOUT_MS,
   DEFAULT_INTERACTION_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
 } from '../tools/utils/constants.js';
-import { computeTimeoutBudget } from '../utils/timeout-budget.js';
+import type { DaemonEndpoint } from '../types/http.js';
+import {
+  computeTimeoutBudget,
+  fallbackHttpTimeoutMs,
+} from '../utils/timeout-budget.js';
 
 vi.mock('node:child_process', () => ({
   execSync: vi.fn(() => Buffer.from('/mock/worktree\n')),
@@ -2068,17 +2073,19 @@ describe('routeCommand', () => {
      * @param command - The command to route.
      * @param args - Its arguments.
      * @param expectedMs - The expected HTTP abort timeout.
+     * @param daemon - The daemon endpoint to route to.
      * @returns The error the command exited with.
      */
     async function expectAbortAfter(
       command: string,
       args: string[],
       expectedMs: number,
+      daemon: DaemonEndpoint = 3000,
     ): Promise<string> {
       vi.useFakeTimers();
       try {
         abortingFetch();
-        const pending = routeCommand(command, args, 3000).catch(
+        const pending = routeCommand(command, args, daemon).catch(
           (error: unknown) => error,
         );
 
@@ -2133,17 +2140,61 @@ describe('routeCommand', () => {
               batchTimeoutMs: 20000,
             }),
           ],
-          computeTimeoutBudget(20000).http,
+          computeTimeoutBudget(20000 + DEFAULT_INTERACTION_TIMEOUT_MS).http,
         ),
       ).toBe('process.exit');
     });
 
-    it('keeps the 30 s default for run-steps without batchTimeoutMs', async () => {
+    it('nests above the queue default for run-steps without batchTimeoutMs', async () => {
       expect(
         await expectAbortAfter(
           'run-steps',
           [JSON.stringify({ steps: [{ tool: 'get_state' }] })],
-          30_000,
+          fallbackHttpTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS),
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('nests above the queue default for tools without an action budget', async () => {
+      expect(
+        await expectAbortAfter(
+          'navigate',
+          ['https://example.com'],
+          fallbackHttpTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS),
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('reads the queue default from the daemon state', async () => {
+      expect(
+        await expectAbortAfter(
+          'navigate',
+          ['https://example.com'],
+          fallbackHttpTimeoutMs(180_000),
+          { port: 3000, requestTimeoutMs: 180_000 },
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('keeps the default queue for a state without requestTimeoutMs', async () => {
+      expect(
+        await expectAbortAfter(
+          'navigate',
+          ['https://example.com'],
+          fallbackHttpTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS),
+          { port: 3000 },
+        ),
+      ).toBe('process.exit');
+    });
+
+    it('takes the larger budget for a platform-dependent tool', async () => {
+      // The browser scroll has a 15 s action budget (32 s), the mobile one the
+      // queue default (37 s): the CLI must not abort before the daemon.
+      expect(
+        await expectAbortAfter(
+          'scroll-to-element',
+          ['e1'],
+          fallbackHttpTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS),
         ),
       ).toBe('process.exit');
     });
