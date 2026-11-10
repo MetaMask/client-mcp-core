@@ -200,11 +200,25 @@ export type NetworkMockResponse = {
   body?: string;
 };
 
+export type NetworkMockRecordOptions = {
+  body?: boolean;
+  headers?: boolean;
+  maxBodyBytes?: number;
+};
+
 export type NetworkMockRouteRule = {
   id: string;
   method: string;
   url: string;
   response: NetworkMockResponse;
+  record?: NetworkMockRecordOptions;
+};
+
+export type NetworkMockRecordedBody = {
+  type: 'json' | 'text' | 'binary' | 'empty';
+  size: number;
+  truncated?: boolean;
+  value?: unknown;
 };
 
 export type NetworkMockRequestRecord = {
@@ -214,6 +228,9 @@ export type NetworkMockRequestRecord = {
   matched: boolean;
   ruleId?: string;
   status?: number;
+  serviceWorker?: boolean;
+  headers?: Record<string, string>;
+  body?: NetworkMockRecordedBody;
 };
 
 export type NetworkMockSummary = {
@@ -233,7 +250,12 @@ export type MockNetworkInput =
     }
   | { action: 'clear' }
   | { action: 'list' }
-  | { action: 'requests'; limit?: number };
+  | {
+      action: 'requests';
+      limit?: number;
+      url?: string;
+      includeBodies?: boolean;
+    };
 
 export type SetContextInput = {
   context: 'e2e' | 'prod';

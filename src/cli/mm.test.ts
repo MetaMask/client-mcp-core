@@ -2747,6 +2747,44 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes mock-network requests with url and bodies flags', async () => {
+    await routeCommand(
+      'mock-network',
+      ['requests', '--url', 'api.segment.io', '--bodies', '--limit', '5'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'requests',
+          limit: 5,
+          url: 'api.segment.io',
+          includeBodies: true,
+        }),
+      }),
+    );
+  });
+
+  it('keeps the default mock-network requests payload unchanged', async () => {
+    await routeCommand('mock-network', ['requests'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/mock_network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'requests' }),
+      }),
+    );
+  });
+
+  it('exits when mock-network requests --url has no value', async () => {
+    await expect(
+      routeCommand('mock-network', ['requests', '--url', '--bodies'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Usage: mm mock-network requests'),
+    );
+  });
+
   it('exits when mock-network add has no payload', async () => {
     await expect(
       routeCommand('mock-network', ['add'], 3000),

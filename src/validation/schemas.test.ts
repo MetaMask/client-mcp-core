@@ -417,6 +417,72 @@ describe('network mock schemas', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('accepts record options on a route', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      record: { body: true, headers: true, maxBodyBytes: 1024 },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.record).toStrictEqual({
+        body: true,
+        headers: true,
+        maxBodyBytes: 1024,
+      });
+    }
+  });
+
+  it('leaves record undefined when not provided', () => {
+    const result = networkMockRouteRuleSchema.safeParse(route);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.record).toBeUndefined();
+    }
+  });
+
+  it('rejects unknown record options and out-of-range maxBodyBytes', () => {
+    expect(
+      networkMockRouteRuleSchema.safeParse({
+        ...route,
+        record: { bodies: true },
+      }).success,
+    ).toBe(false);
+    expect(
+      networkMockRouteRuleSchema.safeParse({
+        ...route,
+        record: { body: true, maxBodyBytes: 0 },
+      }).success,
+    ).toBe(false);
+    expect(
+      networkMockRouteRuleSchema.safeParse({
+        ...route,
+        record: { body: true, maxBodyBytes: 512 * 1024 + 1 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts mock-network requests with url and includeBodies', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'requests',
+      limit: 10,
+      url: 'https://api.segment.io/**',
+      includeBodies: true,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects mock-network requests with an empty url filter', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'requests',
+      url: '',
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('launchInputSchema', () => {

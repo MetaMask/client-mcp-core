@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: record request bodies in `mock_network`. A rule with `"record": {"body": true}` keeps the bodies of the requests it matches (JSON parsed, capped at 64 KiB by default, binary not stored, secrets such as `writeKey` redacted); `"headers": true` also keeps request headers with sensitive values redacted. `mm mock-network requests` gains `--bodies` to show them and `--url <glob-or-text>` to filter records, and each record shows `serviceWorker: true` for requests sent by a service worker. Default output is unchanged
 - feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support
 - feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
 - feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes

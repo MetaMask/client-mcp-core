@@ -142,6 +142,35 @@ export const networkMockRouteRuleSchema = z.object({
     )
     .describe('Absolute URL or URL glob to match'),
   response: networkMockResponseSchema,
+  record: z
+    .object({
+      body: z
+        .boolean()
+        .describe(
+          'Record the request body. JSON is parsed; secrets such as writeKey are redacted; binary bodies record only their size.',
+        )
+        .optional(),
+      headers: z
+        .boolean()
+        .describe(
+          'Record request headers. Authorization, cookie and any token/secret/key/auth header values are redacted.',
+        )
+        .optional(),
+      maxBodyBytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(512 * 1024)
+        .describe(
+          'Maximum body bytes to keep per request (default 65536). Longer bodies are cut and marked truncated.',
+        )
+        .optional(),
+    })
+    .strict()
+    .describe(
+      'Opt-in capture of request details for requests that match this rule. Off by default.',
+    )
+    .optional(),
 });
 
 export const networkMockConfigSchema = z.object({
@@ -694,6 +723,19 @@ export const mockNetworkInputSchema = z.union([
   z.object({
     action: z.literal('requests'),
     limit: z.number().int().min(1).max(500).optional(),
+    url: z
+      .string()
+      .min(1)
+      .describe(
+        'Only return requests whose URL matches this glob (* and **) or, without *, contains this text',
+      )
+      .optional(),
+    includeBodies: z
+      .boolean()
+      .describe(
+        'Include recorded request headers and bodies (only for rules with record options)',
+      )
+      .optional(),
   }),
 ]);
 
