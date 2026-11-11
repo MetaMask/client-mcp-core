@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: `MobilePlatformDriver` options `metroPort`, `deviceId` and `appId` keep the session's Metro port, device and Hermes app id on the driver, and `IPlatformDriver.setHermesDefaults` lets the launch apply `--metro-port` / `--device-id` after a successful mobile launch; `mm hermes-targets` now reports `sessionMetroPort`, `pinnedDeviceId`, `connected` and `deviceId`.
 - feat: `mm cdp --target sw` sends CDP commands to the browser Extension's background service worker, and browser CDP sessions are now persistent per target (active page, service worker) instead of one-shot, so enabled domains and listeners survive across calls; a dead session (page or service-worker restart) is re-attached on the next call. New `mm cdp --fresh` keeps the old one-shot session, detached after the command. Browser and mobile reject the other platform's `--target` values with `MM_INVALID_INPUT`.
 - feat: an observation that exceeds `OBSERVATION_TIMEOUT_MS` (8 s) no longer costs the call. The action response stays `ok` and carries `observations: { timedOut: true }` with no tree, and the timed-out observation does not replace the diff baseline, so the agent knows the screen was not read
 - feat: add `MM_QUEUE_TIMEOUT`. When the daemon's request queue expires it now returns a normal `{ok:false,error}` tool response (not HTTP 500 `TOOL_EXECUTION_FAILED`), mapped to exit 5, not retryable, with the state-unknown hint; `RequestQueue` rejects a dedicated `QueueTimeoutError`
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Mobile `mm cdp` keeps one persistent Hermes connection per session (Metro port and app id) and reuses it across calls instead of opening one WebSocket per call; a per-call `--metro-port` / `--app-id` that differs from the session's uses a one-shot connection, and the device pin still persists per session. Needs a device-mcp release with `HermesClient`; with device-mcp 0.7.0 each call opens its own connection.
 - One timeout budget end to end. A shared `resolveActionTimeoutMs()`, `resolveBatchActionTimeoutMs()` and `computeTimeoutBudget()` give every layer a nesting budget (`http > queue > action + observation`): the CLI derives its HTTP abort from the same action budget as the daemon queue, and from the daemon queue default for tools with no action budget. The daemon publishes that default in `.mm-server` (`requestTimeoutMs`, absent in older state files) and the CLI nests above it, so it no longer aborts before the daemon answers. `run_steps` also budgets for its slowest step, because it checks its deadline only between steps. Timeout defaults after this change (daemon queue default 30 s, or 180 s when the host sets `requestTimeoutMs` as the Mobile workflow does); none is shorter than the time the daemon may take:
   - `click`, `type`, `get_text`, `inspect`, `wait_for`: the daemon queue already derived from the zod default (25 s) before this change; the CLI abort goes from the flat 30 s to 32 s.
   - `cdp`: CLI 35 s → 47 s (queue 40 s, unchanged). `wait_for_notification`: CLI 30 s → 32 s (queue 25 s, unchanged).
@@ -36,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mobile `mm cdp` and `mm hermes-targets` keep the `--metro-port` given at launch. Before, a later command without `--metro-port` fell back to `HERMES_METRO_PORT` or 8081, so it could not connect when Metro ran on another port. A per-call `--metro-port` still wins, and a CDP connection failure now names the Metro port it tried.
 - Mobile observations retry a screen that is still tearing down after a navigating tap (Android: the old screen, half removed, still carried the previous screen's test IDs). One extra snapshot is allowed when the new tree lost a large part of its nodes but kept the last screen's test IDs; a tap that does not change the screen still costs the same single retry, and the diff stays empty.
 - `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
 

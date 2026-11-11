@@ -93,6 +93,20 @@ export type ScreenCapture = {
   getTestIds(limit?: number): Promise<TestIdItem[]>;
 };
 
+/**
+ * Hermes defaults of a mobile session, kept from the launch so `cdp` and
+ * `hermes-targets` do not fall back to another Metro port or device between
+ * calls. A per-call option still overrides them.
+ */
+export type HermesDefaults = {
+  /** Metro inspector proxy port of the session. */
+  metroPort?: number;
+  /** Device the session runs on (informational). */
+  deviceId?: string;
+  /** Hermes app bundle identifier of the session. */
+  appId?: string;
+};
+
 export type IPlatformDriver = {
   /** Release resources owned by this driver. Idempotent; does not shut down the device. */
   dispose?(): Promise<void>;
@@ -248,6 +262,13 @@ export type IPlatformDriver = {
   }>;
 
   hermesTargets?(input: HermesTargetsInput): Promise<HermesTargetsResult>;
+
+  /**
+   * Mobile: keeps the session defaults for the Hermes tools (the launch Metro
+   * port, device and app id), so they apply to later calls without the caller
+   * passing them again. Browser drivers do not implement it.
+   */
+  setHermesDefaults?(defaults: HermesDefaults): void;
 
   generateLocators?(): Promise<ElementLocatorInfo[]>;
 };

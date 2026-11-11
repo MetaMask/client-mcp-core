@@ -8,6 +8,7 @@ export type {
   WithinScope,
   IPlatformDriver,
   ScreenCapture,
+  HermesDefaults,
 } from './types.js';
 
 export { PlaywrightPlatformDriver } from './playwright-driver.js';
