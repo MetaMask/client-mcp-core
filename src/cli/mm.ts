@@ -1191,9 +1191,19 @@ export async function routeMockNetworkCommand(
 
   if (action === 'requests') {
     const limit = parseIntFlag(args, '--limit');
+    const url = parseStringFlag(args, '--url');
+    if (args.includes('--url') && url === undefined) {
+      process.stderr.write(
+        'Usage: mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]\n',
+      );
+      process.exit(1);
+    }
+    const includeBodies = args.includes('--bodies');
     await sendRequest(port, 'POST', '/tool/mock_network', {
       action: 'requests',
       ...(limit === undefined ? {} : { limit }),
+      ...(url === undefined ? {} : { url }),
+      ...(includeBodies ? { includeBodies } : {}),
     });
     return;
   }
@@ -2068,7 +2078,7 @@ Advanced:
   mm mock-network add '<json-rule-or-config>'
   mm mock-network clear
   mm mock-network list
-  mm mock-network requests [--limit <n>]
+  mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
   mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 

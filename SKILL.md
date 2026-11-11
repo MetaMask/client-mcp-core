@@ -543,15 +543,16 @@ mm mock-network add '{"id":"mock-balance","method":"GET","url":"https://api.exam
 
 A rule object requires:
 
-| Field              | Description                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                      |
-| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                             |
-| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                          |
-| `response.status`  | HTTP status code (default: 200)                                                                                        |
-| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                    |
-| `response.body`    | Text response body (mutually exclusive with `json`)                                                                    |
-| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`) |
+| Field              | Description                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                                |
+| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                                       |
+| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                                    |
+| `response.status`  | HTTP status code (default: 200)                                                                                                  |
+| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                              |
+| `response.body`    | Text response body (mutually exclusive with `json`)                                                                              |
+| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`)           |
+| `record`           | Optional. Records details of the requests this rule matches. Off by default. See [Record request bodies](#record-request-bodies) |
 
 You can also pass an array of rules or an object with a `routes` array:
 
@@ -566,6 +567,26 @@ A mock only affects requests made after it is added. Data the Extension already 
 
 - Add mocks before you first open the screen that uses them.
 - After you add, change or clear a rule for data that is already loaded, run `mm reload`, then check `mm mock-network requests` for a hit.
+
+##### Record request bodies
+
+Add `record` to a rule to keep the body (and optionally the headers) of each request the rule matches. Use it to check what the Extension sent, for example which analytics events went to Segment:
+
+```bash
+mm mock-network add '{"id":"segment","method":"POST","url":"https://api.segment.io/**","response":{"json":{"success":true}},"record":{"body":true}}'
+# ...do the flow that should send the events...
+mm mock-network requests --url api.segment.io --bodies
+```
+
+| Field                 | Description                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record.body`         | Record the request body. JSON is parsed. Other text is kept as text. Binary bodies record only their size                                                         |
+| `record.headers`      | Record request headers. The values of `authorization`, `cookie` and any header with `token`, `secret`, `key` or `auth` in the name are replaced with `[REDACTED]` |
+| `record.maxBodyBytes` | Bytes to keep per body (default 65536, max 524288). A longer body is cut, kept as text and marked `"truncated": true`                                             |
+
+Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`. Only matched requests are recorded with bodies. Misses never store a body. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+
+Segment sends events in batches, and production builds wait up to about 5 seconds before they send. If no batch shows up, wait and check again.
 
 #### `mm mock-network clear`
 
@@ -588,12 +609,16 @@ mm mock-network list
 Shows recorded matched and missed requests.
 
 ```bash
-mm mock-network requests [--limit <n>]
+mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 ```
 
-| Flag          | Description                                |
-| ------------- | ------------------------------------------ |
-| `--limit <n>` | Maximum number of recent records to return |
+| Flag                   | Description                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `--limit <n>`          | Maximum number of recent records to return (applied after `--url`)                               |
+| `--url <glob-or-text>` | Only return requests whose URL matches this glob (`*`, `**`) or, without `*`, contains this text |
+| `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
+
+Without `--bodies` the output is the same as before: no bodies or headers. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
