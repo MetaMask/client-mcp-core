@@ -742,13 +742,23 @@ export const cdpInputSchema = z.object({
     )
     .optional(),
   target: z
-    .enum(['hermes', 'android-webview'])
-    .default('hermes')
+    .enum(['page', 'sw', 'hermes', 'android-webview'])
     .describe(
-      'Mobile only: CDP target. "hermes" (default) drives the React Native ' +
-        'JS runtime via Metro; "android-webview" drives a debuggable in-app ' +
-        'Android WebView via adb (DOM/Page/Network available). Ignored on browser.',
-    ),
+      'CDP target. Browser: "page" (default) is the active page; "sw" is ' +
+        'the Extension service worker. Mobile: "hermes" (default) drives ' +
+        'the React Native JS runtime via Metro; "android-webview" drives a ' +
+        'debuggable in-app Android WebView via adb (DOM/Page/Network ' +
+        'available). Browser rejects the mobile targets and mobile rejects ' +
+        '"page"/"sw".',
+    )
+    .optional(),
+  fresh: z
+    .boolean()
+    .describe(
+      'Browser only: use a one-shot CDP session for this command and detach ' +
+        'it afterwards, instead of the persistent session shared across calls.',
+    )
+    .optional(),
   urlFilter: z
     .string()
     .min(1)

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: `mm cdp --target sw` sends CDP commands to the browser Extension's background service worker, and browser CDP sessions are now persistent per target (active page, service worker) instead of one-shot, so enabled domains and listeners survive across calls; a dead session (page or service-worker restart) is re-attached on the next call. New `mm cdp --fresh` keeps the old one-shot session, detached after the command. Browser and mobile reject the other platform's `--target` values with `MM_INVALID_INPUT`.
 - feat: an observation that exceeds `OBSERVATION_TIMEOUT_MS` (8 s) no longer costs the call. The action response stays `ok` and carries `observations: { timedOut: true }` with no tree, and the timed-out observation does not replace the diff baseline, so the agent knows the screen was not read
 - feat: add `MM_QUEUE_TIMEOUT`. When the daemon's request queue expires it now returns a normal `{ok:false,error}` tool response (not HTTP 500 `TOOL_EXECUTION_FAILED`), mapped to exit 5, not retryable, with the state-unknown hint; `RequestQueue` rejects a dedicated `QueueTimeoutError`
 - feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support

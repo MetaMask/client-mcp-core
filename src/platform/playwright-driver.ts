@@ -1,5 +1,6 @@
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 
+import { disposeCdpManager, getCdpManager } from './cdp-manager.js';
 import type {
   IPlatformDriver,
   TargetType,
@@ -22,7 +23,6 @@ import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 import { ErrorCodes } from '../tools/types/errors.js';
 import type { CdpInput } from '../tools/types/tool-inputs.js';
 import type { CdpOutcome } from '../tools/types/tool-outputs.js';
-import { withCdpSession } from '../tools/utils/cdp.js';
 import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../tools/utils/constants.js';
 import {
   collectTestIds,
@@ -53,6 +53,8 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
 
   readonly #sessionManager: ISessionManager;
 
+  #cdpContext: BrowserContext | undefined;
+
   /**
    * @param getPage - Getter for the current active Playwright page.
    * @param sessionManager - The session manager for screenshot and state delegation.
@@ -60,6 +62,18 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
   constructor(getPage: () => Page, sessionManager: ISessionManager) {
     this.#getPage = getPage;
     this.#sessionManager = sessionManager;
+  }
+
+  /**
+   * Detaches the persistent CDP sessions owned by this driver. Idempotent;
+   * does not close the browser.
+   */
+  async dispose(): Promise<void> {
+    const context = this.#cdpContext;
+    this.#cdpContext = undefined;
+    if (context) {
+      await disposeCdpManager(context);
+    }
   }
 
   /**
@@ -410,12 +424,18 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
   }
 
   /**
-   * Send a raw Chrome DevTools Protocol command against the active page over a
-   * short-lived CDP session. The browser exposes the full Chrome CDP surface
-   * (Runtime, DOM, Network, Page, ...). Destructive methods are blocked.
+   * Send a raw Chrome DevTools Protocol command against a browser target.
+   * The browser exposes the full Chrome CDP surface (Runtime, DOM, Network,
+   * Page, ...). Destructive methods are blocked.
    *
-   * @param input - The CDP method, params, and per-command timeout. The
-   * `metroPort` / `appId` fields are mobile-only and ignored here.
+   * The default target is the active page, on a persistent session shared
+   * across calls (so domains enabled by one call stay enabled for the next).
+   * `target: 'sw'` sends the command to the Extension service worker.
+   * `fresh: true` uses a one-shot session that is detached afterwards.
+   *
+   * @param input - The CDP method, params, per-command timeout, and target.
+   * The `metroPort` / `appId` / `urlFilter` fields are mobile-only and
+   * ignored here; the mobile targets are rejected.
    * @returns A discriminated outcome carrying the raw CDP result or an error.
    */
   async cdp(input: CdpInput): Promise<CdpOutcome> {
@@ -429,35 +449,28 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       };
     }
 
+    const target = input.target ?? 'page';
+    if (target === 'hermes' || target === 'android-webview') {
+      return {
+        ok: false,
+        code: ErrorCodes.MM_INVALID_INPUT,
+        message:
+          `CDP target "${target}" is mobile only. ` +
+          'Browser targets: page, sw.',
+      };
+    }
+
     const page = this.#getPage();
+    const context = page.context();
+    this.#cdpContext ??= context;
+
     try {
-      const result = await withCdpSession(page, async (cdpSession) => {
-        const send = cdpSession.send.bind(cdpSession) as (
-          method: string,
-          params?: Record<string, unknown>,
-        ) => Promise<unknown>;
-
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          return await Promise.race([
-            send(input.method, input.params ?? {}),
-            new Promise<never>((_resolve, reject) => {
-              timer = setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `CDP call "${input.method}" timed out after ${input.timeoutMs}ms`,
-                    ),
-                  ),
-                input.timeoutMs,
-              );
-            }),
-          ]);
-        } finally {
-          clearTimeout(timer);
-        }
-      });
-
+      const result = await getCdpManager(context).send(
+        target === 'sw' ? { kind: 'sw' } : { kind: 'page', page },
+        input.method,
+        input.params ?? {},
+        { timeoutMs: input.timeoutMs, fresh: input.fresh === true },
+      );
       return { ok: true, result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

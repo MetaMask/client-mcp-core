@@ -920,10 +920,14 @@ export async function routeCommand(
       const cdpMethod = args[0];
       if (!cdpMethod) {
         failUsage(
-          'Usage: mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <port>] [--app-id <id>]\n' +
+          'Usage: mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <port>] [--app-id <id>]\n' +
             '  mm cdp Runtime.evaluate \'{"expression":"document.title"}\'\n' +
             '  mm cdp Network.enable\n' +
             '  mm cdp DOM.getDocument \'{"depth":2}\' --timeout 60000\n' +
+            '  # browser (Extension service worker): the background of the Extension\n' +
+            '  mm cdp Runtime.evaluate \'{"expression":"typeof globalThis.stateHooks","returnByValue":true}\' --target sw\n' +
+            '  # browser: one-shot session, detached after the command\n' +
+            '  mm cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --fresh\n' +
             '  # mobile (Hermes): --metro-port / --app-id override the Metro target\n' +
             '  mm cdp Runtime.evaluate \'{"expression":"1+1","returnByValue":true}\' --app-id io.metamask\n' +
             '  # mobile (Android WebView): drive the in-app browser DOM\n' +
@@ -935,12 +939,17 @@ export async function routeCommand(
       const cdpAppId = parseStringFlag(args, '--app-id');
       const cdpTarget = parseStringFlag(args, '--target');
       const cdpUrlFilter = parseStringFlag(args, '--url-filter');
+      const cdpFresh = args.includes('--fresh');
       if (
         cdpTarget !== undefined &&
+        cdpTarget !== 'page' &&
+        cdpTarget !== 'sw' &&
         cdpTarget !== 'hermes' &&
         cdpTarget !== 'android-webview'
       ) {
-        failUsage('--target must be "hermes" or "android-webview"');
+        failUsage(
+          '--target must be "page", "sw", "hermes" or "android-webview"',
+        );
       }
       const cdpParamsRaw =
         args[1] !== undefined && !args[1].startsWith('--')
@@ -969,6 +978,7 @@ export async function routeCommand(
         ...(cdpMetroPort === undefined ? {} : { metroPort: cdpMetroPort }),
         ...(cdpAppId ? { appId: cdpAppId } : {}),
         ...(cdpTarget ? { target: cdpTarget } : {}),
+        ...(cdpFresh ? { fresh: true } : {}),
         ...(cdpUrlFilter ? { urlFilter: cdpUrlFilter } : {}),
       });
       break;
@@ -2085,7 +2095,7 @@ Advanced:
   mm mock-network clear
   mm mock-network list
   mm mock-network requests [--limit <n>]
-  mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
+  mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 
 Mobile (iOS/Android only):
