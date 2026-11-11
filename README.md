@@ -428,7 +428,7 @@ The daemon routes `POST /tool/:name` requests through the registry, applies Zod 
 | `get_contract_address`        | Looks up the deployed address of a contract by name from the session's deployment registry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `list_contracts`              | Lists all contracts deployed in the current session with addresses and deployment timestamps.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Batching**                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `run_steps`                   | Executes a batch of tool invocations sequentially. Supports `stopOnError` to halt on first failure, a top-level `observe` level for the single observation collected after the batch (default `diff`; without one, the last executed step's `observe` is used), and `batchTimeoutMs` (1 000–30 000 ms) to set an overall deadline (checked between steps; remaining steps are skipped). The whole `run_steps` call has the default 30 s request limit, so to get partial results set `batchTimeoutMs` below it (for example 20 000) and keep batches short. Accepts tool aliases like `navigate_home` / `navigate-home`. Returns per-step results with timing.                                                                                                                                                                                                                                                    |
+| `run_steps`                   | Executes a batch of tool invocations sequentially. Supports `stopOnError` to halt on first failure, a top-level `observe` level for the single observation collected after the batch (default `diff`; without one, the last executed step's `observe` is used), and `batchTimeoutMs` (1 000–30 000 ms) to set an overall deadline (checked between steps; remaining steps are skipped, partial results are returned). The daemon queue and the CLI wait for the deadline plus the slowest step's own timeout, so a step in progress is never cut off by `MM_QUEUE_TIMEOUT`; without `batchTimeoutMs` the call keeps the daemon queue default (30 s, or 180 s when the host sets it). Accepts tool aliases like `navigate_home` / `navigate-home`. Returns per-step results with timing.                                                                                                                           |
 | **Advanced**                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `mock_network`                | Adds, clears, lists, and inspects targeted Playwright network mocks on the active browser context. Unmatched same-origin requests are continued unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `cdp`                         | Sends a raw Chrome DevTools Protocol command, dispatched through the active platform driver. **Browser:** targets the page's Chrome CDP session (full Runtime/DOM/Network/Page surface); destructive methods (`Browser.close`, `Target.closeTarget`, etc.) are blocked. **Mobile (iOS/Android):** targets the app's React Native Hermes JS runtime via Metro's inspector proxy (delegates to `@metamask/device-mcp`, needs a DEBUG build with Metro running); only the JS-engine subset exists (`Runtime`, `Debugger`, `Log`, `HeapProfiler` — no DOM/Page/Network) and `Runtime.terminateExecution` / `Inspector.detached` are blocked. Optional `metroPort` / `appId` are mobile-only (ignored on browser). Categorized as `cdp`: no observation is collected and refs are not refreshed, so run `describe_screen` after a call that changes state. See [Browser vs Mobile CDP](#browser-vs-mobile-hermes-cdp). |
@@ -516,7 +516,7 @@ type ServerConfig = {
   contextFactory: () => WorkflowContext | Promise<WorkflowContext>;
   /** Idle timeout in milliseconds (optional, defaults to 1_800_000 = 30 min) */
   idleShutdownMs?: number;
-  /** Per-request execution timeout in milliseconds (default: 30_000) */
+  /** Queue timeout for tools with no action budget, in milliseconds (default: 30_000). Published in the daemon state so the CLI nests above it. */
   requestTimeoutMs?: number;
   /** Path to log file (optional) */
   logFilePath?: string;
@@ -680,10 +680,10 @@ mm describe-screen
 ```bash
 mm cdp Runtime.evaluate '{"expression":"document.title"}'
 mm cdp Network.enable
-mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
+mm cdp DOM.getDocument '{"depth":2}' --timeout 5000
 ```
 
-The `params-json` argument must be a valid JSON object. The `--timeout` flag sets a per-command timeout (default: 30 000 ms, max: 30 000 ms). The tool is categorized as `cdp`: by default it returns no observation and does not refresh refs, so pass `--observe full` (or run `mm describe-screen`) after a call that changes state.
+The `params-json` argument must be a valid JSON object. The `--timeout` flag sets the per-command action timeout (default and max: 30 000 ms); the CLI waits up to 47 s for the default so the daemon can run the command and collect its observation. The tool is categorized as `cdp`: by default it returns no observation and does not refresh refs, so pass `--observe full` (or run `mm describe-screen`) after a call that changes state.
 
 #### Browser vs Mobile (Hermes) CDP
 
@@ -845,6 +845,7 @@ Tool errors are classified into specific error codes for structured handling:
 | `MM_REQUEST_ABORTED`                | Internal: a cancelled (timed-out) call stopped; the caller gets the timeout error                       |
 | `MM_INTERNAL_ERROR`                 | Internal server error                                                                                   |
 | `MM_BATCH_TIMEOUT`                  | `batchTimeoutMs` deadline exceeded in run_steps                                                         |
+| `MM_QUEUE_TIMEOUT`                  | The daemon stopped the request before it finished; the action may have run                              |
 | `MM_CDP_BLOCKED`                    | CDP method is blocked (destructive to session); on mobile the Hermes blocklist maps here too            |
 | `MM_CDP_FAILED`                     | CDP command execution failed or timed out (on mobile, the underlying `HERMES_*` code is in the message) |
 | `MM_HERMES_FAILED`                  | `hermes_targets` discovery failed (underlying `HERMES_*` code is in the message)                        |
@@ -862,6 +863,12 @@ Tool errors are classified into specific error codes for structured handling:
 The daemon HTTP server also sets `VALIDATION_ERROR` (schema), `TOOL_NOT_FOUND`,
 `SERVER_NOT_STARTED`, `TOOL_EXECUTION_FAILED` and `INTERNAL_ERROR`
 (`DaemonErrorCodes`).
+
+A timed-out observation is not a tool error: the action response stays `ok` and
+carries `"observations": {"timedOut": true}`, so the caller knows the screen was
+not read (the diff baseline is not replaced). `MM_QUEUE_TIMEOUT` means the
+daemon's request queue stopped the call before it finished; it is exit 5, not
+retryable, and the action may have run, so check the state before retrying.
 
 ### CLI failure output and exit codes
 
@@ -887,16 +894,16 @@ click, type and request timeouts because the action state is unknown. `meta` is
 present when the daemon answered. `exitCodeForError()` in
 `src/tools/types/errors.ts` is the one map from error code to exit code:
 
-| Exit | Meaning                                                          | Codes (examples)                                                                                              |
-| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 0    | ok                                                               |                                                                                                               |
-| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                            |
-| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`               |
-| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                |
-| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`   |
-| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`            |
-| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM` |
-| 7    | daemon version mismatch (reserved)                               |                                                                                                               |
+| Exit | Meaning                                                          | Codes (examples)                                                                                                       |
+| ---- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 0    | ok                                                               |                                                                                                                        |
+| 1    | anything else (internal error, tool failure, unknown code)       | `MM_INTERNAL_ERROR`, `TOOL_EXECUTION_FAILED`, `MM_LAUNCH_FAILED`, `MM_SEED_FAILED`                                     |
+| 2    | usage or validation; nothing ran                                 | `MM_INVALID_INPUT`, `MM_INVALID_CONFIG`, `VALIDATION_ERROR`, `TOOL_NOT_FOUND`, `MM_CDP_BLOCKED`                        |
+| 3    | no session, daemon not running, daemon connection lost           | `MM_NO_ACTIVE_SESSION`, `MM_PAGE_CLOSED`, `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_CONNECTION_LOST`                         |
+| 4    | target not found or not actionable                               | `MM_TARGET_NOT_FOUND`, `MM_TARGET_NOT_VISIBLE`, `MM_TARGET_OBSCURED`, `MM_CLICK_FAILED`, `MM_TAB_NOT_FOUND`            |
+| 5    | timeout (click, type and request timeouts: action state unknown) | `MM_WAIT_TIMEOUT`, `MM_CLICK_TIMEOUT`, `MM_TYPE_TIMEOUT`, `MM_REQUEST_TIMEOUT`, `MM_BATCH_TIMEOUT`, `MM_QUEUE_TIMEOUT` |
+| 6    | platform, device, Metro or Hermes not available                  | `MM_DEVICE_ACTION_FAILED`, `MM_DEVICE_NOT_AVAILABLE`, `MM_HERMES_FAILED`, `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`          |
+| 7    | daemon version mismatch (reserved)                               |                                                                                                                        |
 
 ## Development
 

@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
-import { DEFAULT_INSPECT_STYLES } from '../tools/utils/constants.js';
+import {
+  DEFAULT_CDP_TIMEOUT_MS,
+  DEFAULT_INSPECT_STYLES,
+  DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 
 export const observeLevelSchema = z
   .enum(OBSERVE_LEVELS)
@@ -382,7 +386,7 @@ export const waitForNotificationInputSchema = z.object({
     .int()
     .min(1000)
     .max(60000)
-    .default(15000)
+    .default(DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS)
     .describe('Timeout in milliseconds to wait for notification popup'),
 });
 
@@ -626,11 +630,12 @@ export const runStepsInputSchema = z.object({
     .min(1000)
     .max(30_000)
     .describe(
-      'Overall timeout for the batch in milliseconds. ' +
+      'Overall deadline for the batch in milliseconds. ' +
         'When exceeded, remaining steps are marked as skipped and partial results are returned. ' +
-        'The deadline is checked between steps. Capped at 30 000, the default request limit of ' +
-        'the queue and the CLI; to get partial results, leave room for the step in progress ' +
-        'and the observation (e.g. 20 000).',
+        'The deadline is checked between steps, so the step in progress always finishes: each step ' +
+        'keeps its own timeout (15 000 by default; `wait_for` accepts up to 120 000). ' +
+        'The daemon queue and the CLI cover this deadline plus the slowest step, so a batch that ' +
+        'stops at its deadline still returns its partial results. Capped at 30 000.',
     )
     .optional(),
   // Removed in favour of `observe`. Rejected (not ignored) so old callers
@@ -715,7 +720,7 @@ export const cdpInputSchema = z.object({
     .int()
     .min(1000)
     .max(30_000)
-    .default(30_000)
+    .default(DEFAULT_CDP_TIMEOUT_MS)
     .describe(
       'Per-command timeout in milliseconds. ' +
         'Capped at 30 000 to stay within the server request-queue ceiling.',
