@@ -9,6 +9,7 @@ import type {
   InspectActionResult,
   PlatformScreenshotOptions,
   PlatformType,
+  ScrollToElementOutcome,
   WithinScope,
 } from './types.js';
 import type {
@@ -219,16 +220,17 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * @param _maxAttempts - Unused on the browser (mobile swipe attempts).
    * @param timeoutMs - Maximum time in milliseconds.
    * @param within - Optional parent scope.
+   * @returns An empty outcome (swipe details are mobile only).
    */
   async scrollToElement(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
-    _direction?: 'up' | 'down',
+    _direction?: 'up' | 'down' | 'auto',
     _maxAttempts?: number,
     timeoutMs: number = DEFAULT_INTERACTION_TIMEOUT_MS,
     within?: WithinScope,
-  ): Promise<void> {
+  ): Promise<ScrollToElementOutcome> {
     const page = this.#getPage();
     const deadline = Date.now() + timeoutMs;
 
@@ -249,6 +251,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     }
 
     await locator.scrollIntoViewIfNeeded({ timeout: remaining });
+    return {};
   }
 
   /**

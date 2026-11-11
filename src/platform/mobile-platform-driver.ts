@@ -22,6 +22,7 @@ import type {
   PlatformScreenshotOptions,
   PlatformType,
   ScreenCapture,
+  ScrollToElementOutcome,
   WithinScope,
 } from './types.js';
 import type {
@@ -450,26 +451,39 @@ export class MobilePlatformDriver implements IPlatformDriver {
   }
 
   /**
+   * Swipe until the element is in the viewport.
+   *
+   * `direction` is the **content** direction (`down` reveals content below),
+   * so it maps to the opposite finger direction in device-mcp. `auto` sends
+   * no direction, so device-mcp picks it from the element's position.
+   *
    * @param targetType - Target identifier type.
    * @param targetValue - Target value for element lookup.
    * @param refMap - Map of a11y refs to stable identifiers.
-   * @param direction - Scroll direction (default: down).
-   * @param maxAttempts - Maximum scroll attempts.
+   * @param direction - Content direction, or `auto`.
+   * @param maxAttempts - Maximum number of swipes.
    * @param _timeoutMs - Unused: the scroll is bounded by `maxAttempts`.
    * @param within - Must be undefined — scoped search is not supported on mobile.
+   * @returns Swipe count, whether the element is in view, and its frame.
    */
   async scrollToElement(
     targetType: TargetType,
     targetValue: string,
     refMap: Map<string, string>,
-    direction?: 'up' | 'down',
+    direction: 'up' | 'down' | 'auto' = 'auto',
     maxAttempts?: number,
     _timeoutMs?: number,
     within?: WithinScope,
-  ): Promise<void> {
+  ): Promise<ScrollToElementOutcome> {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
-    await this.#backend.scrollToElement(query, direction, maxAttempts);
+    const finger = { auto: undefined, down: 'up', up: 'down' } as const;
+    const outcome = await this.#backend.scrollToElement(
+      query,
+      finger[direction],
+      maxAttempts,
+    );
+    return readScrollOutcome(outcome);
   }
 
   /**
@@ -837,6 +851,30 @@ function toHermesTargetInfo(target: HermesTarget): HermesTargetInfo {
 function isMetroDownError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('ECONNREFUSED') || message.includes('fetch failed');
+}
+
+/**
+ * Read device-mcp's `scrollToElement` result: `{ element, swipes,
+ * inViewport }` from releases with the viewport check, or the bare element
+ * from older ones (which only know it is in the UI tree).
+ *
+ * @param outcome - The backend result.
+ * @returns Swipe count, viewport flag and frame, when known.
+ */
+function readScrollOutcome(outcome: unknown): ScrollToElementOutcome {
+  if (!outcome || typeof outcome !== 'object') {
+    return {};
+  }
+  if ('element' in outcome) {
+    const { element, swipes, inViewport } = outcome as {
+      element: UIElement;
+      swipes: number;
+      inViewport: boolean;
+    };
+    return { swipes, inViewport, bounds: { ...element.frame } };
+  }
+  const { frame } = outcome as Partial<UIElement>;
+  return frame ? { bounds: { ...frame } } : {};
 }
 
 /**

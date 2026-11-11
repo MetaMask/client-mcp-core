@@ -771,9 +771,12 @@ export const getWindowSizeInputSchema = z.object({});
 export const scrollToElementInputSchema = targetSelectionSchema.and(
   z.object({
     direction: z
-      .enum(['up', 'down'])
+      .enum(['auto', 'up', 'down'])
       .describe(
-        'Mobile only. Finger swipe direction to perform while searching (swipe up scrolls content down)',
+        'Mobile only. Content direction to search: "down" reveals content ' +
+          'below (finger swipes up), "up" reveals content above. Default ' +
+          '"auto": from the element\'s position, searching below first when ' +
+          'it is not in the UI tree yet.',
       )
       .optional(),
     maxAttempts: z
@@ -782,7 +785,7 @@ export const scrollToElementInputSchema = targetSelectionSchema.and(
       .min(1)
       .max(50)
       .describe(
-        'Mobile only. Maximum number of scroll attempts before giving up',
+        'Mobile only. Maximum number of swipes before giving up (default 10)',
       )
       .optional(),
     timeoutMs: z
