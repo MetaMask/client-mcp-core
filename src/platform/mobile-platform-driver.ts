@@ -156,11 +156,15 @@ export class MobilePlatformDriver implements IPlatformDriver {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
-    await this.#backend.waitForElement(query, timeoutMs);
+    const element = await this.#backend.waitForElement(query, timeoutMs);
     // The request may have timed out while we waited for the target.
     signal?.throwIfAborted();
     const remaining = deadline - Date.now();
-    await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
+    await withTimeout(
+      this.#tapResolved(query, element),
+      remaining,
+      'tapElement',
+    );
     return { clicked: true, target: `${targetType}:${targetValue}` };
   }
 
@@ -188,10 +192,14 @@ export class MobilePlatformDriver implements IPlatformDriver {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
-    await this.#backend.waitForElement(query, timeoutMs);
+    const element = await this.#backend.waitForElement(query, timeoutMs);
     signal?.throwIfAborted();
     let remaining = deadline - Date.now();
-    await withTimeout(this.#backend.tapElement(query), remaining, 'tapElement');
+    await withTimeout(
+      this.#tapResolved(query, element),
+      remaining,
+      'tapElement',
+    );
     signal?.throwIfAborted();
     remaining = deadline - Date.now();
     await withTimeout(this.#backend.typeText(text), remaining, 'typeText');
@@ -200,6 +208,28 @@ export class MobilePlatformDriver implements IPlatformDriver {
       target: `${targetType}:${targetValue}`,
       textLength: text.length,
     };
+  }
+
+  /**
+   * Taps the element that `waitForElement` just found, without a second
+   * snapshot. device-mcp 0.7.0 declares `tapElement(query)` only; it ignores
+   * the newer `element` option and snapshots again.
+   *
+   * @param query - The element query.
+   * @param element - The element returned by `waitForElement`.
+   * @returns The backend's tap result.
+   */
+  async #tapResolved(
+    query: ElementQuery,
+    element: UIElement,
+  ): Promise<unknown> {
+    const backend = this.#backend as DeviceBackend & {
+      tapElement(
+        query: ElementQuery,
+        options?: { element?: UIElement },
+      ): Promise<unknown>;
+    };
+    return backend.tapElement(query, { element });
   }
 
   /**

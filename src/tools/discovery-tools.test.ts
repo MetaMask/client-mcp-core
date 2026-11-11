@@ -465,6 +465,40 @@ describe('discovery-tools', () => {
       );
     });
 
+    it('reads the app state and captures the screen at the same time', async () => {
+      const context = createMockContext();
+      const order: string[] = [];
+      let releaseState: () => void = () => undefined;
+      const driver = {
+        getAppState: vi.fn(async () => {
+          order.push('state:start');
+          await new Promise<void>((resolve) => {
+            releaseState = resolve;
+          });
+          order.push('state:end');
+          return { isLoaded: true };
+        }),
+        captureScreen: vi.fn(async () => {
+          order.push('capture:start');
+          releaseState();
+          return { nodes: [], refMap: new Map(), getTestIds: async () => [] };
+        }),
+        getTestIds: vi.fn(),
+        getAccessibilityTree: vi.fn(),
+      };
+
+      const result = await describeScreenTool({}, {
+        ...context,
+        driver,
+      } as unknown as ToolContext);
+
+      expect(result.ok).toBe(true);
+      // captureScreen started before getAppState finished.
+      expect(order.indexOf('capture:start')).toBeLessThan(
+        order.indexOf('state:end'),
+      );
+    });
+
     it('stops after captureScreen when the request is aborted', async () => {
       const controller = new AbortController();
       const context = createMockContext();
