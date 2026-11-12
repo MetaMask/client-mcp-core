@@ -1,6 +1,7 @@
 import {
   classifyClickError,
   classifyGetTextError,
+  classifyHoverError,
   classifyInspectError,
   classifyTypeError,
   classifyWaitError,
@@ -10,10 +11,14 @@ import type {
   ClickResult,
   GetTextInput,
   GetTextResult,
+  HoverInput,
+  HoverResult,
   InspectInput,
   InspectResult,
   TypeInput,
   TypeResult,
+  UnhoverInput,
+  UnhoverResult,
   WaitForInput,
   WaitForResult,
   WithinTarget,
@@ -57,7 +62,13 @@ type ValidatedInteraction = {
  * @returns Either an error response or the validated target.
  */
 function validateInteraction<TResult>(
-  input: ClickInput | TypeInput | WaitForInput | GetTextInput | InspectInput,
+  input:
+    | ClickInput
+    | TypeInput
+    | WaitForInput
+    | GetTextInput
+    | InspectInput
+    | HoverInput,
   context: ToolContext,
 ): { error: ToolResponse<TResult> } | ValidatedInteraction {
   const missingSession = requireActiveSession<TResult>(context);
@@ -345,6 +356,88 @@ export async function inspectTool(
         `Inspect timed out after ${timeoutMs}ms.`,
       );
     }
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+}
+
+/**
+ * Moves the pointer over an element identified by ref, test ID, or selector,
+ * so hover-only UI (popovers, tooltips, hover styles) shows. It stays until
+ * the pointer moves: run `unhover` to close it.
+ *
+ * @param input - The hover target and timeout options.
+ * @param context - The tool execution context.
+ * @returns The hover result.
+ */
+export async function hoverTool(
+  input: HoverInput,
+  context: ToolContext,
+): Promise<ToolResponse<HoverResult>> {
+  const validated = validateInteraction<HoverResult>(input, context);
+  if ('error' in validated) {
+    return validated.error;
+  }
+
+  const { driver } = validated;
+  if (!driver.hover) {
+    return createToolError(
+      ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      `Tool "hover" is not supported on ${driver.getPlatform()} platform`,
+    );
+  }
+
+  const timeoutMs = input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS;
+  const { targetType, targetValue } = validated.target;
+
+  try {
+    const result = await driver.hover(
+      targetType,
+      targetValue,
+      context.refMap,
+      timeoutMs,
+      resolveWithinScope(input.within),
+      context.signal,
+    );
+    return createToolSuccess(result);
+  } catch (error) {
+    const aborted = abortedResponse<HoverResult>(context);
+    if (aborted) {
+      return aborted;
+    }
+    const errorInfo = classifyHoverError(error);
+    if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
+      return createToolError(
+        ErrorCodes.MM_WAIT_TIMEOUT,
+        `Hover timed out after ${timeoutMs}ms. Run describe-screen to check the target is visible and not covered.`,
+      );
+    }
+    return createToolError(errorInfo.code, errorInfo.message);
+  }
+}
+
+/**
+ * Moves the pointer off the page, so the element under it gets
+ * `mouseleave` and loses its hover state, and no other element gets one.
+ *
+ * @param _input - No options.
+ * @param context - The tool execution context.
+ * @returns The unhover result.
+ */
+export async function unhoverTool(
+  _input: UnhoverInput,
+  context: ToolContext,
+): Promise<ToolResponse<UnhoverResult>> {
+  const missingSession = requireActiveSession<UnhoverResult>(context);
+  if (missingSession) {
+    return missingSession;
+  }
+
+  try {
+    // (0, 0) is often over a header, which would get a hover of its own.
+    await context.page.mouse.move(-1, -1);
+    return createToolSuccess({ unhovered: true });
+  } catch (error) {
+    const errorInfo = classifyHoverError(error);
     return createToolError(errorInfo.code, errorInfo.message);
   }
 }

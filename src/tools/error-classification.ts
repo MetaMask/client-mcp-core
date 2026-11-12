@@ -158,6 +158,19 @@ export function classifyInspectError(error: unknown): {
 }
 
 /**
+ * Classify a hover error.
+ *
+ * @param error - The error to classify
+ * @returns Object with error code and message
+ */
+export function classifyHoverError(error: unknown): {
+  code: string;
+  message: string;
+} {
+  return classifyInteractionError(error, ErrorCodes.MM_HOVER_FAILED);
+}
+
+/**
  * Classify a navigation error.
  *
  * @param error - The error to classify
