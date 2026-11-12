@@ -10,10 +10,10 @@ import { describe, it, expect } from 'vitest';
 import * as inPage from './in-page.js';
 import {
   animationsSettled,
-  buildUniqueSelectorInPage,
   captureMarkedElementInPage,
   collectTestIdsInPage,
   inspectCapturedElementInPage,
+  stampRefInPage,
   waitUntilInPage,
 } from './in-page.js';
 
@@ -724,10 +724,10 @@ describe('in-page function source', () => {
   it('exports the in-page functions', () => {
     expect(inPageFunctions.map(([name]) => name).sort()).toStrictEqual([
       'animationsSettled',
-      'buildUniqueSelectorInPage',
       'captureMarkedElementInPage',
       'collectTestIdsInPage',
       'inspectCapturedElementInPage',
+      'stampRefInPage',
       'waitUntilInPage',
     ]);
   });
@@ -745,508 +745,6 @@ describe('in-page function source', () => {
       expect(helpers).toStrictEqual([]);
     },
   );
-});
-
-type DomParent = DomDocument | DomShadowRoot | DomElement;
-
-type DomElement = {
-  nodeType: 1;
-  localName: string;
-  id: string;
-  testId?: string;
-  parentNode: DomParent | null;
-  parentElement: DomElement | null;
-  children: DomElement[];
-  shadowRoot: DomShadowRoot | null;
-  getAttribute: (name: string) => string | null;
-  matches: (compound: string) => boolean;
-  getRootNode: () => DomParent;
-  querySelectorAll: (compound: string) => DomElement[];
-};
-
-type DomShadowRoot = {
-  nodeType: 11;
-  mode: 'open' | 'closed';
-  host: DomElement;
-  parentNode: null;
-  children: DomElement[];
-  querySelectorAll: (compound: string) => DomElement[];
-};
-
-type DomDocument = {
-  nodeType: 9;
-  parentNode: null;
-  children: DomElement[];
-  querySelectorAll: (compound: string) => DomElement[];
-};
-
-type DomSpec = {
-  tag: string;
-  id?: string;
-  testId?: string;
-  children?: DomSpec[];
-  shadow?: { mode: 'open' | 'closed'; children: DomSpec[] };
-};
-
-// An identifier: escapes (`\31 `, `\:`), or any char but the delimiters.
-const IDENT = String.raw`(?:\\[0-9a-fA-F]{1,6} ?|\\[^0-9a-fA-F]|[^\\#.:\[\]"\s>])+`;
-const COMPOUND_RE = new RegExp(
-  String.raw`^(?<tag>[a-z][a-z0-9-]*)?(?:#(?<id>${IDENT}))?(?:\[data-testid="(?<testId>${IDENT})"\])?(?::nth-(?<nthKind>of-type|child)\((?<nth>\d+)\))?$`,
-  'u',
-);
-
-/**
- * Undoes CSS identifier escapes (the inverse of `CSS.escape`).
- *
- * @param value - The escaped identifier.
- * @returns The identifier.
- */
-function cssUnescape(value: string): string {
-  return value.replace(
-    /\\(?:(?<code>[0-9a-fA-F]{1,6}) ?|(?<char>[^0-9a-fA-F]))/gu,
-    (...args) => {
-      const { code, char } = args[args.length - 1] as {
-        code?: string;
-        char?: string;
-      };
-      return code === undefined
-        ? (char as string)
-        : String.fromCodePoint(parseInt(code, 16));
-    },
-  );
-}
-
-/**
- * Light descendants of a node, in DOM order (shadow roots not entered).
- *
- * @param node - The root.
- * @param node.children - Its child elements.
- * @returns The descendants.
- */
-function lightDescendants(node: { children: DomElement[] }): DomElement[] {
-  return node.children.flatMap((child) => [child, ...lightDescendants(child)]);
-}
-
-/**
- * querySelectorAll over light descendants for one compound selector
- * (`*`, tag, `#id`, `[data-testid="x"]`, `:nth-of-type(n)`).
- *
- * @param node - The root.
- * @param node.children - Its child elements.
- * @param compound - The compound selector.
- * @returns The matches.
- */
-function queryCompound(
-  node: { children: DomElement[] },
-  compound: string,
-): DomElement[] {
-  return lightDescendants(node).filter(
-    (item) => compound === '*' || item.matches(compound),
-  );
-}
-
-/**
- * Builds a fake document (with an `html` > `body` root) for
- * buildUniqueSelectorInPage, with element lookup by `name` (id, testId or
- * the `key` of the spec path).
- *
- * @param body - The children of `body`.
- * @returns The document and every element by id/testId.
- */
-function buildDom(body: DomSpec[]): {
-  document: DomDocument;
-  byKey: Map<string, DomElement>;
-} {
-  const byKey = new Map<string, DomElement>();
-  const make = (spec: DomSpec, parent: DomParent): DomElement => {
-    const item: DomElement = {
-      nodeType: 1,
-      localName: spec.tag,
-      id: spec.id ?? '',
-      testId: spec.testId,
-      parentNode: parent,
-      parentElement: parent.nodeType === 1 ? parent : null,
-      children: [],
-      shadowRoot: null,
-      getAttribute: (name) =>
-        name === 'data-testid' ? (item.testId ?? null) : null,
-      matches: (compound) => {
-        const match = COMPOUND_RE.exec(compound);
-        if (!match?.groups) {
-          throw new Error(`Unsupported selector ${compound}`);
-        }
-        const { tag, id, testId, nthKind, nth } = match.groups;
-        if (tag && tag !== item.localName) {
-          return false;
-        }
-        if (id && cssUnescape(id) !== item.id) {
-          return false;
-        }
-        if (testId && cssUnescape(testId) !== item.testId) {
-          return false;
-        }
-        if (nth) {
-          const siblings = (item.parentNode as DomParent).children.filter(
-            (sibling) =>
-              nthKind === 'child' || sibling.localName === item.localName,
-          );
-          return siblings.indexOf(item) + 1 === Number(nth);
-        }
-        return true;
-      },
-      getRootNode: () => {
-        let node: DomParent = item;
-        while (node.nodeType === 1 && node.parentNode) {
-          node = node.parentNode;
-        }
-        return node;
-      },
-      querySelectorAll: (compound) => queryCompound(item, compound),
-    };
-    item.children = (spec.children ?? []).map((child) => make(child, item));
-    if (spec.shadow) {
-      const shadowRoot: DomShadowRoot = {
-        nodeType: 11,
-        mode: spec.shadow.mode,
-        host: item,
-        parentNode: null,
-        children: [],
-        querySelectorAll: (compound) => queryCompound(shadowRoot, compound),
-      };
-      shadowRoot.children = spec.shadow.children.map((child) =>
-        make(child, shadowRoot),
-      );
-      // Closed roots are not exposed through `element.shadowRoot`.
-      item.shadowRoot = spec.shadow.mode === 'open' ? shadowRoot : null;
-    }
-    for (const key of [spec.id, spec.testId]) {
-      if (key) {
-        byKey.set(key, item);
-      }
-    }
-    return item;
-  };
-  const document: DomDocument = {
-    nodeType: 9,
-    parentNode: null,
-    children: [],
-    querySelectorAll: (compound) => queryCompound(document, compound),
-  };
-  document.children = [
-    make(
-      { tag: 'html', children: [{ tag: 'body', children: body }] },
-      document,
-    ),
-  ];
-  return { document, byKey };
-}
-
-/**
- * Runs buildUniqueSelectorInPage, compiled from its source, on an element.
- *
- * @param document - The fake document.
- * @param target - The element (`this`).
- * @param globals - Extra globals.
- * @returns The selector.
- */
-function uniqueSelector(
-  document: DomDocument,
-  target: unknown,
-  globals: Record<string, unknown> = {},
-): string | null {
-  const fn = compileInPage<(this: unknown) => string | null>(
-    buildUniqueSelectorInPage,
-    { document, ...globals },
-  );
-  return fn.call(target);
-}
-
-describe('buildUniqueSelectorInPage', () => {
-  it('prefers a unique data-testid, then a unique id', () => {
-    const { document, byKey } = buildDom([
-      { tag: 'button', testId: 'send', id: 'send-id' },
-      { tag: 'button', testId: 'dup', id: 'only' },
-      { tag: 'button', testId: 'dup' },
-    ]);
-
-    expect(uniqueSelector(document, byKey.get('send'))).toBe(
-      '[data-testid="send"]',
-    );
-    expect(uniqueSelector(document, byKey.get('only'))).toBe('#only');
-  });
-
-  it('builds the shortest unique nth-of-type path', () => {
-    const { document } = buildDom([
-      { tag: 'div', children: [{ tag: 'button' }, { tag: 'button' }] },
-      { tag: 'div', children: [{ tag: 'span' }] },
-      { tag: 'button' },
-    ]);
-    const body = document.children[0].children[0];
-    const [firstButton, secondButton] = body.children[0].children;
-    const span = body.children[1].children[0];
-
-    expect(uniqueSelector(document, secondButton)).toBe(
-      'button:nth-of-type(2)',
-    );
-    // `button:nth-of-type(1)` also matches the body's own button.
-    expect(uniqueSelector(document, firstButton)).toBe(
-      'div:nth-of-type(1) > button:nth-of-type(1)',
-    );
-    expect(uniqueSelector(document, span)).toBe('span');
-  });
-
-  it('does not treat a document selector as unique when an open shadow root also matches it', () => {
-    const { document } = buildDom([
-      { tag: 'button', testId: 'send' },
-      {
-        tag: 'x-card',
-        shadow: { mode: 'open', children: [{ tag: 'button', testId: 'send' }] },
-      },
-    ]);
-    const lightButton = document.children[0].children[0].children[0];
-
-    // `[data-testid="send"]` and `button` also match inside the shadow root.
-    expect(uniqueSelector(document, lightButton)).toBe('body > button');
-  });
-
-  it('chains the host selector and the path inside an open shadow root', () => {
-    const { document } = buildDom([
-      { tag: 'button' },
-      {
-        tag: 'x-card',
-        testId: 'card',
-        shadow: {
-          mode: 'open',
-          children: [{ tag: 'span', children: [{ tag: 'button' }] }],
-        },
-      },
-      {
-        tag: 'x-card',
-        shadow: {
-          mode: 'open',
-          children: [{ tag: 'span', children: [{ tag: 'button' }] }],
-        },
-      },
-    ]);
-    const body = document.children[0].children[0];
-    const inCard = (index: number): DomElement =>
-      (body.children[index].shadowRoot as DomShadowRoot).children[0]
-        .children[0];
-
-    expect(uniqueSelector(document, inCard(1))).toBe(
-      'css=[data-testid="card"] >> css=button',
-    );
-    expect(uniqueSelector(document, inCard(2))).toBe(
-      'css=x-card:nth-of-type(2) >> css=button',
-    );
-  });
-
-  it('recurses through nested open shadow roots', () => {
-    const { document, byKey } = buildDom([
-      {
-        tag: 'div',
-        id: 'outer',
-        shadow: {
-          mode: 'open',
-          children: [
-            {
-              tag: 'div',
-              shadow: { mode: 'open', children: [{ tag: 'button' }] },
-            },
-            {
-              tag: 'div',
-              shadow: {
-                mode: 'open',
-                children: [{ tag: 'button', testId: 'deep' }],
-              },
-            },
-          ],
-        },
-      },
-    ]);
-
-    expect(uniqueSelector(document, byKey.get('deep'))).toBe(
-      'css=#outer >> css=div:nth-of-type(2) >> css=[data-testid="deep"]',
-    );
-  });
-
-  it('anchors to the host with :scope when the path inside the shadow root is not unique', () => {
-    const { document } = buildDom([
-      {
-        tag: 'div',
-        id: 'host',
-        shadow: {
-          mode: 'open',
-          children: [
-            { tag: 'button' },
-            {
-              tag: 'div',
-              shadow: { mode: 'open', children: [{ tag: 'button' }] },
-            },
-          ],
-        },
-      },
-    ]);
-    const host = document.children[0].children[0].children[0];
-    const topButton = (host.shadowRoot as DomShadowRoot).children[0];
-
-    // `button` alone also matches the button of the nested shadow root.
-    expect(uniqueSelector(document, topButton)).toBe(
-      'css=#host >> css=:scope > button',
-    );
-  });
-
-  it('returns the unreachable marker inside a closed shadow root, at any depth', () => {
-    const { document, byKey } = buildDom([
-      {
-        tag: 'div',
-        id: 'host',
-        shadow: {
-          mode: 'closed',
-          children: [
-            { tag: 'button', testId: 'x' },
-            {
-              tag: 'div',
-              shadow: {
-                mode: 'open',
-                children: [{ tag: 'button', testId: 'y' }],
-              },
-            },
-          ],
-        },
-      },
-    ]);
-
-    expect(uniqueSelector(document, byKey.get('x'))).toBe(
-      'mm-unreachable=closed-shadow-root',
-    );
-    expect(uniqueSelector(document, byKey.get('y'))).toBe(
-      'mm-unreachable=closed-shadow-root',
-    );
-  });
-
-  it('anchors the path at the nearest ancestor with a unique id or data-testid', () => {
-    const { document } = buildDom([
-      {
-        tag: 'div',
-        children: [{ tag: 'span', children: [{ tag: 'button' }] }],
-      },
-      {
-        tag: 'div',
-        id: 'h',
-        children: [{ tag: 'span', children: [{ tag: 'button' }] }],
-      },
-      { tag: 'section', testId: 'card', children: [{ tag: 'button' }] },
-      { tag: 'section', children: [{ tag: 'button' }] },
-    ]);
-    const body = document.children[0].children[0];
-    const inH = body.children[1].children[0].children[0];
-    const inCard = body.children[2].children[0];
-
-    // `span > button` matches both spans' buttons; the id anchor is found
-    // before the nth-of-type walk reaches `div:nth-of-type(2)`.
-    expect(uniqueSelector(document, inH)).toBe('#h > span > button');
-    expect(uniqueSelector(document, inCard)).toBe(
-      '[data-testid="card"] > button',
-    );
-  });
-
-  it('tells a slotted light child and a shadow child of one host apart with nth-child', () => {
-    // <div class=h><button/></div><button/>, #h shadow: <slot/><button/>.
-    // For `>`, both buttons are children of the host.
-    const { document } = buildDom([
-      {
-        tag: 'div',
-        children: [{ tag: 'button' }],
-        shadow: {
-          mode: 'open',
-          children: [{ tag: 'slot' }, { tag: 'button' }],
-        },
-      },
-      { tag: 'button' },
-    ]);
-    const body = document.children[0].children[0];
-    const host = body.children[0];
-    const slotted = host.children[0];
-    const inShadow = (host.shadowRoot as DomShadowRoot).children[1];
-
-    expect(uniqueSelector(document, slotted)).toBe('button:nth-child(1)');
-    expect(uniqueSelector(document, inShadow)).toBe(
-      'css=div >> css=button:nth-child(2)',
-    );
-  });
-
-  it('returns null for detached elements and non-elements', () => {
-    const { document } = buildDom([]);
-    const other = buildDom([{ tag: 'button', testId: 'detached' }]);
-
-    expect(uniqueSelector(document, other.byKey.get('detached'))).toBeNull();
-    expect(uniqueSelector(document, { nodeType: 3 })).toBeNull();
-  });
-
-  // Expected values are Chromium's `CSS.escape` output for each input.
-  it.each([
-    ['1st', '\\31 st'],
-    ['eip155:59144', 'eip155\\:59144'],
-    ['a"b\'c', 'a\\"b\\\'c'],
-    ['ünïcode✓', 'ünïcode✓'],
-    ['-1', '-\\31 '],
-    ['-', '\\-'],
-    ['-a', '-a'],
-    ['--x', '--x'],
-    ['_x', '_x'],
-    ['a b', 'a\\ b'],
-    ['\x01\x7f', '\\1 \\7f '],
-    ['a.b#c', 'a\\.b\\#c'],
-    ['\\', '\\\\'],
-  ])('escapes the id %j like CSS.escape (%j)', (id, escaped) => {
-    const { document, byKey } = buildDom([{ tag: 'button', id }]);
-
-    expect(uniqueSelector(document, byKey.get(id))).toBe(`#${escaped}`);
-  });
-
-  it('replaces NUL with U+FFFD like CSS.escape', () => {
-    // A testid is only used when its selector is unique: the fake DOM
-    // holds one element whose testid is the U+FFFD form.
-    const { document } = buildDom([{ tag: 'button', testId: '\uFFFDx' }]);
-    const button = document.children[0].children[0].children[0];
-    button.testId = '\0x';
-    button.getAttribute = () => '\0x';
-    button.matches = (compound) => compound === '[data-testid="\uFFFDx"]';
-    // Other compounds (the path) do not match: only the testid can win.
-
-    expect(uniqueSelector(document, button)).toBe('[data-testid="\uFFFDx"]');
-  });
-
-  it('never reads page globals that LavaMoat scuttles (CSS, window, Element, Array.from)', () => {
-    const { document, byKey } = buildDom([
-      { tag: 'button', testId: 'opt-eip155:59144' },
-      { tag: 'div', children: [{ tag: 'button' }, { tag: 'button' }] },
-    ]);
-    const scuttled = (name: string) => ({
-      get() {
-        throw new Error(`LavaMoat - property "${name}" is inaccessible`);
-      },
-    });
-    const globals = Object.defineProperties(
-      {},
-      {
-        CSS: scuttled('CSS'),
-        window: scuttled('window'),
-        Element: scuttled('Element'),
-        Node: scuttled('Node'),
-        Array: scuttled('Array'),
-      },
-    );
-    const second = document.children[0].children[0].children[1].children[1];
-
-    expect(
-      uniqueSelector(document, byKey.get('opt-eip155:59144'), globals),
-    ).toBe('[data-testid="opt-eip155\\:59144"]');
-    expect(uniqueSelector(document, second, globals)).toBe(
-      'button:nth-of-type(2)',
-    );
-  });
 });
 
 type InspectNode = {
@@ -1464,5 +962,135 @@ describe('captureMarkedElementInPage and inspectCapturedElementInPage', () => {
     world.mark(field);
 
     expect(world.inspect('k1', [])?.effectiveOpacity).toBe(0.3);
+  });
+});
+
+type StampElement = {
+  nodeType: 1;
+  attributes: Map<string, string>;
+  getRootNode: () => StampRoot | StampElement;
+  getAttribute: (name: string) => string | null;
+  setAttribute: (name: string, value: string) => void;
+};
+
+type StampRoot =
+  | { nodeType: 9 }
+  | { nodeType: 11; mode?: 'open' | 'closed'; host?: StampElement };
+
+describe('stampRefInPage', () => {
+  const fakeDocument: StampRoot = { nodeType: 9 };
+
+  /**
+   * Builds a fake element whose root node is `rootNode` (itself when
+   * omitted, like a detached element).
+   *
+   * @param rootNode - The root node.
+   * @param attribute - The current value of `data-mm-ref`.
+   * @returns The element.
+   */
+  function stampElement(
+    rootNode?: StampRoot,
+    attribute?: string,
+  ): StampElement {
+    const item: StampElement = {
+      nodeType: 1,
+      attributes: new Map(
+        attribute === undefined ? [] : [['data-mm-ref', attribute]],
+      ),
+      getRootNode: () => rootNode ?? item,
+      getAttribute: (name) => item.attributes.get(name) ?? null,
+      setAttribute: (name, value) => {
+        item.attributes.set(name, value);
+      },
+    };
+    return item;
+  }
+
+  /**
+   * Runs stampRefInPage, compiled from its source, on an element.
+   *
+   * @param target - The element (`this`).
+   * @param token - The token to add.
+   * @param keep - How many tokens to keep.
+   * @returns The stamp result.
+   */
+  function stamp(target: unknown, token: string, keep = 3): unknown {
+    const fn = compileInPage<
+      (this: unknown, attribute: string, token: string, keep: number) => unknown
+    >(stampRefInPage, { document: fakeDocument });
+    return fn.call(target, 'data-mm-ref', token, keep);
+  }
+
+  it('adds the token to an element of the document', () => {
+    const target = stampElement(fakeDocument);
+
+    expect(stamp(target, 'abc-0')).toBe('stamped');
+    expect(target.attributes.get('data-mm-ref')).toBe('abc-0');
+  });
+
+  it('keeps the tokens of earlier snapshots, newest last, up to keep', () => {
+    const target = stampElement(fakeDocument, 'a-1 b-2  c-3');
+
+    expect(stamp(target, 'd-4')).toBe('stamped');
+    expect(target.attributes.get('data-mm-ref')).toBe('b-2 c-3 d-4');
+  });
+
+  it('does not repeat a token that is already there', () => {
+    const target = stampElement(fakeDocument, 'a-1 b-2');
+
+    stamp(target, 'a-1');
+
+    expect(target.attributes.get('data-mm-ref')).toBe('b-2 a-1');
+  });
+
+  it('stamps an element inside open shadow roots', () => {
+    const outerHost = stampElement(fakeDocument);
+    const innerHost = stampElement({
+      nodeType: 11,
+      mode: 'open',
+      host: outerHost,
+    });
+    const target = stampElement({
+      nodeType: 11,
+      mode: 'open',
+      host: innerHost,
+    });
+
+    expect(stamp(target, 'abc-0')).toBe('stamped');
+    expect(target.attributes.get('data-mm-ref')).toBe('abc-0');
+  });
+
+  it('reports an element inside a closed shadow root, at any depth, as unreachable without stamping it', () => {
+    const closedHost = stampElement(fakeDocument);
+    const openHost = stampElement({
+      nodeType: 11,
+      mode: 'closed',
+      host: closedHost,
+    });
+    const direct = stampElement({
+      nodeType: 11,
+      mode: 'closed',
+      host: closedHost,
+    });
+    const nested = stampElement({ nodeType: 11, mode: 'open', host: openHost });
+
+    expect(stamp(direct, 'abc-0')).toBe('unreachable');
+    expect(stamp(nested, 'abc-1')).toBe('unreachable');
+    expect(direct.attributes.size).toBe(0);
+    expect(nested.attributes.size).toBe(0);
+  });
+
+  it('reports a detached element or one in a fragment as detached without stamping it', () => {
+    const detached = stampElement();
+    const inFragment = stampElement({ nodeType: 11 });
+
+    expect(stamp(detached, 'abc-0')).toBe('detached');
+    expect(stamp(inFragment, 'abc-1')).toBe('detached');
+    expect(detached.attributes.size).toBe(0);
+    expect(inFragment.attributes.size).toBe(0);
+  });
+
+  it('reports a node that is not an element as detached', () => {
+    expect(stamp({ nodeType: 3 }, 'abc-0')).toBe('detached');
   });
 });

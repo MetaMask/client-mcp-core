@@ -168,7 +168,7 @@ function createMockPage(
         subtree?: MockDomNode;
       }
     >;
-    domSelectorsByBackendId?: Record<number, string>;
+    stampResultsByBackendId?: Record<number, string>;
     resolveNodeErrorIds?: Set<number>;
     testIdBySelector?: Record<string, string | null>;
     textBySelector?: Record<string, string | null>;
@@ -191,7 +191,7 @@ function createMockPage(
     partialAxTreeError,
     queryAxTreeError,
     selectorNodes = {},
-    domSelectorsByBackendId = {},
+    stampResultsByBackendId = {},
     resolveNodeErrorIds = new Set<number>(),
     testIdBySelector = {},
     textBySelector = {},
@@ -307,7 +307,7 @@ function createMockPage(
               );
               return {
                 result: {
-                  value: domSelectorsByBackendId[backendNodeId] ?? null,
+                  value: stampResultsByBackendId[backendNodeId] ?? null,
                 },
               };
             }
@@ -378,6 +378,19 @@ function createMockPage(
       };
     }),
   } as unknown as MockPageWithCdpSession;
+}
+
+/**
+ * Matches the stamp selector of the ref candidate at `index` of a snapshot
+ * (the token is `<random snapshot id>-<index>`).
+ *
+ * @param index - The index of the candidate in AX tree order.
+ * @returns An asymmetric matcher for the selector.
+ */
+function stampSelector(index: number): string {
+  return expect.stringMatching(
+    new RegExp(`^\\[data-mm-ref~="[0-9a-f]{8}-${index}"\\]$`, 'u'),
+  ) as unknown as string;
 }
 
 function createMockLocator(
@@ -943,7 +956,7 @@ describe('collectTrimmedA11ySnapshot', () => {
       role: 'button',
       name: 'Submit',
     });
-    // Each collapsed member keeps its own ref. Without DOM selectors they
+    // Each collapsed member keeps its own ref. Without stamps they
     // share the role selector, so an action on one fails in strict mode.
     expect([1, 2, 3, 4].map((i) => result.refMap.get(`e${i}`))).toStrictEqual(
       [0, 1, 2, 3].map(() => 'role=button[name="maskicon" s]'),
@@ -1180,14 +1193,7 @@ describe('collectTrimmedA11ySnapshot', () => {
           backendDOMNodeId: 502,
         },
       ],
-      domSelectorsByBackendId: {
-        501: '[data-testid="rename-account"]',
-        502: '[data-testid="account-details"]',
-      },
-      textBySelector: {
-        '[data-testid="rename-account"]': 'Rename account',
-        '[data-testid="account-details"]': 'Account details',
-      },
+      stampResultsByBackendId: { 501: 'stamped', 502: 'stamped' },
     });
 
     const result = await collectTrimmedA11ySnapshot(page);
@@ -1203,47 +1209,8 @@ describe('collectTrimmedA11ySnapshot', () => {
       role: 'generic',
       name: 'Account details',
     });
-    expect(result.refMap.get('e1')).toBe('[data-testid="rename-account"]');
-    expect(result.refMap.get('e2')).toBe('[data-testid="account-details"]');
-  });
-
-  it('uses ancestor-path selector when data-testid is not unique', async () => {
-    const page = createMockPage({
-      axNodes: [
-        {
-          nodeId: 'root',
-          ignored: false,
-          role: { type: 'role', value: 'main' },
-          childIds: ['item-1', 'item-2'],
-        },
-        {
-          nodeId: 'item-1',
-          ignored: false,
-          role: { type: 'role', value: 'generic' },
-          name: { type: 'string', value: 'Account A' },
-          parentId: 'root',
-          backendDOMNodeId: 510,
-        },
-        {
-          nodeId: 'item-2',
-          ignored: false,
-          role: { type: 'role', value: 'generic' },
-          name: { type: 'string', value: 'Account B' },
-          parentId: 'root',
-          backendDOMNodeId: 511,
-        },
-      ],
-      domSelectorsByBackendId: {
-        510: 'div > div:nth-of-type(1) > span',
-        511: 'div > div:nth-of-type(2) > span',
-      },
-    });
-
-    const result = await collectTrimmedA11ySnapshot(page);
-
-    expect(result.nodes).toHaveLength(2);
-    expect(result.refMap.get('e1')).toBe('div > div:nth-of-type(1) > span');
-    expect(result.refMap.get('e2')).toBe('div > div:nth-of-type(2) > span');
+    expect(result.refMap.get('e1')).toStrictEqual(stampSelector(0));
+    expect(result.refMap.get('e2')).toStrictEqual(stampSelector(1));
   });
 
   it('falls back to text selector when selector resolution returns null for a generic node', async () => {
@@ -1397,7 +1364,7 @@ describe('collectTrimmedA11ySnapshot', () => {
     expect(result.refMap.size).toBe(0);
   });
 
-  it('does not call DOM.resolveNode for included-role nodes', async () => {
+  it('stamps the DOM node of included-role nodes too', async () => {
     const page = createMockPage({
       axNodes: [
         {
@@ -1431,65 +1398,25 @@ describe('collectTrimmedA11ySnapshot', () => {
           backendDOMNodeId: 922,
         },
       ],
-    });
-    const { mockCdpSession } = page as MockPageWithCdpSession;
-
-    const result = await collectTrimmedA11ySnapshot(page);
-
-    expect(result.nodes).toHaveLength(3);
-    expect(result.refMap.get('e1')).toBe('role=button[name="Submit" s]');
-    expect(result.refMap.get('e2')).toBe('role=link[name="Home" s]');
-    expect(result.refMap.get('e3')).toBe('role=heading[name="Title" s]');
-
-    const resolveNodeCalls = mockCdpSession.send.mock.calls.filter(
-      (call) => call[0] === 'DOM.resolveNode',
-    );
-    expect(resolveNodeCalls).toHaveLength(0);
-  });
-
-  it('still resolves DOM selectors for generic nodes alongside included-role nodes', async () => {
-    const page = createMockPage({
-      axNodes: [
-        {
-          nodeId: 'root',
-          ignored: false,
-          role: { type: 'role', value: 'main' },
-          childIds: ['btn', 'generic-item'],
-        },
-        {
-          nodeId: 'btn',
-          ignored: false,
-          role: { type: 'role', value: 'button' },
-          name: { type: 'string', value: 'OK' },
-          parentId: 'root',
-          backendDOMNodeId: 930,
-        },
-        {
-          nodeId: 'generic-item',
-          ignored: false,
-          role: { type: 'role', value: 'generic' },
-          name: { type: 'string', value: 'Menu action' },
-          parentId: 'root',
-          backendDOMNodeId: 931,
-        },
-      ],
-      domSelectorsByBackendId: {
-        931: '[data-testid="menu-action"]',
+      stampResultsByBackendId: {
+        920: 'stamped',
+        921: 'stamped',
+        922: 'stamped',
       },
     });
     const { mockCdpSession } = page as MockPageWithCdpSession;
 
     const result = await collectTrimmedA11ySnapshot(page);
 
-    expect(result.nodes).toHaveLength(2);
-    expect(result.refMap.get('e1')).toBe('role=button[name="OK" s]');
-    expect(result.refMap.get('e2')).toBe('[data-testid="menu-action"]');
-
-    const resolveNodeCalls = mockCdpSession.send.mock.calls.filter(
-      (call) => call[0] === 'DOM.resolveNode',
-    );
-    expect(resolveNodeCalls).toHaveLength(1);
-    expect(resolveNodeCalls[0][1]).toMatchObject({ backendNodeId: 931 });
+    expect(Object.fromEntries(result.refMap)).toStrictEqual({
+      e1: stampSelector(0),
+      e2: stampSelector(1),
+      e3: stampSelector(2),
+    });
+    const resolved = mockCdpSession.send.mock.calls
+      .filter(([method]) => method === 'DOM.resolveNode')
+      .map(([, params]) => (params as { backendNodeId: number }).backendNodeId);
+    expect(resolved.sort()).toStrictEqual([920, 921, 922]);
   });
 
   it('includes non-ignored children inside an ignored generic wrapper', async () => {
@@ -1575,7 +1502,132 @@ describe('exact ref selectors', () => {
     ];
   }
 
-  it('keeps the plain role selector for duplicates without a DOM selector, so strict mode fails (AC1)', async () => {
+  /**
+   * Reads the stamp calls a snapshot made: the node object and the token.
+   *
+   * @param page - The mock page.
+   * @returns One entry per stamp call, in call order.
+   */
+  function stampCalls(page: Page): { objectId: string; token: string }[] {
+    const { mockCdpSession } = page as MockPageWithCdpSession;
+    return mockCdpSession.send.mock.calls
+      .filter(
+        ([method, params]) =>
+          method === 'Runtime.callFunctionOn' &&
+          (params as { objectId?: string }).objectId !== undefined,
+      )
+      .map(([, params]) => {
+        const { objectId, arguments: args } = params as {
+          objectId: string;
+          arguments: { value: unknown }[];
+        };
+        return { objectId, token: String(args[1].value) };
+      });
+  }
+
+  it('ties the ref of an <a onClick> without href to its DOM node, not to role=link', async () => {
+    // Chromium's AX tree reports an <a> without href as a link, Playwright's
+    // role engine does not: role=link[name=...] would match nothing. The
+    // name also holds a live price that changes after the snapshot.
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'link', name: 'Earn $2.42 +3.92%', backendDOMNodeId: 23 },
+      ]),
+      stampResultsByBackendId: { 23: 'stamped' },
+    });
+
+    const { nodes, refMap } = await collectTrimmedA11ySnapshot(page);
+
+    const [call] = stampCalls(page);
+    expect(call.objectId).toBe('obj-23');
+    expect(refMap.get('e1')).toBe(`[data-mm-ref~="${call.token}"]`);
+    expect(nodes[0]).toMatchObject({
+      ref: 'e1',
+      role: 'link',
+      name: 'Earn $2.42 +3.92%',
+    });
+  });
+
+  it('gives every ref its own token, new for each snapshot', async () => {
+    const options = {
+      axNodes: flatTree([
+        { role: 'button', name: 'Send', backendDOMNodeId: 1 },
+        { role: 'button', name: 'Send', backendDOMNodeId: 2 },
+        { role: 'generic', name: 'Fee', backendDOMNodeId: 3 },
+      ]),
+      stampResultsByBackendId: { 1: 'stamped', 2: 'stamped', 3: 'stamped' },
+    };
+    const first = createMockPage(options);
+    const second = createMockPage(options);
+
+    const firstRefs = await collectTrimmedA11ySnapshot(first);
+    const secondRefs = await collectTrimmedA11ySnapshot(second);
+
+    const firstTokens = stampCalls(first).map(({ token }) => token);
+    const secondTokens = stampCalls(second).map(({ token }) => token);
+    expect(new Set([...firstTokens, ...secondTokens]).size).toBe(6);
+    expect([...firstRefs.refMap.values()]).toStrictEqual(
+      firstTokens.map((token) => `[data-mm-ref~="${token}"]`),
+    );
+    expect([...secondRefs.refMap.values()]).toStrictEqual(
+      secondTokens.map((token) => `[data-mm-ref~="${token}"]`),
+    );
+  });
+
+  it('falls back to role and text selectors for nodes that cannot be stamped', async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Send', backendDOMNodeId: 1 },
+        { role: 'generic', name: 'Fee', backendDOMNodeId: 2 },
+        { role: 'button', name: 'Close', backendDOMNodeId: 3 },
+      ]),
+      stampResultsByBackendId: { 1: 'detached', 2: 'detached' },
+      resolveNodeErrorIds: new Set([3]),
+    });
+
+    const { refMap } = await collectTrimmedA11ySnapshot(page);
+
+    expect(Object.fromEntries(refMap)).toStrictEqual({
+      e1: 'role=button[name="Send" s]',
+      e2: 'text="Fee"',
+      e3: 'role=button[name="Close" s]',
+    });
+  });
+
+  it('gives stamped refs of a scoped snapshot, the root included, no root prefix', async () => {
+    const page = createMockPage({
+      queryAxTreeNodes: [
+        {
+          nodeId: 'dialog',
+          ignored: false,
+          role: { type: 'role', value: 'dialog' },
+          name: { type: 'string', value: 'Confirm' },
+          childIds: ['close'],
+          backendDOMNodeId: 70,
+        },
+        {
+          nodeId: 'close',
+          ignored: false,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'string', value: 'Close' },
+          parentId: 'dialog',
+          backendDOMNodeId: 71,
+        },
+      ],
+      selectorNodes: { '.modal': { nodeId: 7, backendNodeId: 70 } },
+      stampResultsByBackendId: { 70: 'stamped', 71: 'stamped' },
+    });
+
+    const { refMap } = await collectTrimmedA11ySnapshot(page, '.modal');
+
+    const tokens = stampCalls(page).map(({ token }) => token);
+    expect(Object.fromEntries(refMap)).toStrictEqual({
+      e1: `[data-mm-ref~="${tokens[0]}"]`,
+      e2: `[data-mm-ref~="${tokens[1]}"]`,
+    });
+  });
+
+  it('keeps the plain role selector for duplicates that cannot be stamped, so strict mode fails (AC1)', async () => {
     const page = createMockPage({
       axNodes: flatTree([
         { role: 'button', name: 'Send' },
@@ -1591,37 +1643,39 @@ describe('exact ref selectors', () => {
     expect(result.refMap.get('e2')).toBe('role=button[name="Send" s]');
   });
 
-  it('resolves each duplicate ref to its own DOM selector (AC1)', async () => {
+  it('resolves each duplicate ref to its own stamped element (AC1)', async () => {
     const page = createMockPage({
       axNodes: flatTree([
         { role: 'button', name: 'Send', backendDOMNodeId: 1 },
         { role: 'link', name: 'Send', backendDOMNodeId: 2 },
         { role: 'button', name: 'Send', backendDOMNodeId: 3 },
       ]),
-      domSelectorsByBackendId: {
-        1: 'button:nth-of-type(1)',
-        3: 'button:nth-of-type(2)',
-      },
+      stampResultsByBackendId: { 1: 'stamped', 2: 'stamped', 3: 'stamped' },
     });
     const { refMap } = await collectTrimmedA11ySnapshot(page);
+    const [first, , third] = stampCalls(page).map(
+      ({ token }) => `[data-mm-ref~="${token}"]`,
+    );
     vi.mocked(page.locator).mockClear();
 
     await resolveTarget(page, 'a11yRef', 'e1', refMap);
     await resolveTarget(page, 'a11yRef', 'e3', refMap);
 
     expect(vi.mocked(page.locator).mock.calls).toStrictEqual([
-      ['button:nth-of-type(1)'],
-      ['button:nth-of-type(2)'],
+      [first],
+      [third],
     ]);
-    // Another role is another group: unique, no DOM lookup.
-    expect(refMap.get('e2')).toBe('role=link[name="Send" s]');
+    expect(first).not.toBe(third);
 
-    const locator = createMockLocator();
+    const locator = {
+      ...createMockLocator(),
+      count: vi.fn().mockResolvedValue(1),
+    };
     const waitPage = {
       locator: vi.fn().mockReturnValue(locator),
     } as unknown as Page;
     await waitForTarget(waitPage, 'a11yRef', 'e3', refMap, 5000);
-    expect(waitPage.locator).toHaveBeenCalledWith('button:nth-of-type(2)');
+    expect(waitPage.locator).toHaveBeenCalledWith(third);
     expect(locator.waitFor).toHaveBeenCalledWith({
       state: 'visible',
       timeout: expectRemaining(5000),
@@ -1629,9 +1683,9 @@ describe('exact ref selectors', () => {
   });
 
   // Playwright's role= engine already matches a quoted name exactly and
-  // case-sensitively; this documents that refs rely on it ("Send" and "Send
-  // max" are different selectors, so neither needs a DOM selector or nth).
-  it('keeps different names in different selectors, without nth (AC2)', async () => {
+  // case-sensitively; this documents that fallback refs rely on it ("Send"
+  // and "Send max" are different selectors, so neither needs an nth).
+  it('keeps different names in different fallback selectors, without nth (AC2)', async () => {
     const page = createMockPage({
       axNodes: flatTree([
         { role: 'button', name: 'Send' },
@@ -1645,36 +1699,7 @@ describe('exact ref selectors', () => {
     expect(result.refMap.get('e2')).toBe('role=button[name="Send max" s]');
   });
 
-  it('gives each duplicate a DOM selector when one can be built', async () => {
-    const page = createMockPage({
-      axNodes: flatTree([
-        { role: 'button', name: 'Send', backendDOMNodeId: 1 },
-        { role: 'button', name: 'Send max', backendDOMNodeId: 2 },
-        { role: 'button', name: 'Send', backendDOMNodeId: 3 },
-      ]),
-      domSelectorsByBackendId: {
-        1: '[data-testid="send-a"]',
-        2: '[data-testid="send-max"]',
-        3: '#send-b',
-      },
-    });
-    const { mockCdpSession } = page as MockPageWithCdpSession;
-
-    const result = await collectTrimmedA11ySnapshot(page);
-
-    expect(Object.fromEntries(result.refMap)).toStrictEqual({
-      e1: '[data-testid="send-a"]',
-      e2: 'role=button[name="Send max" s]',
-      e3: '#send-b',
-    });
-    // Only duplicates pay for a DOM lookup.
-    const resolved = mockCdpSession.send.mock.calls
-      .filter(([method]) => method === 'DOM.resolveNode')
-      .map(([, params]) => (params as { backendNodeId: number }).backendNodeId);
-    expect(resolved.sort()).toStrictEqual([1, 3]);
-  });
-
-  it('keeps the plain role selector for duplicates whose DOM selector cannot be built', async () => {
+  it('keeps the plain role selector for duplicates that cannot be stamped', async () => {
     const page = createMockPage({
       axNodes: [
         ...flatTree([
@@ -1694,18 +1719,18 @@ describe('exact ref selectors', () => {
           ? { ...node, childIds: [...(node.childIds ?? []), 'no-backend'] }
           : node,
       ),
-      // 1: unique selector; 2: no unique selector (null); 3: resolve fails.
-      domSelectorsByBackendId: { 1: '#ok-1' },
+      // 1: stamped; 2: detached; 3: resolve fails.
+      stampResultsByBackendId: { 1: 'stamped', 2: 'detached' },
       resolveNodeErrorIds: new Set([3]),
     });
 
     const result = await collectTrimmedA11ySnapshot(page);
 
-    // No unique selector, resolve failure (e.g. navigation mid-snapshot),
-    // no backend node: the role selector matches the whole group, so an
-    // action fails in strict mode instead of clicking another member.
+    // Detached, resolve failure (e.g. navigation mid-snapshot), no backend
+    // node: the role selector matches the whole group, so an action fails
+    // in strict mode instead of clicking another member.
     expect(Object.fromEntries(result.refMap)).toStrictEqual({
-      e1: '#ok-1',
+      e1: stampSelector(0),
       e2: 'role=button[name="OK" s]',
       e3: 'role=button[name="OK" s]',
       e4: 'role=button[name="OK" s]',
@@ -1718,19 +1743,19 @@ describe('exact ref selectors', () => {
         { role: 'button', name: 'Send', backendDOMNodeId: 1 },
         { role: 'button', name: 'Send', backendDOMNodeId: 2 },
       ]),
-      domSelectorsByBackendId: { 1: UNREACHABLE_REF_SELECTOR, 2: 'button' },
+      stampResultsByBackendId: { 1: 'unreachable', 2: 'stamped' },
     });
 
     const result = await collectTrimmedA11ySnapshot(page);
 
     expect(Object.fromEntries(result.refMap)).toStrictEqual({
       e1: UNREACHABLE_REF_SELECTOR,
-      e2: 'button',
+      e2: stampSelector(1),
     });
     expect(page.locator).not.toHaveBeenCalledWith(UNREACHABLE_REF_SELECTOR);
   });
 
-  it('gives duplicates of a scoped snapshot DOM selectors without the root prefix', async () => {
+  it('prefixes only the unstamped duplicates of a scoped snapshot with the root', async () => {
     const page = createMockPage({
       queryAxTreeNodes: [
         {
@@ -1758,18 +1783,18 @@ describe('exact ref selectors', () => {
         },
       ],
       selectorNodes: { '.modal': { nodeId: 7, backendNodeId: 200 } },
-      domSelectorsByBackendId: { 201: '#ok-1' },
+      stampResultsByBackendId: { 201: 'stamped' },
     });
 
     const result = await collectTrimmedA11ySnapshot(page, '.modal');
 
     expect(Object.fromEntries(result.refMap)).toStrictEqual({
-      e1: '#ok-1',
+      e1: stampSelector(0),
       e2: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
     });
   });
 
-  it('runs DOM selector lookups concurrently, at most 16 at a time', async () => {
+  it('stamps nodes concurrently, at most 16 at a time', async () => {
     const count = 40;
     const page = createMockPage({
       axNodes: flatTree(
@@ -1779,11 +1804,8 @@ describe('exact ref selectors', () => {
           backendDOMNodeId: index + 1,
         })),
       ),
-      domSelectorsByBackendId: Object.fromEntries(
-        Array.from({ length: count }, (_, index) => [
-          index + 1,
-          `#send-${index + 1}`,
-        ]),
+      stampResultsByBackendId: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [index + 1, 'stamped']),
       ),
     });
     const { mockCdpSession } = page as MockPageWithCdpSession;
@@ -1810,8 +1832,10 @@ describe('exact ref selectors', () => {
 
     expect(maxInFlight).toBe(16);
     expect(result.refMap.size).toBe(count);
-    expect(result.refMap.get('e1')).toBe('#send-1');
-    expect(result.refMap.get(`e${count}`)).toBe(`#send-${count}`);
+    expect(result.refMap.get('e1')).toStrictEqual(stampSelector(0));
+    expect(result.refMap.get(`e${count}`)).toStrictEqual(
+      stampSelector(count - 1),
+    );
   });
 
   it('escapes backslashes and quotes and normalizes whitespace in names', async () => {
@@ -1861,7 +1885,7 @@ describe('exact ref selectors', () => {
         { role: 'generic', name: 'Say "hi" \\o/', backendDOMNodeId: 3 },
         { role: 'generic', name: 'Account 1', backendDOMNodeId: 4 },
       ]),
-      domSelectorsByBackendId: { 4: '[data-testid="account-1"]' },
+      stampResultsByBackendId: { 4: 'stamped' },
     });
 
     const result = await collectTrimmedA11ySnapshot(page);
@@ -1871,7 +1895,7 @@ describe('exact ref selectors', () => {
     expect(result.refMap.get('e1')).toBe('text="Account 1"');
     expect(result.refMap.get('e2')).toBe('text="Account 1"');
     expect(result.refMap.get('e3')).toBe('text="Say \\"hi\\" \\\\o/"');
-    expect(result.refMap.get('e4')).toBe('[data-testid="account-1"]');
+    expect(result.refMap.get('e4')).toStrictEqual(stampSelector(3));
   });
 
   it('prefixes role and text selectors of a scoped snapshot with the root', async () => {
@@ -1898,7 +1922,7 @@ describe('exact ref selectors', () => {
           })),
       ],
       selectorNodes: { ' .modal ': { nodeId: 7, backendNodeId: 200 } },
-      domSelectorsByBackendId: { 2: '#row' },
+      stampResultsByBackendId: { 2: 'stamped' },
     });
 
     const result = await collectTrimmedA11ySnapshot(page, ' .modal ');
@@ -1907,7 +1931,7 @@ describe('exact ref selectors', () => {
       e1: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
       e2: 'css=.modal >> nth=0 >> role=button[name="OK" s]',
       e3: 'css=.modal >> nth=0 >> text="Fee"',
-      e4: '#row',
+      e4: stampSelector(3),
     });
   });
 
@@ -2195,6 +2219,65 @@ describe('waitForTarget', () => {
     await expect(
       waitForTarget(page, 'a11yRef', 'e1', refMap, 1000),
     ).rejects.toThrowError('Timeout waiting for element');
+  });
+
+  it('fails at once when the element of a stamped ref left the page', async () => {
+    const refMap = new Map([['e1', '[data-mm-ref~="abc123-0"]']]);
+    const mockLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(0),
+    };
+    const page = {
+      locator: vi.fn().mockReturnValue(mockLocator),
+    } as unknown as Page;
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e1', refMap, 5000),
+    ).rejects.toThrowError(
+      'Ref e1 not found: its element left the page after the snapshot; take a new snapshot',
+    );
+    expect(page.locator).toHaveBeenCalledWith('[data-mm-ref~="abc123-0"]');
+    expect(mockLocator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('fails at once when the element of a stamped within ref left the page', async () => {
+    const refMap = new Map([
+      ['e1', '[data-mm-ref~="abc123-0"]'],
+      ['e2', '[data-mm-ref~="abc123-1"]'],
+    ]);
+    const mockLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(0),
+    };
+    const page = {
+      locator: vi.fn().mockReturnValue(mockLocator),
+    } as unknown as Page;
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e2', refMap, 5000, {
+        type: 'a11yRef',
+        value: 'e1',
+      }),
+    ).rejects.toThrowError('Ref e1 not found');
+    expect(mockLocator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('waits for a stamped ref whose element is still on the page', async () => {
+    const refMap = new Map([['e1', '[data-mm-ref~="abc123-0"]']]);
+    const mockLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(1),
+    };
+    const page = {
+      locator: vi.fn().mockReturnValue(mockLocator),
+    } as unknown as Page;
+
+    await waitForTarget(page, 'a11yRef', 'e1', refMap, 5000);
+
+    expect(mockLocator.waitFor).toHaveBeenCalledWith({
+      state: 'visible',
+      timeout: expectRemaining(5000),
+    });
   });
 
   it('resolves testId target', async () => {

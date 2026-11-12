@@ -1,4 +1,5 @@
 import type { Page, Locator, CDPSession } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 import {
   callInIsolatedWorld,
@@ -11,11 +12,11 @@ import {
 } from './constants.js';
 import {
   animationsSettled,
-  buildUniqueSelectorInPage,
   collectTestIdsInPage,
+  stampRefInPage,
   waitUntilInPage,
 } from './in-page.js';
-import type { InPageTestIdItem } from './in-page.js';
+import type { InPageStampResult, InPageTestIdItem } from './in-page.js';
 import { debugWarn } from '../../utils';
 import type {
   TestIdItem,
@@ -342,16 +343,49 @@ type RefCandidate = {
 
 /**
  * RefMap value for an element inside a closed shadow root, which no
- * Playwright selector can reach (see `buildUniqueSelectorInPage`).
- * Resolving such a ref throws at once instead of matching another element.
+ * Playwright selector can reach (see `stampRefInPage`). Resolving such a
+ * ref throws at once instead of matching another element.
  */
 export const UNREACHABLE_REF_SELECTOR = 'mm-unreachable=closed-shadow-root';
 
 /**
- * Maximum number of DOM selector lookups (`buildSelectorFromBackendNode`)
- * in flight at the same time during one snapshot.
+ * Attribute that ties the refs of a snapshot to their DOM nodes (see
+ * `stampRefInPage`).
  */
-const DOM_SELECTOR_CONCURRENCY = 16;
+const REF_ATTRIBUTE = 'data-mm-ref';
+
+/**
+ * Number of snapshot tokens kept on one element. A ref stays valid until
+ * this many later snapshots have stamped its element.
+ */
+const REF_TOKENS_KEPT = 4;
+
+/**
+ * Maximum number of node stamps (`stampNode`) in flight at the same time
+ * during one snapshot.
+ */
+const REF_STAMP_CONCURRENCY = 16;
+
+/**
+ * Builds the selector of a stamped ref: it matches the one element that
+ * holds the token.
+ *
+ * @param token - The token of the ref.
+ * @returns The selector (e.g. `[data-mm-ref~="1a2b3c4d-0"]`).
+ */
+function buildRefStampSelector(token: string): string {
+  return `[${REF_ATTRIBUTE}~="${token}"]`;
+}
+
+/**
+ * Checks whether a refMap value is the selector of a stamped ref.
+ *
+ * @param selector - The refMap value.
+ * @returns True for a stamp selector.
+ */
+function isRefStampSelector(selector: string): boolean {
+  return selector.startsWith(`[${REF_ATTRIBUTE}~=`);
+}
 
 /**
  * The element a scoped snapshot was taken from.
@@ -635,32 +669,32 @@ function shouldIncludeNode(node: RawA11yNode): boolean {
 }
 
 /**
- * Builds the most stable Playwright selector available for a DOM-backed AX node.
- *
- * Runs `buildUniqueSelectorInPage` on the node in an isolated world of the
- * page (`callOnNodeInIsolatedWorld`): the Extension's main world scuttles
- * globals with LavaMoat, so page code must not run there. A unique
- * `data-testid`, else a unique `id`, else the shortest unique `nth-of-type`
- * path, checked the way Playwright's CSS engine matches (open shadow roots
- * included). Elements inside open shadow roots get a chained selector
- * (`css=<host> >> css=<inside>`), and elements inside a closed shadow root
- * get `UNREACHABLE_REF_SELECTOR`. There is no selector (`undefined`) when
- * no candidate is unique, and for detached elements.
+ * Stamps the DOM node of a ref with its token (see `stampRefInPage`), in an
+ * isolated world of the page (`callOnNodeInIsolatedWorld`): the
+ * Extension's main world scuttles globals with LavaMoat, so page code must
+ * not run there.
  *
  * @param page The Playwright page.
- * @param backendDOMNodeId The backend DOM node id for the target element.
- * @returns A Playwright-compatible selector when one can be synthesized.
+ * @param backendDOMNodeId The backend DOM node id of the element.
+ * @param token The token of the ref.
+ * @returns The ref selector: the stamp selector, `UNREACHABLE_REF_SELECTOR`
+ * inside a closed shadow root, or undefined when the node was not stamped.
  */
-async function buildSelectorFromBackendNode(
+async function stampNode(
   page: Page,
   backendDOMNodeId: number,
+  token: string,
 ): Promise<string | undefined> {
-  const selector = await callOnNodeInIsolatedWorld<unknown>(
+  const result = await callOnNodeInIsolatedWorld<InPageStampResult | null>(
     page,
     backendDOMNodeId,
-    buildUniqueSelectorInPage.toString(),
+    stampRefInPage.toString(),
+    [REF_ATTRIBUTE, token, REF_TOKENS_KEPT],
   );
-  return typeof selector === 'string' ? selector : undefined;
+  if (result === 'stamped') {
+    return buildRefStampSelector(token);
+  }
+  return result === 'unreachable' ? UNREACHABLE_REF_SELECTOR : undefined;
 }
 
 /**
@@ -692,41 +726,43 @@ async function mapWithConcurrency<TItem, TResult>(
 }
 
 /**
- * Builds DOM selectors (see `buildSelectorFromBackendNode`) for backend DOM
- * node ids, at most `DOM_SELECTOR_CONCURRENCY` at a time. A failed lookup
- * is logged and gives no selector.
+ * Stamps the DOM node of each candidate (see `stampNode`), at most
+ * `REF_STAMP_CONCURRENCY` at a time. Each candidate gets the token
+ * `<snapshotId>-<index>`, where the snapshot id is new for each call. A
+ * candidate without a backend node, or whose stamp fails (logged), gets no
+ * selector.
  *
  * @param page The Playwright page.
- * @param backendNodeIds The backend DOM node ids.
- * @returns The selector of each id that has one.
+ * @param candidates The nodes that can get a ref, in AX tree order.
+ * @returns The stamp selector of each candidate (same order), when stamped.
  */
-async function buildDomSelectors(
+async function stampCandidates(
   page: Page,
-  backendNodeIds: number[],
-): Promise<Map<number, string>> {
-  const selectors = await mapWithConcurrency(
-    backendNodeIds,
-    DOM_SELECTOR_CONCURRENCY,
-    async (backendNodeId) => {
+  candidates: RefCandidate[],
+): Promise<(string | undefined)[]> {
+  const snapshotId = randomUUID().slice(0, 8);
+  return mapWithConcurrency(
+    candidates.map((candidate, index) => ({ candidate, index })),
+    REF_STAMP_CONCURRENCY,
+    async ({ candidate: { backendDOMNodeId }, index }) => {
+      if (backendDOMNodeId === undefined || backendDOMNodeId === null) {
+        return undefined;
+      }
       try {
-        return await buildSelectorFromBackendNode(page, backendNodeId);
+        return await stampNode(
+          page,
+          backendDOMNodeId,
+          `${snapshotId}-${index}`,
+        );
       } catch (error) {
         debugWarn(
-          `Failed to resolve DOM selector for backendDOMNodeId=${backendNodeId}:`,
+          `Failed to stamp the ref of backendDOMNodeId=${backendDOMNodeId}:`,
           error,
         );
         return undefined;
       }
     },
   );
-  const result = new Map<number, string>();
-  backendNodeIds.forEach((backendNodeId, index) => {
-    const selector = selectors[index];
-    if (selector) {
-      result.set(backendNodeId, selector);
-    }
-  });
-  return result;
 }
 
 /**
@@ -734,39 +770,36 @@ async function buildDomSelectors(
  * exactly one element or, when that cannot be guaranteed, makes the action
  * fail in Playwright's strict mode instead of hitting another element.
  *
- * - Included roles (button, link, heading, ...) use
- * `role=<role>[name="<name>" s]` (exact, case-sensitive name), which needs
- * no CDP round-trip. It matches every element with that role and name, so
- * when several refs share it, each of them gets a DOM selector from
- * `buildSelectorFromBackendNode` (verified unique the way Playwright's
- * CSS engine matches). A member without one (no backend node, resolve
- * failure, no unique path) keeps the plain role selector, so an action on
- * it fails in Playwright's strict mode. A member inside a closed shadow
- * root gets `UNREACHABLE_REF_SELECTOR`: Playwright cannot see it, so its
- * role selector could match exactly one other member. There is
- * deliberately no `>> nth=<k>` fallback: Chromium's AX tree and
+ * Every candidate's DOM node is stamped with a token of this snapshot
+ * (`stampCandidates`), and the ref selects the token
+ * (`[data-mm-ref~="<token>"]`), so a ref always targets the element the
+ * snapshot saw. It does not depend on the role or the accessible name:
+ * Chromium's AX tree and Playwright's role engine do not always agree on a
+ * role (an `<a>` without `href` is a link in the AX tree only), and names
+ * can hold live values (prices) that change after the snapshot. A node
+ * inside a closed shadow root gets `UNREACHABLE_REF_SELECTOR`. Stamp
+ * selectors are unique in the document and get no scope prefix.
+ *
+ * A candidate that cannot be stamped (no backend node, the node left the
+ * page, resolve failure) falls back to:
+ * - included roles (button, link, heading, ...):
+ * `role=<role>[name="<name>" s]` (exact, case-sensitive name). It matches
+ * every element with that role and name, so an action fails in strict
+ * mode when several elements share it.
+ * - generic nodes: `text="<name>"`, else no ref. `text=` also matches
+ * wrappers of the text and elements that are not refs of this snapshot,
+ * so an action on an ambiguous text ref fails in strict mode.
+ * There is deliberately no `>> nth=<k>`: Chromium's AX tree and
  * Playwright's role engine do not always agree on the members of a group
- * and their order (a modal `<dialog>` or `inert` removes the blocked
- * elements from the AX tree while Playwright still counts them; Playwright
- * visits shadow roots after the light DOM while the AX tree uses flat-tree
- * order, slotted content included; aria-owns moves owned elements in the
- * AX tree only), so an index could act on another element.
- * - Generic nodes use a DOM selector, else `text="<name>"`. `text=` also
- * matches wrappers of the text and elements that are not refs of this
- * snapshot, so an action on an ambiguous text ref fails in strict mode.
+ * and their order, so an index could act on another element.
  *
- * DOM lookups run concurrently, at most `DOM_SELECTOR_CONCURRENCY` at a
- * time.
- *
- * Scoped snapshots: the AX tree only holds the subtree of the root, so role
- * and text selectors get the root as a prefix
- * (`css=<root> >> nth=0 >> role=...`). DOM selectors are unique in the
- * document and get no prefix. Playwright's
- * role engine does not match the scope element itself, so the root node
- * gets the root selector. With the `getPartialAXTree` fallback, the tree
- * also holds relatives of the root (ancestors, siblings). Their role
- * selectors stay page-wide, without DOM lookup, so an action on such a ref
- * fails in strict mode when it matches more than one element.
+ * Scoped snapshots: the AX tree only holds the subtree of the root, so
+ * fallback role and text selectors get the root as a prefix
+ * (`css=<root> >> nth=0 >> role=...`). Playwright's role engine does not
+ * match the scope element itself, so an unstamped root node gets the root
+ * selector. With the `getPartialAXTree` fallback, the tree also holds
+ * relatives of the root (ancestors, siblings); their fallback selectors
+ * stay page-wide.
  *
  * @param page The Playwright page.
  * @param candidates The nodes that can get a ref, in AX tree order.
@@ -784,64 +817,21 @@ async function buildRefSelectors(
   const isScopeRoot = (candidate: RefCandidate): boolean =>
     scope !== undefined && candidate.backendDOMNodeId === scope.backendNodeId;
 
-  // Role selectors, and how many in-scope refs share each one.
-  const roleSelectors = candidates.map((candidate) =>
-    INCLUDED_ROLES_SET.has(candidate.role) && !isScopeRoot(candidate)
-      ? scoped(
-          buildA11ySelector(candidate.role as IncludedRole, candidate.name),
-          candidate.inScope,
-        )
-      : undefined,
-  );
-  const groupSizes = new Map<string, number>();
-  candidates.forEach((candidate, index) => {
-    const selector = roleSelectors[index];
-    if (selector !== undefined && candidate.inScope) {
-      groupSizes.set(selector, (groupSizes.get(selector) ?? 0) + 1);
-    }
-  });
-  const isDuplicate = (index: number): boolean => {
-    const selector = roleSelectors[index];
-    return (
-      selector !== undefined &&
-      candidates[index].inScope &&
-      (groupSizes.get(selector) ?? 0) > 1
-    );
-  };
-
-  // DOM lookups: generic nodes, and refs that share a role selector.
-  const lookupIds = new Set<number>();
-  candidates.forEach(({ role, backendDOMNodeId }, index) => {
-    if (
-      backendDOMNodeId !== undefined &&
-      backendDOMNodeId !== null &&
-      (!INCLUDED_ROLES_SET.has(role) || isDuplicate(index))
-    ) {
-      lookupIds.add(backendDOMNodeId);
-    }
-  });
-  const domSelectors = await buildDomSelectors(page, [...lookupIds]);
+  const stampSelectors = await stampCandidates(page, candidates);
 
   return candidates.map((candidate, index) => {
-    const roleSelector = roleSelectors[index];
-    if (roleSelector !== undefined && !isDuplicate(index)) {
-      return roleSelector;
-    }
-
-    const domSelector =
-      candidate.backendDOMNodeId === undefined
-        ? undefined
-        : domSelectors.get(candidate.backendDOMNodeId);
-    if (domSelector) {
-      return domSelector;
-    }
-    if (roleSelector !== undefined) {
-      // Duplicate without a DOM selector: strict mode makes an action on
-      // it fail instead of acting on another member of the group.
-      return roleSelector;
+    const stampSelector = stampSelectors[index];
+    if (stampSelector) {
+      return stampSelector;
     }
     if (scope && isScopeRoot(candidate)) {
       return scope.selector;
+    }
+    if (INCLUDED_ROLES_SET.has(candidate.role)) {
+      return scoped(
+        buildA11ySelector(candidate.role as IncludedRole, candidate.name),
+        candidate.inScope,
+      );
     }
     if (!candidate.name) {
       return null;
@@ -1219,8 +1209,8 @@ function quoteSelectorString(value: string): string {
  * `getByRole` / `internal:role` without `exact` match substrings or ignore
  * case. The `s` flag repeats the case-sensitive default to make it
  * explicit. An empty name matches only elements with an empty accessible
- * name. The selector still matches every element with that role and name:
- * `buildRefSelectors` gives duplicates a unique selector.
+ * name. The selector still matches every element with that role and name,
+ * so `buildRefSelectors` only uses it for nodes it could not stamp.
  *
  * @param role The ARIA role for the selector
  * @param name The accessible name to match
@@ -1326,6 +1316,35 @@ export async function resolveTarget(
 }
 
 /**
+ * Fails at once when the element of a stamped ref is no longer on the page
+ * (re-mounted or removed since the snapshot). Only elements the snapshot
+ * saw hold the token, so waiting for it would wait out the whole timeout.
+ * Other targets are not checked.
+ *
+ * @param page The Playwright page.
+ * @param targetType The type of target identifier.
+ * @param targetValue The target value.
+ * @param refMap Map of a11y refs to selectors.
+ */
+async function assertStampedRefOnPage(
+  page: Page,
+  targetType: TargetType,
+  targetValue: string,
+  refMap: Map<string, string>,
+): Promise<void> {
+  const selector =
+    targetType === 'a11yRef' ? refMap.get(targetValue) : undefined;
+  if (selector === undefined || !isRefStampSelector(selector)) {
+    return;
+  }
+  if ((await page.locator(selector).count()) === 0) {
+    throw new Error(
+      `Ref ${targetValue} not found: its element left the page after the snapshot; take a new snapshot`,
+    );
+  }
+}
+
+/**
  * Delay between the two checks that a `within` ref is outside the parent.
  */
 const WITHIN_RECHECK_DELAY_MS = 100;
@@ -1350,6 +1369,10 @@ export async function waitForTarget(
   within?: WithinScope,
 ): Promise<Locator> {
   const deadline = Date.now() + timeoutMs;
+  if (within) {
+    await assertStampedRefOnPage(page, within.type, within.value, refMap);
+  }
+  await assertStampedRefOnPage(page, targetType, targetValue, refMap);
   let scope: Page | Locator = page;
   if (within) {
     const parentLocator = resolveTargetScoped(
@@ -1374,7 +1397,7 @@ export async function waitForTarget(
   }
   let locator: Locator;
   if (within && targetType === 'a11yRef') {
-    // A ref selector resolves to one element page-wide (DOM selectors are
+    // A ref selector resolves to one element page-wide (stamp selectors are
     // unique in the document; scope prefixes count from the document, not
     // from the parent). Resolve it page-wide and keep it only if it is
     // inside the parent: `within` only checks containment.

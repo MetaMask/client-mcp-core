@@ -245,12 +245,14 @@ let nodeCallCounter = 0;
  * @param backendNodeId - The backend DOM node id of the node.
  * @param functionDeclaration - Source text of the function (self-contained,
  * JSON-serializable result).
+ * @param args - JSON-serializable arguments passed to the function.
  * @returns The function's return value.
  */
 export async function callOnNodeInIsolatedWorld<TResult>(
   page: Page,
   backendNodeId: number,
   functionDeclaration: string,
+  args: unknown[] = [],
 ): Promise<TResult> {
   const declaration = wrapDeclaration(functionDeclaration);
   return inIsolatedWorldWithRetry(page, async (session, executionContextId) => {
@@ -279,6 +281,7 @@ export async function callOnNodeInIsolatedWorld<TResult>(
       const response = await session.send('Runtime.callFunctionOn', {
         functionDeclaration: declaration,
         objectId,
+        arguments: args.map((value) => ({ value })),
         returnByValue: true,
       });
       throwOnException(response);
