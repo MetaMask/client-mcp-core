@@ -92,6 +92,39 @@ describe('error-classification', () => {
       );
     });
 
+    it('ignores the color codes Playwright adds to call log lines when colors are on', () => {
+      const dim = (line: string): string => `\u001b[2m${line}\u001b[22m`;
+      const error = new Error(
+        [
+          'locator.click: Timeout 3000ms exceeded.',
+          'Call log:',
+          dim(`  - waiting for locator('[data-testid="continue-button"]')`),
+          dim('  - attempting click action'),
+          dim('    2 × waiting for element to be visible, enabled and stable'),
+          dim('      - element is not enabled'),
+          dim('    - retrying click action'),
+          dim('      - waiting 500ms'),
+          '',
+        ].join('\n'),
+      );
+      const hidden = new Error(
+        [
+          'locator.waitFor: Timeout 3000ms exceeded.',
+          'Call log:',
+          dim(`  - waiting for locator('#terms') to be visible`),
+          dim(
+            '    11 × locator resolved to hidden <input id="terms" type="checkbox"/>',
+          ),
+          '',
+        ].join('\n'),
+      );
+
+      expect(lastPlaywrightLogStep(error)).toBe('element is not enabled');
+      expect(lastPlaywrightLogStep(hidden)).toBe(
+        'locator resolved to hidden <input id="terms" type="checkbox"/>',
+      );
+    });
+
     it('returns undefined for an error without a call log', () => {
       expect(
         lastPlaywrightLogStep(new Error('Timeout 5000ms exceeded')),

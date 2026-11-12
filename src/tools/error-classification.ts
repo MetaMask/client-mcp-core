@@ -5,6 +5,8 @@
  * based on error message patterns.
  */
 
+import { stripVTControlCharacters } from 'node:util';
+
 import { ErrorCodes } from './types';
 import { extractErrorMessage } from '../utils';
 
@@ -49,8 +51,10 @@ export function lastPlaywrightLogStep(error: unknown): string | undefined {
   if (marker === -1) {
     return undefined;
   }
-  const steps = message
-    .slice(marker + 'Call log:'.length)
+  // With colors on (a TTY or FORCE_COLOR), Playwright dims each log line.
+  const steps = stripVTControlCharacters(
+    message.slice(marker + 'Call log:'.length),
+  )
     .split('\n')
     .map((line) =>
       line
