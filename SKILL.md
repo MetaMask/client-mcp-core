@@ -832,7 +832,7 @@ These contracts can be deployed to the local Anvil chain via `seed_contract` / `
 - Daemon runs per project, state tracked in `.mm-server` at the project root
 - Auto-starts on `mm launch` if not running
 - Shuts down after 30 minutes of inactivity
-- Logs to `.mm-daemon.log`
+- Logs to `.mm-daemon.log`. Each request line has the outcome, for example `POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT 15080ms` (a failed tool call still has status 200). `grep ok=false .mm-daemon.log` lists the failed calls of a run
 - One tool executes at a time (requests are queued)
 - Project resolution: `--project` flag → `MM_PROJECT` env var → current git worktree
 

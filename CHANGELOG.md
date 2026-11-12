@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `.mm-daemon.log` request line has the outcome of the call, for example `POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT 15080ms`. Before, a failed tool call was logged like a success (`POST /tool/click 200 15080ms`), because the daemon answers 200 and puts the failure in the body. A `run_steps` line with failed steps adds `failed=<n>/<total>` and the first failed step's code
 - `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
 
 ## [0.13.1]
