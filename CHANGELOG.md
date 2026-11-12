@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
 - feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes
 - feat: add `mm inspect` (attributes, disabled/read-only flags, computed styles, effective opacity); `mm type` fails fast on read-only or disabled fields
+- feat: add `mm hover <target>` (Playwright `locator.hover()`, with refs, test IDs, selectors and `--within`) and `mm unhover`, which moves the pointer off the page; add `mm set-viewport <width> <height>` and `mm reset-viewport`, so agents no longer drive the pointer and the viewport with `mm cdp`. `ErrorCodes` adds `MM_HOVER_FAILED` and `MM_VIEWPORT_FAILED`
 - feat: add `MM_ARTIFACTS_DIR` environment variable to let the host override the directory screenshots and other session artifacts are written to. On launch, core resolves it (falling back to the workflow context's `config.artifactsDir`) and passes it to `ISessionManager.launch()` as `artifactsDir` for session managers to forward to their launcher.
 
 ### Changed

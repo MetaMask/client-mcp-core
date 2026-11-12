@@ -31,8 +31,10 @@ import { hermesTargetsTool } from './hermes.js';
 import {
   clickTool,
   getTextTool,
+  hoverTool,
   inspectTool,
   typeTool,
+  unhoverTool,
   waitForTool,
 } from './interaction.js';
 import { launchTool } from './launch.js';
@@ -53,6 +55,7 @@ import {
 } from './seeding.js';
 import { getStateTool } from './state.js';
 import { ErrorCodes } from './types/errors.js';
+import { resetViewportTool, setViewportTool } from './viewport.js';
 import type { PlatformType } from '../platform/types.js';
 import type { ToolFunction } from '../types/http.js';
 
@@ -79,6 +82,10 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['wait_for', waitForTool],
   ['get_text', getTextTool],
   ['inspect', inspectTool],
+  ['hover', hoverTool],
+  ['unhover', unhoverTool],
+  ['set_viewport', setViewportTool],
+  ['reset_viewport', resetViewportTool],
   ['seed_contract', seedContractTool],
   ['seed_contracts', seedContractsTool],
   ['get_contract_address', getContractAddressTool],
@@ -127,9 +134,13 @@ export type ToolCategory =
   | 'batch';
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
-  // MUTATING (26)
+  // MUTATING (30)
   click: 'mutating',
   type: 'mutating',
+  hover: 'mutating',
+  unhover: 'mutating',
+  set_viewport: 'mutating',
+  reset_viewport: 'mutating',
   navigate: 'mutating',
   reload: 'mutating',
   launch: 'mutating',
@@ -204,6 +215,10 @@ const BROWSER_ONLY_TOOLS = new Set([
   'reload',
   'build',
   'inspect',
+  'hover',
+  'unhover',
+  'set_viewport',
+  'reset_viewport',
 ]);
 
 /**

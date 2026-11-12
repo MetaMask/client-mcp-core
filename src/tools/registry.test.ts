@@ -41,7 +41,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(45);
+    expect(toolRegistry.size).toBe(49);
   });
 
   it('stores only functions as values', () => {
@@ -88,6 +88,13 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     expect(getToolCategory('reload')).toBe('mutating');
   });
 
+  it.each(['hover', 'unhover', 'set_viewport', 'reset_viewport'])(
+    'getToolCategory returns mutating for %s',
+    (toolName) => {
+      expect(getToolCategory(toolName)).toBe('mutating');
+    },
+  );
+
   it('getToolCategory returns readonly for get_context', () => {
     expect(getToolCategory('get_context')).toBe('readonly');
   });
@@ -120,6 +127,10 @@ describe('isBrowserOnlyTool', () => {
     'reload',
     'build',
     'inspect',
+    'hover',
+    'unhover',
+    'set_viewport',
+    'reset_viewport',
   ])('returns true for %s', (toolName) => {
     expect(isBrowserOnlyTool(toolName)).toBe(true);
   });
