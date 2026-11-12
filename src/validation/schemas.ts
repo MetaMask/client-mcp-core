@@ -552,6 +552,38 @@ export const inspectInputSchema = targetSelectionSchema.and(
   }),
 );
 
+export const hoverInputSchema = targetSelectionSchema.and(
+  z.object({
+    timeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(60000)
+      .default(15000)
+      .describe('Timeout to wait for the element and hover it'),
+    within: withinTargetSchema.optional(),
+  }),
+);
+
+export const unhoverInputSchema = z.object({});
+
+export const setViewportInputSchema = z.object({
+  width: z
+    .number()
+    .int()
+    .min(100)
+    .max(7680)
+    .describe('Viewport width in CSS pixels'),
+  height: z
+    .number()
+    .int()
+    .min(100)
+    .max(4320)
+    .describe('Viewport height in CSS pixels'),
+});
+
+export const resetViewportInputSchema = z.object({});
+
 export const seedContractInputSchema = z.object({
   contractName: z.enum(smartContractNames),
   hardfork: z.enum(hardforks).optional(),
@@ -987,6 +1019,10 @@ export const toolSchemas = {
   wait_for: withObserve(waitForInputSchema),
   get_text: withObserve(getTextInputSchema),
   inspect: withObserve(inspectInputSchema),
+  hover: withObserve(hoverInputSchema),
+  unhover: withObserve(unhoverInputSchema),
+  set_viewport: withObserve(setViewportInputSchema),
+  reset_viewport: withObserve(resetViewportInputSchema),
   seed_contract: withObserve(seedContractInputSchema),
   seed_contracts: withObserve(seedContractsInputSchema),
   get_contract_address: withObserve(getContractAddressInputSchema),
@@ -1038,6 +1074,10 @@ export type TypeInputZ = z.infer<typeof typeInputSchema>;
 export type WaitForInputZ = z.infer<typeof waitForInputSchema>;
 export type GetTextInputZ = z.infer<typeof getTextInputSchema>;
 export type InspectInputZ = z.infer<typeof inspectInputSchema>;
+export type HoverInputZ = z.infer<typeof hoverInputSchema>;
+export type UnhoverInputZ = z.infer<typeof unhoverInputSchema>;
+export type SetViewportInputZ = z.infer<typeof setViewportInputSchema>;
+export type ResetViewportInputZ = z.infer<typeof resetViewportInputSchema>;
 export type RunStepsInputZ = z.infer<typeof runStepsInputSchema>;
 export type SwitchToTabInputZ = z.infer<typeof switchToTabInputSchema>;
 export type CloseTabInputZ = z.infer<typeof closeTabInputSchema>;

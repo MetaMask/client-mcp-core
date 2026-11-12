@@ -10,6 +10,7 @@ import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RefStore } from './ref-store.js';
 import type { RefHandle } from './ref-store.js';
+import { formatRequestLogLine } from './request-log.js';
 import { RequestQueue } from './request-queue.js';
 import {
   RequestTimer,
@@ -349,11 +350,20 @@ export function createServer(config: ServerConfig): ServerInstance {
   app.use((req, res, next) => {
     lastRequestTime = Date.now();
     const requestStartedAt = lastRequestTime;
+    let responseBody: unknown;
+    const sendJson = res.json.bind(res);
+    res.json = (body: unknown): express.Response => {
+      responseBody = body;
+      return sendJson(body);
+    };
     res.on('finish', () => {
-      const duration = Date.now() - requestStartedAt;
       appendLog(
         config.logFilePath,
-        `[INFO] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`,
+        formatRequestLogLine(
+          { method: req.method, path: req.path, status: res.statusCode },
+          responseBody,
+          Date.now() - requestStartedAt,
+        ),
       );
     });
     next();

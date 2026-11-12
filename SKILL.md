@@ -390,6 +390,32 @@ mm scroll-to-element e12                         # mobile: auto direction
 
 Playwright's `click` already scrolls its target into view, so you do not need this before `mm click`. Use it to bring an element into view before a screenshot, or to reach content further down a list.
 
+#### `mm hover <ref>` / `mm unhover`
+
+`mm hover` moves the pointer over an element, so its hover state shows (a tooltip, a popover, a highlighted row, a hover-only button). It waits for the element, scrolls it into view and checks that nothing covers it, like `mm click`. Browser only. Accepts `--timeout <ms>` (default: 15s) and `--within <scope>`. `mm unhover` moves the pointer off the page: the hovered element loses its hover state and no other element gets one.
+
+```
+mm hover --testid account-menu-icon
+mm hover --testid address-row --within "testid:multichain-address-rows-list"
+mm screenshot --name address-row-hovered
+mm unhover
+mm screenshot --name address-row-idle
+```
+
+The pointer stays where `mm hover` left it until the next hover, click or `mm unhover`, so take the screenshot right after the hover. Use these instead of `mm cdp Input.dispatchMouseEvent` with coordinates: they target the element, not a point that moves with the layout. A target that does not appear, or stays covered, fails with `MM_WAIT_TIMEOUT`; other failures return `MM_HOVER_FAILED`.
+
+#### `mm set-viewport <width> <height>` / `mm reset-viewport`
+
+`mm set-viewport` resizes the active page's viewport in CSS pixels (width 100–7680, height 100–4320), for example to check a layout at a narrow width. The size stays across reloads and navigations of that page, until `mm reset-viewport` restores the size the page had before the first `mm set-viewport`. It applies to the active page only: switch tabs, and the other tab keeps its own size. Browser only.
+
+```
+mm set-viewport 360 640
+mm screenshot --name narrow
+mm reset-viewport
+```
+
+Returns: `set-viewport` gives `width`, `height` and `original` (the size before the first change); `reset-viewport` gives `reset` (`false` when `set-viewport` was not used on the page, nothing changed) and `viewport`. Use these instead of `mm cdp Emulation.setDeviceMetricsOverride`. Failures return `MM_VIEWPORT_FAILED`.
+
 #### `mm clipboard`
 
 Reads from or writes to the system clipboard via Chrome DevTools Protocol. Useful for pasting seed phrases or copying addresses.
@@ -599,7 +625,7 @@ mm mock-network requests [--limit <n>]
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
-Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`).
+Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. For pointer hover use `mm hover` / `mm unhover`, and for the viewport size `mm set-viewport` / `mm reset-viewport`, not `Input.dispatchMouseEvent` or `Emulation.setDeviceMetricsOverride`. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`).
 
 ```bash
 # Browser
@@ -779,6 +805,8 @@ Use `error.code` to decide what to do:
 | `MM_TYPE_TIMEOUT`                   | Fill action timed out                                                                    | Run `mm describe-screen` to verify state; retry with `--timeout`                                          |
 | `MM_ELEMENT_NOT_EDITABLE`           | Type target is read-only or disabled (browser; fails at once)                            | Expected when verifying a read-only field; otherwise check the target with `mm inspect`                   |
 | `MM_INSPECT_FAILED`                 | inspect could not read the element (non-timeout)                                         | Run `mm describe-screen` and re-target; fall back to `mm cdp` only if it persists                         |
+| `MM_HOVER_FAILED`                   | hover or unhover failed (non-timeout)                                                    | Run `mm describe-screen` and re-target                                                                    |
+| `MM_VIEWPORT_FAILED`                | set-viewport or reset-viewport could not resize the page                                 | Run `mm describe-screen` to check the session; retry once                                                 |
 | `MM_GETTEXT_FAILED`                 | getText operational failure (non-timeout)                                                | Element may be detached; run `mm describe-screen` and re-target                                           |
 | `MM_GETTEXT_TIMEOUT`                | textContent action timed out                                                             | Retry with `--timeout`                                                                                    |
 | `MM_CLIPBOARD_PERMISSION_DENIED`    | Clipboard permission denied by browser                                                   | Check browser permissions; try CDP approach                                                               |
@@ -834,7 +862,7 @@ These contracts can be deployed to the local Anvil chain via `seed_contract` / `
 - Daemon runs per project, state tracked in `.mm-server` at the project root
 - Auto-starts on `mm launch` if not running
 - Shuts down after 30 minutes of inactivity
-- Logs to `.mm-daemon.log`
+- Logs to `.mm-daemon.log`. Each request line has the outcome, for example `POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT 15080ms` (a failed tool call still has status 200). `grep ok=false .mm-daemon.log` lists the failed calls of a run
 - One tool executes at a time (requests are queued)
 - Project resolution: `--project` flag → `MM_PROJECT` env var → current git worktree
 

@@ -15,6 +15,8 @@ import {
   clipboardInputSchema,
   navigateInputSchema,
   inspectInputSchema,
+  hoverInputSchema,
+  setViewportInputSchema,
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   launchInputSchema,
@@ -914,6 +916,44 @@ describe('inspectInputSchema', () => {
   });
 });
 
+describe('hoverInputSchema', () => {
+  it('defaults the timeout and accepts within', () => {
+    const parsed = hoverInputSchema.parse({
+      a11yRef: 'e3',
+      within: { testId: 'list' },
+    });
+
+    expect(parsed.timeoutMs).toBe(15000);
+    expect(parsed.within).toStrictEqual({ testId: 'list' });
+  });
+
+  it('requires exactly one target', () => {
+    expect(hoverInputSchema.safeParse({}).success).toBe(false);
+    expect(
+      hoverInputSchema.safeParse({ testId: 'x', selector: '#x' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('setViewportInputSchema', () => {
+  it('accepts a phone size', () => {
+    expect(
+      setViewportInputSchema.safeParse({ width: 390, height: 844 }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    { width: 99, height: 844 },
+    { width: 390, height: 99 },
+    { width: 7681, height: 844 },
+    { width: 390, height: 4321 },
+    { width: 390.5, height: 844 },
+    { width: 390 },
+  ])('rejects %o', (input) => {
+    expect(setViewportInputSchema.safeParse(input).success).toBe(false);
+  });
+});
+
 describe('observe field', () => {
   it('accepts none, diff and full', () => {
     for (const level of ['none', 'diff', 'full']) {
@@ -933,6 +973,8 @@ describe('observe field', () => {
       wait_for: { testId: 'btn' },
       get_text: { testId: 'btn' },
       inspect: { testId: 'btn' },
+      hover: { testId: 'btn' },
+      set_viewport: { width: 390, height: 844 },
       seed_contract: { contractName: 'hst' },
       seed_contracts: { contracts: ['hst'] },
       get_contract_address: { contractName: 'hst' },

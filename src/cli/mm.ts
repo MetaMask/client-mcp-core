@@ -731,6 +731,41 @@ export async function routeCommand(
       );
       break;
     }
+    case 'hover': {
+      const hoverTarget = getPositionalTarget(args);
+      if (
+        !hoverTarget &&
+        !args.includes('--selector') &&
+        !args.includes('--testid')
+      ) {
+        failUsage(
+          'Usage: mm hover <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
+        );
+      }
+      await sendInteractionRequest(port, '/tool/hover', args);
+      break;
+    }
+    case 'unhover':
+      await sendRequest(port, 'POST', '/tool/unhover', {});
+      break;
+    case 'set-viewport': {
+      const [width, height] = args.map((arg) => Number(arg));
+      if (
+        args.length !== 2 ||
+        !Number.isInteger(width) ||
+        !Number.isInteger(height)
+      ) {
+        failUsage('Usage: mm set-viewport <width> <height>');
+      }
+      await sendRequest(port, 'POST', '/tool/set_viewport', {
+        width,
+        height,
+      });
+      break;
+    }
+    case 'reset-viewport':
+      await sendRequest(port, 'POST', '/tool/reset_viewport', {});
+      break;
     case 'describe-screen':
       await sendRequest(port, 'POST', '/tool/describe_screen', {});
       break;
@@ -2033,6 +2068,12 @@ Interaction:
                       Attributes, disabled/readOnly flags and computed styles
                       (browser only). Default styles: color, background-color,
                       opacity, cursor.
+  mm hover <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+                      Move the pointer over an element (browser only).
+  mm unhover          Move the pointer off the page (browser only).
+  mm set-viewport <width> <height>
+                      Resize the active page's viewport (browser only).
+  mm reset-viewport   Restore the size from before set-viewport.
   mm describe-screen
   mm screenshot [--name <name>]
   mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
