@@ -12,6 +12,20 @@ type ResponseBody = {
 };
 
 /**
+ * Returns a ` code=<code>` suffix for an error code, or `` when it is not an
+ * identifier such as `MM_CLICK_TIMEOUT`. Free text could carry user input
+ * (typed text, a URL) into the log, or a newline that fakes a log line.
+ *
+ * @param code - The `error.code` of a response.
+ * @returns The suffix, or an empty string.
+ */
+function codeSuffix(code: unknown): string {
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/u.test(code)
+    ? ` code=${code}`
+    : '';
+}
+
+/**
  * Describes the outcome of a JSON response body for the daemon log. The
  * daemon answers 200 for most tool failures, so the status alone does not
  * tell a failed call from a successful one.
@@ -26,9 +40,7 @@ export function describeOutcome(body: unknown): string {
   }
   const { ok, error, result } = body as ResponseBody;
   if (ok === false) {
-    return typeof error?.code === 'string'
-      ? ` ok=false code=${error.code}`
-      : ' ok=false';
+    return ` ok=false${codeSuffix(error?.code)}`;
   }
   if (ok !== true) {
     return '';
@@ -42,9 +54,10 @@ export function describeOutcome(body: unknown): string {
     ? (result.steps as BatchStep[])
     : [];
   const code = steps.find((step) => step.ok === false)?.error?.code;
-  return ` ok=true failed=${failed}/${String(result?.summary?.total)}${
-    typeof code === 'string' ? ` code=${code}` : ''
-  }`;
+  const total = result?.summary?.total;
+  return ` ok=true failed=${failed}/${
+    typeof total === 'number' ? total : '?'
+  }${codeSuffix(code)}`;
 }
 
 /**

@@ -22,6 +22,28 @@ describe('describeOutcome', () => {
     expect(describeOutcome({ ok: false })).toBe(' ok=false');
   });
 
+  it.each([
+    ['free text', 'wrong password hunter2'],
+    ['a newline', 'MM_X\n[INFO] POST /tool/fake 200'],
+    ['a lowercase code', 'mm_click_timeout'],
+    ['a very long code', `MM_${'A'.repeat(100)}`],
+    ['a number', 42],
+  ])('leaves out a code that is %s', (_name, code) => {
+    expect(describeOutcome({ ok: false, error: { code } })).toBe(' ok=false');
+  });
+
+  it('leaves out an invalid code of a failed batch step', () => {
+    expect(
+      describeOutcome({
+        ok: true,
+        result: {
+          steps: [{ ok: false, error: { code: 'seed phrase here' } }],
+          summary: { total: 1, failed: 1 },
+        },
+      }),
+    ).toBe(' ok=true failed=1/1');
+  });
+
   it('reports the failed steps of a batch and the first failure code', () => {
     expect(
       describeOutcome({
