@@ -12,6 +12,7 @@ import {
   classifyClickError,
   classifyTypeError,
   classifyInspectError,
+  classifyHoverError,
   classifyWaitError,
   classifyNavigationError,
   classifyTabError,
@@ -349,6 +350,23 @@ describe('error-classification', () => {
 
     it('returns WAIT_TIMEOUT for timeouts', () => {
       expect(classifyInspectError(new Error('Timeout 5ms exceeded')).code).toBe(
+        ErrorCodes.MM_WAIT_TIMEOUT,
+      );
+    });
+  });
+
+  describe('classifyHoverError', () => {
+    it('returns HOVER_FAILED for errors that match no pattern', () => {
+      const result = classifyHoverError(new Error('Element is detached'));
+
+      expect(result).toStrictEqual({
+        code: ErrorCodes.MM_HOVER_FAILED,
+        message: 'Operation failed: Element is detached',
+      });
+    });
+
+    it('returns WAIT_TIMEOUT for timeouts', () => {
+      expect(classifyHoverError(new Error('Timeout 5ms exceeded')).code).toBe(
         ErrorCodes.MM_WAIT_TIMEOUT,
       );
     });

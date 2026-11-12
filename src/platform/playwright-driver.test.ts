@@ -10,6 +10,7 @@ function createMockLocator() {
   return {
     click: vi.fn().mockResolvedValue(undefined),
     fill: vi.fn().mockResolvedValue(undefined),
+    hover: vi.fn().mockResolvedValue(undefined),
     waitFor: vi.fn().mockResolvedValue(undefined),
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
@@ -403,6 +404,83 @@ describe('PlaywrightPlatformDriver', () => {
         driver.inspect?.('testId', 'el', new Map(), 5, []),
       ).rejects.toThrowError('visibility wait consumed entire budget');
       expect(inspectSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('hover', () => {
+    it('hovers the target with the remaining budget', async () => {
+      const page = createMockPage();
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(1200);
+
+      const driver = createDriver(page);
+      const result = await driver.hover?.(
+        'testId',
+        'account-menu',
+        new Map(),
+        5000,
+        { type: 'testId', value: 'header' },
+      );
+
+      expect(result).toStrictEqual({
+        hovered: true,
+        target: 'testId:account-menu',
+      });
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'testId',
+        'account-menu',
+        expect.any(Map),
+        5000,
+        { type: 'testId', value: 'header' },
+      );
+      expect(locator.hover).toHaveBeenCalledWith({ timeout: 4800 });
+    });
+
+    it('throws when budget exhausted by waitForTarget', async () => {
+      const locator = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1000);
+      nowSpy.mockReturnValueOnce(6000);
+
+      const driver = createDriver();
+      await expect(
+        driver.hover?.('testId', 'el', new Map(), 5),
+      ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(locator.hover).not.toHaveBeenCalled();
+    });
+
+    it('does not hover when the signal aborts while waiting', async () => {
+      const locator = createMockLocator();
+      const controller = new AbortController();
+      const reason = new Error('Tool execution timed out after 30000ms');
+      vi.spyOn(discoveryModule, 'waitForTarget').mockImplementation(
+        async () => {
+          controller.abort(reason);
+          return locator as any;
+        },
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.hover?.(
+          'testId',
+          'el',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toBe(reason);
+      expect(locator.hover).not.toHaveBeenCalled();
     });
   });
 

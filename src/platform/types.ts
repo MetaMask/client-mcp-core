@@ -66,6 +66,11 @@ export type InspectActionResult = {
   effectiveOpacity: number;
 };
 
+export type HoverActionResult = {
+  hovered: boolean;
+  target: string;
+};
+
 export type PlatformScreenshotOptions = {
   name: string;
   fullPage?: boolean;
@@ -155,6 +160,20 @@ export type IPlatformDriver = {
     styles: string[],
     within?: WithinScope,
   ): Promise<InspectActionResult>;
+
+  /**
+   * Waits for the target, then moves the pointer over it. When `signal` is
+   * aborted while the driver waits for the target, the driver throws the
+   * abort reason and does not hover. Browser only.
+   */
+  hover?(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    timeoutMs: number,
+    within?: WithinScope,
+    signal?: AbortSignal,
+  ): Promise<HoverActionResult>;
 
   getAccessibilityTree(
     rootSelector?: string,

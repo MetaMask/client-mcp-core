@@ -23,6 +23,7 @@ describe('exitCodeForError', () => {
     [ErrorCodes.MM_TARGET_NOT_VISIBLE, CliExitCodes.TARGET],
     [ErrorCodes.MM_TARGET_OBSCURED, CliExitCodes.TARGET],
     [ErrorCodes.MM_INSPECT_FAILED, CliExitCodes.TARGET],
+    [ErrorCodes.MM_HOVER_FAILED, CliExitCodes.TARGET],
     [ErrorCodes.MM_ELEMENT_NOT_EDITABLE, CliExitCodes.TARGET],
     [ErrorCodes.MM_WAIT_TIMEOUT, CliExitCodes.TIMEOUT],
     [ErrorCodes.MM_CLICK_TIMEOUT, CliExitCodes.TIMEOUT],

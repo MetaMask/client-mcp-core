@@ -135,6 +135,20 @@ export type InspectInput = TargetSelection & {
   within?: WithinTarget;
 };
 
+export type HoverInput = TargetSelection & {
+  timeoutMs?: number;
+  within?: WithinTarget;
+};
+
+export type UnhoverInput = Record<string, never>;
+
+export type SetViewportInput = {
+  width: number;
+  height: number;
+};
+
+export type ResetViewportInput = Record<string, never>;
+
 export type RunStepsInput = {
   steps: {
     tool: string;
