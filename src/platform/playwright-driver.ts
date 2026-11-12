@@ -23,7 +23,10 @@ import { ErrorCodes } from '../tools/types/errors.js';
 import type { CdpInput } from '../tools/types/tool-inputs.js';
 import type { CdpOutcome } from '../tools/types/tool-outputs.js';
 import { withCdpSession } from '../tools/utils/cdp.js';
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../tools/utils/constants.js';
+import {
+  CLICK_MISSING_TARGET_WAIT_MS,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
@@ -92,6 +95,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       refMap,
       timeoutMs,
       within,
+      { missingTargetWaitMs: CLICK_MISSING_TARGET_WAIT_MS },
     );
 
     const remaining = deadline - Date.now();

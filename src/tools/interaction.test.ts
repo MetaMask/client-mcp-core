@@ -100,6 +100,7 @@ describe('interaction', () => {
         context.refMap,
         15000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
       expect(locator.click).toHaveBeenCalled();
     });
@@ -125,6 +126,7 @@ describe('interaction', () => {
         context.refMap,
         5000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
       expect(locator.click).toHaveBeenCalledWith({ timeout: 5000 });
     });
@@ -151,6 +153,7 @@ describe('interaction', () => {
         context.refMap,
         15000,
         { type: 'testId', value: 'parent' },
+        { missingTargetWaitMs: 2000 },
       );
     });
 
@@ -177,6 +180,7 @@ describe('interaction', () => {
         context.refMap,
         15000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
     });
 
@@ -204,6 +208,7 @@ describe('interaction', () => {
         refMap,
         15000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
     });
 
@@ -338,6 +343,84 @@ describe('interaction', () => {
         expect(result.error.message).toContain('state unknown');
         expect(result.error.message).toContain('describe-screen');
         expect(result.error.message).not.toContain('may have completed');
+      }
+    });
+
+    it('returns TARGET_NOT_FOUND when the target matched 0 elements', async () => {
+      const context = createMockContext();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error(
+          'Selector [data-testid="nonexistent"] (testId:nonexistent) matched 0 elements after 2000ms',
+        ),
+      );
+
+      const result = await clickTool({ testId: 'nonexistent' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toBe(
+          'Selector [data-testid="nonexistent"] (testId:nonexistent) matched 0 elements after 2000ms',
+        );
+      }
+    });
+
+    it('includes the last Playwright step when the click times out', async () => {
+      const locator = createMockLocator();
+      locator.click.mockRejectedValue(
+        createTimeoutError(
+          [
+            'locator.click: Timeout 5000ms exceeded.',
+            'Call log:',
+            `  - waiting for locator('[data-testid="confirm"]')`,
+            '  - attempting click action',
+            '      - <div class="modal"></div> intercepts pointer events',
+            '    - retrying click action',
+            '      - waiting 500ms',
+          ].join('\n'),
+        ),
+      );
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await clickTool(
+        { testId: 'confirm', timeoutMs: 5000 },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toBe(
+          'Click timed out after 5000ms; state unknown (last Playwright step: <div class="modal"></div> intercepts pointer events). Run describe-screen to check the screen before retrying.',
+        );
+      }
+    });
+
+    it('includes the last Playwright step when the target stays hidden', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        createTimeoutError(
+          [
+            'locator.waitFor: Timeout 5000ms exceeded.',
+            'Call log:',
+            `  - waiting for locator('#terms') to be visible`,
+            '    8 × locator resolved to hidden <input id="terms" type="checkbox"/>',
+          ].join('\n'),
+        ),
+      );
+
+      const result = await clickTool(
+        { selector: '#terms', timeoutMs: 5000 },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toContain(
+          '(last Playwright step: locator resolved to hidden <input id="terms" type="checkbox"/>)',
+        );
       }
     });
 

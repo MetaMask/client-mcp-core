@@ -4,6 +4,7 @@ import {
   classifyInspectError,
   classifyTypeError,
   classifyWaitError,
+  lastPlaywrightLogStep,
 } from './error-classification.js';
 import type {
   ClickInput,
@@ -166,9 +167,12 @@ export async function clickTool(
     }
     const errorInfo = classifyClickError(error);
     if (errorInfo.code === ErrorCodes.MM_WAIT_TIMEOUT) {
+      const step = lastPlaywrightLogStep(error);
+      const detail =
+        step === undefined ? '' : ` (last Playwright step: ${step})`;
       return createToolError(
         ErrorCodes.MM_CLICK_TIMEOUT,
-        `Click timed out after ${timeoutMs}ms; state unknown. Run describe-screen to check the screen before retrying.`,
+        `Click timed out after ${timeoutMs}ms; state unknown${detail}. Run describe-screen to check the screen before retrying.`,
       );
     }
     return createToolError(errorInfo.code, errorInfo.message);

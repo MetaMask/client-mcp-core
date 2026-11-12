@@ -313,7 +313,9 @@ If the page closes after clicking (e.g., confirmation popup), the response inclu
 mm click --testid log-in-button --dismiss-keyboard
 ```
 
-**Timeout behavior:** If the click hangs (e.g., element found but click never resolves due to a side effect), `MM_CLICK_TIMEOUT` is returned. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
+**Browser target not found:** when the target matches no element after 2s, the click fails at once with `MM_TARGET_NOT_FOUND` (`Selector [data-testid="x"] (testId:x) matched 0 elements after 2000ms`) instead of waiting for the whole timeout. Check the testId or selector with `mm describe-screen`, or run `mm wait-for` first if the element appears later.
+
+**Timeout behavior:** If the click times out, `MM_CLICK_TIMEOUT` is returned. On the browser the message ends with the last step Playwright logged, which says why: `locator resolved to hidden <input .../>` (the element is hidden; click its visible label or wrapper), `<div class="..."> intercepts pointer events` (another element covers it; close it first) or `element is not enabled`. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
 
 #### `mm type <ref> <text>`
 

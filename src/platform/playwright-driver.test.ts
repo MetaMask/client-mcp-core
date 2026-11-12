@@ -96,6 +96,7 @@ describe('PlaywrightPlatformDriver', () => {
         expect.any(Map),
         5000,
         { type: 'testId', value: 'parent-container' },
+        { missingTargetWaitMs: 2000 },
       );
     });
 
