@@ -184,7 +184,7 @@ The architecture relies on a persistent background HTTP daemon that manages the 
 - **Auto-Start**: The daemon starts automatically on `mm launch` if not already running, and shuts down after a period of inactivity (default: 30 minutes).
 - **Request Serialization**: A `RequestQueue` (async mutex) ensures only one tool executes at a time, preventing race conditions on shared browser state.
 - **Health Checks**: Each daemon generates a unique nonce on startup. The CLI verifies daemon identity via `GET /health` to detect stale `.mm-server` files from crashed processes.
-- **Logs**: Daemon activity is logged to `.mm-daemon.log`.
+- **Logs**: Daemon activity is logged to `.mm-daemon.log`. Tool failures are answered with HTTP 200 and `ok: false` in the body, so each request line also has the outcome: `POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT 15080ms`, or `ok=true`. A `run_steps` line with failed steps adds `failed=<n>/<total>` and the first failed step's code. `grep ok=false .mm-daemon.log` lists the failed calls.
 
 ### Session Manager Interface
 
