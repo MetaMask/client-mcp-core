@@ -4,6 +4,7 @@ import type {
   IPlatformDriver,
   TargetType,
   ClickActionResult,
+  ClickOptions,
   TypeActionResult,
   GetTextActionResult,
   InspectActionResult,
@@ -75,6 +76,8 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * @param within - Optional parent scope for chained locator resolution.
    * @param signal - When aborted during the target wait, throws instead of
    * clicking.
+   * @param options - `failFastWhenMissing` fails after a short wait when the
+   * target matches no element; `dismissKeyboard` is ignored.
    * @returns The click result with success status and target info.
    */
   async click(
@@ -84,6 +87,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     timeoutMs: number,
     within?: WithinScope,
     signal?: AbortSignal,
+    options?: ClickOptions,
   ): Promise<ClickActionResult> {
     const page = this.#getPage();
     const deadline = Date.now() + timeoutMs;
@@ -95,7 +99,9 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       refMap,
       timeoutMs,
       within,
-      { missingTargetWaitMs: CLICK_MISSING_TARGET_WAIT_MS },
+      options?.failFastWhenMissing
+        ? { missingTargetWaitMs: CLICK_MISSING_TARGET_WAIT_MS }
+        : undefined,
     );
 
     const remaining = deadline - Date.now();

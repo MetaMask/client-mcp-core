@@ -126,9 +126,25 @@ describe('interaction', () => {
         context.refMap,
         5000,
         undefined,
-        { missingTargetWaitMs: 2000 },
+        undefined,
       );
       expect(locator.click).toHaveBeenCalledWith({ timeout: 5000 });
+    });
+
+    it('waits the whole explicit timeout for a target that appears late', async () => {
+      const context = createMockContext({ page: {} });
+      const clickSpy = vi.spyOn(context.driver as any, 'click');
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        createMockLocator() as any,
+      );
+
+      await clickTool({ testId: 'confirm', timeoutMs: 30000 }, context);
+      await clickTool({ testId: 'confirm' }, context);
+
+      expect(clickSpy.mock.calls.map((call) => call[6])).toStrictEqual([
+        { failFastWhenMissing: false },
+        { failFastWhenMissing: true },
+      ]);
     });
 
     it('passes within scope to waitForTarget', async () => {

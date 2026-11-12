@@ -32,6 +32,14 @@ export type ClickOptions = {
    * once more. Ignored by the browser driver.
    */
   dismissKeyboard?: boolean;
+  /**
+   * Browser: fail with "matched 0 elements" when the target matches no
+   * element after a short wait, instead of waiting for the whole timeout.
+   * Only for a click without an explicit timeout: a caller that gives one
+   * wants to wait that long for a target that appears late. Ignored by the
+   * mobile driver.
+   */
+  failFastWhenMissing?: boolean;
 };
 
 export type TypeActionResult = {

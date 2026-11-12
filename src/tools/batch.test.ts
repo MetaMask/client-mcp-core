@@ -72,10 +72,7 @@ describe('runStepsTool', () => {
       context,
     );
 
-    expect(clickHandler).toHaveBeenCalledWith(
-      { testId: 'button', timeoutMs: 15000 },
-      context,
-    );
+    expect(clickHandler).toHaveBeenCalledWith({ testId: 'button' }, context);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.steps).toHaveLength(1);
@@ -108,10 +105,7 @@ describe('runStepsTool', () => {
       context,
     );
 
-    expect(clickHandler).toHaveBeenCalledWith(
-      { a11yRef: 'e1', timeoutMs: 15000 },
-      context,
-    );
+    expect(clickHandler).toHaveBeenCalledWith({ a11yRef: 'e1' }, context);
     expect(result.ok).toBe(true);
   });
 
@@ -156,10 +150,7 @@ describe('runStepsTool', () => {
       context,
     );
 
-    expect(clickHandler).toHaveBeenCalledWith(
-      { testId: 'btn', timeoutMs: 15000 },
-      context,
-    );
+    expect(clickHandler).toHaveBeenCalledWith({ testId: 'btn' }, context);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.steps[0]).toMatchObject({

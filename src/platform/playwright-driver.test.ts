@@ -96,8 +96,43 @@ describe('PlaywrightPlatformDriver', () => {
         expect.any(Map),
         5000,
         { type: 'testId', value: 'parent-container' },
-        { missingTargetWaitMs: 2000 },
+        undefined,
       );
+    });
+
+    it('fails fast on a missing target only when asked to', async () => {
+      const waitSpy = vi
+        .spyOn(discoveryModule, 'waitForTarget')
+        .mockResolvedValue(createMockLocator() as any);
+
+      const driver = createDriver();
+      await driver.click(
+        'testId',
+        'btn',
+        new Map(),
+        5000,
+        undefined,
+        undefined,
+        {
+          failFastWhenMissing: true,
+        },
+      );
+      await driver.click(
+        'testId',
+        'btn',
+        new Map(),
+        5000,
+        undefined,
+        undefined,
+        {
+          failFastWhenMissing: false,
+        },
+      );
+
+      expect(waitSpy.mock.calls.map((call) => call[6])).toStrictEqual([
+        { missingTargetWaitMs: 2000 },
+        undefined,
+      ]);
     });
 
     it('throws timeout error when waitForTarget times out', async () => {
