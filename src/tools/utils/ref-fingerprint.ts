@@ -42,7 +42,7 @@ function escapeChar(char: string): string {
   if (char === ' ') {
     return SPACE_SOURCE;
   }
-  const code = char.codePointAt(0) ?? 0;
+  const code = char.charCodeAt(0);
   if (code > 127 || /[A-Za-z0-9]/u.test(char)) {
     return char;
   }

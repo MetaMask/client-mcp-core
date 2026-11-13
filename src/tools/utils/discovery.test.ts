@@ -758,6 +758,45 @@ describe('collectTrimmedA11ySnapshot', () => {
     expect(result.nodes[2].expanded).toBe(true);
   });
 
+  it('reads boolean properties that CDP sends as strings', async () => {
+    const page = createMockPage({
+      axNodes: [
+        {
+          nodeId: 'root',
+          ignored: false,
+          role: { type: 'role', value: 'main' },
+          childIds: ['on', 'off'],
+        },
+        {
+          nodeId: 'on',
+          ignored: false,
+          role: { type: 'role', value: 'checkbox' },
+          name: { type: 'string', value: 'On' },
+          properties: [
+            { name: 'disabled', value: { type: 'boolean', value: 'true' } },
+            { name: 'checked', value: { type: 'tristate', value: 'true' } },
+          ],
+          parentId: 'root',
+        },
+        {
+          nodeId: 'off',
+          ignored: false,
+          role: { type: 'role', value: 'checkbox' },
+          name: { type: 'string', value: 'Off' },
+          properties: [
+            { name: 'checked', value: { type: 'tristate', value: 'false' } },
+          ],
+          parentId: 'root',
+        },
+      ],
+    });
+
+    const result = await collectTrimmedA11ySnapshot(page);
+
+    expect(result.nodes[0]).toMatchObject({ disabled: true, checked: true });
+    expect(result.nodes[1].checked).toBe(false);
+  });
+
   it('handles checked="mixed" as false', async () => {
     const a11yTree = `- main:\n  - checkbox "Mixed" [checked=mixed]`;
 
