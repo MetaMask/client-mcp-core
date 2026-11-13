@@ -56,10 +56,11 @@ export function omitObserve<Input>(input: Input): Input {
 
 export const a11yRefPattern = z
   .string()
-  .regex(/^e[0-9]+$/u)
+  .regex(/^(?:f[0-9]+)?e[0-9]+$/u)
   .describe(
-    'Accessibility ref from accessibility_snapshot (e.g., e1, e2). ' +
-      'These refs are ephemeral and only valid within the current screen state.',
+    'Accessibility ref from accessibility_snapshot (e.g., e1, e2; f1e3 for ' +
+      'an element inside the first iframe). These refs are ephemeral and ' +
+      'only valid within the current screen state.',
   );
 
 export const targetSelectionSchema = z
@@ -386,6 +387,31 @@ export const waitForNotificationInputSchema = z.object({
     .describe('Timeout in milliseconds to wait for notification popup'),
 });
 
+export const frameTargetSchema = z
+  .object({
+    a11yRef: a11yRefPattern.optional(),
+    testId: z.string().min(1).optional(),
+    selector: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      const provided = [data.a11yRef, data.testId, data.selector].filter(
+        Boolean,
+      );
+      return provided.length === 1;
+    },
+    {
+      message:
+        'Exactly one of a11yRef, testId, or selector must be provided in frame',
+    },
+  )
+  .describe(
+    'Browser only: the iframe element (a11yRef, testId, or selector) whose ' +
+      'content the testId or selector target, and within, are in. Refs from ' +
+      'a snapshot (f1e3) already point into their frame: do not combine ' +
+      'frame with a ref target or a ref within.',
+  );
+
 export const listTestIdsInputSchema = z.object({
   limit: z
     .number()
@@ -418,6 +444,13 @@ export const describeScreenInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded screenshot in response'),
+  frame: frameTargetSchema
+    .optional()
+    .describe(
+      'Browser only: describe the content of this iframe (refs f1e1, ' +
+        'f1e2, ...) instead of the page. The page snapshot already ' +
+        'includes visible iframes; use frame to see only one.',
+    ),
 });
 
 export const screenshotInputSchema = z.object({
@@ -439,6 +472,11 @@ export const screenshotInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded image in response'),
+  frame: frameTargetSchema
+    .optional()
+    .describe(
+      'Browser only: capture this iframe, or the selector element inside it',
+    ),
 });
 
 export const withinTargetSchema = z
@@ -474,6 +512,7 @@ export const clickInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
     dismissKeyboard: z
       .boolean()
       .optional()
@@ -495,6 +534,7 @@ export const typeInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -508,6 +548,7 @@ export const waitForInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -521,6 +562,7 @@ export const getTextInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -543,6 +585,7 @@ export const inspectInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -556,6 +599,7 @@ export const hoverInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for the element and hover it'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 

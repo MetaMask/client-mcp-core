@@ -253,6 +253,27 @@ On mobile (iOS, Android), the tree is a flat list in screen order. A node is a n
 
 Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails (strict mode) instead of acting on another element: refs use the exact, case-sensitive name, and elements that share a role and name get a unique DOM selector, so two "Send" buttons get two refs that each click their own button. If a click fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
+**Inside iframes (browser).** `describe-screen` also lists what is inside visible iframes (for example the candlestick chart, `advanced-chart-iframe`), after the page's nodes. Their refs start with the iframe number, `f1e1`, `f1e2`, ... for the first iframe, `f2e1`, ... for the second, and their `path` ends with `iframe:<title>`. Use them like any ref: `mm click f1e2`, `mm get-text f1e5`. Cross-origin iframes work too.
+
+To look at one iframe only, or to act on an element in it by test ID or selector, pass `--frame` with the iframe element (`testid:<id>`, `selector:<css>`, a bare test ID, or the iframe's ref):
+
+```
+mm describe-screen --frame testid:advanced-chart-iframe      # only the chart's nodes (refs f1e1, ...)
+mm hover --frame testid:advanced-chart-iframe --selector canvas
+mm get-text --frame testid:advanced-chart-iframe --selector '<css in the chart>'
+mm wait-for --frame testid:advanced-chart-iframe --selector 'text=No chart data'
+mm screenshot --frame testid:advanced-chart-iframe            # the iframe; add --selector for an element in it
+```
+
+`--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. Limits:
+
+- Do not combine `--frame` with a ref target or a ref `--within`: an `f1e*` ref already points into its iframe. Use `--testid` or `--selector`.
+- Plain text inside an iframe (such as "No chart data") is not an accessibility node, so it is not in the tree: wait for it with `--selector 'text=...'`.
+- Up to 5 iframes are listed; iframes inside iframes are not. Hidden iframes are left out.
+- Inside an iframe, two elements with the same role and name share a selector, so acting on that ref fails in strict mode: use `--frame` with `--testid` or `--selector`.
+- `list-testids` and the `testIds` list cover the page only, not iframes.
+- Browser only: `--frame` fails on mobile.
+
 #### `mm list-testids`
 
 Lists all visible `data-testid` attributes on the current page with text previews.
@@ -284,8 +305,10 @@ mm accessibility-snapshot [--root <selector>]
 Captures a screenshot of the current page.
 
 ```
-mm screenshot [--name <name>]
+mm screenshot [--name <name>] [--selector <css>] [--frame <iframe>]
 ```
+
+`--selector` captures one element. `--frame` (browser) captures an iframe, or with `--selector` the element inside it.
 
 Returns: file path, dimensions.
 
@@ -747,7 +770,7 @@ Every interaction command (`click`, `type`, `get-text`, `inspect`, `wait-for`) n
 
 | Method           | Format              | Stability                       | When to use                                          |
 | ---------------- | ------------------- | ------------------------------- | ---------------------------------------------------- |
-| **a11y ref**     | `e1`, `e2`, ...     | Ephemeral (per describe-screen) | Default — use refs from the latest `describe-screen` |
+| **a11y ref**     | `e1`, `f1e2`, ...   | Ephemeral (per describe-screen) | Default — use refs from the latest `describe-screen` |
 | **testId**       | `data-testid` value | Stable across sessions          | When you know the testId from earlier output         |
 | **CSS selector** | Any CSS selector    | Fragile                         | Last resort fallback                                 |
 

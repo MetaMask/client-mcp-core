@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: `mm` sees and acts inside iframes on the browser, including cross-origin ones such as the candlestick chart. A page snapshot (`describe_screen`, `accessibility_snapshot` without `rootSelector`, observations) lists the content of up to 5 visible iframes after the page, with refs namespaced by frame (`f1e1`, `f2e1`, ...) and a `path` ending in `iframe:<title>`; these refs act inside their iframe. `describe_screen`, `click`, `type`, `hover`, `wait_for`, `get_text`, `inspect` and `screenshot` take `frame` (`--frame <iframe>`) to work inside one iframe, the way Playwright's `frameLocator` does. `mm screenshot` adds `--selector`
 - feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support
 - feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
 - feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes

@@ -1,6 +1,8 @@
 import { classifyScreenshotError } from './error-classification.js';
+import { resolveWithinScope } from './interaction.js';
 import type { ScreenshotInput, ScreenshotToolResult } from './types';
 import { ErrorCodes } from './types';
+import { resolveFrameSelector, selectorInFrame } from './utils/frame-scope.js';
 import {
   createToolError,
   createToolSuccess,
@@ -31,12 +33,27 @@ export async function screenshotTool(
     );
   }
 
+  const frame = resolveWithinScope(input.frame);
+  if (frame && context.driver.getPlatform() !== 'browser') {
+    return createToolError(
+      ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      `frame is not supported on ${context.driver.getPlatform()} platform`,
+    );
+  }
+
   try {
     const screenshotName = input.name ?? `screenshot-${Date.now()}`;
+    let { selector } = input;
+    if (frame) {
+      const frameSelector = resolveFrameSelector(frame, context.refMap);
+      selector = selector
+        ? selectorInFrame(frameSelector, selector)
+        : frameSelector;
+    }
     const result = await context.driver.screenshot({
       name: screenshotName,
       fullPage: input.fullPage ?? true,
-      selector: input.selector,
+      selector,
       includeBase64: input.includeBase64,
     });
 

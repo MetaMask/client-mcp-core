@@ -194,6 +194,7 @@ describe('discovery-tools', () => {
       expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
         context.page,
         '.modal',
+        undefined,
       );
     });
 
@@ -422,6 +423,74 @@ describe('discovery-tools', () => {
       await describeScreenTool({}, context);
 
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
+    });
+
+    it('describes only the iframe of frame', async () => {
+      const context = createMockContext();
+      const frameRefMap = new Map([
+        [
+          'f1e1',
+          '[data-testid="chart"] >> internal:control=enter-frame >> role=button[name="Zoom in" s]',
+        ],
+      ]);
+      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        {
+          nodes: [{ ref: 'f1e1', role: 'button', name: 'Zoom in', path: [] }],
+          refMap: frameRefMap,
+        },
+      );
+
+      const result = await describeScreenTool(
+        { frame: { testId: 'chart' } },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
+        context.page,
+        undefined,
+        '[data-testid="chart"]',
+      );
+      expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(
+        frameRefMap,
+      );
+    });
+
+    it('returns MM_TARGET_NOT_FOUND when the iframe of frame is missing', async () => {
+      const context = createMockContext();
+      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockRejectedValue(
+        new Error('Frame not found: no element matches iframe.chart'),
+      );
+
+      const result = await describeScreenTool(
+        { frame: { selector: 'iframe.chart' } },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+      }
+    });
+
+    it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM for frame on mobile', async () => {
+      const context = createMockContext();
+      const driver = context.driver as any;
+      context.driver = { ...driver, getPlatform: () => 'android' };
+
+      const result = await describeScreenTool(
+        { frame: { testId: 'chart' } },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(
+          ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        );
+      }
     });
 
     it('uses one captureScreen snapshot for test IDs and tree when the driver has it', async () => {

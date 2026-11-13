@@ -29,6 +29,10 @@ import {
   DEFAULT_INTERACTION_TIMEOUT_MS,
 } from './utils/constants.js';
 import type { TargetType } from './utils/discovery.js';
+import {
+  resolveFrameSelector,
+  scopeTargetToFrame,
+} from './utils/frame-scope.js';
 import { validateTargetSelection } from './utils/targets.js';
 import {
   isInvalidTargetSelection,
@@ -50,12 +54,15 @@ type ValidatedTarget = {
 
 type ValidatedInteraction = {
   target: ValidatedTarget;
+  within: WithinScope | undefined;
   driver: NonNullable<ToolContext['driver']>;
 };
 
 /**
  * Validates session, driver, and target selection for interaction tools.
- * Returns an error response if validation fails, or the resolved target.
+ * Returns an error response if validation fails, or the resolved target
+ * and `within` scope, moved into the iframe of `frame` when it is set (see
+ * `scopeTargetToFrame`; browser only).
  *
  * @param input - The tool input with target selection fields.
  * @param context - The tool execution context.
@@ -107,13 +114,43 @@ function validateInteraction<TResult>(
     };
   }
 
-  return {
-    target: {
-      targetType: validation.type,
-      targetValue: validation.value,
-    },
-    driver: context.driver,
+  const target = {
+    targetType: validation.type,
+    targetValue: validation.value,
   };
+  const within = resolveWithinScope(input.within);
+  const frame = resolveWithinScope(input.frame);
+  if (!frame) {
+    return { target, within, driver: context.driver };
+  }
+  if (context.driver.getPlatform() !== 'browser') {
+    return {
+      error: createToolError(
+        ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        `frame is not supported on ${context.driver.getPlatform()} platform`,
+      ),
+    };
+  }
+  try {
+    return {
+      ...scopeTargetToFrame(
+        target,
+        within,
+        resolveFrameSelector(frame, context.refMap),
+      ),
+      driver: context.driver,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      error: createToolError(
+        message.startsWith('Unknown a11yRef')
+          ? ErrorCodes.MM_TARGET_NOT_FOUND
+          : ErrorCodes.MM_INVALID_INPUT,
+        message,
+      ),
+    };
+  }
 }
 
 /**
@@ -165,7 +202,7 @@ export async function clickTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
       context.signal,
       input.dismissKeyboard ? { dismissKeyboard: true } : undefined,
     );
@@ -212,7 +249,7 @@ export async function typeTool(
       input.text,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
       context.signal,
     );
     return createToolSuccess(result);
@@ -257,7 +294,7 @@ export async function waitForTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
     );
     return createToolSuccess({
       found: true,
@@ -294,7 +331,7 @@ export async function getTextTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
     );
     return createToolSuccess(result);
   } catch (error) {
@@ -345,7 +382,7 @@ export async function inspectTool(
       context.refMap,
       timeoutMs,
       input.styles ?? DEFAULT_INSPECT_STYLES,
-      resolveWithinScope(input.within),
+      validated.within,
     );
     return createToolSuccess(result);
   } catch (error) {
@@ -395,7 +432,7 @@ export async function hoverTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
       context.signal,
     );
     return createToolSuccess(result);

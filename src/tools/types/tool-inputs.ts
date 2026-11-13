@@ -81,6 +81,8 @@ export type DescribeScreenInput = {
   includeScreenshot?: boolean;
   screenshotName?: string;
   includeScreenshotBase64?: boolean;
+  /** Browser only: describe the content of this iframe instead of the page. */
+  frame?: WithinTarget;
 };
 
 export type ScreenshotInput = {
@@ -88,6 +90,10 @@ export type ScreenshotInput = {
   fullPage?: boolean;
   selector?: string;
   includeBase64?: boolean;
+  /**
+   * Browser only: capture this iframe, or the `selector` element inside it.
+   */
+  frame?: WithinTarget;
 };
 
 export type TargetSelection = {
@@ -105,6 +111,8 @@ export type WithinTarget = {
 export type ClickInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
   /**
    * Mobile: when the software keyboard covers the target, dismiss it and
    * tap once more.
@@ -116,16 +124,22 @@ export type TypeInput = TargetSelection & {
   text: string;
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type WaitForInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type GetTextInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type InspectInput = TargetSelection & {
@@ -133,11 +147,15 @@ export type InspectInput = TargetSelection & {
   styles?: string[];
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type HoverInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type UnhoverInput = Record<string, never>;

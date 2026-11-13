@@ -1,4 +1,4 @@
-import type { Page, Locator, CDPSession } from '@playwright/test';
+import type { Page, Locator, CDPSession, Frame } from '@playwright/test';
 
 import {
   callInIsolatedWorld,
@@ -9,6 +9,7 @@ import {
   TESTID_COLLECT_TIMEOUT_MS,
   TEXT_PREVIEW_MAX_LENGTH,
 } from './constants.js';
+import { selectorInFrame } from './frame-scope.js';
 import {
   animationsSettled,
   buildUniqueSelectorInPage,
@@ -362,6 +363,35 @@ type SnapshotScope = {
   /** Backend DOM node id of the root element. */
   backendNodeId: number;
 };
+
+/**
+ * The iframe whose content a snapshot tree comes from.
+ */
+type SnapshotFrame = {
+  /** Playwright selector of the iframe element in the page. */
+  iframeSelector: string;
+  /** Prefix of the refs of the frame's nodes (`f1` gives `f1e1`, ...). */
+  refPrefix: string;
+  /** Path of the frame's nodes before their own ancestors. */
+  path: string[];
+};
+
+/**
+ * Maximum number of iframes whose content a page snapshot includes (hidden
+ * and empty iframes do not count).
+ */
+const MAX_SNAPSHOT_FRAMES = 5;
+
+/**
+ * How long a snapshot waits for an iframe element, in milliseconds.
+ */
+const FRAME_ELEMENT_TIMEOUT_MS = 2_000;
+
+/**
+ * How long `describe_screen` with a frame waits for the iframe to be
+ * attached, in milliseconds.
+ */
+const FRAME_ATTACH_TIMEOUT_MS = 5_000;
 
 /**
  * Extracts the normalized ARIA role from a CDP accessibility node.
@@ -768,9 +798,15 @@ async function buildDomSelectors(
  * selectors stay page-wide, without DOM lookup, so an action on such a ref
  * fails in strict mode when it matches more than one element.
  *
+ * Iframe content: role and text selectors continue inside the iframe
+ * (`<iframe> >> internal:control=enter-frame >> role=...`). There are no
+ * DOM lookups (they run in the page's main frame), so duplicates keep the
+ * role selector and fail in strict mode, and generic nodes use `text=`.
+ *
  * @param page The Playwright page.
  * @param candidates The nodes that can get a ref, in AX tree order.
  * @param scope The root of a scoped snapshot.
+ * @param frame The iframe the candidates are in.
  * @returns The selector of each candidate (same order), or null when the
  * candidate has no selector and gets no ref.
  */
@@ -778,9 +814,14 @@ async function buildRefSelectors(
   page: Page,
   candidates: RefCandidate[],
   scope?: SnapshotScope,
+  frame?: SnapshotFrame,
 ): Promise<(string | null)[]> {
-  const scoped = (selector: string, inScope: boolean): string =>
-    scope && inScope ? `${scope.selector} >> ${selector}` : selector;
+  const scoped = (selector: string, inScope: boolean): string => {
+    if (frame) {
+      return selectorInFrame(frame.iframeSelector, selector);
+    }
+    return scope && inScope ? `${scope.selector} >> ${selector}` : selector;
+  };
   const isScopeRoot = (candidate: RefCandidate): boolean =>
     scope !== undefined && candidate.backendDOMNodeId === scope.backendNodeId;
 
@@ -820,7 +861,9 @@ async function buildRefSelectors(
       lookupIds.add(backendDOMNodeId);
     }
   });
-  const domSelectors = await buildDomSelectors(page, [...lookupIds]);
+  const domSelectors = frame
+    ? new Map<number, string>()
+    : await buildDomSelectors(page, [...lookupIds]);
 
   return candidates.map((candidate, index) => {
     const roleSelector = roleSelectors[index];
@@ -861,12 +904,14 @@ async function buildRefSelectors(
  * @param page The Playwright page.
  * @param parsedRoots The normalized raw accessibility tree roots.
  * @param scope The root of a scoped snapshot.
+ * @param frame The iframe the tree comes from.
  * @returns The trimmed nodes and their backing ref map.
  */
 async function trimAxTreeToA11yNodes(
   page: Page,
   parsedRoots: RawA11yNode[],
   scope?: SnapshotScope,
+  frame?: SnapshotFrame,
 ): Promise<{
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
@@ -936,17 +981,17 @@ async function trimAxTreeToA11yNodes(
   }
 
   for (const root of parsedRoots) {
-    traverseNode(root, [], false);
+    traverseNode(root, frame?.path ?? [], false);
   }
 
-  const selectors = await buildRefSelectors(page, candidates, scope);
+  const selectors = await buildRefSelectors(page, candidates, scope, frame);
   const nodes: A11yNodeTrimmed[] = [];
   const refMap = new Map<string, string>();
   selectors.forEach((selector, index) => {
     if (selector === null) {
       return;
     }
-    const ref = `e${nodes.length + 1}`;
+    const ref = `${frame?.refPrefix ?? ''}e${nodes.length + 1}`;
     nodes.push({ ref, ...candidateNodes[index] });
     refMap.set(ref, selector);
   });
@@ -973,20 +1018,309 @@ function containsBackendNode(
 }
 
 /**
+ * An iframe of the page's AX tree.
+ */
+type IframeNode = {
+  backendNodeId: number;
+  name: string;
+  /** The `role:name` of the dialogs and headings that contain it. */
+  path: string[];
+};
+
+/**
+ * Lists the iframes of a page AX tree, in tree order. CDP leaves hidden
+ * iframes (`display: none`) out of the tree; their content is not listed
+ * either.
+ *
+ * @param roots The tree roots.
+ * @returns The iframes with a DOM node.
+ */
+function findIframeNodes(roots: RawA11yNode[]): IframeNode[] {
+  const iframes: IframeNode[] = [];
+  const visit = (node: RawA11yNode, path: string[]): void => {
+    if (
+      node.role === 'iframe' &&
+      !node.ignored &&
+      node.backendDOMNodeId !== undefined
+    ) {
+      iframes.push({
+        backendNodeId: node.backendDOMNodeId,
+        name: node.name ?? '',
+        path,
+      });
+    }
+    const childPath =
+      node.role === 'dialog' || node.role === 'heading'
+        ? [...path, `${node.role}:${node.name ?? ''}`]
+        : path;
+    for (const child of node.children ?? []) {
+      visit(child, childPath);
+    }
+  };
+  roots.forEach((root) => visit(root, []));
+  return iframes;
+}
+
+/**
+ * Reads the AX tree of an iframe's content.
+ *
+ * A same-process iframe (same origin) is part of the page's CDP session:
+ * `getFullAXTree` takes its frame id. An out-of-process iframe (cross
+ * origin, with site isolation) is not ("Frame with the given frameId is
+ * not found") and gets its own CDP session from Playwright's `Frame`.
+ *
+ * @param page The Playwright page.
+ * @param cdpSession The page's CDP session.
+ * @param iframeSelector Playwright selector of the iframe element.
+ * @param frameId The CDP frame id of the iframe's content, when known.
+ * @returns The CDP AX nodes of the frame.
+ */
+async function collectFrameAxNodes(
+  page: Page,
+  cdpSession: CDPSession,
+  iframeSelector: string,
+  frameId: string | undefined,
+): Promise<CdpAXNode[]> {
+  if (frameId !== undefined) {
+    try {
+      const result = await cdpSession.send('Accessibility.getFullAXTree', {
+        frameId,
+      });
+      return result.nodes;
+    } catch {
+      // Out of process: read it through the frame's own session below.
+    }
+  }
+
+  const handle = await page
+    .locator(iframeSelector)
+    .first()
+    .elementHandle({ timeout: FRAME_ELEMENT_TIMEOUT_MS });
+  let frame: Frame | null | undefined;
+  try {
+    frame = await handle?.contentFrame();
+  } finally {
+    await handle?.dispose();
+  }
+  if (!frame) {
+    throw new Error(`Frame not found: ${iframeSelector} is not an iframe`);
+  }
+
+  let frameSession: CDPSession;
+  try {
+    frameSession = await page.context().newCDPSession(frame);
+  } catch {
+    // Same process, but the frame id is unknown (not a CSS selector).
+    throw new Error(
+      `Frame ${iframeSelector} cannot be read: target the iframe by testId or CSS selector`,
+    );
+  }
+  try {
+    await frameSession.send('Accessibility.enable');
+    const result = await frameSession.send('Accessibility.getFullAXTree');
+    return result.nodes;
+  } finally {
+    await frameSession.detach().catch(() => undefined);
+  }
+}
+
+/**
+ * Gets the CDP frame id of an iframe's content from a CSS selector of the
+ * iframe element.
+ *
+ * @param cdpSession The page's CDP session.
+ * @param iframeSelector The selector of the iframe element.
+ * @returns The frame id, or undefined when the selector is not CSS or
+ * matches no iframe.
+ */
+async function findFrameIdByCss(
+  cdpSession: CDPSession,
+  iframeSelector: string,
+): Promise<string | undefined> {
+  try {
+    const documentResult = await cdpSession.send('DOM.getDocument', {
+      depth: 0,
+    });
+    const { nodeId } = await cdpSession.send('DOM.querySelector', {
+      nodeId: documentResult.root.nodeId,
+      selector: iframeSelector,
+    });
+    if (!nodeId) {
+      return undefined;
+    }
+    const { node } = await cdpSession.send('DOM.describeNode', { nodeId });
+    return node.frameId;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Trims the AX tree of an iframe's content into snapshot nodes.
+ *
+ * @param page The Playwright page.
+ * @param axNodes The CDP AX nodes of the frame.
+ * @param frame The iframe.
+ * @returns The trimmed nodes and their refs.
+ */
+async function trimFrameTree(
+  page: Page,
+  axNodes: CdpAXNode[],
+  frame: SnapshotFrame,
+): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
+  return trimAxTreeToA11yNodes(page, buildAxTree(axNodes), undefined, frame);
+}
+
+/**
+ * Snapshots the content of the visible iframes of a page AX tree, at most
+ * `MAX_SNAPSHOT_FRAMES` frames with nodes. The nodes of the k-th frame with nodes get refs
+ * `f<k>e1`, `f<k>e2`, ..., and a path that starts with the iframe's own
+ * path and `iframe:<name>`. Iframes inside iframes are not read. A frame
+ * that cannot be read is logged and left out.
+ *
+ * @param page The Playwright page.
+ * @param cdpSession The page's CDP session.
+ * @param roots The page AX tree roots.
+ * @returns The nodes and refs of the frames, in tree order.
+ */
+async function snapshotChildFrames(
+  page: Page,
+  cdpSession: CDPSession,
+  roots: RawA11yNode[],
+): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
+  const nodes: A11yNodeTrimmed[] = [];
+  const refMap = new Map<string, string>();
+  const iframes = findIframeNodes(roots);
+  if (iframes.length === 0) {
+    return { nodes, refMap };
+  }
+
+  let frameCount = 0;
+  await cdpSession.send('Accessibility.enable');
+  try {
+    for (const iframe of iframes) {
+      if (frameCount === MAX_SNAPSHOT_FRAMES) {
+        break;
+      }
+      try {
+        const iframeSelector = await buildSelectorFromBackendNode(
+          page,
+          iframe.backendNodeId,
+        );
+        if (
+          iframeSelector === undefined ||
+          iframeSelector === UNREACHABLE_REF_SELECTOR ||
+          !(await page.locator(iframeSelector).isVisible())
+        ) {
+          continue;
+        }
+        const { node } = await cdpSession.send('DOM.describeNode', {
+          backendNodeId: iframe.backendNodeId,
+        });
+        const axNodes = await collectFrameAxNodes(
+          page,
+          cdpSession,
+          iframeSelector,
+          node.frameId,
+        );
+        const frameTree = await trimFrameTree(page, axNodes, {
+          iframeSelector,
+          refPrefix: `f${frameCount + 1}`,
+          path: [...iframe.path, `iframe:${iframe.name}`],
+        });
+        if (frameTree.nodes.length === 0) {
+          continue;
+        }
+        frameCount += 1;
+        nodes.push(...frameTree.nodes);
+        frameTree.refMap.forEach((selector, ref) => refMap.set(ref, selector));
+      } catch (error) {
+        debugWarn(
+          `Failed to snapshot iframe backendDOMNodeId=${iframe.backendNodeId}:`,
+          error,
+        );
+      }
+    }
+  } finally {
+    await cdpSession.send('Accessibility.disable').catch(() => undefined);
+  }
+  return { nodes, refMap };
+}
+
+/**
+ * Snapshots only the content of one iframe, for `describe_screen` with a
+ * frame. Its refs are `f1e1`, `f1e2`, ...
+ *
+ * @param page The Playwright page.
+ * @param cdpSession The page's CDP session.
+ * @param iframeSelector Playwright selector of the iframe element.
+ * @returns The trimmed nodes and their refs.
+ */
+async function snapshotFrame(
+  page: Page,
+  cdpSession: CDPSession,
+  iframeSelector: string,
+): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
+  try {
+    await page
+      .locator(iframeSelector)
+      .first()
+      .waitFor({ state: 'attached', timeout: FRAME_ATTACH_TIMEOUT_MS });
+  } catch {
+    throw new Error(`Frame not found: no element matches ${iframeSelector}`);
+  }
+  await cdpSession.send('Accessibility.enable');
+  try {
+    const axNodes = await collectFrameAxNodes(
+      page,
+      cdpSession,
+      iframeSelector,
+      await findFrameIdByCss(cdpSession, iframeSelector),
+    );
+    return await trimFrameTree(page, axNodes, {
+      iframeSelector,
+      refPrefix: 'f1',
+      path: [],
+    });
+  } finally {
+    await cdpSession.send('Accessibility.disable').catch(() => undefined);
+  }
+}
+
+/**
  * Collect a trimmed accessibility tree snapshot with deterministic refs.
+ *
+ * A snapshot of the whole page also holds the content of its visible
+ * iframes (see `snapshotChildFrames`), after the page's own nodes, with
+ * refs `f1e1`, `f1e2`, ... With `frameSelector`, the snapshot holds only
+ * the content of that iframe.
  *
  * @param page The Playwright page to snapshot
  * @param rootSelector Optional CSS selector to scope the snapshot to a specific element
+ * @param frameSelector Optional Playwright selector of an iframe element: snapshot only its content
  * @returns Object containing trimmed accessibility nodes and a reference map (e1, e2, etc.)
  */
 export async function collectTrimmedA11ySnapshot(
   page: Page,
   rootSelector?: string,
+  frameSelector?: string,
 ): Promise<{
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
 }> {
   return withCdpSession(page, async (cdpSession) => {
+    if (frameSelector !== undefined) {
+      if (rootSelector !== undefined) {
+        throw new Error('rootSelector cannot be combined with frame');
+      }
+      const frameTree = await snapshotFrame(page, cdpSession, frameSelector);
+      await enrichNodesWithDOMContext(page, frameTree.nodes, frameTree.refMap);
+      return {
+        nodes: collapseIdenticalRuns(frameTree.nodes),
+        refMap: frameTree.refMap,
+      };
+    }
+
     const { roots: parsedRoots, rootBackendNodeId } = await collectRawAxTree(
       page,
       cdpSession,
@@ -1010,6 +1344,12 @@ export async function collectTrimmedA11ySnapshot(
       parsedRoots,
       scope,
     );
+
+    if (rootSelector === undefined) {
+      const frames = await snapshotChildFrames(page, cdpSession, parsedRoots);
+      nodes.push(...frames.nodes);
+      frames.refMap.forEach((selector, ref) => refMap.set(ref, selector));
+    }
 
     await enrichNodesWithDOMContext(page, nodes, refMap);
 
