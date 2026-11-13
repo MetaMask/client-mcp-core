@@ -29,16 +29,16 @@ export default defineConfig({
       // files by default, but not `test-d.ts` files.
       exclude: ['src/**/*.test-d.ts', 'src/tools/test-utils/'],
 
-      // Coverage thresholds. If the coverage is below these thresholds, the
-      // test will fail.
+      // Coverage floors. The run fails when coverage drops below these.
+      // Keep whole numbers. Do not turn on `autoUpdate`, and do not commit the
+      // exact percentages from a test run: every PR rewrites these same four
+      // lines, so open PRs conflict with each other on merge. Raise a floor
+      // only after coverage has stayed a full point above it.
       thresholds: {
-        // Auto-update the coverage thresholds when running locally.
-        // Disabled in CI to prevent non-deterministic config changes.
-        autoUpdate: !process.env.CI,
-        branches: 95.28,
-        functions: 97.01,
-        lines: 97.87,
-        statements: 97.73,
+        branches: 94,
+        functions: 96,
+        lines: 97,
+        statements: 97,
       },
     },
 
