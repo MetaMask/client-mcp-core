@@ -1506,6 +1506,35 @@ describe('createServer with logging', () => {
     expect(logContent).toContain('/health');
   });
 
+  it('logs the outcome of each tool call, not only the HTTP status', async () => {
+    const post = async (body: unknown): Promise<number> => {
+      const res = await httpRequest(
+        `http://127.0.0.1:${state.port}/tool/click`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+      return res.status;
+    };
+
+    expect(await post({ testId: 'confirm' })).toBe(200);
+    expect(await post({})).toBe(400);
+    await httpRequest(`http://127.0.0.1:${state.port}/health`);
+
+    await vi.waitFor(async () => {
+      const log = await fs.readFile(path.join(tmpDir, 'daemon.log'), 'utf-8');
+      expect(log).toMatch(
+        /\[INFO\] POST \/tool\/click 200 ok=false code=MM_NO_ACTIVE_SESSION \d+ms/u,
+      );
+      expect(log).toMatch(
+        /\[INFO\] POST \/tool\/click 400 ok=false code=VALIDATION_ERROR \d+ms/u,
+      );
+      expect(log).toMatch(/\[INFO\] GET \/health 200 \d+ms/u);
+    });
+  });
+
   it('logs fatal errors to stderr and file', async () => {
     const stderrSpy = vi
       .spyOn(process.stderr, 'write')

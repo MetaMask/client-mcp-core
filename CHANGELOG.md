@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
 - feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes
 - feat: add `mm inspect` (attributes, disabled/read-only flags, computed styles, effective opacity); `mm type` fails fast on read-only or disabled fields
+- feat: add `mm hover <target>` (Playwright `locator.hover()`, with refs, test IDs, selectors and `--within`) and `mm unhover`, which moves the pointer off the page; add `mm set-viewport <width> <height>` and `mm reset-viewport`, so agents no longer drive the pointer and the viewport with `mm cdp`. `ErrorCodes` adds `MM_HOVER_FAILED` and `MM_VIEWPORT_FAILED`
 - feat: add `MM_ARTIFACTS_DIR` environment variable to let the host override the directory screenshots and other session artifacts are written to. On launch, core resolves it (falling back to the workflow context's `config.artifactsDir`) and passes it to `ISessionManager.launch()` as `artifactsDir` for session managers to forward to their launcher.
 
 ### Changed
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `.mm-daemon.log` request line has the outcome of the call, for example `POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT 15080ms`. Before, a failed tool call was logged like a success (`POST /tool/click 200 15080ms`), because the daemon answers 200 and puts the failure in the body. A `run_steps` line with failed steps adds `failed=<n>/<total>` and the first failed step's code
 - `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
 
 ## [0.13.1]
