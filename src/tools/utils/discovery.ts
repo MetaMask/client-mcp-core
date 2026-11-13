@@ -1282,20 +1282,18 @@ export type WithinScope = {
 };
 
 /**
- * Resolve a target element to a Playwright Locator, optionally scoped within a parent.
+ * Resolve a target to the Playwright selector that locates it.
  *
- * @param scope The Playwright Page or Locator to search within
  * @param targetType The type of target identifier (a11yRef, testId, or CSS selector)
  * @param targetValue The target value to resolve
  * @param refMap Map of a11y refs to selectors (used when targetType is 'a11yRef')
- * @returns Playwright Locator for the resolved element
+ * @returns The selector for the target
  */
-function resolveTargetScoped(
-  scope: Page | Locator,
+function targetSelector(
   targetType: TargetType,
   targetValue: string,
   refMap: Map<string, string>,
-): Locator {
+): string {
   switch (targetType) {
     case 'a11yRef': {
       const selector = refMap.get(targetValue);
@@ -1310,17 +1308,35 @@ function resolveTargetScoped(
           `Ref ${targetValue} is inside a closed shadow root: it cannot be targeted`,
         );
       }
-      return scope.locator(selector);
+      return selector;
     }
     case 'testId':
-      return scope.locator(`[data-testid="${targetValue}"]`);
+      return `[data-testid="${targetValue}"]`;
     case 'selector':
-      return scope.locator(targetValue);
+      return targetValue;
     default: {
       const exhaustiveCheck: never = targetType;
       throw new Error(`Unknown target type: ${exhaustiveCheck as string}`);
     }
   }
+}
+
+/**
+ * Resolve a target element to a Playwright Locator, optionally scoped within a parent.
+ *
+ * @param scope The Playwright Page or Locator to search within
+ * @param targetType The type of target identifier (a11yRef, testId, or CSS selector)
+ * @param targetValue The target value to resolve
+ * @param refMap Map of a11y refs to selectors (used when targetType is 'a11yRef')
+ * @returns Playwright Locator for the resolved element
+ */
+function resolveTargetScoped(
+  scope: Page | Locator,
+  targetType: TargetType,
+  targetValue: string,
+  refMap: Map<string, string>,
+): Locator {
+  return scope.locator(targetSelector(targetType, targetValue, refMap));
 }
 
 /**
@@ -1399,6 +1415,60 @@ async function assertStampedRefOnPage(
  */
 const WITHIN_RECHECK_DELAY_MS = 100;
 
+export type WaitForTargetOptions = {
+  /**
+   * Fail with "matched 0 elements" when the target matches no element after
+   * this wait, instead of waiting for the whole timeout for it to appear.
+   */
+  missingTargetWaitMs?: number;
+};
+
+/**
+ * Throws when a locator still matches no element after a short wait.
+ *
+ * @param locator The target locator
+ * @param waitMs How long to wait for a first match
+ * @param description The target, for the error message
+ */
+async function assertTargetMatches(
+  locator: Locator,
+  waitMs: number,
+  description: string,
+): Promise<void> {
+  try {
+    await locator.first().waitFor({ state: 'attached', timeout: waitMs });
+  } catch (error) {
+    if (!(error instanceof Error) || error.name !== 'TimeoutError') {
+      throw error;
+    }
+    if ((await locator.count()) === 0) {
+      throw new Error(`${description} matched 0 elements after ${waitMs}ms`);
+    }
+  }
+}
+
+/**
+ * Describes a target by its selector, for "matched 0 elements" errors.
+ *
+ * @param targetType The type of target identifier
+ * @param targetValue The target value
+ * @param refMap Map of a11y refs to selectors
+ * @param within The parent scope the target was searched in, if any
+ * @returns For example `Selector [data-testid="x"] (testId:x) inside testId:y`
+ */
+function describeTargetSelector(
+  targetType: TargetType,
+  targetValue: string,
+  refMap: Map<string, string>,
+  within?: WithinScope,
+): string {
+  const selector = targetSelector(targetType, targetValue, refMap);
+  const target =
+    targetType === 'selector' ? '' : ` (${targetType}:${targetValue})`;
+  const scope = within ? ` inside ${within.type}:${within.value}` : '';
+  return `Selector ${selector}${target}${scope}`;
+}
+
 /**
  * Wait for a target element to become visible, optionally scoped within a parent.
  *
@@ -1408,6 +1478,7 @@ const WITHIN_RECHECK_DELAY_MS = 100;
  * @param refMap Map of a11y refs to selectors (used when targetType is 'a11yRef')
  * @param timeoutMs Maximum time to wait in milliseconds
  * @param within Optional parent scope — resolves the target within this element
+ * @param options Optional wait behavior
  * @returns Playwright Locator for the visible element
  */
 export async function waitForTarget(
@@ -1417,8 +1488,27 @@ export async function waitForTarget(
   refMap: Map<string, string>,
   timeoutMs: number,
   within?: WithinScope,
+  options?: WaitForTargetOptions,
 ): Promise<Locator> {
   const deadline = Date.now() + timeoutMs;
+  const failIfMissing = async (
+    locator: Locator,
+    scope?: WithinScope,
+  ): Promise<void> => {
+    if (options?.missingTargetWaitMs === undefined) {
+      return;
+    }
+    // A Playwright timeout of 0 means no timeout.
+    const waitMs = Math.min(options.missingTargetWaitMs, deadline - Date.now());
+    if (waitMs <= 0) {
+      return;
+    }
+    await assertTargetMatches(
+      locator,
+      waitMs,
+      describeTargetSelector(targetType, targetValue, refMap, scope),
+    );
+  };
   if (within) {
     await assertStampedRefOnPage(page, within.type, within.value, refMap);
   }
@@ -1487,6 +1577,7 @@ export async function waitForTarget(
         throw new Error(`Ref ${targetValue} is not inside the within element`);
       }
     }
+    await failIfMissing(refLocator);
     const attachRemaining = deadline - Date.now();
     if (attachRemaining <= 0) {
       throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
@@ -1501,6 +1592,7 @@ export async function waitForTarget(
     locator = contained;
   } else {
     locator = resolveTargetScoped(scope, targetType, targetValue, refMap);
+    await failIfMissing(locator, within);
   }
   const childRemaining = deadline - Date.now();
   if (childRemaining <= 0) {

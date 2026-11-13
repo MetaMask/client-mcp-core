@@ -38,6 +38,7 @@ import type { RunStepsResult } from '../tools/types/tool-outputs.js';
 import {
   ANIMATION_SETTLE_GRACE_MS,
   ANIMATION_SETTLE_TIMEOUT_MS,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_TIMEOUT_MS,
   MAX_IDLE_CHECK_INTERVAL_MS,
   MOBILE_SETTLE_MAX_MS,
@@ -749,7 +750,11 @@ export function createServer(config: ServerConfig): ServerInstance {
     }
 
     const inputRecord = validatedInput as Record<string, unknown>;
-    const toolTimeoutMs = inputRecord?.timeoutMs;
+    // click has no schema default (no timeoutMs means fail fast when the
+    // target is missing), but it still runs for up to 15 s.
+    const toolTimeoutMs =
+      inputRecord?.timeoutMs ??
+      (toolName === 'click' ? DEFAULT_INTERACTION_TIMEOUT_MS : undefined);
     const queueTimeoutMs =
       typeof toolTimeoutMs === 'number' && toolTimeoutMs > 0
         ? computeTimeoutBudget(toolTimeoutMs).queue

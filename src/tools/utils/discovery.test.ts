@@ -2676,6 +2676,219 @@ describe('waitForTarget', () => {
     expect(contained.waitFor).not.toHaveBeenCalled();
   });
 
+  describe('missingTargetWaitMs', () => {
+    function createTimeoutError(): Error {
+      const error = new Error('locator.waitFor: Timeout 2000ms exceeded.');
+      error.name = 'TimeoutError';
+      return error;
+    }
+
+    /**
+     * Builds a locator whose first match is never attached (`count` 0) or
+     * is attached at once.
+     *
+     * @param count - Matches of the locator.
+     * @returns The locator and its `first()` locator.
+     */
+    function createCountedLocator(count: number) {
+      const firstLocator = {
+        waitFor: vi
+          .fn()
+          .mockImplementation(async () =>
+            count === 0 ? Promise.reject(createTimeoutError()) : undefined,
+          ),
+      };
+      const locator = {
+        ...createMockLocator({ visible: true }),
+        first: vi.fn().mockReturnValue(firstLocator),
+        count: vi.fn().mockResolvedValue(count),
+      };
+      return { locator, firstLocator };
+    }
+
+    it('fails after the short wait when the target matches no element', async () => {
+      const { locator, firstLocator } = createCountedLocator(0);
+      const page = {
+        locator: vi.fn().mockReturnValue(locator),
+      } as unknown as Page;
+
+      await expect(
+        waitForTarget(page, 'testId', 'confirm', new Map(), 15000, undefined, {
+          missingTargetWaitMs: 2000,
+        }),
+      ).rejects.toThrowError(
+        'Selector [data-testid="confirm"] (testId:confirm) matched 0 elements after 2000ms',
+      );
+      expect(firstLocator.waitFor).toHaveBeenCalledWith({
+        state: 'attached',
+        timeout: 2000,
+      });
+      expect(locator.waitFor).not.toHaveBeenCalled();
+    });
+
+    it('names a selector target by its selector only', async () => {
+      const { locator } = createCountedLocator(0);
+      const page = {
+        locator: vi.fn().mockReturnValue(locator),
+      } as unknown as Page;
+
+      await expect(
+        waitForTarget(
+          page,
+          'selector',
+          'text=Next',
+          new Map(),
+          15000,
+          undefined,
+          {
+            missingTargetWaitMs: 2000,
+          },
+        ),
+      ).rejects.toThrowError(
+        /^Selector text=Next matched 0 elements after 2000ms$/u,
+      );
+    });
+
+    it('waits for visibility when the target matches an element', async () => {
+      const { locator } = createCountedLocator(1);
+      const page = {
+        locator: vi.fn().mockReturnValue(locator),
+      } as unknown as Page;
+
+      const result = await waitForTarget(
+        page,
+        'testId',
+        'confirm',
+        new Map(),
+        15000,
+        undefined,
+        { missingTargetWaitMs: 2000 },
+      );
+
+      expect(locator.waitFor).toHaveBeenCalledWith({
+        state: 'visible',
+        timeout: expectRemaining(15000),
+      });
+      expect(result).toBe(locator);
+    });
+
+    it('waits for visibility when the target is attached just after the short wait', async () => {
+      const { locator } = createCountedLocator(0);
+      locator.count.mockResolvedValue(1);
+      const page = {
+        locator: vi.fn().mockReturnValue(locator),
+      } as unknown as Page;
+
+      const result = await waitForTarget(
+        page,
+        'testId',
+        'confirm',
+        new Map(),
+        15000,
+        undefined,
+        { missingTargetWaitMs: 2000 },
+      );
+
+      expect(locator.waitFor).toHaveBeenCalled();
+      expect(result).toBe(locator);
+    });
+
+    it('rethrows an error that is not a timeout', async () => {
+      const { locator, firstLocator } = createCountedLocator(1);
+      firstLocator.waitFor.mockRejectedValue(
+        new Error('Target page, context or browser has been closed'),
+      );
+      const page = {
+        locator: vi.fn().mockReturnValue(locator),
+      } as unknown as Page;
+
+      await expect(
+        waitForTarget(page, 'testId', 'confirm', new Map(), 15000, undefined, {
+          missingTargetWaitMs: 2000,
+        }),
+      ).rejects.toThrowError('Target page, context or browser has been closed');
+      expect(locator.count).not.toHaveBeenCalled();
+    });
+
+    it('waits no longer than the timeout', async () => {
+      const { locator, firstLocator } = createCountedLocator(1);
+      const page = {
+        locator: vi.fn().mockReturnValue(locator),
+      } as unknown as Page;
+
+      await waitForTarget(
+        page,
+        'testId',
+        'confirm',
+        new Map(),
+        500,
+        undefined,
+        {
+          missingTargetWaitMs: 2000,
+        },
+      );
+
+      expect(firstLocator.waitFor).toHaveBeenCalledWith({
+        state: 'attached',
+        timeout: expectRemaining(500),
+      });
+    });
+
+    it('names the within parent when no element inside it matches', async () => {
+      const { locator: childLocator } = createCountedLocator(0);
+      const firstParentLocator = {
+        waitFor: vi.fn().mockResolvedValue(undefined),
+        locator: vi.fn().mockReturnValue(childLocator),
+      };
+      const page = {
+        locator: vi.fn().mockReturnValue({
+          first: vi.fn().mockReturnValue(firstParentLocator),
+        }),
+      } as unknown as Page;
+
+      await expect(
+        waitForTarget(
+          page,
+          'testId',
+          'end-accessory',
+          new Map(),
+          15000,
+          { type: 'testId', value: 'account-cell' },
+          { missingTargetWaitMs: 2000 },
+        ),
+      ).rejects.toThrowError(
+        'Selector [data-testid="end-accessory"] (testId:end-accessory) inside testId:account-cell matched 0 elements after 2000ms',
+      );
+      expect(childLocator.waitFor).not.toHaveBeenCalled();
+    });
+
+    it('fails after the short wait when a within ref is not on the page', async () => {
+      const { page, refMap, refLocator, firstRef, contained } =
+        createWithinRefPage({ ref: 0, contained: 0 });
+      firstRef.waitFor.mockRejectedValue(createTimeoutError());
+
+      await expect(
+        waitForTarget(
+          page,
+          'a11yRef',
+          'e2',
+          refMap,
+          15000,
+          { type: 'a11yRef', value: 'e1' },
+          { missingTargetWaitMs: 2000 },
+        ),
+      ).rejects.toThrowError(
+        'Selector css=#list >> css=button:nth-of-type(2) (a11yRef:e2) matched 0 elements after 2000ms',
+      );
+      expect(firstRef.waitFor).toHaveBeenCalledExactlyOnceWith({
+        state: 'attached',
+        timeout: 2000,
+      });
+      expect(refLocator.count).toHaveBeenCalled();
+      expect(contained.waitFor).not.toHaveBeenCalled();
+    });
+  });
+
   it('throws on timeout when no time is left after the within checks', async () => {
     const { page, refMap } = createWithinRefPage({ ref: 0, contained: 0 });
     const now = vi.spyOn(Date, 'now');

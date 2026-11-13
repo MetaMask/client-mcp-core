@@ -466,13 +466,19 @@ export const withinTargetSchema = z
 
 export const clickInputSchema = targetSelectionSchema.and(
   z.object({
+    // No default: without a timeout, a browser click fails fast when the
+    // target matches no element; with one, it waits for it.
     timeoutMs: z
       .number()
       .int()
       .min(0)
       .max(60000)
-      .default(15000)
-      .describe('Timeout to wait for element to become visible'),
+      .optional()
+      .describe(
+        'Timeout for the whole click, in ms (default 15000). Browser: without ' +
+          'it, a target that matches no element after 2s fails at once with ' +
+          'MM_TARGET_NOT_FOUND; with it, the click waits for the target to appear',
+      ),
     within: withinTargetSchema.optional(),
     dismissKeyboard: z
       .boolean()

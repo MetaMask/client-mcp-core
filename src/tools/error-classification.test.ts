@@ -22,10 +22,126 @@ import {
   classifyStateError,
   classifySeedingError,
   classifyContextError,
+  lastPlaywrightLogStep,
 } from './error-classification.js';
 import { ErrorCodes } from './types';
 
 describe('error-classification', () => {
+  describe('lastPlaywrightLogStep', () => {
+    it('skips the retry lines after the step that says why a click failed', () => {
+      const error = new Error(
+        [
+          'locator.click: Timeout 1500ms exceeded.',
+          'Call log:',
+          `  - waiting for locator('#covered')`,
+          '    - locator resolved to <button id="covered">Covered</button>',
+          '  - attempting click action',
+          '    2 × waiting for element to be visible, enabled and stable',
+          '      - element is visible, enabled and stable',
+          '      - scrolling into view if needed',
+          '      - done scrolling',
+          '      - <div id="overlay"></div> intercepts pointer events',
+          '    - retrying click action',
+          '    - waiting 20ms',
+          '    3 × waiting for element to be visible, enabled and stable',
+          '      - element is visible, enabled and stable',
+          '      - scrolling into view if needed',
+          '      - done scrolling',
+          '      - <div id="overlay"></div> intercepts pointer events',
+          '    - retrying click action',
+          '      - waiting 500ms',
+          '',
+        ].join('\n'),
+      );
+
+      expect(lastPlaywrightLogStep(error)).toBe(
+        '<div id="overlay"></div> intercepts pointer events',
+      );
+    });
+
+    it('returns a disabled element step', () => {
+      const error = new Error(
+        [
+          'locator.click: Timeout 1500ms exceeded.',
+          'Call log:',
+          `  - waiting for locator('#disabled')`,
+          '    - locator resolved to <button disabled id="disabled">D</button>',
+          '  - attempting click action',
+          '    2 × waiting for element to be visible, enabled and stable',
+          '      - element is not enabled',
+          '    - retrying click action',
+          '      - waiting 500ms',
+        ].join('\n'),
+      );
+
+      expect(lastPlaywrightLogStep(error)).toBe('element is not enabled');
+    });
+
+    it('drops the repeat count of a hidden element step', () => {
+      const error = new Error(
+        [
+          'locator.waitFor: Timeout 1500ms exceeded.',
+          'Call log:',
+          `  - waiting for locator('#hidden') to be visible`,
+          '    8 × locator resolved to hidden <input id="hidden" type="checkbox"/>',
+          '',
+        ].join('\n'),
+      );
+
+      expect(lastPlaywrightLogStep(error)).toBe(
+        'locator resolved to hidden <input id="hidden" type="checkbox"/>',
+      );
+    });
+
+    it('ignores the color codes Playwright adds to call log lines when colors are on', () => {
+      const dim = (line: string): string => `\u001b[2m${line}\u001b[22m`;
+      const error = new Error(
+        [
+          'locator.click: Timeout 3000ms exceeded.',
+          'Call log:',
+          dim(`  - waiting for locator('[data-testid="continue-button"]')`),
+          dim('  - attempting click action'),
+          dim('    2 × waiting for element to be visible, enabled and stable'),
+          dim('      - element is not enabled'),
+          dim('    - retrying click action'),
+          dim('      - waiting 500ms'),
+          '',
+        ].join('\n'),
+      );
+      const hidden = new Error(
+        [
+          'locator.waitFor: Timeout 3000ms exceeded.',
+          'Call log:',
+          dim(`  - waiting for locator('#terms') to be visible`),
+          dim(
+            '    11 × locator resolved to hidden <input id="terms" type="checkbox"/>',
+          ),
+          '',
+        ].join('\n'),
+      );
+
+      expect(lastPlaywrightLogStep(error)).toBe('element is not enabled');
+      expect(lastPlaywrightLogStep(hidden)).toBe(
+        'locator resolved to hidden <input id="terms" type="checkbox"/>',
+      );
+    });
+
+    it('returns undefined for an error without a call log', () => {
+      expect(
+        lastPlaywrightLogStep(new Error('Timeout 5000ms exceeded')),
+      ).toBeUndefined();
+      expect(lastPlaywrightLogStep('not an error')).toBeUndefined();
+    });
+
+    it('returns undefined for an empty call log', () => {
+      expect(
+        lastPlaywrightLogStep(
+          new Error('Timeout 5000ms exceeded.\nCall log:\n'),
+        ),
+      ).toBeUndefined();
+    });
+  });
+
   describe('isPageClosedError', () => {
     describe('when error indicates page closure', () => {
       it('detects "Target page, context or browser has been closed"', () => {
@@ -308,6 +424,19 @@ describe('error-classification', () => {
 
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+      });
+
+      it('returns TARGET_NOT_FOUND code when the target matched 0 elements', () => {
+        const error = new Error(
+          'Selector [data-testid="confirm"] (testId:confirm) matched 0 elements after 2000ms',
+        );
+
+        const result = classifyClickError(error);
+
+        expect(result).toStrictEqual({
+          code: ErrorCodes.MM_TARGET_NOT_FOUND,
+          message: error.message,
+        });
       });
     });
 
