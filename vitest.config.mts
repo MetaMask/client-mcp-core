@@ -37,8 +37,8 @@ export default defineConfig({
         autoUpdate: !process.env.CI,
         branches: 95.28,
         functions: 97.01,
-        lines: 97.84,
-        statements: 97.71,
+        lines: 97.87,
+        statements: 97.73,
       },
     },
 
