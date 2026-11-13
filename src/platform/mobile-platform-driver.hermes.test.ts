@@ -361,6 +361,45 @@ describe('MobilePlatformDriver hermes delegation', () => {
       );
       expect(mocks.hasAmbiguousTarget).toHaveBeenCalledWith(matchingTargets);
     });
+
+    it('filters candidates to the pinned device', async () => {
+      mocks.resolve.mockReturnValue({
+        metroPort: 8081,
+        appId: 'io.metamask',
+        pinnedDeviceId: 'dev-2',
+      });
+      const targets = [
+        {
+          id: 'page-1',
+          title: 'MetaMask',
+          appId: 'io.metamask',
+          webSocketDebuggerUrl: 'ws://localhost:8081/a',
+          reactNative: { logicalDeviceId: 'dev-1' },
+        },
+        {
+          id: 'page-2',
+          title: 'MetaMask',
+          appId: 'io.metamask',
+          webSocketDebuggerUrl: 'ws://localhost:8081/b',
+          reactNative: { logicalDeviceId: 'dev-2' },
+        },
+      ];
+      mocks.fetchDiscoveryTargets.mockResolvedValue(targets);
+      mocks.selectHermesTarget.mockReturnValue({
+        ok: true,
+        target: targets[1],
+      });
+      const driver = new MobilePlatformDriver(createBackend());
+
+      const result = await driver.hermesTargets({});
+
+      expect(result.candidates.map(({ id }) => id)).toStrictEqual(['page-2']);
+      expect(mocks.selectHermesTarget).toHaveBeenCalledWith(
+        targets,
+        'io.metamask',
+        'dev-2',
+      );
+    });
   });
 });
 

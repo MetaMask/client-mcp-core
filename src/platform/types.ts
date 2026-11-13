@@ -41,8 +41,9 @@ export type TypeActionResult = {
 };
 
 /**
- * What `scrollToElement` did. `swipes` and `inViewport` come from device-mcp
- * releases that check the viewport; older releases report only the element.
+ * What `scrollToElement` did. Mobile reports the swipe count and whether the
+ * element is in the viewport (device-mcp only returns after checking it);
+ * the browser reports nothing extra.
  */
 export type ScrollToElementOutcome = {
   swipes?: number;
