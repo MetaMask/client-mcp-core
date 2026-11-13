@@ -652,6 +652,16 @@ describe('error-classification', () => {
   });
 
   describe('classifyDiscoveryError', () => {
+    it.each([
+      'Frame not found: no element matches iframe.chart',
+      'Unknown a11yRef: e9. Available refs: e1',
+    ])('returns TARGET_NOT_FOUND for %j', (message) => {
+      expect(classifyDiscoveryError(new Error(message))).toStrictEqual({
+        code: ErrorCodes.MM_TARGET_NOT_FOUND,
+        message,
+      });
+    });
+
     describe('when error indicates page closure', () => {
       it('returns PAGE_CLOSED code', () => {
         // Arrange

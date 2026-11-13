@@ -312,6 +312,13 @@ export function classifyDiscoveryError(error: unknown): {
     }
   }
 
+  if (
+    message.startsWith('Frame not found') ||
+    message.startsWith('Unknown a11yRef')
+  ) {
+    return { code: ErrorCodes.MM_TARGET_NOT_FOUND, message };
+  }
+
   return {
     code: ErrorCodes.MM_DISCOVERY_FAILED,
     message: `Discovery failed: ${message}`,

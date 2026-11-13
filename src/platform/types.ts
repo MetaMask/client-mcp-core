@@ -175,8 +175,14 @@ export type IPlatformDriver = {
     signal?: AbortSignal,
   ): Promise<HoverActionResult>;
 
+  /**
+   * @param rootSelector - Optional CSS selector that scopes the tree.
+   * @param frameSelector - Browser only: Playwright selector of an iframe
+   * element; the tree is then the content of that iframe only.
+   */
   getAccessibilityTree(
     rootSelector?: string,
+    frameSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }>;
 
   getTestIds(limit?: number): Promise<TestIdItem[]>;

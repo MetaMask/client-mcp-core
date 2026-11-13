@@ -611,6 +611,28 @@ describe('device tool schemas', () => {
           .success,
       ).toBe(false);
     });
+
+    it('accepts a ref inside an iframe', () => {
+      expect(clickInputSchema.safeParse({ a11yRef: 'f1e3' }).success).toBe(
+        true,
+      );
+      expect(clickInputSchema.safeParse({ a11yRef: 'f1' }).success).toBe(false);
+    });
+
+    it('accepts exactly one iframe target in frame', () => {
+      expect(
+        clickInputSchema.safeParse({
+          testId: 'zoom-in',
+          frame: { testId: 'advanced-chart-iframe' },
+        }).success,
+      ).toBe(true);
+      expect(
+        clickInputSchema.safeParse({
+          testId: 'zoom-in',
+          frame: { testId: 'chart', selector: 'iframe' },
+        }).success,
+      ).toBe(false);
+    });
   });
 
   describe('scrollToElementInputSchema', () => {

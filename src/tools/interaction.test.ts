@@ -1710,3 +1710,148 @@ describe('interaction', () => {
     );
   });
 });
+
+describe('interaction frame scope', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const CHART = '[data-testid="advanced-chart-iframe"]';
+  const inChart = (selector: string): string =>
+    `${CHART} >> internal:control=enter-frame >> ${selector}`;
+
+  it('moves a testId target into the iframe of frame', async () => {
+    const page = {};
+    const context = createMockContext({ page });
+    vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+      createMockLocator() as any,
+    );
+
+    const result = await clickTool(
+      { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+      page,
+      'selector',
+      inChart('[data-testid="zoom-in"]'),
+      context.refMap,
+      15000,
+      undefined,
+    );
+  });
+
+  it('moves the within parent into the iframe and keeps the target relative to it', async () => {
+    const page = {};
+    const context = createMockContext({ page });
+    vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+      createMockLocator() as any,
+    );
+
+    const result = await hoverTool(
+      {
+        selector: 'canvas',
+        within: { testId: 'chart-pane' },
+        frame: { selector: 'iframe.chart' },
+      },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+      page,
+      'selector',
+      'canvas',
+      context.refMap,
+      15000,
+      {
+        type: 'selector',
+        value:
+          'iframe.chart >> internal:control=enter-frame >> [data-testid="chart-pane"]',
+      },
+    );
+  });
+
+  it('accepts a ref of the iframe element as frame', async () => {
+    const page = {};
+    const context = createMockContext({
+      page,
+      refMap: new Map([['e7', CHART]]),
+    });
+    vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+      createMockLocator() as any,
+    );
+
+    const result = await getTextTool(
+      { selector: 'text=No chart data', frame: { a11yRef: 'e7' } },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+      page,
+      'selector',
+      inChart('text=No chart data'),
+      context.refMap,
+      15000,
+      undefined,
+    );
+  });
+
+  it.each([
+    ['a ref target', { a11yRef: 'f1e2', frame: { testId: 'chart' } }],
+    [
+      'a ref within',
+      { testId: 'zoom', within: { a11yRef: 'e3' }, frame: { testId: 'chart' } },
+    ],
+  ])('rejects frame with %s', async (_label, input) => {
+    const waitForTarget = vi.spyOn(discoveryModule, 'waitForTarget');
+
+    const result = await waitForTool(input, createMockContext());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+      expect(result.error.message).toContain(
+        'refs from a snapshot already point into their frame',
+      );
+    }
+    expect(waitForTarget).not.toHaveBeenCalled();
+  });
+
+  it('returns MM_TARGET_NOT_FOUND for an unknown frame ref', async () => {
+    const result = await typeTool(
+      { testId: 'amount', text: '1', frame: { a11yRef: 'e9' } },
+      createMockContext(),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+      expect(result.error.message).toContain('Unknown a11yRef: e9');
+    }
+  });
+
+  it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM for frame on mobile', async () => {
+    const context = createMockContext();
+    const driver = context.driver as any;
+    context.driver = { ...driver, getPlatform: () => 'ios' };
+
+    const result = await inspectTool(
+      { testId: 'zoom-in', frame: { testId: 'chart' } },
+      context,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(
+        ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      );
+      expect(result.error.message).toBe(
+        'frame is not supported on ios platform',
+      );
+    }
+  });
+});

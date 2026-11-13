@@ -220,6 +220,65 @@ describe('screenshotTool', () => {
     });
   });
 
+  describe('with frame scoping', () => {
+    it.each([
+      ['the iframe', { frame: { testId: 'chart' } }, '[data-testid="chart"]'],
+      [
+        'an element inside the iframe',
+        { frame: { selector: 'iframe.chart' }, selector: '.legend' },
+        'iframe.chart >> internal:control=enter-frame >> .legend',
+      ],
+    ])('captures %s', async (_label, input, selector) => {
+      const context = createMockContext();
+      vi.spyOn(context.sessionManager, 'screenshot').mockResolvedValue({
+        path: '/path/to/frame.png',
+        width: 400,
+        height: 300,
+        base64: 'mock-base64',
+      });
+
+      const result = await screenshotTool({ name: 'frame', ...input }, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.screenshot).toHaveBeenCalledWith({
+        name: 'frame',
+        fullPage: true,
+        selector,
+      });
+    });
+
+    it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM for frame on mobile', async () => {
+      const context = createMockContext();
+      const driver = context.driver as any;
+      context.driver = { ...driver, getPlatform: () => 'ios' };
+
+      const result = await screenshotTool(
+        { frame: { testId: 'chart' } },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(
+          ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        );
+      }
+    });
+
+    it('returns MM_SCREENSHOT_FAILED for an unknown frame ref', async () => {
+      const result = await screenshotTool(
+        { frame: { a11yRef: 'e4' } },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_SCREENSHOT_FAILED);
+        expect(result.error.message).toContain('Unknown a11yRef: e4');
+      }
+    });
+  });
+
   describe('error handling', () => {
     it('generates default name when not provided', async () => {
       const context = createMockContext();

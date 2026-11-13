@@ -393,13 +393,16 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Capture the trimmed accessibility tree with deterministic refs.
    *
    * @param rootSelector - Optional CSS selector to scope the snapshot.
+   * @param frameSelector - Optional selector of an iframe element: snapshot
+   * only its content.
    * @returns The accessibility nodes and ref-to-selector map.
    */
   async getAccessibilityTree(
     rootSelector?: string,
+    frameSelector?: string,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
     const page = this.#getPage();
-    return collectTrimmedA11ySnapshot(page, rootSelector);
+    return collectTrimmedA11ySnapshot(page, rootSelector, frameSelector);
   }
 
   /**
