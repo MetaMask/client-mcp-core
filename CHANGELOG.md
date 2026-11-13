@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0]
+
+### Uncategorized
+
+- chore: use fixed coverage floors instead of autoUpdate ([#101](https://github.com/MetaMask/client-mcp-core/pull/101))
+- fix: say why a browser click failed instead of only "Click timed out" ([#95](https://github.com/MetaMask/client-mcp-core/pull/95))
+- fix: tie describe-screen refs to their DOM node instead of role and name ([#94](https://github.com/MetaMask/client-mcp-core/pull/94))
+- fix: log the outcome of each tool call in .mm-daemon.log ([#97](https://github.com/MetaMask/client-mcp-core/pull/97))
+- feat: add mm hover/unhover and mm set-viewport/reset-viewport ([#96](https://github.com/MetaMask/client-mcp-core/pull/96))
+- fix: resend a CLI request only when the daemon refused the connection ([#79](https://github.com/MetaMask/client-mcp-core/pull/79))
+- feat!: structured CLI errors with distinct exit codes ([#78](https://github.com/MetaMask/client-mcp-core/pull/78))
+- feat: MM_TARGET_OBSCURED, click --dismiss-keyboard and screenChanged ([#77](https://github.com/MetaMask/client-mcp-core/pull/77))
+- fix!: scroll_to_element reports swipes and fails unless in the viewport ([#76](https://github.com/MetaMask/client-mcp-core/pull/76))
+- perf: one device snapshot per mobile tap; parallel describe_screen reads ([#74](https://github.com/MetaMask/client-mcp-core/pull/74))
+- perf: start the CLI faster; load device-mcp on first mobile use ([#73](https://github.com/MetaMask/client-mcp-core/pull/73))
+- feat: support mm scroll-to-element on the browser ([#87](https://github.com/MetaMask/client-mcp-core/pull/87))
+- feat: report animationsSettled in observations and document mm wait-for instead of sleep ([#86](https://github.com/MetaMask/client-mcp-core/pull/86))
+- feat: add mm reload ([#85](https://github.com/MetaMask/client-mcp-core/pull/85))
+- feat: add mm inspect ([#84](https://github.com/MetaMask/client-mcp-core/pull/84))
+- feat: let hosts set the artifacts directory via MM_ARTIFACTS_DIR ([#83](https://github.com/MetaMask/client-mcp-core/pull/83))
+
 ### Added
 
 - feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support
@@ -166,7 +187,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.11.0...v0.12.0
