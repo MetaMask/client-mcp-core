@@ -17,6 +17,10 @@ import {
   waitUntilInPage,
 } from './in-page.js';
 import type { InPageStampResult, InPageTestIdItem } from './in-page.js';
+import {
+  buildTextFingerprint,
+  describeTextFingerprint,
+} from './ref-fingerprint.js';
 import { debugWarn } from '../../utils';
 import type {
   TestIdItem,
@@ -367,14 +371,28 @@ const REF_TOKENS_KEPT = 4;
 const REF_STAMP_CONCURRENCY = 16;
 
 /**
+ * Longest raw text `stampRefInPage` returns. Text that is still at most
+ * `MAX_FINGERPRINT_TEXT_LENGTH` once whitespace is collapsed fits.
+ */
+const STAMP_TEXT_MAX_LENGTH = 1_000;
+
+/** Joins the stamp selector of a ref and its text fingerprint. */
+const FINGERPRINT_SEPARATOR = ' >> internal:has-text=';
+
+/**
  * Builds the selector of a stamped ref: it matches the one element that
- * holds the token.
+ * holds the token, and only while its text matches the fingerprint of the
+ * snapshot, when it has one.
  *
  * @param token - The token of the ref.
- * @returns The selector (e.g. `[data-mm-ref~="1a2b3c4d-0"]`).
+ * @param fingerprint - The text fingerprint (see `buildTextFingerprint`).
+ * @returns The selector (e.g. `[data-mm-ref~="1a2b3c4d-0"] >> internal:has-text=/^\s*Next\s*$/`).
  */
-function buildRefStampSelector(token: string): string {
-  return `[${REF_ATTRIBUTE}~="${token}"]`;
+function buildRefStampSelector(token: string, fingerprint?: string): string {
+  const stamp = `[${REF_ATTRIBUTE}~="${token}"]`;
+  return fingerprint === undefined
+    ? stamp
+    : `${stamp}${FINGERPRINT_SEPARATOR}${fingerprint}`;
 }
 
 /**
@@ -689,12 +707,17 @@ async function stampNode(
     page,
     backendDOMNodeId,
     stampRefInPage.toString(),
-    [REF_ATTRIBUTE, token, REF_TOKENS_KEPT],
+    [REF_ATTRIBUTE, token, REF_TOKENS_KEPT, STAMP_TEXT_MAX_LENGTH],
   );
-  if (result === 'stamped') {
-    return buildRefStampSelector(token);
+  if (result?.status === 'stamped') {
+    return buildRefStampSelector(
+      token,
+      result.text === null ? undefined : buildTextFingerprint(result.text),
+    );
   }
-  return result === 'unreachable' ? UNREACHABLE_REF_SELECTOR : undefined;
+  return result?.status === 'unreachable'
+    ? UNREACHABLE_REF_SELECTOR
+    : undefined;
 }
 
 /**
@@ -776,9 +799,12 @@ async function stampCandidates(
  * snapshot saw. It does not depend on the role or the accessible name:
  * Chromium's AX tree and Playwright's role engine do not always agree on a
  * role (an `<a>` without `href` is a link in the AX tree only), and names
- * can hold live values (prices) that change after the snapshot. A node
- * inside a closed shadow root gets `UNREACHABLE_REF_SELECTOR`. Stamp
- * selectors are unique in the document and get no scope prefix.
+ * can hold live values (prices) that change after the snapshot. When the
+ * element has text, the ref also carries a fingerprint of it
+ * (`buildTextFingerprint`, live values masked), so a node that React
+ * reused for other content no longer matches. A node inside a closed
+ * shadow root gets `UNREACHABLE_REF_SELECTOR`. Stamp selectors are unique
+ * in the document and get no scope prefix.
  *
  * A candidate that cannot be stamped (no backend node, the node left the
  * page, resolve failure) falls back to:
@@ -1315,10 +1341,14 @@ export async function resolveTarget(
   return resolveTargetScoped(page, targetType, targetValue, refMap);
 }
 
+const CHANGED_REF_TEXT_TIMEOUT_MS = 1_000;
+
 /**
  * Fails at once when the element of a stamped ref is no longer on the page
- * (re-mounted or removed since the snapshot). Only elements the snapshot
- * saw hold the token, so waiting for it would wait out the whole timeout.
+ * (re-mounted or removed since the snapshot), or when it now shows other
+ * content (React reused the node: "Next" became "Confirm"). Only elements
+ * the snapshot saw hold the token, so waiting for it would wait out the
+ * whole timeout, and acting on reused content could submit the wrong step.
  * Other targets are not checked.
  *
  * @param page The Playwright page.
@@ -1337,9 +1367,29 @@ async function assertStampedRefOnPage(
   if (selector === undefined || !isRefStampSelector(selector)) {
     return;
   }
-  if ((await page.locator(selector).count()) === 0) {
+  const [stampSelector, fingerprint] = selector.split(FINGERPRINT_SEPARATOR);
+  const stamped = page.locator(stampSelector);
+  if ((await stamped.count()) === 0) {
     throw new Error(
       `Ref ${targetValue} not found: its element left the page after the snapshot; take a new snapshot`,
+    );
+  }
+  if (
+    fingerprint !== undefined &&
+    (await page.locator(selector).count()) === 0
+  ) {
+    const now = (
+      (await stamped
+        .first()
+        .textContent({ timeout: CHANGED_REF_TEXT_TIMEOUT_MS })
+        .catch(() => null)) ?? ''
+    )
+      .replace(/\s+/gu, ' ')
+      .trim();
+    throw new Error(
+      `Ref ${targetValue} not found: its element changed since the snapshot (was "${describeTextFingerprint(
+        fingerprint,
+      )}", now "${now.length > 60 ? `${now.slice(0, 60)}…` : now}"); take a new snapshot`,
     );
   }
 }

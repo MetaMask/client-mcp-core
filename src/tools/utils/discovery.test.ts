@@ -169,6 +169,7 @@ function createMockPage(
       }
     >;
     stampResultsByBackendId?: Record<number, string>;
+    stampTextsByBackendId?: Record<number, string | null>;
     resolveNodeErrorIds?: Set<number>;
     testIdBySelector?: Record<string, string | null>;
     textBySelector?: Record<string, string | null>;
@@ -192,6 +193,7 @@ function createMockPage(
     queryAxTreeError,
     selectorNodes = {},
     stampResultsByBackendId = {},
+    stampTextsByBackendId = {},
     resolveNodeErrorIds = new Set<number>(),
     testIdBySelector = {},
     textBySelector = {},
@@ -305,9 +307,21 @@ function createMockPage(
               const backendNodeId = Number(
                 String(objectId).replace('obj-', ''),
               );
+              const stamp = stampResultsByBackendId[backendNodeId];
               return {
                 result: {
-                  value: stampResultsByBackendId[backendNodeId] ?? null,
+                  value:
+                    stamp === undefined
+                      ? null
+                      : {
+                          status: stamp,
+                          ...(stamp === 'stamped'
+                            ? {
+                                text:
+                                  stampTextsByBackendId[backendNodeId] ?? '',
+                              }
+                            : {}),
+                        },
                 },
               };
             }
@@ -1548,6 +1562,41 @@ describe('exact ref selectors', () => {
     });
   });
 
+  it("adds a fingerprint of the element's text to its ref, except for no text or long text", async () => {
+    const page = createMockPage({
+      axNodes: flatTree([
+        { role: 'button', name: 'Next', backendDOMNodeId: 1 },
+        { role: 'link', name: 'Earn $2.42 +3.92%', backendDOMNodeId: 2 },
+        { role: 'button', name: 'Close', backendDOMNodeId: 3 },
+        { role: 'generic', name: 'Terms', backendDOMNodeId: 4 },
+      ]),
+      stampResultsByBackendId: {
+        1: 'stamped',
+        2: 'stamped',
+        3: 'stamped',
+        4: 'stamped',
+      },
+      stampTextsByBackendId: {
+        1: ' Next ',
+        2: 'Earn $2.42 +3.92%',
+        3: '',
+        4: null,
+      },
+    });
+
+    const { refMap } = await collectTrimmedA11ySnapshot(page);
+
+    const [next, earn, close, terms] = stampCalls(page).map(
+      ({ token }) => `[data-mm-ref~="${token}"]`,
+    );
+    expect(Object.fromEntries(refMap)).toStrictEqual({
+      e1: `${next} >> internal:has-text=/^\\s*Next\\s*$/`,
+      e2: `${earn} >> internal:has-text=/^\\s*Earn\\s+[^\\sA-Za-z]*\\s+[^\\sA-Za-z]*\\s*$/`,
+      e3: close,
+      e4: terms,
+    });
+  });
+
   it('gives every ref its own token, new for each snapshot', async () => {
     const options = {
       axNodes: flatTree([
@@ -2260,6 +2309,88 @@ describe('waitForTarget', () => {
       }),
     ).rejects.toThrowError('Ref e1 not found');
     expect(mockLocator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('fails at once when the element of a stamped ref now shows other content', async () => {
+    const stampedSelector = '[data-mm-ref~="abc123-0"]';
+    const selector = `${stampedSelector} >> internal:has-text=/^\\s*Next\\s*$/`;
+    const refMap = new Map([['e1', selector]]);
+    const stampedLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(1),
+      first: vi.fn().mockReturnThis(),
+      textContent: vi.fn().mockResolvedValue('  Confirm\n'),
+    };
+    const fingerprintLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(0),
+    };
+    const page = {
+      locator: vi.fn((value: string) =>
+        value === stampedSelector ? stampedLocator : fingerprintLocator,
+      ),
+    } as unknown as Page;
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e1', refMap, 5000),
+    ).rejects.toThrowError(
+      'Ref e1 not found: its element changed since the snapshot (was "Next", now "Confirm"); take a new snapshot',
+    );
+    expect(page.locator).toHaveBeenCalledWith(selector);
+    expect(fingerprintLocator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('shortens the new content and survives a failed read when a ref changed', async () => {
+    const stampedSelector = '[data-mm-ref~="abc123-0"]';
+    const refMap = new Map([
+      ['e1', `${stampedSelector} >> internal:has-text=/^\\s*Next\\s*$/`],
+    ]);
+    const stampedLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(1),
+      first: vi.fn().mockReturnThis(),
+      textContent: vi
+        .fn()
+        .mockResolvedValueOnce('x'.repeat(80))
+        .mockRejectedValueOnce(new Error('detached')),
+    };
+    const fingerprintLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(0),
+    };
+    const page = {
+      locator: vi.fn((value: string) =>
+        value === stampedSelector ? stampedLocator : fingerprintLocator,
+      ),
+    } as unknown as Page;
+
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e1', refMap, 5000),
+    ).rejects.toThrowError(`now "${'x'.repeat(60)}…"`);
+    await expect(
+      waitForTarget(page, 'a11yRef', 'e1', refMap, 5000),
+    ).rejects.toThrowError('(was "Next", now "")');
+  });
+
+  it('waits for a stamped ref whose content still matches its fingerprint', async () => {
+    const selector =
+      '[data-mm-ref~="abc123-0"] >> internal:has-text=/^\\s*Next\\s*$/';
+    const refMap = new Map([['e1', selector]]);
+    const mockLocator = {
+      ...createMockLocator({ visible: true }),
+      count: vi.fn().mockResolvedValue(1),
+    };
+    const page = {
+      locator: vi.fn().mockReturnValue(mockLocator),
+    } as unknown as Page;
+
+    await waitForTarget(page, 'a11yRef', 'e1', refMap, 5000);
+
+    expect(page.locator).toHaveBeenCalledWith(selector);
+    expect(mockLocator.waitFor).toHaveBeenCalledWith({
+      state: 'visible',
+      timeout: expectRemaining(5000),
+    });
   });
 
   it('waits for a stamped ref whose element is still on the page', async () => {
