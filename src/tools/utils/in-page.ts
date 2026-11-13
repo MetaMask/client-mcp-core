@@ -361,6 +361,111 @@ export function collectTestIdsInPage(
 }
 
 /**
+ * Result of `stampRefInPage`.
+ *
+ * - `stamped`: the token was added. `text` is the element's text, as
+ * Playwright's text engines read it (`elementText().full`: the text nodes
+ * of the element and its descendants, without `<script>`, `<noscript>`
+ * and `<style>`; the `value` of a submit or button `<input>`), or null when
+ * it is longer than the `maxTextLength` argument.
+ * - `unreachable`: the element is inside a closed shadow root, which no
+ * Playwright selector can search; nothing was written.
+ * - `detached`: not an element of the document (detached, in a fragment, or
+ * not an element); nothing was written.
+ */
+export type InPageStampResult =
+  | { status: 'stamped'; text: string | null }
+  | { status: 'unreachable' }
+  | { status: 'detached' };
+
+/**
+ * Adds `token` to the whitespace-separated token list in `attribute` of the
+ * element the function is called on (`this`, via `Runtime.callFunctionOn`
+ * on the resolved node), so that `[attribute~="token"]` matches exactly
+ * this element. The tokens of earlier snapshots stay, newest last, up to
+ * `keep` tokens: a later snapshot (an observation, or a request that timed
+ * out and kept running) does not make the refs of an earlier one stale.
+ *
+ * Playwright's CSS engine searches open shadow roots, so elements inside
+ * them are stamped too. Elements inside a closed shadow root, at any depth,
+ * are not.
+ *
+ * Runs in the page: must stay self-contained. It is meant for an isolated
+ * world (`callOnNodeInIsolatedWorld`), and reads no page global other than
+ * `document`, so it also works where a main world scuttles globals
+ * (LavaMoat).
+ *
+ * The same call returns the element's text, so a ref can check that its
+ * node still shows the content of the snapshot.
+ *
+ * @param attribute - The attribute holding the tokens.
+ * @param token - The token of this ref (no whitespace).
+ * @param keep - Maximum number of tokens kept on the element.
+ * @param maxTextLength - Longest text returned; longer text gives null.
+ * @returns The result (see `InPageStampResult`).
+ */
+export function stampRefInPage(
+  this: Element,
+  attribute: string,
+  token: string,
+  keep: number,
+  maxTextLength: number,
+): InPageStampResult {
+  if (!this || this.nodeType !== 1) {
+    return { status: 'detached' };
+  }
+  let root: Node = this.getRootNode();
+  while (root.nodeType === 11) {
+    const shadowRoot = root as ShadowRoot;
+    if (!shadowRoot.host) {
+      return { status: 'detached' };
+    }
+    if (shadowRoot.mode !== 'open') {
+      return { status: 'unreachable' };
+    }
+    root = shadowRoot.host.getRootNode();
+  }
+  if (root !== document) {
+    return { status: 'detached' };
+  }
+  const tokens = (this.getAttribute(attribute) ?? '')
+    .split(' ')
+    .filter((existing) => existing !== '' && existing !== token);
+  tokens.push(token);
+  this.setAttribute(attribute, tokens.slice(-keep).join(' '));
+
+  const textOf = (element: Element): string => {
+    const name = element.nodeName;
+    if (name === 'SCRIPT' || name === 'NOSCRIPT' || name === 'STYLE') {
+      return '';
+    }
+    if (name === 'INPUT') {
+      const input = element as HTMLInputElement;
+      if (input.type === 'submit' || input.type === 'button') {
+        return input.value;
+      }
+    }
+    let text = '';
+    for (let child = element.firstChild; child; child = child.nextSibling) {
+      if (text.length > maxTextLength) {
+        break;
+      }
+      if (child.nodeType === 3) {
+        text += child.nodeValue ?? '';
+      } else if (child.nodeType === 1) {
+        text += textOf(child as Element);
+      }
+    }
+    return text;
+  };
+  const text = textOf(this);
+  return {
+    status: 'stamped',
+    text: text.length > maxTextLength ? null : text,
+  };
+}
+
+/**
  * Builds a Playwright selector that matches exactly one element: the
  * element the function is called on (`this`, via `Runtime.callFunctionOn`
  * on the resolved node).

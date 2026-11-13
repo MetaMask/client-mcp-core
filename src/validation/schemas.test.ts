@@ -597,6 +597,17 @@ describe('launchInputSchema', () => {
 });
 
 describe('device tool schemas', () => {
+  describe('clickInputSchema timeoutMs', () => {
+    it('has no default, so the click can tell an explicit timeout', () => {
+      expect(clickInputSchema.parse({ testId: 'x' })).toStrictEqual({
+        testId: 'x',
+      });
+      expect(
+        clickInputSchema.parse({ testId: 'x', timeoutMs: 30000 }).timeoutMs,
+      ).toBe(30000);
+    });
+  });
+
   describe('clickInputSchema dismissKeyboard', () => {
     it('accepts dismissKeyboard', () => {
       expect(
@@ -1025,12 +1036,14 @@ describe('observe field', () => {
   });
 
   it('keeps defaults and the inner refine checks', () => {
-    const click = toolSchemas.click.safeParse({
+    const type = toolSchemas.type.safeParse({
       testId: 'btn',
+      text: 'hi',
       observe: 'none',
     });
-    expect(click.data).toStrictEqual({
+    expect(type.data).toStrictEqual({
       testId: 'btn',
+      text: 'hi',
       timeoutMs: 15000,
       observe: 'none',
     });

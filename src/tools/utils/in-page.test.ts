@@ -14,6 +14,7 @@ import {
   captureMarkedElementInPage,
   collectTestIdsInPage,
   inspectCapturedElementInPage,
+  stampRefInPage,
   waitUntilInPage,
 } from './in-page.js';
 
@@ -728,6 +729,7 @@ describe('in-page function source', () => {
       'captureMarkedElementInPage',
       'collectTestIdsInPage',
       'inspectCapturedElementInPage',
+      'stampRefInPage',
       'waitUntilInPage',
     ]);
   });
@@ -1464,5 +1466,242 @@ describe('captureMarkedElementInPage and inspectCapturedElementInPage', () => {
     world.mark(field);
 
     expect(world.inspect('k1', [])?.effectiveOpacity).toBe(0.3);
+  });
+});
+
+type StampElement = {
+  nodeType: 1;
+  nodeName?: string;
+  type?: string;
+  value?: string;
+  firstChild?: StampChild | null;
+  nextSibling?: StampChild | null;
+  attributes: Map<string, string>;
+  getRootNode: () => StampRoot | StampElement;
+  getAttribute: (name: string) => string | null;
+  setAttribute: (name: string, value: string) => void;
+};
+
+type StampChild =
+  | StampElement
+  | { nodeType: 3 | 8; nodeValue: string; nextSibling: StampChild | null };
+
+type StampRoot =
+  | { nodeType: 9 }
+  | { nodeType: 11; mode?: 'open' | 'closed'; host?: StampElement };
+
+describe('stampRefInPage', () => {
+  const fakeDocument: StampRoot = { nodeType: 9 };
+
+  /**
+   * Builds a fake element whose root node is `rootNode` (itself when
+   * omitted, like a detached element).
+   *
+   * @param rootNode - The root node.
+   * @param attribute - The current value of `data-mm-ref`.
+   * @returns The element.
+   */
+  function stampElement(
+    rootNode?: StampRoot,
+    attribute?: string,
+  ): StampElement {
+    const item: StampElement = {
+      nodeType: 1,
+      attributes: new Map(
+        attribute === undefined ? [] : [['data-mm-ref', attribute]],
+      ),
+      getRootNode: () => rootNode ?? item,
+      getAttribute: (name) => item.attributes.get(name) ?? null,
+      setAttribute: (name, value) => {
+        item.attributes.set(name, value);
+      },
+    };
+    return item;
+  }
+
+  /**
+   * Runs stampRefInPage, compiled from its source, on an element.
+   *
+   * @param target - The element (`this`).
+   * @param token - The token to add.
+   * @param keep - How many tokens to keep.
+   * @param maxTextLength - The longest text to return.
+   * @returns The stamp result.
+   */
+  function stamp(
+    target: unknown,
+    token: string,
+    keep = 3,
+    maxTextLength = 1000,
+  ): unknown {
+    const fn = compileInPage<
+      (
+        this: unknown,
+        attribute: string,
+        token: string,
+        keep: number,
+        maxTextLength: number,
+      ) => unknown
+    >(stampRefInPage, { document: fakeDocument });
+    return JSON.parse(
+      JSON.stringify(
+        fn.call(target, 'data-mm-ref', token, keep, maxTextLength),
+      ),
+    );
+  }
+
+  /**
+   * Links nodes as the children of an element.
+   *
+   * @param parent - The element.
+   * @param children - Its children, in order.
+   * @returns The element.
+   */
+  function withChildren(
+    parent: StampElement,
+    children: StampChild[],
+  ): StampElement {
+    children.forEach((child, index) => {
+      child.nextSibling = children[index + 1] ?? null;
+    });
+    parent.firstChild = children[0] ?? null;
+    return parent;
+  }
+
+  const fakeText = (nodeValue: string, nodeType: 3 | 8 = 3): StampChild => ({
+    nodeType,
+    nodeValue,
+    nextSibling: null,
+  });
+
+  it('adds the token to an element of the document', () => {
+    const target = stampElement(fakeDocument);
+
+    expect(stamp(target, 'abc-0')).toStrictEqual({
+      status: 'stamped',
+      text: '',
+    });
+    expect(target.attributes.get('data-mm-ref')).toBe('abc-0');
+  });
+
+  it('keeps the tokens of earlier snapshots, newest last, up to keep', () => {
+    const target = stampElement(fakeDocument, 'a-1 b-2  c-3');
+
+    expect(stamp(target, 'd-4')).toStrictEqual({
+      status: 'stamped',
+      text: '',
+    });
+    expect(target.attributes.get('data-mm-ref')).toBe('b-2 c-3 d-4');
+  });
+
+  it("returns the element's text as Playwright reads it", () => {
+    const style = withChildren(
+      { ...stampElement(fakeDocument), nodeName: 'STYLE' },
+      [fakeText('.x { color: red }')],
+    );
+    const span = withChildren(
+      { ...stampElement(fakeDocument), nodeName: 'SPAN' },
+      [fakeText('$2.42')],
+    );
+    const target = withChildren(
+      { ...stampElement(fakeDocument), nodeName: 'BUTTON' },
+      [fakeText('Earn '), style, fakeText('a comment', 8), span],
+    );
+
+    expect(stamp(target, 'abc-0')).toStrictEqual({
+      status: 'stamped',
+      text: 'Earn $2.42',
+    });
+  });
+
+  it('returns the value of a submit or button input', () => {
+    const target: StampElement = {
+      ...stampElement(fakeDocument),
+      nodeName: 'INPUT',
+      type: 'submit',
+      value: 'Next',
+    };
+
+    expect(stamp(target, 'abc-0')).toStrictEqual({
+      status: 'stamped',
+      text: 'Next',
+    });
+  });
+
+  it('returns null text for text longer than maxTextLength', () => {
+    const target = withChildren(
+      { ...stampElement(fakeDocument), nodeName: 'DIV' },
+      [fakeText('a'.repeat(6))],
+    );
+
+    expect(stamp(target, 'abc-0', 3, 5)).toStrictEqual({
+      status: 'stamped',
+      text: null,
+    });
+    expect(target.attributes.get('data-mm-ref')).toBe('abc-0');
+  });
+
+  it('does not repeat a token that is already there', () => {
+    const target = stampElement(fakeDocument, 'a-1 b-2');
+
+    stamp(target, 'a-1');
+
+    expect(target.attributes.get('data-mm-ref')).toBe('b-2 a-1');
+  });
+
+  it('stamps an element inside open shadow roots', () => {
+    const outerHost = stampElement(fakeDocument);
+    const innerHost = stampElement({
+      nodeType: 11,
+      mode: 'open',
+      host: outerHost,
+    });
+    const target = stampElement({
+      nodeType: 11,
+      mode: 'open',
+      host: innerHost,
+    });
+
+    expect(stamp(target, 'abc-0')).toStrictEqual({
+      status: 'stamped',
+      text: '',
+    });
+    expect(target.attributes.get('data-mm-ref')).toBe('abc-0');
+  });
+
+  it('reports an element inside a closed shadow root, at any depth, as unreachable without stamping it', () => {
+    const closedHost = stampElement(fakeDocument);
+    const openHost = stampElement({
+      nodeType: 11,
+      mode: 'closed',
+      host: closedHost,
+    });
+    const direct = stampElement({
+      nodeType: 11,
+      mode: 'closed',
+      host: closedHost,
+    });
+    const nested = stampElement({ nodeType: 11, mode: 'open', host: openHost });
+
+    expect(stamp(direct, 'abc-0')).toStrictEqual({ status: 'unreachable' });
+    expect(stamp(nested, 'abc-1')).toStrictEqual({ status: 'unreachable' });
+    expect(direct.attributes.size).toBe(0);
+    expect(nested.attributes.size).toBe(0);
+  });
+
+  it('reports a detached element or one in a fragment as detached without stamping it', () => {
+    const detached = stampElement();
+    const inFragment = stampElement({ nodeType: 11 });
+
+    expect(stamp(detached, 'abc-0')).toStrictEqual({ status: 'detached' });
+    expect(stamp(inFragment, 'abc-1')).toStrictEqual({ status: 'detached' });
+    expect(detached.attributes.size).toBe(0);
+    expect(inFragment.attributes.size).toBe(0);
+  });
+
+  it('reports a node that is not an element as detached', () => {
+    expect(stamp({ nodeType: 3 }, 'abc-0')).toStrictEqual({
+      status: 'detached',
+    });
   });
 });

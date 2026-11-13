@@ -14,6 +14,7 @@ import {
   withScreenChanged,
 } from './create-server.js';
 import { readDaemonState } from './daemon-state.js';
+import { RequestQueue } from './request-queue.js';
 import pkg from '../../package.json';
 import type { PortMap, WorkflowContext } from '../capabilities/context.js';
 import type { IPlatformDriver } from '../platform/types.js';
@@ -2426,7 +2427,8 @@ describe('createServer abort, ref generations and observations', () => {
   };
 
   // A mutating tool without a `timeoutMs` default, so the server's
-  // requestTimeoutMs is the queue timeout (click defaults to 15 s).
+  // requestTimeoutMs is the queue timeout (a click without `timeoutMs`
+  // gets the 15 s click budget instead).
   const addTapTool = (): void => {
     addTool('test_tap', async () => ({ ok: true, result: {} }));
   };
@@ -2467,6 +2469,38 @@ describe('createServer abort, ref generations and observations', () => {
       refMap: new Map(),
     });
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  describe('click queue timeout', () => {
+    it('gives a click without timeoutMs the 15 s click budget (25 s queue timeout)', async () => {
+      const enqueueSpy = vi.spyOn(RequestQueue.prototype, 'enqueue');
+      await startServer({ requestTimeoutMs: 50 });
+      driver.click.mockImplementation(async () => {
+        await sleep(120);
+        return { clicked: true, target: 'x' };
+      });
+
+      const { status, body } = await post('/tool/click', { testId: 'x' });
+
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(enqueueSpy).toHaveBeenCalledWith(expect.any(Function), {
+        timeoutMs: 25_000,
+      });
+      enqueueSpy.mockRestore();
+    });
+
+    it('sizes the queue timeout from the click timeoutMs when given', async () => {
+      const enqueueSpy = vi.spyOn(RequestQueue.prototype, 'enqueue');
+      await startServer({ requestTimeoutMs: 50 });
+
+      await post('/tool/click', { testId: 'x', timeoutMs: 5000 });
+
+      expect(enqueueSpy).toHaveBeenCalledWith(expect.any(Function), {
+        timeoutMs: 15_000,
+      });
+      enqueueSpy.mockRestore();
+    });
   });
 
   describe('P1-08: timed-out requests', () => {

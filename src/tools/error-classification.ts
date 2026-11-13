@@ -5,6 +5,8 @@
  * based on error message patterns.
  */
 
+import { stripVTControlCharacters } from 'node:util';
+
 import { ErrorCodes } from './types';
 import { extractErrorMessage } from '../utils';
 
@@ -14,6 +16,7 @@ const ERROR_PATTERNS = {
     'not found',
     'No element found',
     'Timeout waiting for selector',
+    'matched 0 elements',
   ],
   timeout: ['Timeout', 'exceeded', 'timed out'],
   notEditable: ['element is not editable'],
@@ -27,6 +30,41 @@ const ERROR_PATTERNS = {
     'Session closed',
   ],
 } as const;
+
+/**
+ * Call log lines that only say Playwright retries the action. Most logs of a
+ * timed-out click end with them, after the line that says why it failed.
+ */
+const CALL_LOG_RETRY_LINE = /^(retrying \w+ action|waiting \d+ms)\b/u;
+
+/**
+ * Returns the last step of the call log in a Playwright error, without the
+ * retry lines, for example `<div class="modal"> intercepts pointer events`
+ * or `locator resolved to hidden <input type="checkbox"/>`.
+ *
+ * @param error - The error thrown by a Playwright action.
+ * @returns The last step, or undefined when the error has no call log.
+ */
+export function lastPlaywrightLogStep(error: unknown): string | undefined {
+  const message = extractErrorMessage(error);
+  const marker = message.indexOf('Call log:');
+  if (marker === -1) {
+    return undefined;
+  }
+  // With colors on (a TTY or FORCE_COLOR), Playwright dims each log line.
+  const steps = stripVTControlCharacters(
+    message.slice(marker + 'Call log:'.length),
+  )
+    .split('\n')
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^-\s*/u, '')
+        .replace(/^\d+ × /u, ''),
+    )
+    .filter((line) => line !== '' && !CALL_LOG_RETRY_LINE.test(line));
+  return steps.at(-1);
+}
 
 /**
  * Check if an error indicates the page was closed.

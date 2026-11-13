@@ -214,7 +214,7 @@ describe('tool delegation to context.driver', () => {
         expect.any(Number),
         undefined,
         undefined,
-        undefined,
+        { failFastWhenMissing: true },
       );
     });
 
@@ -222,10 +222,14 @@ describe('tool delegation to context.driver', () => {
       const driver = createMockDriver();
       const context = createContextWithDriver(driver);
 
-      await clickTool({ testId: 'btn', dismissKeyboard: true }, context);
+      await clickTool(
+        { testId: 'btn', dismissKeyboard: true, timeoutMs: 5000 },
+        context,
+      );
 
       expect(vi.mocked(driver.click).mock.calls[0]?.[6]).toStrictEqual({
         dismissKeyboard: true,
+        failFastWhenMissing: false,
       });
     });
 

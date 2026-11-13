@@ -2107,6 +2107,8 @@ Lifecycle:
 
 Interaction:
   mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
+                      Without --timeout, a target missing after 2s fails at
+                      once; with it, the click waits for the target.
   mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
   mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
   mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
