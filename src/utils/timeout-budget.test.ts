@@ -58,6 +58,7 @@ describe('computeTimeoutBudget', () => {
     ['type', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['get_text', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['inspect', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
+    ['hover', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['wait_for', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['scroll_to_element', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['cdp', {}, DEFAULT_CDP_TIMEOUT_MS],
