@@ -10,8 +10,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   clickTool,
   getTextTool,
+  hoverTool,
   inspectTool,
   typeTool,
+  unhoverTool,
   waitForTool,
 } from './interaction.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
@@ -27,6 +29,7 @@ function createMockLocator() {
   return {
     click: vi.fn().mockResolvedValue(undefined),
     fill: vi.fn().mockResolvedValue(undefined),
+    hover: vi.fn().mockResolvedValue(undefined),
     waitFor: vi.fn().mockResolvedValue(undefined),
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
@@ -100,6 +103,7 @@ describe('interaction', () => {
         context.refMap,
         15000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
       expect(locator.click).toHaveBeenCalled();
     });
@@ -125,8 +129,25 @@ describe('interaction', () => {
         context.refMap,
         5000,
         undefined,
+        undefined,
       );
       expect(locator.click).toHaveBeenCalledWith({ timeout: 5000 });
+    });
+
+    it('waits the whole explicit timeout for a target that appears late', async () => {
+      const context = createMockContext({ page: {} });
+      const clickSpy = vi.spyOn(context.driver as any, 'click');
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        createMockLocator() as any,
+      );
+
+      await clickTool({ testId: 'confirm', timeoutMs: 30000 }, context);
+      await clickTool({ testId: 'confirm' }, context);
+
+      expect(clickSpy.mock.calls.map((call) => call[6])).toStrictEqual([
+        { failFastWhenMissing: false },
+        { failFastWhenMissing: true },
+      ]);
     });
 
     it('passes within scope to waitForTarget', async () => {
@@ -151,6 +172,7 @@ describe('interaction', () => {
         context.refMap,
         15000,
         { type: 'testId', value: 'parent' },
+        { missingTargetWaitMs: 2000 },
       );
     });
 
@@ -177,6 +199,7 @@ describe('interaction', () => {
         context.refMap,
         15000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
     });
 
@@ -204,6 +227,7 @@ describe('interaction', () => {
         refMap,
         15000,
         undefined,
+        { missingTargetWaitMs: 2000 },
       );
     });
 
@@ -338,6 +362,84 @@ describe('interaction', () => {
         expect(result.error.message).toContain('state unknown');
         expect(result.error.message).toContain('describe-screen');
         expect(result.error.message).not.toContain('may have completed');
+      }
+    });
+
+    it('returns TARGET_NOT_FOUND when the target matched 0 elements', async () => {
+      const context = createMockContext();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error(
+          'Selector [data-testid="nonexistent"] (testId:nonexistent) matched 0 elements after 2000ms',
+        ),
+      );
+
+      const result = await clickTool({ testId: 'nonexistent' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toBe(
+          'Selector [data-testid="nonexistent"] (testId:nonexistent) matched 0 elements after 2000ms',
+        );
+      }
+    });
+
+    it('includes the last Playwright step when the click times out', async () => {
+      const locator = createMockLocator();
+      locator.click.mockRejectedValue(
+        createTimeoutError(
+          [
+            'locator.click: Timeout 5000ms exceeded.',
+            'Call log:',
+            `  - waiting for locator('[data-testid="confirm"]')`,
+            '  - attempting click action',
+            '      - <div class="modal"></div> intercepts pointer events',
+            '    - retrying click action',
+            '      - waiting 500ms',
+          ].join('\n'),
+        ),
+      );
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await clickTool(
+        { testId: 'confirm', timeoutMs: 5000 },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toBe(
+          'Click timed out after 5000ms; state unknown (last Playwright step: <div class="modal"></div> intercepts pointer events). Run describe-screen to check the screen before retrying.',
+        );
+      }
+    });
+
+    it('includes the last Playwright step when the target stays hidden', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        createTimeoutError(
+          [
+            'locator.waitFor: Timeout 5000ms exceeded.',
+            'Call log:',
+            `  - waiting for locator('#terms') to be visible`,
+            '    8 × locator resolved to hidden <input id="terms" type="checkbox"/>',
+          ].join('\n'),
+        ),
+      );
+
+      const result = await clickTool(
+        { selector: '#terms', timeoutMs: 5000 },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_CLICK_TIMEOUT);
+        expect(result.error.message).toContain(
+          '(last Playwright step: locator resolved to hidden <input id="terms" type="checkbox"/>)',
+        );
       }
     });
 
@@ -956,6 +1058,196 @@ describe('interaction', () => {
     });
   });
 
+  describe('hoverTool', () => {
+    it('hovers the target', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await hoverTool({ testId: 'account-menu' }, context);
+
+      expect(result).toStrictEqual({
+        ok: true,
+        result: { hovered: true, target: 'testId:account-menu' },
+      });
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'testId',
+        'account-menu',
+        context.refMap,
+        15000,
+        undefined,
+      );
+      expect(locator.hover).toHaveBeenCalledWith({
+        timeout: expect.any(Number),
+      });
+    });
+
+    it('passes the timeout and within scope', async () => {
+      const page = {};
+      const locator = createMockLocator();
+      const context = createMockContext({ page });
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      await hoverTool(
+        { a11yRef: 'e4', timeoutMs: 3000, within: { testId: 'list' } },
+        context,
+      );
+
+      expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+        page,
+        'a11yRef',
+        'e4',
+        context.refMap,
+        3000,
+        { type: 'testId', value: 'list' },
+      );
+    });
+
+    it('returns error when no target specified', async () => {
+      const result = await hoverTool({} as any, createMockContext());
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_INVALID_INPUT);
+      }
+    });
+
+    it('returns error when no session active', async () => {
+      const result = await hoverTool(
+        { testId: 'account-menu' },
+        createMockContext({ hasActive: false }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+
+    it('returns MM_TOOL_NOT_SUPPORTED_ON_PLATFORM when the driver cannot hover', async () => {
+      const context = createMockContext();
+      const driver = context.driver as any;
+      context.driver = {
+        ...driver,
+        hover: undefined,
+        getPlatform: () => 'android',
+      };
+
+      const result = await hoverTool({ testId: 'account-menu' }, context);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(
+          ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        );
+        expect(result.error.message).toContain('android');
+      }
+    });
+
+    it('returns MM_WAIT_TIMEOUT when the target does not appear', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        createTimeoutError('Timeout 5ms exceeded during waitForTarget'),
+      );
+
+      const result = await hoverTool(
+        { testId: 'missing', timeoutMs: 5 },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_WAIT_TIMEOUT);
+        expect(result.error.message).toBe(
+          'Hover timed out after 5ms. Run describe-screen to check the target is visible and not covered.',
+        );
+      }
+    });
+
+    it('returns MM_HOVER_FAILED when the hover fails', async () => {
+      const locator = createMockLocator();
+      locator.hover.mockRejectedValue(new Error('Element is detached'));
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await hoverTool(
+        { testId: 'account-menu' },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_HOVER_FAILED);
+        expect(result.error.message).toContain('Element is detached');
+      }
+    });
+
+    it('returns MM_PAGE_CLOSED when the page closes', async () => {
+      const locator = createMockLocator();
+      locator.hover.mockRejectedValue(
+        new Error('Target page, context or browser has been closed'),
+      );
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+
+      const result = await hoverTool(
+        { testId: 'account-menu' },
+        createMockContext(),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+      }
+    });
+  });
+
+  describe('unhoverTool', () => {
+    it('moves the pointer off the page', async () => {
+      const move = vi.fn().mockResolvedValue(undefined);
+      const context = createMockContext({ page: { mouse: { move } } });
+
+      const result = await unhoverTool({}, context);
+
+      expect(result).toStrictEqual({ ok: true, result: { unhovered: true } });
+      expect(move).toHaveBeenCalledWith(-1, -1);
+    });
+
+    it('returns error when no session active', async () => {
+      const result = await unhoverTool(
+        {},
+        createMockContext({ hasActive: false }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+      }
+    });
+
+    it('returns MM_HOVER_FAILED when the pointer cannot move', async () => {
+      const move = vi.fn().mockRejectedValue(new Error('Mouse move failed'));
+
+      const result = await unhoverTool(
+        {},
+        createMockContext({ page: { mouse: { move } } }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_HOVER_FAILED);
+        expect(result.error.message).toContain('Mouse move failed');
+      }
+    });
+  });
+
   describe('waitForTool', () => {
     it('waits for element by testId', async () => {
       const page = {};
@@ -1447,6 +1739,10 @@ describe('interaction', () => {
         'inspect',
         async (context: ToolContext) => inspectTool({ testId: 'a' }, context),
       ],
+      [
+        'hover',
+        async (context: ToolContext) => hoverTool({ testId: 'a' }, context),
+      ],
     ])(
       '%s returns MM_REQUEST_ABORTED without touching the page when aborted',
       async (_name, run) => {
@@ -1480,6 +1776,11 @@ describe('interaction', () => {
         async (context: ToolContext) =>
           typeTool({ testId: 'input', text: 'x' }, context),
         'fill',
+      ],
+      [
+        'hover',
+        async (context: ToolContext) => hoverTool({ testId: 'menu' }, context),
+        'hover',
       ],
     ] as const)(
       '%s returns MM_REQUEST_ABORTED and does not act when the request times out during the target wait',

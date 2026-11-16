@@ -5,8 +5,10 @@ import type {
   IPlatformDriver,
   TargetType,
   ClickActionResult,
+  ClickOptions,
   TypeActionResult,
   GetTextActionResult,
+  HoverActionResult,
   InspectActionResult,
   PlatformScreenshotOptions,
   PlatformType,
@@ -23,7 +25,10 @@ import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
 import { ErrorCodes } from '../tools/types/errors.js';
 import type { CdpInput } from '../tools/types/tool-inputs.js';
 import type { CdpOutcome } from '../tools/types/tool-outputs.js';
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from '../tools/utils/constants.js';
+import {
+  CLICK_MISSING_TARGET_WAIT_MS,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 import {
   collectTestIds,
   collectTrimmedA11ySnapshot,
@@ -86,6 +91,8 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * @param within - Optional parent scope for chained locator resolution.
    * @param signal - When aborted during the target wait, throws instead of
    * clicking.
+   * @param options - `failFastWhenMissing` fails after a short wait when the
+   * target matches no element; `dismissKeyboard` is ignored.
    * @returns The click result with success status and target info.
    */
   async click(
@@ -95,6 +102,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     timeoutMs: number,
     within?: WithinScope,
     signal?: AbortSignal,
+    options?: ClickOptions,
   ): Promise<ClickActionResult> {
     const page = this.#getPage();
     const deadline = Date.now() + timeoutMs;
@@ -106,6 +114,9 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       refMap,
       timeoutMs,
       within,
+      options?.failFastWhenMissing
+        ? { missingTargetWaitMs: CLICK_MISSING_TARGET_WAIT_MS }
+        : undefined,
     );
 
     const remaining = deadline - Date.now();
@@ -354,6 +365,52 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
 
     const inspection = await inspectLocator(page, locator, styles, remaining);
     return { target: `${targetType}:${targetValue}`, ...inspection };
+  }
+
+  /**
+   * Move the pointer over an element after waiting for visibility. Like a
+   * click, Playwright scrolls it into view and waits until no other element
+   * covers it.
+   *
+   * @param targetType - The type of target identifier.
+   * @param targetValue - The target value used for element lookup.
+   * @param refMap - Map of a11y refs to selectors.
+   * @param timeoutMs - Maximum time in milliseconds.
+   * @param within - Optional parent scope.
+   * @param signal - When aborted during the target wait, throws instead of
+   * hovering.
+   * @returns The hover result and target descriptor.
+   */
+  async hover(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    timeoutMs: number,
+    within?: WithinScope,
+    signal?: AbortSignal,
+  ): Promise<HoverActionResult> {
+    const page = this.#getPage();
+    const deadline = Date.now() + timeoutMs;
+
+    const locator = await waitForTarget(
+      page,
+      targetType,
+      targetValue,
+      refMap,
+      timeoutMs,
+      within,
+    );
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `Timeout ${timeoutMs}ms exceeded: visibility wait consumed entire budget for ${targetType}:${targetValue}`,
+      );
+    }
+
+    signal?.throwIfAborted();
+    await locator.hover({ timeout: remaining });
+    return { hovered: true, target: `${targetType}:${targetValue}` };
   }
 
   /**

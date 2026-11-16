@@ -53,7 +53,7 @@ mm navigate-home --observe full  # after navigation: get the whole screen
 mm get-state --observe full    # a read that also returns an observation
 ```
 
-**After `--observe none`, refs are not refreshed.** If the call changed the screen, the refs you have still describe the previous screen. A ref backed by a testId fails loudly (`MM_TARGET_NOT_FOUND`), but a ref built from role and name, a DOM path or a mobile label can click a **different element**. After `--observe none`, target by `--testid`, or run `mm describe-screen` before you use refs again.
+**After `--observe none`, refs are not refreshed.** If the call changed the screen, the refs you have still describe the previous screen. A ref backed by a testId fails loudly (`MM_TARGET_NOT_FOUND`). So does a browser ref whose element was removed or re-mounted, or now shows other text. But a mobile label ref, a browser ref that fell back to `role=`/`text=`, or a browser ref to an element without text (an icon button) can click a **different element**. After `--observe none`, target by `--testid`, or run `mm describe-screen` before you use refs again.
 
 **Only mutating and batch calls wait for animations** (browser, up to 1 s) before they observe. `mm describe-screen` and a read with `--observe full` read the page at once, so `mm click … --observe none && mm get-state --observe full` can catch a screen mid-animation. To get a settled screen after an action, let the action observe: `mm click … --observe full`.
 
@@ -255,7 +255,7 @@ When 3+ consecutive identical nodes appear (same role, name, and path), they are
 
 On mobile (iOS, Android), the tree is a flat list in screen order. A node is a native element: `role` is its type (`Button`, `StaticText`, `android.widget.Button`, `android.view.ViewGroup`), and `bounds` is its frame (`{ x, y, width, height }`). Layout-only elements are left out: elements with no label or text, no testId, and a type that is not a control (button, link, text field, switch, slider, checkbox and similar). Their children stay in the list. Containers with a testId stay. Plain unlabelled views of at least 24×24 with nothing kept inside also stay: they are often icon buttons (for example the iOS wallet home action buttons). Only a node with a testId, label or text has a ref you can click or type into. Nodes without one (unlabelled views, spinners, unnamed controls) are listed with their `bounds` but their ref cannot be targeted: use `mm tap-coordinates <x> <y>` with the center of `bounds`.
 
-Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails (strict mode) instead of acting on another element: refs use the exact, case-sensitive name, and elements that share a role and name get a unique DOM selector, so two "Send" buttons get two refs that each click their own button. If a click fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
+Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails instead of acting on another element. The snapshot stamps each element with a token in its `data-mm-ref` attribute, and the ref selects that token, so two "Send" buttons get two refs that each click their own button, and a price in the name can change without breaking the ref. A ref fails at once with `MM_TARGET_NOT_FOUND` when its element was removed or re-mounted, or when the element now shows other text (a "Next" button became "Confirm"); changing numbers such as `$2.42`, `3.92%` or `00:59` do not count, plain integers (`Account 1`) do. Take a new snapshot when that happens. An element that could not be stamped gets a `role=`/`text=` ref with the exact, case-sensitive name; if a click on it fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
 #### `mm list-testids`
 
@@ -317,7 +317,9 @@ If the page closes after clicking (e.g., confirmation popup), the response inclu
 mm click --testid log-in-button --dismiss-keyboard
 ```
 
-**Timeout behavior:** If the click hangs (e.g., element found but click never resolves due to a side effect), `MM_CLICK_TIMEOUT` is returned. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
+**Browser target not found:** without `--timeout`, when the target matches no element after 2s, the click fails at once with `MM_TARGET_NOT_FOUND` (`Selector [data-testid="x"] (testId:x) matched 0 elements after 2000ms`) instead of waiting for the whole 15s. Check the testId or selector with `mm describe-screen`. With `--timeout`, the click waits that long for the element to appear, so pass one when the screen is still loading (`mm click --testid confirm --timeout 30000`).
+
+**Timeout behavior:** If the click times out, `MM_CLICK_TIMEOUT` is returned. On the browser the message ends with the last step Playwright logged, which says why: `locator resolved to hidden <input .../>` (the element is hidden; click its visible label or wrapper), `<div class="..."> intercepts pointer events` (another element covers it; close it first) or `element is not enabled`. The click may still complete in the background — run `mm describe-screen` to verify current state before retrying.
 
 #### `mm type <ref> <text>`
 
@@ -391,6 +393,32 @@ mm scroll-to-element e12                         # mobile: auto direction
 ```
 
 Playwright's `click` already scrolls its target into view, so you do not need this before `mm click`. Use it to bring an element into view before a screenshot, or to reach content further down a list.
+
+#### `mm hover <ref>` / `mm unhover`
+
+`mm hover` moves the pointer over an element, so its hover state shows (a tooltip, a popover, a highlighted row, a hover-only button). It waits for the element, scrolls it into view and checks that nothing covers it, like `mm click`. Browser only. Accepts `--timeout <ms>` (default: 15s) and `--within <scope>`. `mm unhover` moves the pointer off the page: the hovered element loses its hover state and no other element gets one.
+
+```
+mm hover --testid account-menu-icon
+mm hover --testid address-row --within "testid:multichain-address-rows-list"
+mm screenshot --name address-row-hovered
+mm unhover
+mm screenshot --name address-row-idle
+```
+
+The pointer stays where `mm hover` left it until the next hover, click or `mm unhover`, so take the screenshot right after the hover. Use these instead of `mm cdp Input.dispatchMouseEvent` with coordinates: they target the element, not a point that moves with the layout. A target that does not appear, or stays covered, fails with `MM_WAIT_TIMEOUT`; other failures return `MM_HOVER_FAILED`.
+
+#### `mm set-viewport <width> <height>` / `mm reset-viewport`
+
+`mm set-viewport` resizes the active page's viewport in CSS pixels (width 100–7680, height 100–4320), for example to check a layout at a narrow width. The size stays across reloads and navigations of that page, until `mm reset-viewport` restores the size the page had before the first `mm set-viewport`. It applies to the active page only: switch tabs, and the other tab keeps its own size. Browser only.
+
+```
+mm set-viewport 360 640
+mm screenshot --name narrow
+mm reset-viewport
+```
+
+Returns: `set-viewport` gives `width`, `height` and `original` (the size before the first change); `reset-viewport` gives `reset` (`false` when `set-viewport` was not used on the page, nothing changed) and `viewport`. Use these instead of `mm cdp Emulation.setDeviceMetricsOverride`. Failures return `MM_VIEWPORT_FAILED`.
 
 #### `mm clipboard`
 
@@ -601,7 +629,7 @@ mm mock-network requests [--limit <n>]
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
-Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`). On the browser, `--target` selects the active page (`page`, default) or the Extension service worker (`sw`); browser commands share a persistent CDP session per target, and `--fresh` uses a one-shot session detached after the command.
+Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. For pointer hover use `mm hover` / `mm unhover`, and for the viewport size `mm set-viewport` / `mm reset-viewport`, not `Input.dispatchMouseEvent` or `Emulation.setDeviceMetricsOverride`. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`). On the browser, `--target` selects the active page (`page`, default) or the Extension service worker (`sw`); browser commands share a persistent CDP session per target, and `--fresh` uses a one-shot session detached after the command.
 
 ```bash
 # Browser — page (default)
@@ -790,6 +818,8 @@ Use `error.code` to decide what to do:
 | `MM_TYPE_TIMEOUT`                   | Fill action timed out                                                                    | Run `mm describe-screen` to verify state; retry with `--timeout`                                          |
 | `MM_ELEMENT_NOT_EDITABLE`           | Type target is read-only or disabled (browser; fails at once)                            | Expected when verifying a read-only field; otherwise check the target with `mm inspect`                   |
 | `MM_INSPECT_FAILED`                 | inspect could not read the element (non-timeout)                                         | Run `mm describe-screen` and re-target; fall back to `mm cdp` only if it persists                         |
+| `MM_HOVER_FAILED`                   | hover or unhover failed (non-timeout)                                                    | Run `mm describe-screen` and re-target                                                                    |
+| `MM_VIEWPORT_FAILED`                | set-viewport or reset-viewport could not resize the page                                 | Run `mm describe-screen` to check the session; retry once                                                 |
 | `MM_GETTEXT_FAILED`                 | getText operational failure (non-timeout)                                                | Element may be detached; run `mm describe-screen` and re-target                                           |
 | `MM_GETTEXT_TIMEOUT`                | textContent action timed out                                                             | Retry with `--timeout`                                                                                    |
 | `MM_CLIPBOARD_PERMISSION_DENIED`    | Clipboard permission denied by browser                                                   | Check browser permissions; try CDP approach                                                               |
@@ -846,7 +876,7 @@ These contracts can be deployed to the local Anvil chain via `seed_contract` / `
 - Daemon runs per project, state tracked in `.mm-server` at the project root
 - Auto-starts on `mm launch` if not running
 - Shuts down after 30 minutes of inactivity
-- Logs to `.mm-daemon.log`
+- Logs to `.mm-daemon.log`. Each request line has the outcome, for example `POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT 15080ms` (a failed tool call still has status 200). `grep ok=false .mm-daemon.log` lists the failed calls of a run
 - One tool executes at a time (requests are queued)
 - Project resolution: `--project` flag → `MM_PROJECT` env var → current git worktree
 

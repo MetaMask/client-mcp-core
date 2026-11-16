@@ -127,6 +127,32 @@ export type InspectResult = {
   effectiveOpacity: number;
 };
 
+export type HoverResult = {
+  hovered: boolean;
+  target: string;
+};
+
+export type UnhoverResult = {
+  unhovered: boolean;
+};
+
+export type ViewportSize = {
+  width: number;
+  height: number;
+};
+
+export type SetViewportResult = ViewportSize & {
+  /** The size before the first `set_viewport` on this page. */
+  original: ViewportSize;
+};
+
+export type ResetViewportResult = {
+  /** False when `set_viewport` was not used on this page: nothing changed. */
+  reset: boolean;
+  /** The viewport after the reset (null: the page has no fixed viewport). */
+  viewport: ViewportSize | null;
+};
+
 export type StepResult = {
   tool: string;
   ok: boolean;

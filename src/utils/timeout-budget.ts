@@ -20,6 +20,7 @@ const INTERACTION_TOOLS: ReadonlySet<string> = new Set([
   'type',
   'get_text',
   'inspect',
+  'hover',
   'wait_for',
   'scroll_to_element',
 ]);
