@@ -1949,7 +1949,11 @@ describe('MobilePlatformDriver', () => {
   describe('scrollToElement', () => {
     it('maps the content direction to the opposite finger direction', async () => {
       const backend = createMockBackend({
-        scrollToElement: vi.fn().mockResolvedValue(makeElement()),
+        scrollToElement: vi.fn().mockResolvedValue({
+          element: makeElement(),
+          swipes: 0,
+          inViewport: true,
+        }),
       });
       const driver = new MobilePlatformDriver(backend);
       const refMap = new Map([['e1', 'identifier:footer']]);
@@ -1966,7 +1970,11 @@ describe('MobilePlatformDriver', () => {
 
     it('leaves the direction to device-mcp by default (auto)', async () => {
       const backend = createMockBackend({
-        scrollToElement: vi.fn().mockResolvedValue(makeElement()),
+        scrollToElement: vi.fn().mockResolvedValue({
+          element: makeElement(),
+          swipes: 0,
+          inViewport: true,
+        }),
       });
       const driver = new MobilePlatformDriver(backend);
 
@@ -1984,7 +1992,7 @@ describe('MobilePlatformDriver', () => {
       ]);
     });
 
-    it('returns swipes, inViewport and bounds from a viewport-checking device-mcp', async () => {
+    it('returns swipes, inViewport and bounds', async () => {
       const element = makeElement({
         frame: { x: 16, y: 646, width: 370, height: 24 },
       });
@@ -1993,7 +2001,7 @@ describe('MobilePlatformDriver', () => {
           element,
           swipes: 1,
           inViewport: true,
-        }) as unknown as DeviceBackend['scrollToElement'],
+        }),
       });
       const driver = new MobilePlatformDriver(backend);
 
@@ -2004,49 +2012,6 @@ describe('MobilePlatformDriver', () => {
         inViewport: true,
         bounds: { x: 16, y: 646, width: 370, height: 24 },
       });
-    });
-
-    it('returns only the bounds from device-mcp 0.7.0 (element only)', async () => {
-      const backend = createMockBackend({
-        scrollToElement: vi
-          .fn()
-          .mockResolvedValue(
-            makeElement({ frame: { x: 1, y: 996, width: 2, height: 3 } }),
-          ),
-      });
-      const driver = new MobilePlatformDriver(backend);
-
-      expect(
-        await driver.scrollToElement('testId', 'row', new Map()),
-      ).toStrictEqual({ bounds: { x: 1, y: 996, width: 2, height: 3 } });
-    });
-
-    it('returns nothing for an object without a frame', async () => {
-      const backend = createMockBackend({
-        scrollToElement: vi
-          .fn()
-          .mockResolvedValue({}) as unknown as DeviceBackend['scrollToElement'],
-      });
-      const driver = new MobilePlatformDriver(backend);
-
-      expect(
-        await driver.scrollToElement('testId', 'row', new Map()),
-      ).toStrictEqual({});
-    });
-
-    it('returns nothing for an unexpected backend result', async () => {
-      const backend = createMockBackend({
-        scrollToElement: vi
-          .fn()
-          .mockResolvedValue(
-            undefined,
-          ) as unknown as DeviceBackend['scrollToElement'],
-      });
-      const driver = new MobilePlatformDriver(backend);
-
-      expect(
-        await driver.scrollToElement('testId', 'row', new Map()),
-      ).toStrictEqual({});
     });
 
     it('rejects a within scope', async () => {
