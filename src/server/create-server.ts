@@ -10,6 +10,7 @@ import { writeDaemonState, removeDaemonState } from './daemon-state.js';
 import { compactObservation } from './observation-compaction.js';
 import { RefStore } from './ref-store.js';
 import type { RefHandle } from './ref-store.js';
+import { formatRequestLogLine } from './request-log.js';
 import { RequestQueue } from './request-queue.js';
 import {
   RequestTimer,
@@ -37,6 +38,7 @@ import type { RunStepsResult } from '../tools/types/tool-outputs.js';
 import {
   ANIMATION_SETTLE_GRACE_MS,
   ANIMATION_SETTLE_TIMEOUT_MS,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_TIMEOUT_MS,
   MAX_IDLE_CHECK_INTERVAL_MS,
   MOBILE_SETTLE_MAX_MS,
@@ -349,11 +351,20 @@ export function createServer(config: ServerConfig): ServerInstance {
   app.use((req, res, next) => {
     lastRequestTime = Date.now();
     const requestStartedAt = lastRequestTime;
+    let responseBody: unknown;
+    const sendJson = res.json.bind(res);
+    res.json = (body: unknown): express.Response => {
+      responseBody = body;
+      return sendJson(body);
+    };
     res.on('finish', () => {
-      const duration = Date.now() - requestStartedAt;
       appendLog(
         config.logFilePath,
-        `[INFO] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`,
+        formatRequestLogLine(
+          { method: req.method, path: req.path, status: res.statusCode },
+          responseBody,
+          Date.now() - requestStartedAt,
+        ),
       );
     });
     next();
@@ -739,7 +750,11 @@ export function createServer(config: ServerConfig): ServerInstance {
     }
 
     const inputRecord = validatedInput as Record<string, unknown>;
-    const toolTimeoutMs = inputRecord?.timeoutMs;
+    // click has no schema default (no timeoutMs means fail fast when the
+    // target is missing), but it still runs for up to 15 s.
+    const toolTimeoutMs =
+      inputRecord?.timeoutMs ??
+      (toolName === 'click' ? DEFAULT_INTERACTION_TIMEOUT_MS : undefined);
     const queueTimeoutMs =
       typeof toolTimeoutMs === 'number' && toolTimeoutMs > 0
         ? computeTimeoutBudget(toolTimeoutMs).queue

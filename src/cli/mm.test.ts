@@ -2471,6 +2471,84 @@ describe('routeCommand', () => {
     expectFailure('--styles requires comma-separated CSS property names', 2);
   });
 
+  it('routes hover with positional ref', async () => {
+    await routeCommand('hover', ['e3'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hover',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'e3' }),
+      }),
+    );
+  });
+
+  it('routes hover with --testid, --timeout and --within', async () => {
+    await routeCommand(
+      'hover',
+      [
+        '--testid',
+        'account-menu',
+        '--timeout',
+        '3000',
+        '--within',
+        'testid:header',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/hover',
+      expect.objectContaining({
+        body: JSON.stringify({
+          testId: 'account-menu',
+          timeoutMs: 3000,
+          within: { testId: 'header' },
+        }),
+      }),
+    );
+  });
+
+  it('exits when hover has no target', async () => {
+    await expect(routeCommand('hover', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm hover'), 2);
+  });
+
+  it('routes unhover', async () => {
+    await routeCommand('unhover', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/unhover',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
+  it('routes set-viewport', async () => {
+    await routeCommand('set-viewport', ['390', '844'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/set_viewport',
+      expect.objectContaining({
+        body: JSON.stringify({ width: 390, height: 844 }),
+      }),
+    );
+  });
+
+  it.each([[[]], [['390']], [['390', 'tall']], [['390', '844', '2']]])(
+    'exits when set-viewport gets %j',
+    async (args) => {
+      await expect(
+        routeCommand('set-viewport', args, 3000),
+      ).rejects.toThrowError('process.exit');
+      expectFailure('Usage: mm set-viewport <width> <height>', 2);
+    },
+  );
+
+  it('routes reset-viewport', async () => {
+    await routeCommand('reset-viewport', [], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/reset_viewport',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
   it('routes close-tab with --role', async () => {
     await routeCommand('close-tab', ['--role', 'dapp'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(

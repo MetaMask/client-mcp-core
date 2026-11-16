@@ -21,6 +21,8 @@ export const ErrorCodes = {
   MM_TYPE_FAILED: 'MM_TYPE_FAILED',
   MM_GETTEXT_FAILED: 'MM_GETTEXT_FAILED',
   MM_INSPECT_FAILED: 'MM_INSPECT_FAILED',
+  MM_HOVER_FAILED: 'MM_HOVER_FAILED',
+  MM_VIEWPORT_FAILED: 'MM_VIEWPORT_FAILED',
   MM_ELEMENT_NOT_EDITABLE: 'MM_ELEMENT_NOT_EDITABLE', // type target is readonly or disabled
   MM_WAIT_TIMEOUT: 'MM_WAIT_TIMEOUT',
   MM_CLICK_TIMEOUT: 'MM_CLICK_TIMEOUT', // click action timed out (element found, click hung); state unknown
@@ -137,6 +139,7 @@ const EXIT_CODE_BY_ERROR: Readonly<Record<string, CliExitCode>> = {
   [ErrorCodes.MM_TYPE_FAILED]: CliExitCodes.TARGET,
   [ErrorCodes.MM_GETTEXT_FAILED]: CliExitCodes.TARGET,
   [ErrorCodes.MM_INSPECT_FAILED]: CliExitCodes.TARGET,
+  [ErrorCodes.MM_HOVER_FAILED]: CliExitCodes.TARGET,
   [ErrorCodes.MM_ELEMENT_NOT_EDITABLE]: CliExitCodes.TARGET,
   [ErrorCodes.MM_TAB_NOT_FOUND]: CliExitCodes.TARGET,
 

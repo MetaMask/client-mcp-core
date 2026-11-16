@@ -17,6 +17,10 @@ describe('isBrowserOnlyTool', () => {
     expect(isBrowserOnlyTool('reload')).toBe(true);
     expect(isBrowserOnlyTool('build')).toBe(true);
     expect(isBrowserOnlyTool('inspect')).toBe(true);
+    expect(isBrowserOnlyTool('hover')).toBe(true);
+    expect(isBrowserOnlyTool('unhover')).toBe(true);
+    expect(isBrowserOnlyTool('set_viewport')).toBe(true);
+    expect(isBrowserOnlyTool('reset_viewport')).toBe(true);
   });
 
   it('returns false for cross-platform tools', () => {
@@ -90,6 +94,10 @@ describe('checkPlatformGate', () => {
     expect(checkPlatformGate('navigate', 'ios')).toStrictEqual({
       code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
       message: 'Tool "navigate" is not supported on ios platform',
+    });
+    expect(checkPlatformGate('hover', 'android')).toStrictEqual({
+      code: 'MM_TOOL_NOT_SUPPORTED_ON_PLATFORM',
+      message: 'Tool "hover" is not supported on android platform',
     });
   });
 

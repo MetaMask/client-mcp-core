@@ -3,6 +3,7 @@ import type {
   ElementQuery,
   HermesSession,
   HermesTarget,
+  ScrollToElementResult,
   UIElement,
 } from '@metamask/device-mcp';
 
@@ -170,7 +171,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
     const target = `${targetType}:${targetValue}`;
     try {
       await withTimeout(
-        this.#tapResolved(query, element),
+        this.#backend.tapElement(query, { element }),
         deadline - Date.now(),
         'tapElement',
       );
@@ -193,7 +194,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
     );
     signal?.throwIfAborted();
     await withTimeout(
-      this.#tapResolved(query, moved),
+      this.#backend.tapElement(query, { element: moved }),
       deadline - Date.now(),
       'tapElement',
     );
@@ -228,7 +229,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
     signal?.throwIfAborted();
     let remaining = deadline - Date.now();
     await withTimeout(
-      this.#tapResolved(query, element),
+      this.#backend.tapElement(query, { element }),
       remaining,
       'tapElement',
     );
@@ -240,28 +241,6 @@ export class MobilePlatformDriver implements IPlatformDriver {
       target: `${targetType}:${targetValue}`,
       textLength: text.length,
     };
-  }
-
-  /**
-   * Taps the element that `waitForElement` just found, without a second
-   * snapshot. device-mcp 0.7.0 declares `tapElement(query)` only; it ignores
-   * the newer `element` option and snapshots again.
-   *
-   * @param query - The element query.
-   * @param element - The element returned by `waitForElement`.
-   * @returns The backend's tap result.
-   */
-  async #tapResolved(
-    query: ElementQuery,
-    element: UIElement,
-  ): Promise<unknown> {
-    const backend = this.#backend as DeviceBackend & {
-      tapElement(
-        query: ElementQuery,
-        options?: { element?: UIElement },
-      ): Promise<unknown>;
-    };
-    return backend.tapElement(query, { element });
   }
 
   /**
@@ -509,12 +488,13 @@ export class MobilePlatformDriver implements IPlatformDriver {
     rejectWithinScope(within);
     const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const finger = { auto: undefined, down: 'up', up: 'down' } as const;
-    const outcome = await this.#backend.scrollToElement(
-      query,
-      finger[direction],
-      maxAttempts,
+    return readScrollOutcome(
+      await this.#backend.scrollToElement(
+        query,
+        finger[direction],
+        maxAttempts,
+      ),
     );
-    return readScrollOutcome(outcome);
   }
 
   /**
@@ -897,27 +877,21 @@ function isKeyboardObscured(error: unknown): boolean {
 }
 
 /**
- * Read device-mcp's `scrollToElement` result: `{ element, swipes,
- * inViewport }` from releases with the viewport check, or the bare element
- * from older ones (which only know it is in the UI tree).
+ * Projects device-mcp's `scrollToElement` result onto the tool response: the
+ * swipe count, the viewport flag and the element's frame. device-mcp only
+ * returns after checking the viewport, so `inViewport` is always true here.
  *
  * @param outcome - The backend result.
- * @returns Swipe count, viewport flag and frame, when known.
+ * @returns Swipe count, viewport flag and the element's frame.
  */
-function readScrollOutcome(outcome: unknown): ScrollToElementOutcome {
-  if (!outcome || typeof outcome !== 'object') {
-    return {};
-  }
-  if ('element' in outcome) {
-    const { element, swipes, inViewport } = outcome as {
-      element: UIElement;
-      swipes: number;
-      inViewport: boolean;
-    };
-    return { swipes, inViewport, bounds: { ...element.frame } };
-  }
-  const { frame } = outcome as Partial<UIElement>;
-  return frame ? { bounds: { ...frame } } : {};
+function readScrollOutcome(
+  outcome: ScrollToElementResult,
+): ScrollToElementOutcome {
+  return {
+    swipes: outcome.swipes,
+    inViewport: outcome.inViewport,
+    bounds: { ...outcome.element.frame },
+  };
 }
 
 /**

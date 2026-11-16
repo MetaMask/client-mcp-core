@@ -10,6 +10,12 @@
 /** Default timeout for user interactions (click, type, wait_for) - 15 seconds */
 export const DEFAULT_INTERACTION_TIMEOUT_MS = 15000;
 
+/**
+ * A browser click fails with "matched 0 elements" when its target matches no
+ * element after this wait, instead of waiting for the whole timeout.
+ */
+export const CLICK_MISSING_TARGET_WAIT_MS = 2_000;
+
 /** Maximum time the RequestQueue finally block waits for a hung task to settle */
 export const QUEUE_SETTLE_TIMEOUT_MS = 5_000;
 
