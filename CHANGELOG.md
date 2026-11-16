@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Mobile observations retry a screen that is still tearing down after a navigating tap (Android: the old screen, half removed, still carried the previous screen's test IDs). One extra snapshot is allowed when the new tree lost a large part of its nodes but kept the last screen's test IDs; a tap that does not change the screen still costs the same single retry, and the diff stays empty.
-
 ## [0.14.0]
 
 ### Added
