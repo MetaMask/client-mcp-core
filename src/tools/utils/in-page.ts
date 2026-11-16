@@ -361,289 +361,106 @@ export function collectTestIdsInPage(
 }
 
 /**
- * Builds a Playwright selector that matches exactly one element: the
+ * Result of `stampRefInPage`.
+ *
+ * - `stamped`: the token was added. `text` is the element's text, as
+ * Playwright's text engines read it (`elementText().full`: the text nodes
+ * of the element and its descendants, without `<script>`, `<noscript>`
+ * and `<style>`; the `value` of a submit or button `<input>`), or null when
+ * it is longer than the `maxTextLength` argument.
+ * - `unreachable`: the element is inside a closed shadow root, which no
+ * Playwright selector can search; nothing was written.
+ * - `detached`: not an element of the document (detached, in a fragment, or
+ * not an element); nothing was written.
+ */
+export type InPageStampResult =
+  | { status: 'stamped'; text: string | null }
+  | { status: 'unreachable' }
+  | { status: 'detached' };
+
+/**
+ * Adds `token` to the whitespace-separated token list in `attribute` of the
  * element the function is called on (`this`, via `Runtime.callFunctionOn`
- * on the resolved node).
+ * on the resolved node), so that `[attribute~="token"]` matches exactly
+ * this element. The tokens of earlier snapshots stay, newest last, up to
+ * `keep` tokens: a later snapshot (an observation, or a request that timed
+ * out and kept running) does not make the refs of an earlier one stale.
  *
- * Within a scope, tries in order a unique `data-testid`, a unique `id`, and
- * the shortest unique path from the element up to the top of its tree
- * (document or shadow root), anchored at the first ancestor with a unique
- * `data-testid` or `id` when that makes it unique (`#h > button`). The
- * path uses `:nth-of-type` where needed, then, when that is not unique,
- * `:nth-child` on every step. Uniqueness mirrors Playwright's CSS
- * engine: it searches the scope's light descendants and every open shadow
- * root inside them (nested roots too), the scope element itself never
- * matches, and the `>` combinator steps from the top element of a shadow
- * root to its host. A candidate counts as unique when exactly one element
- * matches it this way. Inside a shadow root, when the path up to the top
- * of the root is not unique, it is anchored to the host with `:scope >`.
- *
- * - Element in the document: the scope is the document, and the result is
- * raw CSS (`[data-testid="send"]`, `body > button:nth-of-type(2)`).
- * - Element in an open shadow root: the scope is the host, which needs a
- * unique selector of its own (same rules, recursively for nested shadow
- * roots), and the result chains them: `css=<host> >> css=<inside>`.
- * Playwright resolves the inner part within the host, its open shadow root
- * included.
- * - Element in a closed shadow root, at any depth: Playwright cannot search
- * it, so no selector can reach it, and any other selector (role, text)
- * would only match other elements. Returns the marker
- * `mm-unreachable=closed-shadow-root` (`UNREACHABLE_REF_SELECTOR` in
- * `discovery.ts`), which makes an action on the ref fail at once.
- * - Detached, or in another document: null.
+ * Playwright's CSS engine searches open shadow roots, so elements inside
+ * them are stamped too. Elements inside a closed shadow root, at any depth,
+ * are not.
  *
  * Runs in the page: must stay self-contained. It is meant for an isolated
  * world (`callOnNodeInIsolatedWorld`), and reads no page global other than
- * `document` (no `CSS`, `window`, `Element`, `Array.from`), so it also
- * works where a main world scuttles globals (LavaMoat).
+ * `document`, so it also works where a main world scuttles globals
+ * (LavaMoat).
  *
- * @returns The selector, the closed-shadow-root marker, or null when no
- * unique selector can be built.
+ * The same call returns the element's text, so a ref can check that its
+ * node still shows the content of the snapshot.
+ *
+ * @param attribute - The attribute holding the tokens.
+ * @param token - The token of this ref (no whitespace).
+ * @param keep - Maximum number of tokens kept on the element.
+ * @param maxTextLength - Longest text returned; longer text gives null.
+ * @returns The result (see `InPageStampResult`).
  */
-export function buildUniqueSelectorInPage(this: Element): string | null {
-  // Copies a NodeList or HTMLCollection without the page's `Array.from`.
-  const toArray = <TItem>(list: ArrayLike<TItem>): TItem[] => {
-    const items: TItem[] = [];
-    let index = 0;
-    while (index < list.length) {
-      items.push(list[index]);
-      index += 1;
-    }
-    return items;
-  };
-
-  // CSSOM "serialize an identifier" (what `CSS.escape` returns), inline:
-  // the page's `CSS` global may be scuttled (LavaMoat) and must not be read.
-  const escapeCss = (value: string): string => {
-    let result = '';
-    for (let index = 0; index < value.length; index += 1) {
-      const code = value.charCodeAt(index);
-      const char = value.charAt(index);
-      if (code === 0) {
-        result += '\uFFFD';
-      } else if (
-        (code >= 0x1 && code <= 0x1f) ||
-        code === 0x7f ||
-        (index === 0 && code >= 0x30 && code <= 0x39) ||
-        (index === 1 &&
-          code >= 0x30 &&
-          code <= 0x39 &&
-          value.charCodeAt(0) === 0x2d)
-      ) {
-        result += `\\${code.toString(16)} `;
-      } else if (index === 0 && value.length === 1 && code === 0x2d) {
-        result += `\\${char}`;
-      } else if (
-        code >= 0x80 ||
-        code === 0x2d ||
-        code === 0x5f ||
-        (code >= 0x30 && code <= 0x39) ||
-        (code >= 0x41 && code <= 0x5a) ||
-        (code >= 0x61 && code <= 0x7a)
-      ) {
-        result += char;
-      } else {
-        result += `\\${char}`;
-      }
-    }
-    return result;
-  };
-
-  type Scope = Document | Element;
-
-  const parentOrHost = (element: Element): Element | null => {
-    if (element.parentElement) {
-      return element.parentElement;
-    }
-    const parent = element.parentNode;
-    return parent?.nodeType === 11
-      ? ((parent as ShadowRoot).host ?? null)
-      : null;
-  };
-
-  // The roots Playwright's CSS engine searches from a scope: the scope, the
-  // scope's own open shadow root, and every open shadow root inside them.
-  const searchRoots = (scope: Scope): ParentNode[] => {
-    const roots: ParentNode[] = [];
-    const add = (root: ParentNode): void => {
-      roots.push(root);
-      for (const element of toArray(root.querySelectorAll('*'))) {
-        if (element.shadowRoot) {
-          add(element.shadowRoot);
-        }
-      }
-    };
-    add(scope);
-    const ownShadowRoot =
-      scope.nodeType === 1 ? (scope as Element).shadowRoot : null;
-    if (ownShadowRoot) {
-      add(ownShadowRoot);
-    }
-    return roots;
-  };
-
-  // Whether exactly one element of the scope matches the compounds joined
-  // with `>`.
-  const isUnique = (
-    scope: Scope,
-    roots: ParentNode[],
-    compounds: string[],
-  ): boolean => {
-    const last = compounds.length - 1;
-    let count = 0;
-    for (const root of roots) {
-      for (const candidate of toArray(root.querySelectorAll(compounds[last]))) {
-        let current: Element | null = candidate;
-        let matches = candidate !== scope;
-        for (let index = last - 1; matches && index >= 0; index -= 1) {
-          current = parentOrHost(current as Element);
-          // `:scope` matches only the scope element (Playwright's scope
-          // engine); other compounds never match it.
-          matches =
-            current !== null &&
-            (compounds[index] === ':scope'
-              ? current === scope
-              : current !== scope && current.matches(compounds[index]));
-        }
-        if (matches) {
-          count += 1;
-          if (count > 1) {
-            return false;
-          }
-        }
-      }
-    }
-    return count === 1;
-  };
-
-  const selectorInScope = (element: Element, scope: Scope): string | null => {
-    const roots = searchRoots(scope);
-    const unique = (compounds: string[]): boolean => {
-      try {
-        return isUnique(scope, roots, compounds);
-      } catch {
-        // Invalid selector (unexpected): not usable.
-        return false;
-      }
-    };
-
-    // A unique `[data-testid="..."]`, else a unique `#id`, for an element.
-    const anchorOf = (target: Element): string | null => {
-      const testId = target.getAttribute('data-testid');
-      if (testId) {
-        const candidate = `[data-testid="${escapeCss(testId)}"]`;
-        if (unique([candidate])) {
-          return candidate;
-        }
-      }
-      if (target.id) {
-        const candidate = `#${escapeCss(target.id)}`;
-        if (unique([candidate])) {
-          return candidate;
-        }
-      }
-      return null;
-    };
-
-    // Path from the element up to the top element of the tree
-    // (parentElement is null at the top of a shadow root), returned as soon
-    // as it is unique. Each step first tries to anchor the path at the
-    // ancestor's unique testid or id (`#h > button`). Siblings come from
-    // parentNode, so the top elements of a shadow root get positions too.
-    // `byChild` uses `:nth-child` on every step instead of `:nth-of-type`
-    // only when needed: it tells apart elements that `:nth-of-type` does
-    // not, such as a slotted light child and a shadow child of one host
-    // (both are children of the host for the `>` combinator).
-    const walk = (byChild: boolean): string | null => {
-      const compounds: string[] = [];
-      for (
-        let current: Element | null = element;
-        current;
-        current = current.parentElement
-      ) {
-        if (current !== element) {
-          const anchor = anchorOf(current);
-          if (anchor && unique([anchor, ...compounds])) {
-            return [anchor, ...compounds].join(' > ');
-          }
-        }
-        const { localName } = current;
-        if (!localName) {
-          return null;
-        }
-        const parent = current.parentNode;
-        const siblings = parent ? toArray(parent.children) : [];
-        const sameType = siblings.filter(
-          (sibling) => sibling.localName === localName,
-        );
-        if (byChild) {
-          compounds.unshift(
-            `${localName}:nth-child(${siblings.indexOf(current) + 1})`,
-          );
-        } else {
-          compounds.unshift(
-            sameType.length > 1
-              ? `${localName}:nth-of-type(${sameType.indexOf(current) + 1})`
-              : localName,
-          );
-        }
-        if (unique(compounds)) {
-          return compounds.join(' > ');
-        }
-      }
-      // Inside a shadow root, anchor the path to the host: `:scope > ...`
-      // steps from the top element of the shadow root to the host.
-      if (scope.nodeType === 1) {
-        compounds.unshift(':scope');
-        if (unique(compounds)) {
-          return compounds.join(' > ');
-        }
-      }
-      return null;
-    };
-
-    return anchorOf(element) ?? walk(false) ?? walk(true);
-  };
-
-  // Set when the element is inside a closed shadow root.
-  let unreachable = false;
-
-  // Selector parts from the document down to the element, one per tree
-  // (document, then each open shadow root), or null.
-  const selectorParts = (element: Element): string[] | null => {
-    const root = element.getRootNode();
-    if (root === document) {
-      const selector = selectorInScope(element, document);
-      return selector === null ? null : [selector];
-    }
-    if (root.nodeType !== 11 || !(root as ShadowRoot).host) {
-      return null;
-    }
-    if ((root as ShadowRoot).mode !== 'open') {
-      unreachable = true;
-      return null;
-    }
-    const { host } = root as ShadowRoot;
-    const hostParts = selectorParts(host);
-    if (hostParts === null) {
-      return null;
-    }
-    const selector = selectorInScope(element, host);
-    return selector === null ? null : [...hostParts, selector];
-  };
-
+export function stampRefInPage(
+  this: Element,
+  attribute: string,
+  token: string,
+  keep: number,
+  maxTextLength: number,
+): InPageStampResult {
   if (!this || this.nodeType !== 1) {
-    return null;
+    return { status: 'detached' };
   }
-  const parts = selectorParts(this);
-  if (unreachable) {
-    // Must equal UNREACHABLE_REF_SELECTOR in discovery.ts.
-    return 'mm-unreachable=closed-shadow-root';
+  let root: Node = this.getRootNode();
+  while (root.nodeType === 11) {
+    const shadowRoot = root as ShadowRoot;
+    if (!shadowRoot.host) {
+      return { status: 'detached' };
+    }
+    if (shadowRoot.mode !== 'open') {
+      return { status: 'unreachable' };
+    }
+    root = shadowRoot.host.getRootNode();
   }
-  if (parts === null) {
-    return null;
+  if (root !== document) {
+    return { status: 'detached' };
   }
-  return parts.length === 1
-    ? parts[0]
-    : parts.map((part) => `css=${part}`).join(' >> ');
+  const tokens = (this.getAttribute(attribute) ?? '')
+    .split(' ')
+    .filter((existing) => existing !== '' && existing !== token);
+  tokens.push(token);
+  this.setAttribute(attribute, tokens.slice(-keep).join(' '));
+
+  const textOf = (element: Element): string => {
+    const name = element.nodeName;
+    if (name === 'SCRIPT' || name === 'NOSCRIPT' || name === 'STYLE') {
+      return '';
+    }
+    if (name === 'INPUT') {
+      const input = element as HTMLInputElement;
+      if (input.type === 'submit' || input.type === 'button') {
+        return input.value;
+      }
+    }
+    let text = '';
+    for (let child = element.firstChild; child; child = child.nextSibling) {
+      if (text.length > maxTextLength) {
+        break;
+      }
+      if (child.nodeType === 3) {
+        text += child.nodeValue ?? '';
+      } else if (child.nodeType === 1) {
+        text += textOf(child as Element);
+      }
+    }
+    return text;
+  };
+  const text = textOf(this);
+  return {
+    status: 'stamped',
+    text: text.length > maxTextLength ? null : text,
+  };
 }
