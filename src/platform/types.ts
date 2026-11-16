@@ -32,6 +32,14 @@ export type ClickOptions = {
    * once more. Ignored by the browser driver.
    */
   dismissKeyboard?: boolean;
+  /**
+   * Browser: fail with "matched 0 elements" when the target matches no
+   * element after a short wait, instead of waiting for the whole timeout.
+   * Only for a click without an explicit timeout: a caller that gives one
+   * wants to wait that long for a target that appears late. Ignored by the
+   * mobile driver.
+   */
+  failFastWhenMissing?: boolean;
 };
 
 export type TypeActionResult = {
@@ -41,8 +49,9 @@ export type TypeActionResult = {
 };
 
 /**
- * What `scrollToElement` did. `swipes` and `inViewport` come from device-mcp
- * releases that check the viewport; older releases report only the element.
+ * What `scrollToElement` did. Mobile reports the swipe count and whether the
+ * element is in the viewport (device-mcp only returns after checking it);
+ * the browser reports nothing extra.
  */
 export type ScrollToElementOutcome = {
   swipes?: number;
@@ -64,6 +73,11 @@ export type InspectActionResult = {
   readOnly: boolean;
   styles: Record<string, string>;
   effectiveOpacity: number;
+};
+
+export type HoverActionResult = {
+  hovered: boolean;
+  target: string;
 };
 
 export type PlatformScreenshotOptions = {
@@ -155,6 +169,20 @@ export type IPlatformDriver = {
     styles: string[],
     within?: WithinScope,
   ): Promise<InspectActionResult>;
+
+  /**
+   * Waits for the target, then moves the pointer over it. When `signal` is
+   * aborted while the driver waits for the target, the driver throws the
+   * abort reason and does not hover. Browser only.
+   */
+  hover?(
+    targetType: TargetType,
+    targetValue: string,
+    refMap: Map<string, string>,
+    timeoutMs: number,
+    within?: WithinScope,
+    signal?: AbortSignal,
+  ): Promise<HoverActionResult>;
 
   getAccessibilityTree(
     rootSelector?: string,

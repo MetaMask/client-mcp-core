@@ -11,11 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: an observation that exceeds `OBSERVATION_TIMEOUT_MS` (8 s) no longer costs the call. The action response stays `ok` and carries `observations: { timedOut: true }` with no tree, and the timed-out observation does not replace the diff baseline, so the agent knows the screen was not read
 - feat: add `MM_QUEUE_TIMEOUT`. When the daemon's request queue expires it now returns a normal `{ok:false,error}` tool response (not HTTP 500 `TOOL_EXECUTION_FAILED`), mapped to exit 5, not retryable, with the state-unknown hint; `RequestQueue` rejects a dedicated `QueueTimeoutError`
-- feat: `scroll_to_element` (`mm scroll-to-element`) now works on the browser: it waits for the target and scrolls it into view with `locator.scrollIntoViewIfNeeded()`, with `timeoutMs` and `within` support
-- feat: report `animationsSettled` in browser observations after a call that waits for animations, and document `mm wait-for` (including `--selector "text=..."`) as the replacement for `sleep`
-- feat: add `mm reload` to reload the active page so the Extension fetches cached data again after a network mock changes
-- feat: add `mm inspect` (attributes, disabled/read-only flags, computed styles, effective opacity); `mm type` fails fast on read-only or disabled fields
-- feat: add `MM_ARTIFACTS_DIR` environment variable to let the host override the directory screenshots and other session artifacts are written to. On launch, core resolves it (falling back to the workflow context's `config.artifactsDir`) and passes it to `ISessionManager.launch()` as `artifactsDir` for session managers to forward to their launcher.
 
 ### Changed
 
@@ -27,16 +22,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `navigate`, `describe_screen`, `screenshot` and the other tools without an action budget: CLI 30 s → 37 s (187 s on Mobile), so the abort nests above the queue default plus its settle wait. `launch` is `max(120 s, 37 s)` = 120 s (187 s on Mobile); `cleanup` 30 s → 37 s (187 s on Mobile).
   - Browser `scroll_to_element`: daemon queue 30 s → 25 s (action 15 s + observation 8 s + 2 s margin), so it still covers the action and its observation; the CLI is 37 s (32 s before) and takes the larger value because mobile keeps the queue default.
   - An explicit `--timeout` on an interaction command keeps the same derived abort as before (19 s for `--timeout 2000`). For `cdp` and `wait-for-notification` the CLI abort now derives from the action budget too: `cdp --timeout 1000` 35 s → 18 s, `wait-for-notification --timeout 1000` 30 s → 18 s; both still nest above the daemon queue.
-- **BREAKING:** `mm` failures are structured. A failed command prints one JSON line on stdout, `{"ok":false,"error":{"code","message","hint"?,"retryable"},"meta"?}`, instead of `Error: <message>` on stderr, and exits with a code per error class: 2 usage/validation, 3 no session or daemon down/lost, 4 target not found or not actionable, 5 timeout, 6 platform/device unavailable, 1 anything else (7 is reserved for a version mismatch). The daemon's `error.code` now reaches the caller. `exitCodeForError`, `isRetryableError`, `defaultHintForError`, `CliExitCodes` and `DaemonErrorCodes` are exported, and `ErrorCodes` adds `MM_BATCH_TIMEOUT`, the `MM_CLIPBOARD_*` codes and the CLI codes `MM_DAEMON_NOT_RUNNING`, `MM_DAEMON_START_FAILED`, `MM_DAEMON_ALREADY_RUNNING`, `MM_DAEMON_CONNECTION_LOST` and `MM_REQUEST_TIMEOUT`. Click and type timeouts say "state unknown". `launch` keeps any `MM_*` code thrown by a consumer, not only known codes.
-- Mobile `click` never reports a tap that hit something else: device-mcp refuses a tap when another element covers the target, and the click fails with the new `MM_TARGET_OBSCURED` (`MM_TARGET_NOT_VISIBLE` when the target is off screen). `click --dismiss-keyboard` closes a covering keyboard and taps once more (`keyboardDismissed: true`). With an observation, a mobile click result has `screenChanged`. The hit-test needs a device-mcp release with MetaMask/device-mcp#51.
-- Start the CLI faster: find the project root without running `git` and do not load zod. Load `@metamask/device-mcp` only when a mobile session uses it, so browser daemons start without it.
-- **BREAKING:** `scroll_to_element` `direction` is now the content direction (`down` reveals content below; it was the finger direction) and defaults to `auto`. The result adds `swipes`, `inViewport` and `bounds`; a target that is found but not brought into view fails with the new `MM_TARGET_NOT_VISIBLE`, and one never found with `MM_TARGET_NOT_FOUND`. The viewport check needs a device-mcp release with MetaMask/device-mcp#50; with device-mcp 0.7.0 only `bounds` is returned.
-- Mobile `click` and `type` tap the element that the target wait found, so a tap takes one device snapshot instead of two (needs a device-mcp release with `tapElement(query, { element })`; older releases ignore the option). `describe_screen` reads the app state and the screen at the same time on mobile.
 
 ### Fixed
 
 - Mobile observations retry a screen that is still tearing down after a navigating tap (Android: the old screen, half removed, still carried the previous screen's test IDs). One extra snapshot is allowed when the new tree lost a large part of its nodes but kept the last screen's test IDs; a tap that does not change the screen still costs the same single retry, and the diff stays empty.
-- `mm` resends a request only when the daemon refused the connection (`ECONNREFUSED`, read from Node's `error.cause.code`). It no longer resends after a reset, broken pipe or socket error, which can come after the daemon got the request (a resent `click` could tap twice); those fail at once with `MM_DAEMON_CONNECTION_LOST` (exit 3). Before, every network failure matched `fetch failed` and was resent up to 3 times.
+
+## [0.14.0]
+
+### Added
+
+- feat: add mm hover/unhover and mm set-viewport/reset-viewport ([#96](https://github.com/MetaMask/client-mcp-core/pull/96))
+- feat: support mm scroll-to-element on the browser ([#87](https://github.com/MetaMask/client-mcp-core/pull/87))
+- feat: report animationsSettled in observations and document mm wait-for instead of sleep ([#86](https://github.com/MetaMask/client-mcp-core/pull/86))
+- feat: add mm reload ([#85](https://github.com/MetaMask/client-mcp-core/pull/85))
+- feat: add mm inspect ([#84](https://github.com/MetaMask/client-mcp-core/pull/84))
+- feat: let hosts set the artifacts directory via MM_ARTIFACTS_DIR ([#83](https://github.com/MetaMask/client-mcp-core/pull/83))
+- feat: MM_TARGET_OBSCURED, click --dismiss-keyboard and screenChanged ([#77](https://github.com/MetaMask/client-mcp-core/pull/77))
+
+### Changed
+
+- chore: use fixed coverage floors instead of autoUpdate ([#101](https://github.com/MetaMask/client-mcp-core/pull/101))
+- feat: structured CLI errors with distinct exit codes ([#78](https://github.com/MetaMask/client-mcp-core/pull/78))
+
+### Fixed
+
+- fix: say why a browser click failed instead of only "Click timed out" ([#95](https://github.com/MetaMask/client-mcp-core/pull/95))
+- fix: tie describe-screen refs to their DOM node instead of role and name ([#94](https://github.com/MetaMask/client-mcp-core/pull/94))
+- fix: log the outcome of each tool call in .mm-daemon.log ([#97](https://github.com/MetaMask/client-mcp-core/pull/97))
+- fix: resend a CLI request only when the daemon refused the connection ([#79](https://github.com/MetaMask/client-mcp-core/pull/79))
+- fix: scroll_to_element reports swipes and fails unless in the viewport ([#76](https://github.com/MetaMask/client-mcp-core/pull/76))
+- fix: one device snapshot per mobile tap; parallel describe_screen reads ([#74](https://github.com/MetaMask/client-mcp-core/pull/74))
+- fix: start the CLI faster; load device-mcp on first mobile use ([#73](https://github.com/MetaMask/client-mcp-core/pull/73))
 
 ## [0.13.1]
 
@@ -173,7 +189,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.11.0...v0.12.0
