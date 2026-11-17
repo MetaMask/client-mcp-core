@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- feat: add `mm network-log`, a passive log of every request and console message in the browser session, including the Extension's background service worker. It starts at launch and records method, redacted URL, status, duration, failure text, source (`page` or `service-worker`) and JSON-RPC methods; `requests`/`console` read with `--cursor`, `--since`, `--url`, `--errors`, `--limit` and `--clear`, `mark` returns a cursor, and `configure --rpc-errors` records JSON-RPC `error` objects. Service-worker events need Playwright 1.57 or later
+
 ## [0.14.0]
 
 ### Added

@@ -42,7 +42,7 @@ The default depends on the tool's category:
 | Category      | Examples                                                                                                                                                                                                                                           | Default `observe` |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | **Mutating**  | click, type, navigate, reload, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
-| **Read-only** | get_state, get_text, inspect, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                           | `none`            |
+| **Read-only** | get_state, get_text, inspect, get_context, set_context, network_log, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                              | `none`            |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                                    | `none`            |
 | **CDP**       | cdp                                                                                                                                                                                                                                                | `none`            |
 | **Batch**     | run_steps                                                                                                                                                                                                                                          | `diff`            |
@@ -647,6 +647,69 @@ mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 | `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
 
 Without `--bodies` the output is the same as before: no bodies or headers. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+
+#### `mm network-log` (browser only)
+
+A passive log of every request and console message in the browser session. It starts at `mm launch`; you do not need to turn it on. It only listens: it never mocks, blocks or changes a request. It includes the Extension's background service worker, which sends most confirmation traffic (gas, security alerts, bridge, RPC). It keeps recording when you navigate, switch tabs or the service worker restarts.
+
+```bash
+mm network-log mark                              # {"cursor":42,...}: start of a flow
+# ...do the flow...
+mm network-log requests --cursor 42              # every request after the mark
+mm network-log requests --cursor 42 --errors     # only failures, HTTP >= 400 and JSON-RPC errors
+mm network-log console --cursor 42               # console errors and warnings after the mark
+```
+
+Sample request record:
+
+```json
+{
+  "seq": 6,
+  "t": 1794931760608,
+  "method": "POST",
+  "url": "https://mainnet.infura.io/v3/[REDACTED]",
+  "type": "fetch",
+  "status": 200,
+  "ms": 42,
+  "rpcMethod": "eth_call",
+  "rpcError": { "code": -32000, "message": "execution reverted" },
+  "source": "service-worker"
+}
+```
+
+| Field                        | Description                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| `seq`                        | Sequence number, shared by requests and console messages. Use it as a cursor                        |
+| `t`                          | Request start (console: time of the message), epoch ms                                              |
+| `url`                        | URL with secrets redacted (API keys in the host or path, such as Infura ids, and key/token params)  |
+| `status`                     | HTTP status. Absent when the request failed before a response                                       |
+| `ms`                         | Duration from start to the end of the response or the failure                                       |
+| `failure`                    | Failure text, for example `net::ERR_ABORTED` or `net::ERR_NAME_NOT_RESOLVED`                        |
+| `rpcMethod` / `rpcBatchSize` | JSON-RPC method of the request body, or the methods of a batch (first 20) and the batch size        |
+| `rpcError`                   | JSON-RPC `error` of the response. Only after `mm network-log configure --rpc-errors`                |
+| `source`                     | `service-worker` or `page`; page records also have `pageUrl` (and `frameUrl` for an iframe request) |
+
+Console records have `seq`, `t`, `level`, `text` (redacted, cut at 2000 characters), `source`, `sourceUrl`, and `location` (`url:line:column`) when Chrome gives one. Uncaught page errors are recorded as `error` with `uncaught: true`.
+
+| Flag                      | Description                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `--cursor <n>`            | Only records after this cursor. Returns the oldest first; pass the returned `cursor` again to get the next page |
+| `--since <iso\|epoch-ms>` | Only records at or after this time                                                                              |
+| `--limit <n>`             | Maximum records (default 500, max 2000). Without `--cursor`/`--since`, returns the newest                       |
+| `--url <glob-or-text>`    | Only URLs that match this glob (`*`, `**`) or contain this text (console: the source URL)                       |
+| `--errors`                | Requests: failed, HTTP status >= 400 or with `rpcError`. Console: level `error`                                 |
+| `--clear`                 | Remove the returned records from the log                                                                        |
+
+Each read returns `cursor` (for the next read), `hasMore` (more records than `--limit`) and a `summary` with counts. The log keeps the newest 2000 requests and 1000 console messages; older ones are dropped and counted in `summary.requests.dropped` / `summary.console.dropped`. A read with `--cursor` returns `"gap": true` when records after that cursor were dropped.
+
+Only `http`/`https` requests are recorded (extension files and `data:` URLs are counted in `summary.requests.ignored`). Request and response bodies are not stored. To check what a request sent, use `mm mock-network` with `record`.
+
+`mm network-log configure` changes what is recorded from then on:
+
+- `--console-levels error,warning,info,log,debug` records more console levels (default `error,warning`). `log` is noisy in the Extension.
+- `--rpc-errors` reads the body of each JSON-RPC response (up to 64 KiB, at most 8 at a time) and records its `error`. Off by default, because it copies response bodies from the browser. `summary.rpcErrorsSkipped` counts the responses that were too large or too many to read.
+
+`mm network-log mark` returns the current cursor. `mm network-log clear` drops all records; cursors keep counting, so an older cursor still works.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
