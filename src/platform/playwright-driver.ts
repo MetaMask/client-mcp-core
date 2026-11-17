@@ -20,7 +20,11 @@ import type {
 } from '../capabilities/types.js';
 import type { ISessionManager } from '../server/session-manager.js';
 import { isPageClosedError } from '../tools/error-classification.js';
-import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
+import type {
+  TestIdItem,
+  A11yNodeTrimmed,
+  FrameSnapshotTarget,
+} from '../tools/types/discovery.js';
 import { ErrorCodes } from '../tools/types/errors.js';
 import type { CdpInput } from '../tools/types/tool-inputs.js';
 import type { CdpOutcome } from '../tools/types/tool-outputs.js';
@@ -403,13 +407,16 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
    * Capture the trimmed accessibility tree with deterministic refs.
    *
    * @param rootSelector - Optional CSS selector to scope the snapshot.
+   * @param frame - Optional iframe element and ref prefix: snapshot only
+   * its content.
    * @returns The accessibility nodes and ref-to-selector map.
    */
   async getAccessibilityTree(
     rootSelector?: string,
+    frame?: FrameSnapshotTarget,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }> {
     const page = this.#getPage();
-    return collectTrimmedA11ySnapshot(page, rootSelector);
+    return collectTrimmedA11ySnapshot(page, rootSelector, frame);
   }
 
   /**

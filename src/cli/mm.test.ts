@@ -23,6 +23,7 @@ import {
   setObserveLevel,
   setPrettyOutput,
   resolveTargetFromArgs,
+  resolveFrameFromArgs,
   resolveWithinFromArgs,
   getPositionalTarget,
   getPositionalArgs,
@@ -479,6 +480,34 @@ describe('resolveWithinFromArgs', () => {
     expect(() => resolveWithinFromArgs(['--within', '--other'])).toThrowError(
       'process.exit',
     );
+  });
+
+  it('returns a11yRef for a ref inside an iframe', () => {
+    expect(resolveWithinFromArgs(['--within', 'f1e3'])).toStrictEqual({
+      a11yRef: 'f1e3',
+    });
+  });
+});
+
+describe('resolveFrameFromArgs', () => {
+  it('reads --frame like --within', () => {
+    expect(resolveFrameFromArgs(['e1'])).toBeUndefined();
+    expect(
+      resolveFrameFromArgs(['--frame', 'advanced-chart-iframe']),
+    ).toStrictEqual({ testId: 'advanced-chart-iframe' });
+    expect(
+      resolveFrameFromArgs(['--frame', 'selector:iframe.chart']),
+    ).toStrictEqual({ selector: 'iframe.chart' });
+    expect(resolveFrameFromArgs(['--frame', 'e12'])).toStrictEqual({
+      a11yRef: 'e12',
+    });
+  });
+
+  it('exits when --frame has no value', () => {
+    expect(() => resolveFrameFromArgs(['--frame'])).toThrowError(
+      'process.exit',
+    );
+    expectFailure('--frame requires a value', 2);
   });
 });
 
@@ -2134,6 +2163,64 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes screenshot with --selector and --frame', async () => {
+    await routeCommand(
+      'screenshot',
+      ['--frame', 'chart-iframe', '--selector', '.legend'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/screenshot',
+      expect.objectContaining({
+        body: JSON.stringify({
+          selector: '.legend',
+          frame: { testId: 'chart-iframe' },
+        }),
+      }),
+    );
+  });
+
+  it('routes describe-screen with --frame', async () => {
+    await routeCommand(
+      'describe-screen',
+      ['--frame', 'testid:advanced-chart-iframe'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/describe_screen',
+      expect.objectContaining({
+        body: JSON.stringify({ frame: { testId: 'advanced-chart-iframe' } }),
+      }),
+    );
+  });
+
+  it('routes click on a ref inside an iframe', async () => {
+    await routeCommand('click', ['f1e3'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: JSON.stringify({ a11yRef: 'f1e3' }),
+      }),
+    );
+  });
+
+  it('routes click with --frame', async () => {
+    await routeCommand(
+      'click',
+      ['--testid', 'zoom-in', '--frame', 'advanced-chart-iframe'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/click',
+      expect.objectContaining({
+        body: JSON.stringify({
+          testId: 'zoom-in',
+          frame: { testId: 'advanced-chart-iframe' },
+        }),
+      }),
+    );
+  });
+
   it('routes wait-for with ref', async () => {
     await routeCommand('wait-for', ['e5'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -2987,6 +3074,21 @@ describe('routeCommand', () => {
       routeCommand('scroll-to-element', [], 3000),
     ).rejects.toThrowError('process.exit');
     expectFailure(expect.stringContaining('Usage: mm scroll-to-element'), 2);
+  });
+
+  it.each([
+    ['scroll-to-element', 'scroll_to_element'],
+    ['long-press', 'long_press'],
+  ])('rejects --frame on %s', async (command, toolName) => {
+    await expect(
+      routeCommand(
+        command,
+        ['--testid', 'row', '--frame', 'testid:chart'],
+        3000,
+      ),
+    ).rejects.toThrowError('process.exit');
+    expectFailure(`--frame is not supported by ${toolName}`, 2);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('routes device-swipe with positional direction', async () => {

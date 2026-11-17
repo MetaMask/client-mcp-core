@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { A11Y_REF_PATTERN } from './a11y-ref.js';
 import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 import { DEFAULT_INSPECT_STYLES } from '../tools/utils/constants.js';
@@ -56,10 +57,11 @@ export function omitObserve<Input>(input: Input): Input {
 
 export const a11yRefPattern = z
   .string()
-  .regex(/^e[0-9]+$/u)
+  .regex(A11Y_REF_PATTERN)
   .describe(
-    'Accessibility ref from accessibility_snapshot (e.g., e1, e2). ' +
-      'These refs are ephemeral and only valid within the current screen state.',
+    'Accessibility ref from accessibility_snapshot (e.g., e1, e2; f1e3 for ' +
+      'an element inside the first iframe). These refs are ephemeral and ' +
+      'only valid within the current screen state.',
   );
 
 export const targetSelectionSchema = z
@@ -386,6 +388,31 @@ export const waitForNotificationInputSchema = z.object({
     .describe('Timeout in milliseconds to wait for notification popup'),
 });
 
+export const frameTargetSchema = z
+  .object({
+    a11yRef: a11yRefPattern.optional(),
+    testId: z.string().min(1).optional(),
+    selector: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      const provided = [data.a11yRef, data.testId, data.selector].filter(
+        Boolean,
+      );
+      return provided.length === 1;
+    },
+    {
+      message:
+        'Exactly one of a11yRef, testId, or selector must be provided in frame',
+    },
+  )
+  .describe(
+    'Browser only: the iframe element (a11yRef, testId, or selector) whose ' +
+      'content the testId or selector target, and within, are in. Refs from ' +
+      'a snapshot (f1e3) already point into their frame: do not combine ' +
+      'frame with a ref target or a ref within.',
+  );
+
 export const listTestIdsInputSchema = z.object({
   limit: z
     .number()
@@ -418,6 +445,16 @@ export const describeScreenInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded screenshot in response'),
+  frame: frameTargetSchema
+    .optional()
+    .describe(
+      'Browser only: describe the content of this iframe instead of the ' +
+        'page. Its refs use a frame number page snapshots never use (f6e1, ' +
+        'f6e2, ..., then f7 for the next one; page snapshots use f1 to f5) ' +
+        'and are added to the current refs. The ' +
+        'page snapshot already includes visible iframes and gives each ' +
+        'iframe element a ref; use frame to see only one.',
+    ),
 });
 
 export const screenshotInputSchema = z.object({
@@ -439,6 +476,11 @@ export const screenshotInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded image in response'),
+  frame: frameTargetSchema
+    .optional()
+    .describe(
+      'Browser only: capture this iframe, or the selector element inside it',
+    ),
 });
 
 export const withinTargetSchema = z
@@ -480,6 +522,7 @@ export const clickInputSchema = targetSelectionSchema.and(
           'MM_TARGET_NOT_FOUND; with it, the click waits for the target to appear',
       ),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
     dismissKeyboard: z
       .boolean()
       .optional()
@@ -501,6 +544,7 @@ export const typeInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -514,6 +558,7 @@ export const waitForInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -527,6 +572,7 @@ export const getTextInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -549,6 +595,7 @@ export const inspectInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -562,6 +609,7 @@ export const hoverInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for the element and hover it'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
