@@ -1,5 +1,9 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
 import type {
+  NetworkLogConfig,
+  NetworkLogConsoleRecord,
+  NetworkLogRequestRecord,
+  NetworkLogSummary,
   NetworkMockRequestRecord,
   NetworkMockRouteRule,
   NetworkMockSummary,
@@ -274,6 +278,43 @@ export type MockNetworkResult =
       action: 'requests';
       requests: NetworkMockRequestRecord[];
       summary: NetworkMockSummary;
+    };
+
+type NetworkLogPage = {
+  /** Pass as `cursor` in the next read to get only newer records. */
+  cursor: number;
+  /** More records match than `limit` allowed. */
+  hasMore: boolean;
+  /** Records after the given cursor were dropped from the full buffer. */
+  gap?: boolean;
+};
+
+export type NetworkLogResult =
+  | ({
+      action: 'requests';
+      requests: NetworkLogRequestRecord[];
+      summary: NetworkLogSummary;
+    } & NetworkLogPage)
+  | ({
+      action: 'console';
+      messages: NetworkLogConsoleRecord[];
+      summary: NetworkLogSummary;
+    } & NetworkLogPage)
+  | {
+      action: 'mark';
+      cursor: number;
+      t: number;
+      summary: NetworkLogSummary;
+    }
+  | {
+      action: 'clear';
+      cleared: boolean;
+      summary: NetworkLogSummary;
+    }
+  | {
+      action: 'configure';
+      config: NetworkLogConfig;
+      summary: NetworkLogSummary;
     };
 
 export type SetContextResult = {

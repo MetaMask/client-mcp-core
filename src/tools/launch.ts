@@ -1,3 +1,4 @@
+import { attachNetworkLog } from './network-log.js';
 import type { LaunchInput, LaunchPrerequisite, LaunchResult } from './types';
 import { ErrorCodes } from './types';
 import { createToolError, createToolSuccess } from './utils.js';
@@ -22,6 +23,29 @@ const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
       'Import or create accounts as needed. Ensure the active account has sufficient funds for transactions.',
   },
 ];
+
+/**
+ * Starts the passive network and console log of a browser session, so
+ * `network_log` has every request from launch on. Best-effort: a failure
+ * never fails the launch.
+ *
+ * @param context - The tool execution context.
+ * @param input - The launch input.
+ */
+function startNetworkLog(context: ToolContext, input: LaunchInput): void {
+  try {
+    const platform =
+      context.sessionManager.getPlatformDriver?.()?.getPlatform() ??
+      input.platform ??
+      'browser';
+    if (platform !== 'browser') {
+      return;
+    }
+    attachNetworkLog(context.sessionManager.getContext());
+  } catch (error) {
+    debugWarn('launch.network-log', error);
+  }
+}
 
 /**
  * Launches a new browser session with the configured extension.
@@ -72,6 +96,7 @@ export async function launchTool(
         }
         throw error;
       });
+    startNetworkLog(context, input);
     const isProdMode = sessionManager.getEnvironmentMode() === 'prod';
 
     return createToolSuccess({

@@ -9,6 +9,7 @@ export * from './interaction.js';
 export * from './launch.js';
 export * from './mock-network.js';
 export * from './navigation.js';
+export * from './network-log.js';
 export * from './registry.js';
 export * from './screenshot.js';
 export * from './seeding.js';

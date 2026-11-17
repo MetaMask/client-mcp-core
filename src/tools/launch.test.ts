@@ -193,6 +193,60 @@ describe('launchTool', () => {
     });
   });
 
+  describe('network log', () => {
+    it('starts the network log on the browser context', async () => {
+      const context = createMockContext({ hasActive: false });
+      const browserContext = { on: vi.fn() };
+      vi.mocked(context.sessionManager.getContext).mockReturnValue(
+        browserContext as never,
+      );
+
+      const result = await launchTool({ stateMode: 'default' }, context);
+
+      expect(result.ok).toBe(true);
+      expect(browserContext.on).toHaveBeenCalledWith(
+        'requestfinished',
+        expect.any(Function),
+      );
+      expect(browserContext.on).toHaveBeenCalledWith(
+        'console',
+        expect.any(Function),
+      );
+    });
+
+    it('does not start the network log on mobile', async () => {
+      const context = createMockContext({ hasActive: false });
+      context.sessionManager.getPlatformDriver = () =>
+        ({ getPlatform: () => 'ios' }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+
+      const result = await launchTool({ platform: 'ios' }, context);
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.getContext).not.toHaveBeenCalled();
+    });
+
+    it('does not start the network log for a mobile launch input', async () => {
+      const context = createMockContext({ hasActive: false });
+
+      await launchTool({ platform: 'android' }, context);
+
+      expect(context.sessionManager.getContext).not.toHaveBeenCalled();
+    });
+
+    it('still launches when the network log cannot start', async () => {
+      const context = createMockContext({ hasActive: false });
+      vi.mocked(context.sessionManager.getContext).mockImplementation(() => {
+        throw new Error('no context');
+      });
+
+      const result = await launchTool({ stateMode: 'default' }, context);
+
+      expect(result.ok).toBe(true);
+    });
+  });
+
   describe('artifacts directory', () => {
     afterEach(() => {
       vi.unstubAllEnvs();

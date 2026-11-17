@@ -46,6 +46,7 @@ import {
   switchToTabTool,
   waitForNotificationTool,
 } from './navigation.js';
+import { networkLogTool } from './network-log.js';
 import { screenshotTool } from './screenshot.js';
 import {
   getContractAddressTool,
@@ -98,6 +99,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['hermes_targets', hermesTargetsTool],
   ['get_window_size', getWindowSizeTool],
   ['mock_network', mockNetworkTool],
+  ['network_log', networkLogTool],
   ['scroll_to_element', scrollToElementTool],
   ['device_swipe', deviceSwipeTool],
   ['long_press', longPressTool],
@@ -165,7 +167,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   press_button: 'mutating',
   device_context: 'mutating',
   device_clipboard: 'mutating',
-  // READONLY (13)
+  // READONLY (14)
   hermes_targets: 'readonly',
   get_window_size: 'readonly',
   get_alert_text: 'readonly',
@@ -182,6 +184,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   set_context: 'readonly',
   list_contracts: 'readonly',
   get_contract_address: 'readonly',
+  network_log: 'readonly',
   // DISCOVERY (4)
   describe_screen: 'discovery',
   list_testids: 'discovery',
@@ -212,6 +215,7 @@ const BROWSER_ONLY_TOOLS = new Set([
   'wait_for_notification',
   'clipboard',
   'mock_network',
+  'network_log',
   'reload',
   'build',
   'inspect',

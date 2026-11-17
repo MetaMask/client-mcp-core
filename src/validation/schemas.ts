@@ -777,6 +777,88 @@ export const mockNetworkInputSchema = z.union([
   }),
 ]);
 
+const networkLogReadFields = {
+  since: z
+    .union([
+      z.number().int().min(0),
+      z
+        .string()
+        .refine(
+          (value) => /^\d+$/u.test(value) || !Number.isNaN(Date.parse(value)),
+          { message: 'since must be epoch milliseconds or an ISO date' },
+        ),
+    ])
+    .describe(
+      'Only records at or after this time: epoch milliseconds or an ISO date',
+    )
+    .optional(),
+  cursor: z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+      'Only records after this cursor (from mark, or the cursor of an earlier read)',
+    )
+    .optional(),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(2000)
+    .describe(
+      'Maximum records to return (default 500). With cursor or since: the oldest after it; otherwise the newest',
+    )
+    .optional(),
+  url: z
+    .string()
+    .min(1)
+    .describe(
+      'Only records whose URL (console: source URL) matches this glob (* and **) or, without *, contains this text',
+    )
+    .optional(),
+  errors: z
+    .boolean()
+    .describe(
+      'Only errors: failed requests, HTTP status >= 400 or JSON-RPC errors; console level error',
+    )
+    .optional(),
+  clear: z
+    .boolean()
+    .describe('Remove the returned records from the log after reading')
+    .optional(),
+};
+
+export const networkLogConsoleLevelSchema = z.enum([
+  'error',
+  'warning',
+  'info',
+  'log',
+  'debug',
+]);
+
+export const networkLogInputSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('requests'), ...networkLogReadFields }).strict(),
+  z.object({ action: z.literal('console'), ...networkLogReadFields }).strict(),
+  z.object({ action: z.literal('mark') }).strict(),
+  z.object({ action: z.literal('clear') }).strict(),
+  z
+    .object({
+      action: z.literal('configure'),
+      consoleLevels: z
+        .array(networkLogConsoleLevelSchema)
+        .min(1)
+        .describe('Console levels to record (default error and warning)')
+        .optional(),
+      rpcErrors: z
+        .boolean()
+        .describe(
+          'Read JSON-RPC response bodies (up to 64 KiB) and record their error. Default false',
+        )
+        .optional(),
+    })
+    .strict(),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -1024,6 +1106,7 @@ export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
 export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
+export type NetworkLogInputZ = z.infer<typeof networkLogInputSchema>;
 export type ScrollToElementInputZ = z.infer<typeof scrollToElementInputSchema>;
 export type DeviceSwipeInputZ = z.infer<typeof deviceSwipeInputSchema>;
 export type LongPressInputZ = z.infer<typeof longPressInputSchema>;
@@ -1077,6 +1160,7 @@ export const toolSchemas = {
   hermes_targets: withObserve(hermesTargetsInputSchema),
   get_window_size: withObserve(getWindowSizeInputSchema),
   mock_network: withObserve(mockNetworkInputSchema),
+  network_log: withObserve(networkLogInputSchema),
   scroll_to_element: withObserve(scrollToElementInputSchema),
   device_swipe: withObserve(deviceSwipeInputSchema),
   long_press: withObserve(longPressInputSchema),

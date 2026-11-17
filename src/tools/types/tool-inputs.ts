@@ -271,6 +271,112 @@ export type MockNetworkInput =
       includeBodies?: boolean;
     };
 
+export type NetworkLogConsoleLevel =
+  | 'error'
+  | 'warning'
+  | 'info'
+  | 'log'
+  | 'debug';
+
+export type NetworkLogSource = 'page' | 'service-worker';
+
+export type NetworkLogReadOptions = {
+  /** Only records at or after this time (epoch ms, or an ISO date). */
+  since?: number | string;
+  /** Only records after this cursor (from `mark` or an earlier read). */
+  cursor?: number;
+  limit?: number;
+  /** URL glob (`*`, `**`) or, without `*`, text the URL must contain. */
+  url?: string;
+  /** Only errors: failed, HTTP status >= 400 or JSON-RPC error requests; `error` console messages. */
+  errors?: boolean;
+  /** Remove the returned records from the log. */
+  clear?: boolean;
+};
+
+export type NetworkLogConfig = {
+  consoleLevels: NetworkLogConsoleLevel[];
+  rpcErrors: boolean;
+};
+
+export type NetworkLogInput =
+  | ({ action: 'requests' } & NetworkLogReadOptions)
+  | ({ action: 'console' } & NetworkLogReadOptions)
+  | { action: 'mark' }
+  | { action: 'clear' }
+  | ({ action: 'configure' } & Partial<NetworkLogConfig>);
+
+export type NetworkLogRpcError = {
+  code?: number;
+  message: string;
+  /** Number of errors in a batch response, when more than one. */
+  count?: number;
+};
+
+export type NetworkLogRequestRecord = {
+  /** Sequence number, shared with console records. */
+  seq: number;
+  /** Request start, epoch ms. */
+  t: number;
+  method: string;
+  /** URL with secrets redacted. */
+  url: string;
+  /** Playwright resource type, for example `fetch`, `xhr` or `document`. */
+  type: string;
+  /** HTTP status. Absent when the request failed before a response. */
+  status?: number;
+  /** Duration in ms, from start to the end of the response or the failure. */
+  ms: number;
+  /** Failure text, for example `net::ERR_ABORTED`. */
+  failure?: string;
+  /** JSON-RPC method, or the methods of a batch. */
+  rpcMethod?: string | string[];
+  rpcBatchSize?: number;
+  /** JSON-RPC error from the response body (only with `rpcErrors` on). */
+  rpcError?: NetworkLogRpcError;
+  source: NetworkLogSource;
+  pageUrl?: string;
+  /** URL of the iframe that sent the request, when not the main frame. */
+  frameUrl?: string;
+};
+
+export type NetworkLogConsoleRecord = {
+  seq: number;
+  /** Epoch ms. */
+  t: number;
+  level: NetworkLogConsoleLevel;
+  text: string;
+  source: NetworkLogSource;
+  /** Page URL, or the service worker script URL. */
+  sourceUrl?: string;
+  /** `url:line:column` of the console call. */
+  location?: string;
+  /** An uncaught page error, not a console call. */
+  uncaught?: boolean;
+};
+
+export type NetworkLogSummary = {
+  startedAt: string;
+  cursor: number;
+  requests: {
+    kept: number;
+    total: number;
+    dropped: number;
+    pending: number;
+    ignored: number;
+    max: number;
+  };
+  console: {
+    kept: number;
+    total: number;
+    dropped: number;
+    max: number;
+  };
+  /** JSON-RPC responses not read for errors (too large or too many at once). */
+  rpcErrorsSkipped?: number;
+  config: NetworkLogConfig;
+};
+
 export type SetContextInput = {
   context: 'e2e' | 'prod';
   options?: Record<string, unknown>;

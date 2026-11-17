@@ -19,6 +19,7 @@ import {
   setViewportInputSchema,
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
+  networkLogInputSchema,
   launchInputSchema,
   scrollToElementInputSchema,
   clickInputSchema,
@@ -484,6 +485,43 @@ describe('network mock schemas', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('networkLogInputSchema', () => {
+  it.each([
+    { action: 'requests' },
+    {
+      action: 'requests',
+      cursor: 0,
+      limit: 2000,
+      url: 'infura.io',
+      errors: true,
+      clear: true,
+    },
+    { action: 'console', since: 1_700_000_000_000 },
+    { action: 'console', since: '1700000000000' },
+    { action: 'requests', since: '2026-11-17T10:00:00Z' },
+    { action: 'mark' },
+    { action: 'clear' },
+    { action: 'configure', consoleLevels: ['error', 'log'] },
+    { action: 'configure', rpcErrors: true },
+  ])('accepts %j', (input) => {
+    expect(networkLogInputSchema.safeParse(input).success).toBe(true);
+  });
+
+  it.each([
+    { action: 'requests', since: 'yesterday' },
+    { action: 'requests', cursor: -1 },
+    { action: 'requests', limit: 2001 },
+    { action: 'requests', url: '' },
+    { action: 'requests', bodies: true },
+    { action: 'mark', cursor: 1 },
+    { action: 'configure', consoleLevels: [] },
+    { action: 'configure', consoleLevels: ['verbose'] },
+    { action: 'start' },
+  ])('rejects %j', (input) => {
+    expect(networkLogInputSchema.safeParse(input).success).toBe(false);
   });
 });
 
@@ -1049,6 +1087,7 @@ describe('observe field', () => {
       clipboard: { action: 'read' },
       cdp: { method: 'Runtime.evaluate' },
       mock_network: { action: 'list' },
+      network_log: { action: 'mark' },
       scroll_to_element: { testId: 'row' },
       device_swipe: { direction: 'up' },
       long_press: { testId: 'row' },

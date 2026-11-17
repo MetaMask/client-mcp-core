@@ -35,6 +35,7 @@ export * from './tools/types';
 export type * from './types/http.js';
 export type { MmClientCliConfig } from './cli/mm.js';
 export * from './tools/registry.js';
+export { attachNetworkLog, NetworkLogRecorder } from './tools/network-log.js';
 
 // Server utilities
 export * from './server/request-queue.js';
