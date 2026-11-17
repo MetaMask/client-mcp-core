@@ -28,8 +28,16 @@ describe('resolveWithinScope', () => {
 });
 
 describe('nextFrameRefPrefix', () => {
-  it('starts at f1 when no frame ref is taken', () => {
-    expect(nextFrameRefPrefix(new Map([['e1', 'a']]))).toBe('f1');
+  it('starts above the frame numbers of page snapshots', () => {
+    expect(nextFrameRefPrefix(new Map([['e1', 'a']]))).toBe('f6');
+    expect(
+      nextFrameRefPrefix(
+        new Map([
+          ['f1e1', 'a'],
+          ['f5e2', 'b'],
+        ]),
+      ),
+    ).toBe('f6');
   });
 
   it('takes the number after the highest frame ref', () => {

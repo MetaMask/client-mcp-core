@@ -7,6 +7,7 @@ import {
   withCdpSession,
 } from './cdp.js';
 import {
+  MAX_SNAPSHOT_FRAMES,
   TESTID_COLLECT_TIMEOUT_MS,
   TEXT_PREVIEW_MAX_LENGTH,
 } from './constants.js';
@@ -432,12 +433,6 @@ type SnapshotFrame = {
   /** Path of the frame's nodes before their own ancestors. */
   path: string[];
 };
-
-/**
- * Maximum number of iframes whose content a page snapshot includes (hidden
- * and empty iframes do not count).
- */
-const MAX_SNAPSHOT_FRAMES = 5;
 
 /**
  * Maximum number of iframes a page snapshot tries to read, hidden and

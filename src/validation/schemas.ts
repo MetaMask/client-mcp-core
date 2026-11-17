@@ -449,8 +449,9 @@ export const describeScreenInputSchema = z.object({
     .optional()
     .describe(
       'Browser only: describe the content of this iframe instead of the ' +
-        'page. Its refs use the next free frame number (f3e1, f3e2, ... ' +
-        'when f1 and f2 are taken) and are added to the current refs. The ' +
+        'page. Its refs use a frame number page snapshots never use (f6e1, ' +
+        'f6e2, ..., then f7 for the next one; page snapshots use f1 to f5) ' +
+        'and are added to the current refs. The ' +
         'page snapshot already includes visible iframes and gives each ' +
         'iframe element a ref; use frame to see only one.',
     ),

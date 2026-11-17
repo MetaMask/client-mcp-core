@@ -425,7 +425,7 @@ describe('discovery-tools', () => {
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
     });
 
-    it('describes only the iframe of frame, adding its refs to the current ones with the next frame number', async () => {
+    it('describes only the iframe of frame, adding its refs to the current ones with a frame number page snapshots do not use', async () => {
       const context = createMockContext();
       const chartSelector = '[data-mm-ref~="1a2b3c4d-1"]';
       context.refMap.set('e1', '[data-mm-ref~="1a2b3c4d-0"]');
@@ -436,14 +436,14 @@ describe('discovery-tools', () => {
       );
       const frameRefMap = new Map([
         [
-          'f2e1',
+          'f6e1',
           `${chartSelector} >> internal:control=enter-frame >> role=button[name="Zoom in" s]`,
         ],
       ]);
       vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
       vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
         {
-          nodes: [{ ref: 'f2e1', role: 'button', name: 'Zoom in', path: [] }],
+          nodes: [{ ref: 'f6e1', role: 'button', name: 'Zoom in', path: [] }],
           refMap: frameRefMap,
         },
       );
@@ -457,7 +457,7 @@ describe('discovery-tools', () => {
       expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
         context.page,
         undefined,
-        { selector: chartSelector, refPrefix: 'f2' },
+        { selector: chartSelector, refPrefix: 'f6' },
       );
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(
         new Map([...context.refMap, ...frameRefMap]),

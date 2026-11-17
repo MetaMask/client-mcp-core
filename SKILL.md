@@ -266,7 +266,7 @@ mm wait-for --frame testid:advanced-chart-iframe --selector 'text=No chart data'
 mm screenshot --frame testid:advanced-chart-iframe            # the iframe; add --selector for an element in it
 ```
 
-`--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. `scroll-to-element` and `long-press` reject it. `describe-screen --frame` keeps the refs you already have and numbers the iframe's refs with the next free number (`f3e1`, ... when `f1` and `f2` are taken). Limits:
+`--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. `scroll-to-element` and `long-press` reject it. `describe-screen --frame` keeps the refs you already have and numbers the iframe's refs from `f6` up (`f6e1`, ..., then `f7e1` for the next one), so they never clash with the `f1` to `f5` of page snapshots. Limits:
 
 - Do not combine `--frame` with a ref target or a ref `--within`: an `f1e*` ref already points into its iframe. Use `--testid` or `--selector`.
 - Plain text inside an iframe (such as "No chart data") is not an accessibility node, so it is not in the tree: wait for it with `--selector 'text=...'`.

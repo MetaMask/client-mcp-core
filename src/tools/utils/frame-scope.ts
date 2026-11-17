@@ -1,3 +1,4 @@
+import { MAX_SNAPSHOT_FRAMES } from './constants.js';
 import type { TargetType, WithinScope } from './discovery.js';
 import type { WithinTarget } from '../types';
 
@@ -38,10 +39,12 @@ export function resolveWithinScope(
 /**
  * Picks the ref prefix of a snapshot of one iframe, so that its refs can be
  * added to the current ones: the next frame number after those already
- * used (`f3` when the refs hold `f1e*` and `f2e*`).
+ * used, and above `f1` to `f<MAX_SNAPSHOT_FRAMES>`, which page snapshots
+ * use. A later page snapshot then never gives one of its iframes the same
+ * prefix (`f6` when the refs hold `f1e*` and `f2e*`, `f7` after `f6e*`).
  *
  * @param refMap - The current refs.
- * @returns The prefix (`f1`, `f2`, ...).
+ * @returns The prefix (`f6`, `f7`, ...).
  */
 export function nextFrameRefPrefix(refMap: Map<string, string>): string {
   let last = 0;
@@ -51,7 +54,7 @@ export function nextFrameRefPrefix(refMap: Map<string, string>): string {
       last = Math.max(last, Number(match[1]));
     }
   }
-  return `f${last + 1}`;
+  return `f${Math.max(last, MAX_SNAPSHOT_FRAMES) + 1}`;
 }
 
 /**
