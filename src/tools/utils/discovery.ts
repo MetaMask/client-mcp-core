@@ -10,7 +10,11 @@ import {
   TESTID_COLLECT_TIMEOUT_MS,
   TEXT_PREVIEW_MAX_LENGTH,
 } from './constants.js';
-import { selectorInFrame, testIdSelector } from './frame-scope.js';
+import {
+  ENTER_FRAME_SELECTOR,
+  selectorInFrame,
+  testIdSelector,
+} from './frame-scope.js';
 import {
   animationsSettled,
   collectTestIdsInPage,
@@ -1765,11 +1769,16 @@ async function assertStampedRefOnPage(
   if (selector === undefined || !isRefStampSelector(selector)) {
     return;
   }
-  const [stampSelector, fingerprint] = selector.split(FINGERPRINT_SEPARATOR);
+  // A ref inside an iframe continues from the iframe's stamp: only the
+  // iframe is checked, the element inside it is waited for like any other.
+  const inFrame = selector.includes(` >> ${ENTER_FRAME_SELECTOR} >> `);
+  const [stampSelector, fingerprint] = inFrame
+    ? [selector.split(' >> ')[0], undefined]
+    : selector.split(FINGERPRINT_SEPARATOR);
   const stamped = page.locator(stampSelector);
   if ((await stamped.count()) === 0) {
     throw new Error(
-      `Ref ${targetValue} not found: its element left the page after the snapshot; take a new snapshot`,
+      `Ref ${targetValue} not found: its ${inFrame ? 'iframe' : 'element'} left the page after the snapshot; take a new snapshot`,
     );
   }
   if (
