@@ -232,6 +232,11 @@ export type NetworkMockRecordedBody = {
   type: 'json' | 'text' | 'binary' | 'empty';
   size: number;
   truncated?: boolean;
+  /**
+   * True when the value was withheld because it could not be redacted safely.
+   * This happens for JSON-like text that does not parse.
+   */
+  redacted?: boolean;
   value?: unknown;
 };
 

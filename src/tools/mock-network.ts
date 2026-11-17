@@ -43,10 +43,6 @@ const SENSITIVE_BODY_FIELDS = new Set([
   'seedphrase',
   'secretrecoveryphrase',
 ]);
-// Matches `"field": "value"` pairs. The closing quote is optional so a value
-// cut off by truncation is still redacted.
-const JSON_STRING_FIELD_PATTERN =
-  /"([^"\\]{1,64})"(\s*:\s*)"(?:[^"\\]|\\.)*(?:"|\\?$)/gu;
 const DEFAULT_JSON_HEADERS = {
   'access-control-allow-origin': '*',
   'content-type': 'application/json',
@@ -626,31 +622,19 @@ export function redactJsonValue(value: unknown): unknown {
 }
 
 /**
- * Replaces the values of sensitive `"field": "value"` pairs in JSON-like
- * text that could not be parsed (for example a truncated body).
- *
- * @param text - The body text.
- * @returns The text with sensitive string values redacted.
- */
-function redactJsonText(text: string): string {
-  return text.replace(
-    JSON_STRING_FIELD_PATTERN,
-    (match, key: string, separator: string) =>
-      isSensitiveBodyField(key)
-        ? `"${key}"${separator}"${REDACTED_VALUE}"`
-        : match,
-  );
-}
-
-/**
  * Converts a captured request body to a bounded, redacted record.
  *
  * - JSON bodies (JSON content type, or text that parses as JSON) are parsed
- * and sensitive fields such as `writeKey` are redacted.
- * - Other UTF-8 text is kept as text.
+ *   and sensitive fields such as `writeKey` are redacted, whatever the value
+ *   type.
+ * - A JSON body cut by `maxBytes` is recorded as `{ type: 'json', size,
+ *   truncated: true }` with no value: the kept prefix does not parse, so a
+ *   value of any type cannot be redacted reliably. Raise `maxBodyBytes` to
+ *   get the value.
+ * - JSON-like text that does not parse is recorded as `{ type: 'text', size,
+ *   redacted: true }` with no value, for the same reason.
+ * - Other UTF-8 text is kept as text. Sensitive form fields are redacted.
  * - Binary bodies are not stored; only the type and size are recorded.
- * - Bodies larger than `maxBytes` are cut to `maxBytes` and kept as text
- * with `truncated: true`.
  *
  * @param buffer - The raw request body, or null if there is none.
  * @param contentType - The request content type, if known.
@@ -680,7 +664,13 @@ export function recordRequestBody(
   const text = kept.toString('utf8');
   const jsonLike = isJsonContentType(contentType) || looksLikeJson(text);
 
-  if (!truncated && jsonLike) {
+  if (jsonLike && truncated) {
+    // A truncated JSON body cannot be parsed, and text redaction cannot cover
+    // non-string values (arrays, objects, numbers), so no value is kept.
+    return { type: 'json', size, truncated: true };
+  }
+
+  if (jsonLike) {
     try {
       return {
         type: 'json',
@@ -688,7 +678,9 @@ export function recordRequestBody(
         value: redactJsonValue(JSON.parse(text)),
       };
     } catch {
-      // Not valid JSON; keep it as text below.
+      // JSON-like text that does not parse cannot be redacted reliably, so
+      // the value is withheld instead of being recorded unredacted.
+      return { type: 'text', size, redacted: true };
     }
   }
 
@@ -696,39 +688,30 @@ export function recordRequestBody(
     type: 'text',
     size,
     ...(truncated ? { truncated: true } : {}),
-    value: redactBodyText(text, contentType, jsonLike),
+    value: redactFormBody(text, contentType),
   };
 }
 
 /**
- * Redacts sensitive values in a text body.
+ * Redacts sensitive values in a form-encoded text body.
  *
  * @param text - The body text.
  * @param contentType - The request content type, if known.
- * @param jsonLike - Whether the text is JSON or looks like JSON.
- * @returns The text with sensitive values redacted.
+ * @returns The text with sensitive form field values redacted.
  */
-function redactBodyText(
-  text: string,
-  contentType: string | undefined,
-  jsonLike: boolean,
-): string {
-  if (jsonLike) {
-    return redactJsonText(text);
-  }
-
+function redactFormBody(text: string, contentType?: string): string {
   const mediaType = contentType?.split(';')[0]?.trim().toLowerCase();
-  if (mediaType === 'application/x-www-form-urlencoded') {
-    const params = new URLSearchParams(text);
-    for (const key of new Set(params.keys())) {
-      if (isSensitiveBodyField(key)) {
-        params.set(key, REDACTED_VALUE);
-      }
-    }
-    return params.toString();
+  if (mediaType !== 'application/x-www-form-urlencoded') {
+    return text;
   }
 
-  return text;
+  const params = new URLSearchParams(text);
+  for (const key of new Set(params.keys())) {
+    if (isSensitiveBodyField(key)) {
+      params.set(key, REDACTED_VALUE);
+    }
+  }
+  return params.toString();
 }
 
 /**

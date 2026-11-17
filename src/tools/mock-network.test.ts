@@ -802,10 +802,10 @@ describe('recordRequestBody', () => {
     });
   });
 
-  it('keeps invalid JSON as text', () => {
+  it('keeps invalid JSON as text without a value', () => {
     expect(
       recordRequestBody(Buffer.from('{not json'), 'application/json'),
-    ).toStrictEqual({ type: 'text', size: 9, value: '{not json' });
+    ).toStrictEqual({ type: 'text', size: 9, redacted: true });
   });
 
   it('keeps plain text as text', () => {
@@ -814,27 +814,113 @@ describe('recordRequestBody', () => {
     ).toStrictEqual({ type: 'text', size: 11, value: 'hello world' });
   });
 
-  it('truncates large bodies, keeps them as text and redacts secrets', () => {
+  it('does not keep the value of a truncated JSON body', () => {
     const body = JSON.stringify({
       writeKey: 'secret-write-key',
       batch: [{ event: 'x'.repeat(200) }],
     });
     const result = recordRequestBody(Buffer.from(body), 'application/json', 60);
 
-    expect(result.type).toBe('text');
-    expect(result.truncated).toBe(true);
-    expect(result.size).toBe(Buffer.byteLength(body));
-    expect(result.value).toContain(`"writeKey":"${REDACTED_VALUE}"`);
-    expect(result.value).not.toContain('secret-write-key');
-    expect(String(result.value).length).toBeLessThanOrEqual(60);
+    expect(result).toStrictEqual({
+      type: 'json',
+      size: Buffer.byteLength(body),
+      truncated: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('secret-write-key');
   });
 
-  it('redacts a secret whose value is cut off by truncation', () => {
-    const body = JSON.stringify({ writeKey: 'secret-write-key-long-value' });
-    const result = recordRequestBody(Buffer.from(body), 'application/json', 20);
+  it('does not keep the value of a truncated JSON body without a content type', () => {
+    const body = JSON.stringify({ mnemonic: 'word1 word2 word3' });
+    const result = recordRequestBody(Buffer.from(body), undefined, 20);
 
-    expect(result.truncated).toBe(true);
-    expect(result.value).toBe(`{"writeKey":"${REDACTED_VALUE}"`);
+    expect(result).toStrictEqual({
+      type: 'json',
+      size: Buffer.byteLength(body),
+      truncated: true,
+    });
+  });
+
+  const NON_STRING_SECRETS = [
+    { name: 'array', value: ['word1', 'word2', 'word3'], secret: 'word1' },
+    {
+      name: 'object',
+      value: { format: 'hex', data: '0xdeadbeef' },
+      secret: '0xdeadbeef',
+    },
+    { name: 'number', value: 12345, secret: '12345' },
+  ];
+
+  const SENSITIVE_KEYS = ['mnemonic', 'privateKey', 'apiKey'];
+
+  describe.each(SENSITIVE_KEYS)('truncated JSON with "%s"', (key) => {
+    it.each(NON_STRING_SECRETS)('keeps no $name value', ({ value, secret }) => {
+      const body = JSON.stringify({ [key]: value, other: 'y'.repeat(100) });
+      const result = recordRequestBody(
+        Buffer.from(body),
+        'application/json',
+        30,
+      );
+
+      expect(result).toStrictEqual({
+        type: 'json',
+        size: Buffer.byteLength(body),
+        truncated: true,
+      });
+      expect(JSON.stringify(result)).not.toContain(secret);
+    });
+  });
+
+  describe.each(SENSITIVE_KEYS)('invalid JSON with "%s"', (key) => {
+    it.each(NON_STRING_SECRETS)(
+      'withholds the $name value',
+      ({ value, secret }) => {
+        const body = `{"${key}": ${JSON.stringify(value)}} trailing`;
+        const result = recordRequestBody(Buffer.from(body), 'application/json');
+
+        expect(result).toStrictEqual({
+          type: 'text',
+          size: Buffer.byteLength(body),
+          redacted: true,
+        });
+        expect(JSON.stringify(result)).not.toContain(secret);
+      },
+    );
+  });
+
+  describe.each(SENSITIVE_KEYS)('JSON text with "%s"', (key) => {
+    it.each(NON_STRING_SECRETS)(
+      'parses and redacts the $name value without a JSON content type',
+      ({ value, secret }) => {
+        const body = JSON.stringify({ [key]: value, other: 'keep' });
+        const result = recordRequestBody(Buffer.from(body), 'text/plain');
+
+        expect(result).toStrictEqual({
+          type: 'json',
+          size: Buffer.byteLength(body),
+          value: { [key]: REDACTED_VALUE, other: 'keep' },
+        });
+        expect(JSON.stringify(result)).not.toContain(secret);
+      },
+    );
+  });
+
+  it('redacts non-string sensitive form values', () => {
+    const body =
+      'mnemonic=word1+word2&privateKey=%7B%22hex%22%3A%220xdeadbeef%22%7D&apiKey=12345&scope=read';
+    const result = recordRequestBody(
+      Buffer.from(body),
+      'application/x-www-form-urlencoded',
+    );
+
+    expect(result.type).toBe('text');
+    expect(result.value).toBe(
+      `mnemonic=${encodeURIComponent(REDACTED_VALUE)}&privateKey=${encodeURIComponent(
+        REDACTED_VALUE,
+      )}&apiKey=${encodeURIComponent(REDACTED_VALUE)}&scope=read`,
+    );
+    expect(String(result.value)).not.toContain('0xdeadbeef');
+    expect(String(result.value)).not.toContain('word1');
+    expect(String(result.value)).not.toContain('12345');
   });
 
   it('uses a 64 KiB default cap', () => {
