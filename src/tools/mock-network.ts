@@ -597,7 +597,7 @@ export function redactHeaders(
  * @param name - The JSON field name.
  * @returns True if the field value must be redacted.
  */
-function isSensitiveBodyField(name: string): boolean {
+export function isSensitiveBodyField(name: string): boolean {
   return SENSITIVE_BODY_FIELDS.has(name.toLowerCase().replace(/[-_]/gu, ''));
 }
 
@@ -848,7 +848,9 @@ function readPostDataBuffer(request: PlaywrightRequest): Buffer | null {
  * @param request - The intercepted Playwright request.
  * @returns True if Playwright reports a service worker for the request.
  */
-function isServiceWorkerRequest(request: PlaywrightRequest): boolean {
+export function isServiceWorkerRequest(
+  request: Pick<PlaywrightRequest, 'serviceWorker'>,
+): boolean {
   try {
     return Boolean(request.serviceWorker());
   } catch {
