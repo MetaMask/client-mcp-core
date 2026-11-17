@@ -951,6 +951,10 @@ export async function routeCommand(
       await routeMockNetworkCommand(args, port);
       break;
     }
+    case 'network-log': {
+      await routeNetworkLogCommand(args, port);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -1244,6 +1248,107 @@ export async function routeMockNetworkCommand(
   }
 
   failUsage('Usage: mm mock-network <add|clear|list|requests> [options]');
+}
+
+const NETWORK_LOG_READ_USAGE =
+  'Usage: mm network-log <requests|console> [--cursor <n>] [--since <iso|epoch-ms>] [--limit <n>] [--url <glob-or-text>] [--errors] [--clear]';
+const NETWORK_LOG_CONFIGURE_USAGE =
+  'Usage: mm network-log configure [--console-levels <error,warning,info,log,debug>] [--rpc-errors | --no-rpc-errors]';
+
+/**
+ * Routes network-log subcommands to the daemon.
+ *
+ * @param args - CLI arguments after `network-log`.
+ * @param port - The daemon HTTP server port.
+ */
+export async function routeNetworkLogCommand(
+  args: string[],
+  port: number,
+): Promise<void> {
+  const action = args[0];
+
+  if (action === 'requests' || action === 'console') {
+    await sendRequest(port, 'POST', '/tool/network_log', {
+      action,
+      ...parseNetworkLogReadArgs(args.slice(1)),
+    });
+    return;
+  }
+
+  if (action === 'mark' || action === 'clear') {
+    await sendRequest(port, 'POST', '/tool/network_log', { action });
+    return;
+  }
+
+  if (action === 'configure') {
+    const rawLevels = parseStringFlag(args, '--console-levels');
+    if (args.includes('--console-levels') && rawLevels === undefined) {
+      failUsage(NETWORK_LOG_CONFIGURE_USAGE);
+    }
+    const consoleLevels = rawLevels
+      ?.split(',')
+      .map((level) => level.trim())
+      .filter(Boolean);
+    let rpcErrors: boolean | undefined;
+    if (args.includes('--rpc-errors')) {
+      rpcErrors = true;
+    }
+    if (args.includes('--no-rpc-errors')) {
+      rpcErrors = false;
+    }
+    if (consoleLevels === undefined && rpcErrors === undefined) {
+      failUsage(NETWORK_LOG_CONFIGURE_USAGE);
+    }
+    await sendRequest(port, 'POST', '/tool/network_log', {
+      action,
+      ...(consoleLevels === undefined ? {} : { consoleLevels }),
+      ...(rpcErrors === undefined ? {} : { rpcErrors }),
+    });
+    return;
+  }
+
+  failUsage(
+    'Usage: mm network-log <requests|console|mark|clear|configure> [options]',
+  );
+}
+
+/**
+ * Parses the read flags of `mm network-log requests|console`.
+ *
+ * @param args - CLI arguments after the action.
+ * @returns The read options for the network_log tool.
+ */
+export function parseNetworkLogReadArgs(
+  args: string[],
+): Record<string, unknown> {
+  const options: Record<string, unknown> = {};
+  for (const flag of ['--cursor', '--limit'] as const) {
+    if (!args.includes(flag)) {
+      continue;
+    }
+    const value = parseIntFlag(args, flag);
+    if (value === undefined) {
+      failUsage(NETWORK_LOG_READ_USAGE);
+    }
+    options[flag.slice(2)] = value;
+  }
+  for (const flag of ['--since', '--url'] as const) {
+    if (!args.includes(flag)) {
+      continue;
+    }
+    const value = parseStringFlag(args, flag);
+    if (value === undefined) {
+      failUsage(NETWORK_LOG_READ_USAGE);
+    }
+    options[flag.slice(2)] = value;
+  }
+  if (args.includes('--errors')) {
+    options.errors = true;
+  }
+  if (args.includes('--clear')) {
+    options.clear = true;
+  }
+  return options;
 }
 
 /**
@@ -2122,6 +2227,12 @@ Advanced:
   mm mock-network clear
   mm mock-network list
   mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
+  mm network-log requests [--cursor <n>] [--since <iso|epoch-ms>] [--limit <n>] [--url <glob-or-text>] [--errors] [--clear]
+  mm network-log console [--cursor <n>] [--since <iso|epoch-ms>] [--limit <n>] [--url <glob-or-text>] [--errors] [--clear]
+  mm network-log mark | clear
+  mm network-log configure [--console-levels <list>] [--rpc-errors | --no-rpc-errors]
+                      Passive log of every request (page and service worker)
+                      and console message since launch (browser only).
   mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 

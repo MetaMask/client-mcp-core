@@ -37,6 +37,7 @@ import {
   sendRequest,
   routeCommand,
   routeMockNetworkCommand,
+  routeNetworkLogCommand,
   parseJsonArgument,
   normalizeMockNetworkAddPayload,
   resolveWorktreeRoot,
@@ -2875,6 +2876,113 @@ describe('routeCommand', () => {
       routeCommand('mock-network', ['unknown'], 3000),
     ).rejects.toThrowError('process.exit');
     expectFailure(expect.stringContaining('Usage: mm mock-network'), 2);
+  });
+
+  it('routes network-log requests with read flags', async () => {
+    await routeCommand(
+      'network-log',
+      [
+        'requests',
+        '--cursor',
+        '12',
+        '--limit',
+        '50',
+        '--since',
+        '2026-11-17T10:00:00Z',
+        '--url',
+        'infura.io',
+        '--errors',
+        '--clear',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/network_log',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'requests',
+          cursor: 12,
+          limit: 50,
+          since: '2026-11-17T10:00:00Z',
+          url: 'infura.io',
+          errors: true,
+          clear: true,
+        }),
+      }),
+    );
+  });
+
+  it('routes network-log console without flags', async () => {
+    await routeCommand('network-log', ['console'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/network_log',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'console' }),
+      }),
+    );
+  });
+
+  it.each(['mark', 'clear'])('routes network-log %s', async (action) => {
+    await routeNetworkLogCommand([action], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/network_log',
+      expect.objectContaining({ body: JSON.stringify({ action }) }),
+    );
+  });
+
+  it('routes network-log configure', async () => {
+    await routeCommand(
+      'network-log',
+      ['configure', '--console-levels', 'error, warning,log', '--rpc-errors'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/network_log',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'configure',
+          consoleLevels: ['error', 'warning', 'log'],
+          rpcErrors: true,
+        }),
+      }),
+    );
+  });
+
+  it('routes network-log configure --no-rpc-errors', async () => {
+    await routeCommand('network-log', ['configure', '--no-rpc-errors'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/network_log',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'configure', rpcErrors: false }),
+      }),
+    );
+  });
+
+  it.each([
+    [['requests', '--cursor', 'abc']],
+    [['console', '--limit']],
+    [['requests', '--since', '--errors']],
+    [['requests', '--url']],
+    [['configure']],
+    [['configure', '--console-levels']],
+  ])('exits with usage for network-log %j', async (args) => {
+    await expect(routeCommand('network-log', args, 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm network-log'), 2);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('exits when network-log has an unknown action', async () => {
+    await expect(
+      routeCommand('network-log', ['start'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expectFailure(
+      expect.stringContaining(
+        'Usage: mm network-log <requests|console|mark|clear|configure>',
+      ),
+      2,
+    );
   });
 
   it('routes cdp with method and params', async () => {
