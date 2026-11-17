@@ -2232,7 +2232,9 @@ Advanced:
   mm network-log mark | clear
   mm network-log configure [--console-levels <list>] [--rpc-errors | --no-rpc-errors]
                       Passive log of every request (page and service worker)
-                      and console message since launch (browser only).
+                      and console error since launch (browser only).
+                      Console level default: error; add others with
+                      configure --console-levels.
   mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 

@@ -468,7 +468,7 @@ describe('NetworkLogRecorder', () => {
     expect(recorder.readRequests({ errors: true }).requests).toHaveLength(8);
   });
 
-  it('records error and warning console messages by default', () => {
+  it('records only error console messages by default', () => {
     const { browserContext, recorder } = createRecorder();
     browserContext.emit(
       'console',
@@ -501,14 +501,6 @@ describe('NetworkLogRecorder', () => {
       {
         seq: 2,
         t: 5_000,
-        level: 'warning',
-        text: 'careful',
-        source: 'page',
-        sourceUrl: 'chrome-extension://abc/home.html',
-      },
-      {
-        seq: 3,
-        t: 5_000,
         level: 'error',
         text: 'bad',
         source: 'page',
@@ -519,7 +511,13 @@ describe('NetworkLogRecorder', () => {
 
   it('records configured console levels and handles old Playwright messages', () => {
     const { browserContext, recorder } = createRecorder();
-    recorder.configure({ consoleLevels: ['log', 'info', 'debug', 'log'] });
+    recorder.configure({
+      consoleLevels: ['warning', 'log', 'info', 'debug', 'log'],
+    });
+    browserContext.emit(
+      'console',
+      createMockConsoleMessage('warning', 'careful'),
+    );
     browserContext.emit(
       'console',
       createMockConsoleMessage('log', 'hello', { noWorkerMethod: true }),
@@ -533,6 +531,7 @@ describe('NetworkLogRecorder', () => {
     browserContext.emit('console', createMockConsoleMessage('error', 'e'));
 
     expect(recorder.getConfig().consoleLevels).toStrictEqual([
+      'warning',
       'log',
       'info',
       'debug',
@@ -540,12 +539,13 @@ describe('NetworkLogRecorder', () => {
     expect(
       recorder.readConsole({}).messages.map(({ level, text }) => [level, text]),
     ).toStrictEqual([
+      ['warning', 'careful'],
       ['log', 'hello'],
       ['info', 'i'],
       ['debug', 'd'],
       ['log', 't'],
     ]);
-    expect(recorder.readConsole({}).messages[1]).not.toHaveProperty(
+    expect(recorder.readConsole({}).messages[2]).not.toHaveProperty(
       'sourceUrl',
     );
   });
@@ -704,6 +704,7 @@ describe('NetworkLogRecorder', () => {
 
   it('filters by since, url and errors', async () => {
     const { browserContext, recorder } = createRecorder();
+    recorder.configure({ consoleLevels: ['error', 'warning'] });
     await browserContext.finish(
       createMockRequest('https://a.example/ok', {
         timing: { startTime: 1_000, responseEnd: 1 },
@@ -847,6 +848,35 @@ describe('networkLogTool', () => {
     });
   });
 
+  it('returns summary.startedAt from mark and every read, new after a relaunch', async () => {
+    const browserContext = new MockBrowserContext();
+    const context = createMockContext({ browserContext });
+    const startedAt = (result: unknown): string =>
+      (result as { result: { summary: { startedAt: string } } }).result.summary
+        .startedAt;
+
+    const mark = await networkLogTool({ action: 'mark' }, context);
+    const requests = await networkLogTool({ action: 'requests' }, context);
+    const messages = await networkLogTool({ action: 'console' }, context);
+
+    expect(startedAt(mark)).toStrictEqual(expect.any(String));
+    expect(startedAt(requests)).toBe(startedAt(mark));
+    expect(startedAt(messages)).toBe(startedAt(mark));
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.parse(startedAt(mark)) + 60_000);
+    const relaunched = createMockContext({
+      browserContext: new MockBrowserContext(),
+    });
+    const afterRelaunch = await networkLogTool(
+      { action: 'requests' },
+      relaunched,
+    );
+    vi.useRealTimers();
+
+    expect(startedAt(afterRelaunch)).not.toBe(startedAt(mark));
+  });
+
   it('marks, reads, configures and clears', async () => {
     const browserContext = new MockBrowserContext();
     const context = createMockContext({ browserContext });
@@ -892,7 +922,7 @@ describe('networkLogTool', () => {
       ok: true,
       result: {
         action: 'configure',
-        config: { consoleLevels: ['error', 'warning'], rpcErrors: true },
+        config: { consoleLevels: ['error'], rpcErrors: true },
       },
     });
 

@@ -847,7 +847,7 @@ export const networkLogInputSchema = z.discriminatedUnion('action', [
       consoleLevels: z
         .array(networkLogConsoleLevelSchema)
         .min(1)
-        .describe('Console levels to record (default error and warning)')
+        .describe('Console levels to record (default error only)')
         .optional(),
       rpcErrors: z
         .boolean()

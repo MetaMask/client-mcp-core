@@ -40,10 +40,7 @@ export const MAX_RPC_BATCH_METHODS = 20;
 const MAX_RPC_ERROR_MESSAGE_LENGTH = 300;
 const MAX_PENDING_RPC_RESPONSE_READS = 8;
 const RPC_RESPONSE_READ_TIMEOUT_MS = 2000;
-export const DEFAULT_CONSOLE_LEVELS: NetworkLogConsoleLevel[] = [
-  'error',
-  'warning',
-];
+export const DEFAULT_CONSOLE_LEVELS: NetworkLogConsoleLevel[] = ['error'];
 const RECORDED_PROTOCOLS = new Set(['http:', 'https:']);
 // Query parameter names (compared lowercase, without `-` and `_`) whose
 // values are secrets, in addition to the body field names from mock-network.
