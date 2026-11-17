@@ -3076,6 +3076,21 @@ describe('routeCommand', () => {
     expectFailure(expect.stringContaining('Usage: mm scroll-to-element'), 2);
   });
 
+  it.each([
+    ['scroll-to-element', 'scroll_to_element'],
+    ['long-press', 'long_press'],
+  ])('rejects --frame on %s', async (command, toolName) => {
+    await expect(
+      routeCommand(
+        command,
+        ['--testid', 'row', '--frame', 'testid:chart'],
+        3000,
+      ),
+    ).rejects.toThrowError('process.exit');
+    expectFailure(`--frame is not supported by ${toolName}`, 2);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it('routes device-swipe with positional direction', async () => {
     await routeCommand('device-swipe', ['up'], 3000);
     expect(globalThis.fetch).toHaveBeenCalledWith(

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { A11Y_REF_PATTERN } from './a11y-ref.js';
 import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 import { DEFAULT_INSPECT_STYLES } from '../tools/utils/constants.js';
@@ -56,7 +57,7 @@ export function omitObserve<Input>(input: Input): Input {
 
 export const a11yRefPattern = z
   .string()
-  .regex(/^(?:f[0-9]+)?e[0-9]+$/u)
+  .regex(A11Y_REF_PATTERN)
   .describe(
     'Accessibility ref from accessibility_snapshot (e.g., e1, e2; f1e3 for ' +
       'an element inside the first iframe). These refs are ephemeral and ' +
@@ -447,9 +448,11 @@ export const describeScreenInputSchema = z.object({
   frame: frameTargetSchema
     .optional()
     .describe(
-      'Browser only: describe the content of this iframe (refs f1e1, ' +
-        'f1e2, ...) instead of the page. The page snapshot already ' +
-        'includes visible iframes; use frame to see only one.',
+      'Browser only: describe the content of this iframe instead of the ' +
+        'page. Its refs use the next free frame number (f3e1, f3e2, ... ' +
+        'when f1 and f2 are taken) and are added to the current refs. The ' +
+        'page snapshot already includes visible iframes and gives each ' +
+        'iframe element a ref; use frame to see only one.',
     ),
 });
 

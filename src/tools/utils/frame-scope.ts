@@ -1,4 +1,58 @@
 import type { TargetType, WithinScope } from './discovery.js';
+import type { WithinTarget } from '../types';
+
+/**
+ * Builds the selector of a `data-testid`.
+ *
+ * @param testId - The test ID.
+ * @returns The selector (`[data-testid="<testId>"]`).
+ */
+export function testIdSelector(testId: string): string {
+  return `[data-testid="${testId}"]`;
+}
+
+/**
+ * Converts a WithinTarget input to the WithinScope format expected by the platform driver.
+ *
+ * @param within - The optional within target from tool input.
+ * @returns The resolved scope, or undefined if no within target is provided.
+ */
+export function resolveWithinScope(
+  within: WithinTarget | undefined,
+): WithinScope | undefined {
+  if (!within) {
+    return undefined;
+  }
+  if (within.a11yRef) {
+    return { type: 'a11yRef', value: within.a11yRef };
+  }
+  if (within.testId) {
+    return { type: 'testId', value: within.testId };
+  }
+  if (within.selector) {
+    return { type: 'selector', value: within.selector };
+  }
+  return undefined;
+}
+
+/**
+ * Picks the ref prefix of a snapshot of one iframe, so that its refs can be
+ * added to the current ones: the next frame number after those already
+ * used (`f3` when the refs hold `f1e*` and `f2e*`).
+ *
+ * @param refMap - The current refs.
+ * @returns The prefix (`f1`, `f2`, ...).
+ */
+export function nextFrameRefPrefix(refMap: Map<string, string>): string {
+  let last = 0;
+  for (const ref of refMap.keys()) {
+    const match = /^f([0-9]+)e/u.exec(ref);
+    if (match) {
+      last = Math.max(last, Number(match[1]));
+    }
+  }
+  return `f${last + 1}`;
+}
 
 /**
  * Playwright selector step that continues the selector inside the content
@@ -31,7 +85,7 @@ export function selectorInFrame(
  * @returns The selector.
  */
 function testIdOrSelector(type: 'testId' | 'selector', value: string): string {
-  return type === 'testId' ? `[data-testid="${value}"]` : value;
+  return type === 'testId' ? testIdSelector(value) : value;
 }
 
 /**

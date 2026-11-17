@@ -1,5 +1,4 @@
 import { classifyDiscoveryError } from './error-classification.js';
-import { resolveWithinScope } from './interaction.js';
 import type {
   AccessibilitySnapshotInput,
   AccessibilitySnapshotResult,
@@ -10,7 +9,11 @@ import type {
 } from './types';
 import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
-import { resolveFrameSelector } from './utils/frame-scope.js';
+import {
+  nextFrameRefPrefix,
+  resolveFrameSelector,
+  resolveWithinScope,
+} from './utils/frame-scope.js';
 import {
   abortedResponse,
   createToolError,
@@ -138,8 +141,11 @@ export async function describeScreenTool(
   }
 
   try {
-    const frameSelector = frame
-      ? resolveFrameSelector(frame, context.refMap)
+    const frameTarget = frame
+      ? {
+          selector: resolveFrameSelector(frame, context.refMap),
+          refPrefix: nextFrameRefPrefix(context.refMap),
+        }
       : undefined;
     // Mobile: one device snapshot for both the test IDs and the tree, when
     // the driver supports it, read in parallel with the app state. The
@@ -155,8 +161,10 @@ export async function describeScreenTool(
       return aborted;
     }
     const { nodes, refMap } =
-      screen ?? (await driver.getAccessibilityTree(undefined, frameSelector));
-    context.sessionManager.setRefMap(refMap);
+      screen ?? (await driver.getAccessibilityTree(undefined, frameTarget));
+    context.sessionManager.setRefMap(
+      frameTarget ? new Map([...context.refMap, ...refMap]) : refMap,
+    );
 
     const trackedPages = context.sessionManager.getTrackedPages();
     let activeTab: DescribeScreenResult['activeTab'];

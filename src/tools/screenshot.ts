@@ -1,8 +1,11 @@
 import { classifyScreenshotError } from './error-classification.js';
-import { resolveWithinScope } from './interaction.js';
 import type { ScreenshotInput, ScreenshotToolResult } from './types';
 import { ErrorCodes } from './types';
-import { resolveFrameSelector, selectorInFrame } from './utils/frame-scope.js';
+import {
+  resolveFrameSelector,
+  resolveWithinScope,
+  selectorInFrame,
+} from './utils/frame-scope.js';
 import {
   createToolError,
   createToolSuccess,

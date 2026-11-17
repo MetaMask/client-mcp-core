@@ -425,24 +425,31 @@ describe('discovery-tools', () => {
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(mockRefMap);
     });
 
-    it('describes only the iframe of frame', async () => {
+    it('describes only the iframe of frame, adding its refs to the current ones with the next frame number', async () => {
       const context = createMockContext();
+      const chartSelector = '[data-mm-ref~="1a2b3c4d-1"]';
+      context.refMap.set('e1', '[data-mm-ref~="1a2b3c4d-0"]');
+      context.refMap.set('e2', chartSelector);
+      context.refMap.set(
+        'f1e1',
+        '[data-testid="other"] >> internal:control=enter-frame >> role=button[name="Buy" s]',
+      );
       const frameRefMap = new Map([
         [
-          'f1e1',
-          '[data-testid="chart"] >> internal:control=enter-frame >> role=button[name="Zoom in" s]',
+          'f2e1',
+          `${chartSelector} >> internal:control=enter-frame >> role=button[name="Zoom in" s]`,
         ],
       ]);
       vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
       vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
         {
-          nodes: [{ ref: 'f1e1', role: 'button', name: 'Zoom in', path: [] }],
+          nodes: [{ ref: 'f2e1', role: 'button', name: 'Zoom in', path: [] }],
           refMap: frameRefMap,
         },
       );
 
       const result = await describeScreenTool(
-        { frame: { testId: 'chart' } },
+        { frame: { a11yRef: 'e2' } },
         context,
       );
 
@@ -450,11 +457,28 @@ describe('discovery-tools', () => {
       expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
         context.page,
         undefined,
-        '[data-testid="chart"]',
+        { selector: chartSelector, refPrefix: 'f2' },
       );
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(
-        frameRefMap,
+        new Map([...context.refMap, ...frameRefMap]),
       );
+    });
+
+    it('replaces the refs on a describe of the whole page', async () => {
+      const context = createMockContext();
+      context.refMap.set(
+        'f1e1',
+        '[data-testid="chart"] >> internal:control=enter-frame >> role=button[name="Buy" s]',
+      );
+      const refMap = new Map([['e1', '[data-mm-ref~="1a2b3c4d-0"]']]);
+      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        { nodes: [], refMap },
+      );
+
+      await describeScreenTool({}, context);
+
+      expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(refMap);
     });
 
     it('returns MM_TARGET_NOT_FOUND when the iframe of frame is missing', async () => {

@@ -1,10 +1,48 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  nextFrameRefPrefix,
   resolveFrameSelector,
+  resolveWithinScope,
   scopeTargetToFrame,
   selectorInFrame,
+  testIdSelector,
 } from './frame-scope.js';
+
+describe('testIdSelector', () => {
+  it('selects the data-testid attribute', () => {
+    expect(testIdSelector('chart')).toBe('[data-testid="chart"]');
+  });
+});
+
+describe('resolveWithinScope', () => {
+  it.each([
+    [undefined, undefined],
+    [{}, undefined],
+    [{ a11yRef: 'e3' }, { type: 'a11yRef', value: 'e3' }],
+    [{ testId: 'modal' }, { type: 'testId', value: 'modal' }],
+    [{ selector: '.modal' }, { type: 'selector', value: '.modal' }],
+  ] as const)('resolves %j', (within, scope) => {
+    expect(resolveWithinScope(within)).toStrictEqual(scope);
+  });
+});
+
+describe('nextFrameRefPrefix', () => {
+  it('starts at f1 when no frame ref is taken', () => {
+    expect(nextFrameRefPrefix(new Map([['e1', 'a']]))).toBe('f1');
+  });
+
+  it('takes the number after the highest frame ref', () => {
+    const refMap = new Map([
+      ['e12', 'a'],
+      ['f2e1', 'b'],
+      ['f10e3', 'c'],
+      ['f1e1', 'd'],
+    ]);
+
+    expect(nextFrameRefPrefix(refMap)).toBe('f11');
+  });
+});
 
 describe('selectorInFrame', () => {
   it('continues the selector inside the iframe', () => {

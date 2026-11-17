@@ -68,12 +68,20 @@ type FramePageOptions = {
   frameIdsByBackendId?: Record<number, string>;
   /** Frames the page session reads with `getFullAXTree({ frameId })`. */
   sameProcessFrames?: Record<string, AxNode[]>;
-  /** Frames with their own CDP session, by iframe selector. */
+  /**
+   * Frames with their own CDP session, by iframe key: its selector, or
+   * `stamped(<backend node id>)` for an iframe selected by its stamp.
+   */
   outOfProcessFrames?: Record<string, AxNode[]>;
-  /** Selector of the iframe element, by its backend node id. */
-  domSelectorsByBackendId?: Record<number, string>;
+  /** `data-testid` of the iframe element, by its backend node id. */
+  testIdsByBackendId?: Record<number, string>;
+  /** Nodes that left the page: they cannot be stamped. */
+  detachedBackendIds?: number[];
+  /** Nodes inside a closed shadow root. */
+  unreachableBackendIds?: number[];
   /** Frame id of the iframe a CSS selector matches. */
   cssFrameIds?: Record<string, string>;
+  /** Iframe keys (see `outOfProcessFrames`). */
   hiddenSelectors?: string[];
   missingSelectors?: string[];
   notIframeSelectors?: string[];
@@ -99,7 +107,9 @@ function createFramePage(options: FramePageOptions): {
     frameIdsByBackendId = {},
     sameProcessFrames = {},
     outOfProcessFrames = {},
-    domSelectorsByBackendId = {},
+    testIdsByBackendId = {},
+    detachedBackendIds = [],
+    unreachableBackendIds = [],
     cssFrameIds = {},
     hiddenSelectors = [],
     missingSelectors = [],
@@ -107,6 +117,17 @@ function createFramePage(options: FramePageOptions): {
     failCleanup = false,
   } = options;
   const cssSelectors = Object.keys(cssFrameIds);
+  const backendIdsByToken = new Map<string, number>();
+  const keyOf = (selector: string): string => {
+    const token = /^\[data-mm-ref~="([^"]+)"\]$/u.exec(selector)?.[1];
+    const backendId =
+      token === undefined ? undefined : backendIdsByToken.get(token);
+    return backendId === undefined ? selector : stamped(backendId);
+  };
+  const testIdCount = (selector: string): number =>
+    Object.values(testIdsByBackendId).filter(
+      (testId) => selector === `[data-testid="${testId}"]`,
+    ).length;
 
   const send = vi.fn(
     async (method: string, params: Record<string, unknown> = {}) => {
@@ -145,6 +166,15 @@ function createFramePage(options: FramePageOptions): {
               node: {
                 backendNodeId: params.backendNodeId,
                 frameId: frameIdsByBackendId[params.backendNodeId],
+                attributes:
+                  testIdsByBackendId[params.backendNodeId] === undefined
+                    ? ['id', 'frame']
+                    : [
+                        'id',
+                        'frame',
+                        'data-testid',
+                        testIdsByBackendId[params.backendNodeId],
+                      ],
               },
             };
           }
@@ -165,9 +195,15 @@ function createFramePage(options: FramePageOptions): {
           const backendNodeId = Number(
             String(params.objectId).replace('obj-', ''),
           );
-          return {
-            result: { value: domSelectorsByBackendId[backendNodeId] ?? null },
-          };
+          if (detachedBackendIds.includes(backendNodeId)) {
+            return { result: { value: { status: 'detached' } } };
+          }
+          if (unreachableBackendIds.includes(backendNodeId)) {
+            return { result: { value: { status: 'unreachable' } } };
+          }
+          const [, token] = params.arguments as { value: string }[];
+          backendIdsByToken.set(token.value, backendNodeId);
+          return { result: { value: { status: 'stamped', text: '' } } };
         }
         default:
           return {};
@@ -193,7 +229,7 @@ function createFramePage(options: FramePageOptions): {
           return pageSession;
         }
         const { selector } = target as { selector: string };
-        const frameNodes = outOfProcessFrames[selector];
+        const frameNodes = outOfProcessFrames[keyOf(selector)];
         if (!frameNodes) {
           throw new Error(
             "This frame does not have a separate CDP session, it is a part of the parent frame's session",
@@ -210,7 +246,8 @@ function createFramePage(options: FramePageOptions): {
       }),
     }),
     locator: vi.fn((selector: string) => ({
-      isVisible: vi.fn().mockResolvedValue(!hiddenSelectors.includes(selector)),
+      count: vi.fn(async () => testIdCount(selector)),
+      isVisible: vi.fn(async () => !hiddenSelectors.includes(keyOf(selector))),
       first: () => ({
         waitFor: missingSelectors.includes(selector)
           ? vi.fn().mockRejectedValue(new Error('Timeout 5000ms exceeded'))
@@ -219,7 +256,9 @@ function createFramePage(options: FramePageOptions): {
           contentFrame: vi
             .fn()
             .mockResolvedValue(
-              notIframeSelectors.includes(selector) ? null : frameFor(selector),
+              notIframeSelectors.includes(keyOf(selector))
+                ? null
+                : frameFor(selector),
             ),
           dispose: vi.fn().mockResolvedValue(undefined),
         }),
@@ -232,7 +271,19 @@ function createFramePage(options: FramePageOptions): {
   return { page, send, frameSessionDetach };
 }
 
-const CHART = '[data-testid="advanced-chart-iframe"]';
+/**
+ * Key of an iframe selected by its stamp (see `createFramePage`).
+ *
+ * @param backendNodeId - The backend node id of the iframe element.
+ * @returns The key.
+ */
+function stamped(backendNodeId: number): string {
+  return `stamped:${backendNodeId}`;
+}
+
+const STAMP = /^\[data-mm-ref~="[^"]+"\]$/u;
+const CHART_TEST_ID = 'advanced-chart-iframe';
+const CHART = `[data-testid="${CHART_TEST_ID}"]`;
 const SAME = '[data-testid="same-frame"]';
 const inChart = (selector: string): string =>
   `${CHART} >> internal:control=enter-frame >> ${selector}`;
@@ -243,7 +294,7 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
     { role: 'button', name: 'Zoom in' },
   ]);
 
-  it('adds the content of same-process and out-of-process iframes after the page nodes', async () => {
+  it('gives iframe elements a ref and adds the content of same-process and out-of-process iframes after the page nodes', async () => {
     const { page, frameSessionDetach } = createFramePage({
       pageAxNodes: axTree('page', [
         { role: 'button', name: 'Send' },
@@ -261,33 +312,70 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
         SAME: axTree('same', [{ role: 'button', name: 'Inside same' }]),
       },
       outOfProcessFrames: { [CHART]: chartTree },
-      domSelectorsByBackendId: { 10: CHART, 11: SAME },
+      testIdsByBackendId: { 10: CHART_TEST_ID },
     });
 
     const { nodes, refMap } = await collectTrimmedA11ySnapshot(page);
 
     expect(
-      nodes.map(({ ref, name, path }) => ({ ref, name, path })),
+      nodes.map(({ ref, role, name, path }) => ({ ref, role, name, path })),
     ).toStrictEqual([
-      { ref: 'e1', name: 'Send', path: [] },
-      { ref: 'e2', name: 'Perps', path: ['dialog:Perps'] },
+      { ref: 'e1', role: 'button', name: 'Send', path: [] },
+      { ref: 'e2', role: 'dialog', name: 'Perps', path: ['dialog:Perps'] },
+      {
+        ref: 'e3',
+        role: 'iframe',
+        name: 'Advanced chart',
+        path: ['dialog:Perps'],
+      },
+      { ref: 'e4', role: 'iframe', name: 'Same', path: [] },
       {
         ref: 'f1e1',
+        role: 'heading',
         name: 'Chart',
         path: ['dialog:Perps', 'iframe:Advanced chart', 'heading:Chart'],
       },
       {
         ref: 'f1e2',
+        role: 'button',
         name: 'Zoom in',
         path: ['dialog:Perps', 'iframe:Advanced chart'],
       },
-      { ref: 'f2e1', name: 'Inside same', path: ['iframe:Same'] },
+      {
+        ref: 'f2e1',
+        role: 'button',
+        name: 'Inside same',
+        path: ['iframe:Same'],
+      },
     ]);
+    expect(refMap.get('e3')).toBe(CHART);
     expect(refMap.get('f1e2')).toBe(inChart('role=button[name="Zoom in" s]'));
+    const sameSelector = refMap.get('e4');
+    expect(sameSelector).toMatch(STAMP);
     expect(refMap.get('f2e1')).toBe(
-      `${SAME} >> internal:control=enter-frame >> role=button[name="Inside same" s]`,
+      `${sameSelector} >> internal:control=enter-frame >> role=button[name="Inside same" s]`,
     );
     expect(frameSessionDetach).toHaveBeenCalledOnce();
+  });
+
+  it('enters an iframe by its stamp when its test ID is not unique', async () => {
+    const { page } = createFramePage({
+      pageAxNodes: axTree('page', [
+        { role: 'Iframe', backendDOMNodeId: 10 },
+        { role: 'Iframe', backendDOMNodeId: 11 },
+      ]),
+      frameIdsByBackendId: { 10: 'CHART', 11: 'OTHER' },
+      outOfProcessFrames: { [stamped(10)]: chartTree },
+      testIdsByBackendId: { 10: CHART_TEST_ID, 11: CHART_TEST_ID },
+    });
+
+    const { refMap } = await collectTrimmedA11ySnapshot(page);
+
+    const iframeSelector = refMap.get('e1');
+    expect(iframeSelector).toMatch(STAMP);
+    expect(refMap.get('f1e2')).toBe(
+      `${iframeSelector} >> internal:control=enter-frame >> role=button[name="Zoom in" s]`,
+    );
   });
 
   it('keeps role selectors for duplicates in a frame and gives generic nodes a text selector, without DOM lookups', async () => {
@@ -301,12 +389,13 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
           { role: 'generic', name: 'O 3201.22', backendDOMNodeId: 7 },
         ]),
       },
-      domSelectorsByBackendId: { 10: CHART },
+      testIdsByBackendId: { 10: CHART_TEST_ID },
     });
 
     const { refMap } = await collectTrimmedA11ySnapshot(page);
 
     expect(Object.fromEntries(refMap)).toStrictEqual({
+      e1: CHART,
       f1e1: inChart('role=button[name="Reset" s]'),
       f1e2: inChart('role=button[name="Reset" s]'),
       f1e3: inChart('text="O 3201.22"'),
@@ -317,41 +406,43 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
     expect(resolved).toStrictEqual([10]);
   });
 
-  it('leaves out hidden iframes, iframes without a selector, frames that cannot be read and frames without nodes, numbering the others in order', async () => {
+  it('leaves out hidden iframes, iframes without a ref, frames that cannot be read and frames without nodes, numbering the others in order', async () => {
     const { page } = createFramePage({
       pageAxNodes: axTree('page', [
-        { role: 'Iframe', backendDOMNodeId: 1 },
-        { role: 'Iframe', backendDOMNodeId: 2 },
-        { role: 'Iframe', backendDOMNodeId: 3 },
-        { role: 'Iframe', backendDOMNodeId: 4 },
-        { role: 'Iframe', backendDOMNodeId: 5 },
-        { role: 'Iframe', backendDOMNodeId: 6 },
+        { role: 'Iframe', name: 'Hidden', backendDOMNodeId: 1 },
+        { role: 'Iframe', name: 'Detached', backendDOMNodeId: 2 },
+        { role: 'Iframe', name: 'Closed shadow', backendDOMNodeId: 3 },
+        { role: 'Iframe', name: 'Empty', backendDOMNodeId: 4 },
+        { role: 'Iframe', name: 'Unreadable', backendDOMNodeId: 5 },
+        { role: 'Iframe', name: 'Not iframe', backendDOMNodeId: 6 },
         { role: 'Iframe', name: 'Chart', backendDOMNodeId: 7 },
       ]),
       frameIdsByBackendId: { 4: 'EMPTY' },
       sameProcessFrames: { EMPTY: axTree('empty', []) },
       outOfProcessFrames: { [CHART]: chartTree },
-      domSelectorsByBackendId: {
-        1: '#hidden',
-        3: UNREACHABLE_REF_SELECTOR,
-        4: '#empty',
-        5: '#unreadable',
-        6: '#not-iframe',
-        7: CHART,
-      },
-      hiddenSelectors: ['#hidden'],
-      notIframeSelectors: ['#not-iframe'],
+      testIdsByBackendId: { 7: CHART_TEST_ID },
+      detachedBackendIds: [2],
+      unreachableBackendIds: [3],
+      hiddenSelectors: [stamped(1)],
+      notIframeSelectors: [stamped(6)],
     });
 
-    const { nodes } = await collectTrimmedA11ySnapshot(page);
+    const { nodes, refMap } = await collectTrimmedA11ySnapshot(page);
 
     expect(nodes.map(({ ref, name }) => `${ref}:${name}`)).toStrictEqual([
+      'e1:Hidden',
+      'e2:Closed shadow',
+      'e3:Empty',
+      'e4:Unreadable',
+      'e5:Not iframe',
+      'e6:Chart',
       'f1e1:Chart',
       'f1e2:Zoom in',
     ]);
+    expect(refMap.get('e2')).toBe(UNREACHABLE_REF_SELECTOR);
   });
 
-  it('reads at most 5 iframes and does not read iframes inside iframes', async () => {
+  it('reads at most 5 iframes with content and does not read iframes inside iframes', async () => {
     const iframes = Array.from({ length: 6 }, (_, index) => ({
       role: 'Iframe',
       backendDOMNodeId: index + 1,
@@ -371,20 +462,45 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
           ]),
         ]),
       ),
-      domSelectorsByBackendId: Object.fromEntries(
-        iframes.map((_, index) => [index + 1, `#frame-${index + 1}`]),
+    });
+
+    const { nodes } = await collectTrimmedA11ySnapshot(page);
+
+    expect(
+      nodes.map(({ ref }) => ref).filter((ref) => ref.startsWith('f')),
+    ).toStrictEqual(['f1e1', 'f2e1', 'f3e1', 'f4e1', 'f5e1']);
+  });
+
+  it('tries at most 10 iframes, hidden and empty ones included', async () => {
+    const iframes = Array.from({ length: 12 }, (_, index) => ({
+      role: 'Iframe',
+      name: `Frame ${index + 1}`,
+      backendDOMNodeId: index + 1,
+    }));
+    const { page, send } = createFramePage({
+      pageAxNodes: axTree('page', iframes),
+      frameIdsByBackendId: { 11: 'F11', 12: 'F12' },
+      sameProcessFrames: {
+        F11: axTree('f11', [{ role: 'button', name: 'Frame 11' }]),
+        F12: axTree('f12', [{ role: 'button', name: 'Frame 12' }]),
+      },
+      hiddenSelectors: Array.from({ length: 10 }, (_, index) =>
+        stamped(index + 1),
       ),
     });
 
     const { nodes } = await collectTrimmedA11ySnapshot(page);
 
-    expect(nodes.map(({ ref }) => ref)).toStrictEqual([
-      'f1e1',
-      'f2e1',
-      'f3e1',
-      'f4e1',
-      'f5e1',
-    ]);
+    expect(nodes).toHaveLength(12);
+    expect(nodes.some(({ ref }) => ref.startsWith('f'))).toBe(false);
+    expect(
+      send.mock.calls.filter(
+        ([method, params]) =>
+          method === 'DOM.describeNode' &&
+          typeof (params as { backendNodeId?: number }).backendNodeId ===
+            'number',
+      ),
+    ).toHaveLength(10);
   });
 
   it('does not read iframes in a scoped snapshot', async () => {
@@ -395,13 +511,13 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
       ]),
       frameIdsByBackendId: { 10: 'CHART' },
       outOfProcessFrames: { [CHART]: chartTree },
-      domSelectorsByBackendId: { 10: CHART },
+      testIdsByBackendId: { 10: CHART_TEST_ID },
       cssFrameIds: { '.modal': '' },
     });
 
     const { nodes } = await collectTrimmedA11ySnapshot(page, '.modal');
 
-    expect(nodes.map(({ ref }) => ref)).toStrictEqual(['e1']);
+    expect(nodes.map(({ ref }) => ref)).toStrictEqual(['e1', 'e2']);
     expect(
       send.mock.calls.some(
         ([method, params]) =>
@@ -410,8 +526,8 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
     ).toBe(false);
   });
 
-  describe('with a frame selector', () => {
-    it('snapshots only the content of an out-of-process iframe', async () => {
+  describe('with a frame', () => {
+    it('snapshots only the content of an out-of-process iframe, with the given ref prefix', async () => {
       const { page } = createFramePage({
         pageAxNodes: axTree('page', [{ role: 'button', name: 'Send' }]),
         cssFrameIds: { [CHART]: 'CHART' },
@@ -421,16 +537,17 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
       const { nodes, refMap } = await collectTrimmedA11ySnapshot(
         page,
         undefined,
-        CHART,
+        { selector: CHART, refPrefix: 'f3' },
       );
 
       expect(
         nodes.map(({ ref, name, path }) => ({ ref, name, path })),
       ).toStrictEqual([
-        { ref: 'f1e1', name: 'Chart', path: ['heading:Chart'] },
-        { ref: 'f1e2', name: 'Zoom in', path: [] },
+        { ref: 'f3e1', name: 'Chart', path: ['heading:Chart'] },
+        { ref: 'f3e2', name: 'Zoom in', path: [] },
       ]);
-      expect(refMap.get('f1e2')).toBe(inChart('role=button[name="Zoom in" s]'));
+      expect([...refMap.keys()]).toStrictEqual(['f3e1', 'f3e2']);
+      expect(refMap.get('f3e2')).toBe(inChart('role=button[name="Zoom in" s]'));
     });
 
     it('snapshots a same-process iframe found by a CSS selector', async () => {
@@ -442,7 +559,10 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
         },
       });
 
-      const { nodes } = await collectTrimmedA11ySnapshot(page, undefined, SAME);
+      const { nodes } = await collectTrimmedA11ySnapshot(page, undefined, {
+        selector: SAME,
+        refPrefix: 'f1',
+      });
 
       expect(nodes.map(({ ref, name }) => `${ref}:${name}`)).toStrictEqual([
         'f1e1:Inside same',
@@ -456,11 +576,10 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
         outOfProcessFrames: { [selector]: chartTree },
       });
 
-      const { nodes } = await collectTrimmedA11ySnapshot(
-        page,
-        undefined,
+      const { nodes } = await collectTrimmedA11ySnapshot(page, undefined, {
         selector,
-      );
+        refPrefix: 'f1',
+      });
 
       expect(nodes).toHaveLength(2);
     });
@@ -485,7 +604,10 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
       const { page } = createFramePage({ pageAxNodes: [], ...options });
 
       await expect(
-        collectTrimmedA11ySnapshot(page, undefined, CHART),
+        collectTrimmedA11ySnapshot(page, undefined, {
+          selector: CHART,
+          refPrefix: 'f1',
+        }),
       ).rejects.toThrowError(message);
     });
 
@@ -493,7 +615,10 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
       const { page } = createFramePage({ pageAxNodes: [] });
 
       await expect(
-        collectTrimmedA11ySnapshot(page, '.modal', CHART),
+        collectTrimmedA11ySnapshot(page, '.modal', {
+          selector: CHART,
+          refPrefix: 'f1',
+        }),
       ).rejects.toThrowError('rootSelector cannot be combined with frame');
     });
   });
@@ -505,12 +630,15 @@ describe('collectTrimmedA11ySnapshot with iframes', () => {
       ]),
       frameIdsByBackendId: { 10: 'CHART' },
       outOfProcessFrames: { [CHART]: chartTree },
-      domSelectorsByBackendId: { 10: CHART },
+      testIdsByBackendId: { 10: CHART_TEST_ID },
       failCleanup: true,
     });
 
     const page1 = await collectTrimmedA11ySnapshot(page);
-    const frame1 = await collectTrimmedA11ySnapshot(page, undefined, CHART);
+    const frame1 = await collectTrimmedA11ySnapshot(page, undefined, {
+      selector: CHART,
+      refPrefix: 'f1',
+    });
 
     expect(page1.refMap.get('f1e2')).toBe(
       inChart('role=button[name="Zoom in" s]'),

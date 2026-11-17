@@ -22,7 +22,6 @@ import type {
   UnhoverResult,
   WaitForInput,
   WaitForResult,
-  WithinTarget,
 } from './types';
 import { ErrorCodes } from './types';
 import {
@@ -32,6 +31,7 @@ import {
 import type { TargetType } from './utils/discovery.js';
 import {
   resolveFrameSelector,
+  resolveWithinScope,
   scopeTargetToFrame,
 } from './utils/frame-scope.js';
 import { validateTargetSelection } from './utils/targets.js';
@@ -152,30 +152,6 @@ function validateInteraction<TResult>(
       ),
     };
   }
-}
-
-/**
- * Converts a WithinTarget input to the WithinScope format expected by the platform driver.
- *
- * @param within - The optional within target from tool input.
- * @returns The resolved scope, or undefined if no within target is provided.
- */
-export function resolveWithinScope(
-  within: WithinTarget | undefined,
-): WithinScope | undefined {
-  if (!within) {
-    return undefined;
-  }
-  if (within.a11yRef) {
-    return { type: 'a11yRef', value: within.a11yRef };
-  }
-  if (within.testId) {
-    return { type: 'testId', value: within.testId };
-  }
-  if (within.selector) {
-    return { type: 'selector', value: within.selector };
-  }
-  return undefined;
 }
 
 /**

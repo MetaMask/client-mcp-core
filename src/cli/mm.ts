@@ -24,6 +24,7 @@ import {
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonState } from '../types/http.js';
 import { computeTimeoutBudget } from '../utils/timeout-budget.js';
+import { A11Y_REF_PATTERN } from '../validation/a11y-ref.js';
 import { OBSERVE_LEVELS } from '../validation/observe-level.js';
 import type { ObserveLevel } from '../validation/observe-level.js';
 
@@ -464,9 +465,6 @@ export async function main(): Promise<void> {
   await routeCommand(command, args.slice(1), daemonState.port);
 }
 
-/** A snapshot ref: `e3`, or `f1e3` for an element inside an iframe. */
-const REF_PATTERN = /^(?:f[0-9]+)?e[0-9]+$/u;
-
 /**
  * Resolves `--within` scoping from CLI arguments.
  *
@@ -518,7 +516,7 @@ function resolveScopeFlag(
   if (val.startsWith('selector:')) {
     return { selector: val.slice('selector:'.length) };
   }
-  return REF_PATTERN.test(val) ? { a11yRef: val } : { testId: val };
+  return A11Y_REF_PATTERN.test(val) ? { a11yRef: val } : { testId: val };
 }
 
 /**
@@ -555,7 +553,9 @@ export function resolveTargetFromArgs(
   if (!target) {
     failUsage('element target is required');
   }
-  return REF_PATTERN.test(target) ? { a11yRef: target } : { testId: target };
+  return A11Y_REF_PATTERN.test(target)
+    ? { a11yRef: target }
+    : { testId: target };
 }
 
 /** Interaction flags that consume the next token as their value. */
@@ -620,6 +620,19 @@ export function getPositionalArgs(args: string[]): string[] {
 }
 
 /**
+ * The interaction tools whose input accepts `frame`; the others would drop
+ * it silently.
+ */
+const FRAME_TOOL_PATHS = new Set([
+  '/tool/click',
+  '/tool/type',
+  '/tool/get_text',
+  '/tool/inspect',
+  '/tool/hover',
+  '/tool/wait_for',
+]);
+
+/**
  * Sends an interaction tool request with optional timeout and within scope.
  *
  * @param port - The daemon HTTP server port.
@@ -648,6 +661,11 @@ async function sendInteractionRequest(
     body.within = within;
   }
   if (frame) {
+    if (!FRAME_TOOL_PATHS.has(toolPath)) {
+      failUsage(
+        `--frame is not supported by ${toolPath.slice('/tool/'.length)}`,
+      );
+    }
     body.frame = frame;
   }
 

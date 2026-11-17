@@ -253,23 +253,24 @@ On mobile (iOS, Android), the tree is a flat list in screen order. A node is a n
 
 Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails instead of acting on another element. The snapshot stamps each element with a token in its `data-mm-ref` attribute, and the ref selects that token, so two "Send" buttons get two refs that each click their own button, and a price in the name can change without breaking the ref. A ref fails at once with `MM_TARGET_NOT_FOUND` when its element was removed or re-mounted, or when the element now shows other text (a "Next" button became "Confirm"); changing numbers such as `$2.42`, `3.92%` or `00:59` do not count, plain integers (`Account 1`) do. Take a new snapshot when that happens. An element that could not be stamped gets a `role=`/`text=` ref with the exact, case-sensitive name; if a click on it fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
-**Inside iframes (browser).** `describe-screen` also lists what is inside visible iframes (for example the candlestick chart, `advanced-chart-iframe`), after the page's nodes. Their refs start with the iframe number, `f1e1`, `f1e2`, ... for the first iframe, `f2e1`, ... for the second, and their `path` ends with `iframe:<title>`. Use them like any ref: `mm click f1e2`, `mm get-text f1e5`. Cross-origin iframes work too.
+**Inside iframes (browser).** `describe-screen` also lists what is inside visible iframes (for example the candlestick chart, `advanced-chart-iframe`), after the page's nodes. The iframe element itself has a ref with role `iframe` (`e7`). The refs inside it start with the iframe number, `f1e1`, `f1e2`, ... for the first iframe, `f2e1`, ... for the second, and their `path` ends with `iframe:<title>`. Use them like any ref: `mm click f1e2`, `mm get-text f1e5`. Cross-origin iframes work too.
 
 To look at one iframe only, or to act on an element in it by test ID or selector, pass `--frame` with the iframe element (`testid:<id>`, `selector:<css>`, a bare test ID, or the iframe's ref):
 
 ```
-mm describe-screen --frame testid:advanced-chart-iframe      # only the chart's nodes (refs f1e1, ...)
+mm describe-screen --frame testid:advanced-chart-iframe      # only the chart's nodes, added to the current refs
+mm describe-screen --frame e7                                 # the same, by the iframe's ref
 mm hover --frame testid:advanced-chart-iframe --selector canvas
 mm get-text --frame testid:advanced-chart-iframe --selector '<css in the chart>'
 mm wait-for --frame testid:advanced-chart-iframe --selector 'text=No chart data'
 mm screenshot --frame testid:advanced-chart-iframe            # the iframe; add --selector for an element in it
 ```
 
-`--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. Limits:
+`--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. `scroll-to-element` and `long-press` reject it. `describe-screen --frame` keeps the refs you already have and numbers the iframe's refs with the next free number (`f3e1`, ... when `f1` and `f2` are taken). Limits:
 
 - Do not combine `--frame` with a ref target or a ref `--within`: an `f1e*` ref already points into its iframe. Use `--testid` or `--selector`.
 - Plain text inside an iframe (such as "No chart data") is not an accessibility node, so it is not in the tree: wait for it with `--selector 'text=...'`.
-- Up to 5 iframes are listed; iframes inside iframes are not. Hidden iframes are left out.
+- Up to 5 iframes are listed, out of the first 10 on the page; iframes inside iframes are not. Hidden iframes are left out.
 - Inside an iframe, two elements with the same role and name share a selector, so acting on that ref fails in strict mode: use `--frame` with `--testid` or `--selector`.
 - `list-testids` and the `testIds` list cover the page only, not iframes.
 - Browser only: `--frame` fails on mobile.

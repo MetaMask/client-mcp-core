@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- feat: `mm` sees and acts inside iframes on the browser, including cross-origin ones such as the candlestick chart. A page snapshot (`describe_screen`, `accessibility_snapshot` without `rootSelector`, observations) lists the content of up to 5 visible iframes after the page, with refs namespaced by frame (`f1e1`, `f2e1`, ...) and a `path` ending in `iframe:<title>`; these refs act inside their iframe. `describe_screen`, `click`, `type`, `hover`, `wait_for`, `get_text`, `inspect` and `screenshot` take `frame` (`--frame <iframe>`) to work inside one iframe, the way Playwright's `frameLocator` does. `mm screenshot` adds `--selector`
+- feat: `mm` sees and acts inside iframes on the browser, including cross-origin ones such as the candlestick chart. A page snapshot (`describe_screen`, `accessibility_snapshot` without `rootSelector`, observations) lists the content of up to 5 visible iframes after the page, with refs namespaced by frame (`f1e1`, `f2e1`, ...) and a `path` ending in `iframe:<title>`; these refs act inside their iframe. Each iframe element also gets a ref, usable as `frame`. `describe_screen`, `click`, `type`, `hover`, `wait_for`, `get_text`, `inspect` and `screenshot` take `frame` (`--frame <iframe>`) to work inside one iframe, the way Playwright's `frameLocator` does. `mm screenshot` adds `--selector`
 
 ## [0.14.0]
 
