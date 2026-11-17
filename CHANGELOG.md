@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- feat: add `mm network-log`, a passive log of every request and console message in the browser session, including the Extension's background service worker. It starts at launch and records method, redacted URL, status, duration, failure text, source (`page` or `service-worker`) and JSON-RPC methods; `requests`/`console` read with `--cursor`, `--since`, `--url`, `--errors`, `--limit` and `--clear`, `mark` returns a cursor, and `configure --rpc-errors` records JSON-RPC `error` objects. Service-worker events need Playwright 1.57 or later
+- feat: add `mm network-log`, a passive log of every request and console message in the browser session, including the Extension's background service worker. It starts after launch and records method, redacted URL, status, duration, failure text, source (`page` or `service-worker`) and JSON-RPC methods. Console messages are recorded at level `error` only by default (`configure --console-levels` adds others). `requests`/`console` read with `--cursor`, `--since`, `--url`, `--errors`, `--limit` and `--clear`, `mark` returns a cursor, and `configure --rpc-errors` records JSON-RPC `error` objects
+
+### Changed
+
+- **BREAKING:** the `playwright` and `@playwright/test` peer dependencies are now `^1.57.0` (was `^1.49.0`). Playwright 1.57 is the first version that reports the network and console events of the Extension's service worker without an environment flag
 
 ## [0.14.0]
 

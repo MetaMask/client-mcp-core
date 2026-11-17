@@ -650,14 +650,14 @@ Without `--bodies` the output is the same as before: no bodies or headers. Each 
 
 #### `mm network-log` (browser only)
 
-A passive log of every request and console message in the browser session. It starts at `mm launch`; you do not need to turn it on. It only listens: it never mocks, blocks or changes a request. It includes the Extension's background service worker, which sends most confirmation traffic (gas, security alerts, bridge, RPC). It keeps recording when you navigate, switch tabs or the service worker restarts.
+A passive log of every request and console message in the browser session. It starts at `mm launch`; you do not need to turn it on. It only listens: it never mocks, blocks or changes a request. It includes the Extension's background service worker, which sends most confirmation traffic (gas, security alerts, bridge, RPC). It keeps recording when you navigate, switch tabs or the service worker restarts. Requests sent during `mm launch` itself (for example self-onboarding) are not recorded.
 
 ```bash
 mm network-log mark                              # {"cursor":42,...}: start of a flow
 # ...do the flow...
 mm network-log requests --cursor 42              # every request after the mark
 mm network-log requests --cursor 42 --errors     # only failures, HTTP >= 400 and JSON-RPC errors
-mm network-log console --cursor 42               # console errors and warnings after the mark
+mm network-log console --cursor 42               # console errors after the mark
 ```
 
 Sample request record:
@@ -689,7 +689,7 @@ Sample request record:
 | `rpcError`                   | JSON-RPC `error` of the response. Only after `mm network-log configure --rpc-errors`                |
 | `source`                     | `service-worker` or `page`; page records also have `pageUrl` (and `frameUrl` for an iframe request) |
 
-Console records have `seq`, `t`, `level`, `text` (redacted, cut at 2000 characters), `source`, `sourceUrl`, and `location` (`url:line:column`) when Chrome gives one. Uncaught page errors are recorded as `error` with `uncaught: true`.
+By default only console `error` messages are recorded (uncaught page errors included). Console records have `seq`, `t`, `level`, `text` (redacted, cut at 2000 characters), `source`, `sourceUrl`, and `location` (`url:line:column`) when Chrome gives one. Uncaught page errors are recorded as `error` with `uncaught: true`.
 
 | Flag                      | Description                                                                                                     |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -706,10 +706,12 @@ Only `http`/`https` requests are recorded (extension files and `data:` URLs are 
 
 `mm network-log configure` changes what is recorded from then on:
 
-- `--console-levels error,warning,info,log,debug` records more console levels (default `error,warning`). `log` is noisy in the Extension.
+- `--console-levels error,warning,info,log,debug` records more console levels (default `error` only). `log` is noisy in the Extension.
 - `--rpc-errors` reads the body of each JSON-RPC response (up to 64 KiB, at most 8 at a time) and records its `error`. Off by default, because it copies response bodies from the browser. `summary.rpcErrorsSkipped` counts the responses that were too large or too many to read.
 
 `mm network-log mark` returns the current cursor. `mm network-log clear` drops all records; cursors keep counting, so an older cursor still works.
+
+Cursors start at 0 again after a relaunch. `mark` and every read return `summary.startedAt` (when the log started). If the `startedAt` of a read differs from the one `mark` returned, the session was relaunched: read again with `--cursor 0` and note a capture gap for the flow.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
