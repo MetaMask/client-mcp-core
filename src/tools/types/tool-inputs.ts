@@ -224,7 +224,11 @@ export type NetworkMockRouteRule = {
   id: string;
   method: string;
   url: string;
-  response: NetworkMockResponse;
+  /**
+   * Mocked response. Omit it to record the real request and forward it
+   * unchanged; `record` is then required.
+   */
+  response?: NetworkMockResponse;
   record?: NetworkMockRecordOptions;
 };
 
@@ -244,8 +248,16 @@ export type NetworkMockRequestRecord = {
   timestamp: string;
   method: string;
   url: string;
+  /**
+   * True when a rule matched. A rule with a response mocks the request; a
+   * rule with only record forwards it unchanged.
+   */
   matched: boolean;
   ruleId?: string;
+  /**
+   * Mocked status for a rule with a response, or the real status of a
+   * forwarded request when the response arrived within the status timeout.
+   */
   status?: number;
   serviceWorker?: boolean;
   headers?: Record<string, string>;

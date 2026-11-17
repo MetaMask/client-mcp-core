@@ -53,20 +53,29 @@ function createMockRoute(
     body?: Buffer | string | null;
     headers?: Record<string, string>;
     serviceWorker?: boolean;
+    responseStatus?: number;
   } = {},
 ) {
   const body =
     typeof options.body === 'string'
       ? Buffer.from(options.body, 'utf8')
       : (options.body ?? null);
+  const request = {
+    method: vi.fn().mockReturnValue(method),
+    url: vi.fn().mockReturnValue(url),
+    headers: vi.fn().mockReturnValue(options.headers ?? {}),
+    postDataBuffer: vi.fn().mockReturnValue(body),
+    serviceWorker: vi.fn().mockReturnValue(options.serviceWorker ? {} : null),
+    response: vi
+      .fn()
+      .mockResolvedValue(
+        options.responseStatus === undefined
+          ? null
+          : { status: () => options.responseStatus },
+      ),
+  };
   return {
-    request: vi.fn().mockReturnValue({
-      method: vi.fn().mockReturnValue(method),
-      url: vi.fn().mockReturnValue(url),
-      headers: vi.fn().mockReturnValue(options.headers ?? {}),
-      postDataBuffer: vi.fn().mockReturnValue(body),
-      serviceWorker: vi.fn().mockReturnValue(options.serviceWorker ? {} : null),
-    }),
+    request: vi.fn().mockReturnValue(request),
     continue: vi.fn().mockResolvedValue(undefined),
     fulfill: vi.fn().mockResolvedValue(undefined),
   };
@@ -517,15 +526,15 @@ const SEGMENT_BATCH = {
   sentAt: '2026-11-10T10:00:00.000Z',
 };
 
-describe('NetworkMockRouteManager request recording', () => {
-  async function addAndGetHandler(rule: NetworkMockRouteRule) {
-    const browserContext = createMockBrowserContext();
-    const manager = new NetworkMockRouteManager(browserContext as never);
-    await manager.addRule(rule);
-    const routeHandler = browserContext.route.mock.calls[0]?.[1];
-    return { manager, routeHandler };
-  }
+async function addAndGetHandler(rule: NetworkMockRouteRule) {
+  const browserContext = createMockBrowserContext();
+  const manager = new NetworkMockRouteManager(browserContext as never);
+  await manager.addRule(rule);
+  const routeHandler = browserContext.route.mock.calls[0]?.[1];
+  return { manager, browserContext, routeHandler };
+}
 
+describe('NetworkMockRouteManager request recording', () => {
   it('does not record bodies or headers by default', async () => {
     const { manager, routeHandler } = await addAndGetHandler({
       ...SEGMENT_RULE,
@@ -732,6 +741,141 @@ describe('NetworkMockRouteManager request recording', () => {
     expect(
       manager.getRequests(undefined, { includeBodies: true }),
     ).toStrictEqual([]);
+  });
+});
+
+const RECORD_ONLY_RULE: NetworkMockRouteRule = {
+  id: 'segment-record',
+  method: 'POST',
+  url: 'https://api.segment.io/**',
+  record: { body: true, headers: true },
+};
+
+describe('NetworkMockRouteManager record-only rules', () => {
+  it('forwards the request unchanged and records it', async () => {
+    const { manager, routeHandler } = await addAndGetHandler(RECORD_ONLY_RULE);
+    const route = createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+      body: JSON.stringify(SEGMENT_BATCH),
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+      },
+      responseStatus: 202,
+    });
+
+    await routeHandler(route);
+
+    expect(route.continue).toHaveBeenCalled();
+    expect(route.fulfill).not.toHaveBeenCalled();
+
+    const [record] = manager.getRequests(undefined, { includeBodies: true });
+    expect(record).toMatchObject({
+      matched: true,
+      ruleId: 'segment-record',
+      method: 'POST',
+      url: 'https://api.segment.io/v1/batch',
+      headers: {
+        authorization: REDACTED_VALUE,
+        'content-type': 'application/json',
+      },
+      body: {
+        type: 'json',
+        value: { ...SEGMENT_BATCH, writeKey: REDACTED_VALUE },
+      },
+    });
+  });
+
+  it('records the real status of a forwarded request', async () => {
+    const { manager, routeHandler } = await addAndGetHandler(RECORD_ONLY_RULE);
+    const route = createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+      body: '{}',
+      responseStatus: 202,
+    });
+
+    await routeHandler(route);
+    await vi.waitFor(() => {
+      expect(manager.getRequests()[0]?.status).toBe(202);
+    });
+  });
+
+  it('leaves status out when the forwarded response does not arrive', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, routeHandler } =
+        await addAndGetHandler(RECORD_ONLY_RULE);
+      const route = createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+        body: '{}',
+      });
+      route.request().response.mockReturnValue(new Promise(() => undefined));
+
+      await routeHandler(route);
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(manager.getRequests()[0]).not.toHaveProperty('status');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves status out when the response request fails', async () => {
+    const { manager, routeHandler } = await addAndGetHandler(RECORD_ONLY_RULE);
+    const route = createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+      body: '{}',
+    });
+    route.request().response.mockRejectedValue(new Error('target closed'));
+
+    await routeHandler(route);
+    await vi.waitFor(() => {
+      expect(route.request().response).toHaveBeenCalled();
+    });
+
+    expect(manager.getRequests()[0]).not.toHaveProperty('status');
+  });
+
+  it('leaves status out when request.response throws', async () => {
+    const { manager, routeHandler } = await addAndGetHandler(RECORD_ONLY_RULE);
+    const route = createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+      body: '{}',
+    });
+    route.request().response.mockImplementation(() => {
+      throw new Error('detached');
+    });
+
+    await routeHandler(route);
+
+    expect(route.continue).toHaveBeenCalled();
+    expect(manager.getRequests()[0]).not.toHaveProperty('status');
+  });
+
+  it('counts a forwarded record-only rule as a hit', async () => {
+    const { manager, routeHandler } = await addAndGetHandler(RECORD_ONLY_RULE);
+
+    await routeHandler(
+      createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+        body: '{}',
+      }),
+    );
+
+    expect(manager.getSummary()).toMatchObject({ hits: 1, misses: 0 });
+  });
+
+  it('does not record headers or bodies that the rule does not opt in to', async () => {
+    const { manager, routeHandler } = await addAndGetHandler({
+      ...RECORD_ONLY_RULE,
+      record: {},
+    });
+
+    await routeHandler(
+      createMockRoute('POST', 'https://api.segment.io/v1/batch', {
+        body: JSON.stringify(SEGMENT_BATCH),
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const [record] = manager.getRequests(undefined, { includeBodies: true });
+    expect(record?.matched).toBe(true);
+    expect(record).not.toHaveProperty('headers');
+    expect(record).not.toHaveProperty('body');
   });
 });
 

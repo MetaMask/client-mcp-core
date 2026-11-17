@@ -563,19 +563,20 @@ Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigat
 
 #### `mm mock-network add '<json-rule-or-config>'`
 
-Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and a response body.
+Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and either a mocked response or a `record` opt-in.
 
 ```bash
 mm mock-network add '{"id":"mock-balance","method":"GET","url":"https://api.example.com/v1/balance","response":{"json":{"balance":"100"}}}'
 ```
 
-A rule object requires:
+A rule object requires `id`, `method` and `url`, plus at least one of `response` or `record`:
 
 | Field              | Description                                                                                                                      |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | `id`               | Stable identifier — adding a rule with an existing id replaces it                                                                |
 | `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                                       |
 | `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                                    |
+| `response`         | Mocked response. Omit it to forward the real request unchanged and only record it; `record` is then required                     |
 | `response.status`  | HTTP status code (default: 200)                                                                                                  |
 | `response.json`    | JSON response body (mutually exclusive with `body`)                                                                              |
 | `response.body`    | Text response body (mutually exclusive with `json`)                                                                              |
@@ -589,7 +590,11 @@ mm mock-network add '[{"id":"r1","method":"GET","url":"https://a.com/x","respons
 mm mock-network add '{"routes":[...]}'
 ```
 
-Unmatched same-origin requests are continued unchanged.
+Unmatched same-origin requests are continued unchanged. A rule with `record` and no `response` matches the real request, records it, and forwards it unchanged with the real response. `matched: true` means a rule matched, whether it mocked the response or forwarded it. The record gets the real `status` once the response arrives (within 5 seconds); otherwise `status` is left out. This is the way to capture real traffic such as Segment batches, quotes or RPC calls without inventing a response:
+
+```bash
+mm mock-network add '{"id":"token-list","method":"GET","url":"https://token.api.cx.metamask.io/**","record":{"body":true}}'
+```
 
 A mock only affects requests made after it is added. Data the Extension already fetched stays cached in memory, and waiting or going Home and back does not fetch it again. So:
 
@@ -598,10 +603,13 @@ A mock only affects requests made after it is added. Data the Extension already 
 
 ##### Record request bodies
 
-Add `record` to a rule to keep the body (and optionally the headers) of each request the rule matches. Use it to check what the Extension sent, for example which analytics events went to Segment:
+Add `record` to a rule to keep the body (and optionally the headers) of each request the rule matches. Keep `response` when the flow needs a mocked response; leave it out to record the real request and forward it unchanged. Use it to check what the Extension sent, for example which analytics events went to Segment:
 
 ```bash
+# Mock the response and record what the Extension sent.
 mm mock-network add '{"id":"segment","method":"POST","url":"https://api.segment.io/**","response":{"json":{"success":true}},"record":{"body":true}}'
+# Record the real request and response without mocking them (quotes, token API, RPC).
+mm mock-network add '{"id":"quotes","method":"GET","url":"https://bridge.api.cx.metamask.io/getQuote**","record":{"body":true,"headers":true}}'
 # ...do the flow that should send the events...
 mm mock-network requests --url api.segment.io --bodies
 ```
@@ -610,9 +618,9 @@ mm mock-network requests --url api.segment.io --bodies
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `record.body`         | Record the request body. JSON is parsed. Other text is kept as text. Binary bodies record only their size                                                         |
 | `record.headers`      | Record request headers. The values of `authorization`, `cookie` and any header with `token`, `secret`, `key` or `auth` in the name are replaced with `[REDACTED]` |
-| `record.maxBodyBytes` | Bytes to keep per body (default 65536, max 524288). A longer body is cut, kept as text and marked `"truncated": true`                                             |
+| `record.maxBodyBytes` | Bytes to keep per body (default 65536, max 524288). A longer body is cut and marked `"truncated": true`                                                           |
 
-Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`. Only matched requests are recorded with bodies. Misses never store a body. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`, whatever the value type (string, array, object or number). A JSON body cut by `maxBodyBytes` keeps no value: it is recorded as `{"type":"json","size":N,"truncated":true}`. Raise `maxBodyBytes` to read it. JSON-like text that does not parse is recorded as `{"type":"text","size":N,"redacted":true}` with no value. Only matched requests are recorded with bodies. Misses never store a body. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 Segment sends events in batches, and production builds wait up to about 5 seconds before they send. If no batch shows up, wait and check again.
 

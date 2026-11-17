@@ -9,6 +9,7 @@ import type {
   MockNetworkResult,
   NetworkMockRecordedBody,
   NetworkMockRequestRecord,
+  NetworkMockResponse,
   NetworkMockRouteRule,
   NetworkMockSummary,
 } from './types';
@@ -19,6 +20,12 @@ const DEFAULT_MAX_REQUEST_RECORDS = 500;
 export const DEFAULT_MAX_RECORDED_BODY_BYTES = 64 * 1024;
 export const MAX_RECORDED_BODY_BYTES = 512 * 1024;
 export const REDACTED_VALUE = '[REDACTED]';
+/**
+ * How long a forwarded (non-mocked) request waits for its real response
+ * before the record is left without a `status`. The wait never delays the
+ * request itself.
+ */
+const FORWARDED_RESPONSE_TIMEOUT_MS = 5000;
 const SENSITIVE_HEADER_NAMES = new Set([
   'authorization',
   'proxy-authorization',
@@ -302,6 +309,9 @@ export class NetworkMockRouteManager {
   /**
    * Handles an intercepted Playwright route.
    *
+   * A rule with a `response` fulfills the request with the mocked response. A
+   * rule with only `record` records the request and forwards it unchanged.
+   *
    * @param route - The intercepted route.
    */
   async #handleRoute(route: Route): Promise<void> {
@@ -314,12 +324,38 @@ export class NetworkMockRouteManager {
       return;
     }
 
-    this.#recordRequest(request, true, matchedRule);
+    const record = this.#recordRequest(request, true, matchedRule);
+
+    if (!matchedRule.response) {
+      await route.continue();
+      this.#recordForwardedStatus(request, record).catch(() => undefined);
+      return;
+    }
+
     await route.fulfill({
       status: matchedRule.response.status ?? 200,
-      headers: buildResponseHeaders(matchedRule),
-      body: buildResponseBody(matchedRule),
+      headers: buildResponseHeaders(matchedRule.response),
+      body: buildResponseBody(matchedRule.response),
     });
+  }
+
+  /**
+   * Records the real status of a forwarded request once its response arrives.
+   *
+   * Best effort: this never delays the request, and the record keeps no
+   * `status` when the response is not received in time or the request fails.
+   *
+   * @param request - The forwarded Playwright request.
+   * @param record - The request record to update.
+   */
+  async #recordForwardedStatus(
+    request: PlaywrightRequest,
+    record: NetworkMockRequestRecord,
+  ): Promise<void> {
+    const status = await readResponseStatus(request);
+    if (status !== undefined) {
+      record.status = status;
+    }
   }
 
   /**
@@ -331,21 +367,22 @@ export class NetworkMockRouteManager {
    * @param request - The intercepted Playwright request.
    * @param matched - Whether a rule matched.
    * @param rule - The matched rule, if any.
+   * @returns The record that was stored.
    */
   #recordRequest(
     request: PlaywrightRequest,
     matched: boolean,
     rule?: NetworkMockRouteRule,
-  ): void {
+  ): NetworkMockRequestRecord {
     const ruleId = rule?.id;
-    const status = rule?.response.status;
+    const status = rule?.response?.status;
     const recordOptions = rule?.record;
     const headers =
       recordOptions?.headers || recordOptions?.body
         ? readRequestHeaders(request)
         : {};
 
-    this.#requestRecords.push({
+    const record: NetworkMockRequestRecord = {
       timestamp: new Date().toISOString(),
       method: request.method(),
       url: request.url(),
@@ -363,7 +400,8 @@ export class NetworkMockRouteManager {
             ),
           }
         : {}),
-    });
+    };
+    this.#requestRecords.push(record);
 
     if (this.#requestRecords.length > this.#maxRequestRecords) {
       this.#requestRecords.splice(
@@ -371,6 +409,8 @@ export class NetworkMockRouteManager {
         this.#requestRecords.length - this.#maxRequestRecords,
       );
     }
+
+    return record;
   }
 
   /**
@@ -492,20 +532,20 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Builds response headers for a rule.
+ * Builds response headers for a mocked response.
  *
- * @param rule - The matched route rule.
+ * @param response - The mocked response.
  * @returns Headers for Playwright route fulfillment.
  */
 function buildResponseHeaders(
-  rule: NetworkMockRouteRule,
+  response: NetworkMockResponse,
 ): Record<string, string> {
-  const defaultHeaders = hasJsonResponse(rule)
+  const defaultHeaders = hasJsonResponse(response)
     ? DEFAULT_JSON_HEADERS
     : DEFAULT_TEXT_HEADERS;
 
   const normalized: Record<string, string> = {};
-  for (const [key, value] of Object.entries(rule.response.headers ?? {})) {
+  for (const [key, value] of Object.entries(response.headers ?? {})) {
     normalized[key.toLowerCase()] = value;
   }
 
@@ -516,27 +556,27 @@ function buildResponseHeaders(
 }
 
 /**
- * Builds a response body for a rule.
+ * Builds a response body for a mocked response.
  *
- * @param rule - The matched route rule.
+ * @param response - The mocked response.
  * @returns Body for Playwright route fulfillment.
  */
-function buildResponseBody(rule: NetworkMockRouteRule): string {
-  if (hasJsonResponse(rule)) {
-    return JSON.stringify(rule.response.json);
+function buildResponseBody(response: NetworkMockResponse): string {
+  if (hasJsonResponse(response)) {
+    return JSON.stringify(response.json);
   }
 
-  return rule.response.body ?? '';
+  return response.body ?? '';
 }
 
 /**
- * Checks whether a rule contains a JSON response payload.
+ * Checks whether a mocked response contains a JSON payload.
  *
- * @param rule - The route rule to inspect.
+ * @param response - The mocked response to inspect.
  * @returns True if the response has a json property.
  */
-function hasJsonResponse(rule: NetworkMockRouteRule): boolean {
-  return Object.prototype.hasOwnProperty.call(rule.response, 'json');
+function hasJsonResponse(response: NetworkMockResponse): boolean {
+  return Object.prototype.hasOwnProperty.call(response, 'json');
 }
 
 /**
@@ -822,6 +862,38 @@ function readPostDataBuffer(request: PlaywrightRequest): Buffer | null {
     return request.postDataBuffer();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Reads the real status of a forwarded request, without throwing.
+ *
+ * The wait is bounded by {@link FORWARDED_RESPONSE_TIMEOUT_MS} so an
+ * unanswered request cannot leak a pending promise.
+ *
+ * @param request - The forwarded Playwright request.
+ * @returns The response status, or undefined if it is not available.
+ */
+async function readResponseStatus(
+  request: PlaywrightRequest,
+): Promise<number | undefined> {
+  try {
+    const statusPromise = request
+      .response()
+      .then((response) => response?.status())
+      .catch(() => undefined);
+
+    const timeout = new Promise<undefined>((resolve) => {
+      const timer = setTimeout(
+        () => resolve(undefined),
+        FORWARDED_RESPONSE_TIMEOUT_MS,
+      );
+      timer.unref();
+    });
+
+    return await Promise.race([statusPromise, timeout]);
+  } catch {
+    return undefined;
   }
 }
 
