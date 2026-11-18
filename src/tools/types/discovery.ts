@@ -50,6 +50,16 @@ export type TestIdItem = {
   visible: boolean;
 };
 
+/**
+ * The iframe of a snapshot of one iframe's content.
+ */
+export type FrameSnapshotTarget = {
+  /** Playwright selector of the iframe element. */
+  selector: string;
+  /** Prefix of the refs of its nodes (`f1` gives `f1e1`, ...). */
+  refPrefix: string;
+};
+
 export type A11yNodeTrimmed = {
   ref: string;
   role: string;

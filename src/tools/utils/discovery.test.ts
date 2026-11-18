@@ -2328,6 +2328,54 @@ describe('waitForTarget', () => {
     expect(mockLocator.waitFor).not.toHaveBeenCalled();
   });
 
+  describe('with a ref inside a stamped iframe', () => {
+    const iframeStamp = '[data-mm-ref~="abc123-1"]';
+    const selector = `${iframeStamp} >> internal:control=enter-frame >> role=button[name="Zoom in" s]`;
+    const refMap = new Map([['f1e1', selector]]);
+
+    it('waits for the element while the iframe is on the page', async () => {
+      const iframeLocator = {
+        ...createMockLocator({ visible: true }),
+        count: vi.fn().mockResolvedValue(1),
+      };
+      const elementLocator = {
+        ...createMockLocator({ visible: true }),
+        count: vi.fn().mockResolvedValue(0),
+      };
+      const page = {
+        locator: vi.fn((value: string) =>
+          value === iframeStamp ? iframeLocator : elementLocator,
+        ),
+      } as unknown as Page;
+
+      await waitForTarget(page, 'a11yRef', 'f1e1', refMap, 5000);
+
+      expect(elementLocator.count).not.toHaveBeenCalled();
+      expect(elementLocator.waitFor).toHaveBeenCalledWith({
+        state: 'visible',
+        timeout: expectRemaining(5000),
+      });
+    });
+
+    it('fails at once when the iframe left the page', async () => {
+      const mockLocator = {
+        ...createMockLocator({ visible: true }),
+        count: vi.fn().mockResolvedValue(0),
+      };
+      const page = {
+        locator: vi.fn().mockReturnValue(mockLocator),
+      } as unknown as Page;
+
+      await expect(
+        waitForTarget(page, 'a11yRef', 'f1e1', refMap, 5000),
+      ).rejects.toThrowError(
+        'Ref f1e1 not found: its iframe left the page after the snapshot; take a new snapshot',
+      );
+      expect(page.locator).toHaveBeenCalledWith(iframeStamp);
+      expect(mockLocator.waitFor).not.toHaveBeenCalled();
+    });
+  });
+
   it('fails at once when the element of a stamped within ref left the page', async () => {
     const refMap = new Map([
       ['e1', '[data-mm-ref~="abc123-0"]'],

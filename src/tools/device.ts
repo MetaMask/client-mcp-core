@@ -1,5 +1,4 @@
 import { classifyInteractionError } from './error-classification.js';
-import { resolveWithinScope } from './interaction.js';
 import type {
   CloseAppInput,
   DeviceClipboardInput,
@@ -35,6 +34,7 @@ import type {
   TapCoordinatesResult,
 } from './types/tool-outputs.js';
 import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
+import { resolveWithinScope } from './utils/frame-scope.js';
 import { resolveWithinArtifactsDir } from './utils/paths.js';
 import { validateTargetSelection } from './utils/targets.js';
 import type { TargetType } from './utils/type-guards.js';
