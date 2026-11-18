@@ -92,6 +92,11 @@ export type ClickResult = {
   /** Mobile: the keyboard covered the target and was dismissed first. */
   keyboardDismissed?: boolean;
   /**
+   * Browser: the target was a visually hidden checkbox or radio, so its label
+   * was clicked instead.
+   */
+  clickedLabel?: boolean;
+  /**
    * Mobile, with an observation: whether the screen after the click differs
    * from the last screen the agent received. `false` is a hint (many taps
    * change nothing, e.g. the open tab), not an error.

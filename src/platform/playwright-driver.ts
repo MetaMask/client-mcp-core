@@ -38,6 +38,7 @@ import {
   collectTrimmedA11ySnapshot,
   waitForTarget,
 } from '../tools/utils/discovery.js';
+import { findLabelForHiddenControl } from '../tools/utils/hidden-control.js';
 import { inspectLocator } from '../tools/utils/inspect.js';
 
 /**
@@ -116,16 +117,20 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       );
     }
 
+    const label = await findLabelForHiddenControl(locator, remaining);
+    const labelResult = label ? { clickedLabel: true } : {};
+
     // The request may have timed out while we waited for the target.
     signal?.throwIfAborted();
     try {
-      await locator.click({ timeout: remaining });
+      await (label ?? locator).click({ timeout: remaining });
     } catch (error) {
       if (isPageClosedError(error)) {
         return {
           clicked: true,
           target: `${targetType}:${targetValue}`,
           pageClosedAfterClick: true,
+          ...labelResult,
         };
       }
       throw error;
@@ -134,6 +139,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     return {
       clicked: true,
       target: `${targetType}:${targetValue}`,
+      ...labelResult,
     };
   }
 

@@ -4,6 +4,7 @@ import { PlaywrightPlatformDriver } from './playwright-driver.js';
 import type { IPlatformDriver } from './types.js';
 import { createMockSessionManager } from '../tools/test-utils/mock-factories.js';
 import * as discoveryModule from '../tools/utils/discovery.js';
+import * as hiddenControlModule from '../tools/utils/hidden-control.js';
 import * as inspectModule from '../tools/utils/inspect.js';
 
 function createMockLocator() {
@@ -15,6 +16,9 @@ function createMockLocator() {
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
     isDisabled: vi.fn().mockResolvedValue(false),
+    boundingBox: vi
+      .fn()
+      .mockResolvedValue({ x: 0, y: 0, width: 100, height: 40 }),
     scrollIntoViewIfNeeded: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -191,6 +195,86 @@ describe('PlaywrightPlatformDriver', () => {
       await expect(
         driver.click('testId', 'btn', new Map(), 5),
       ).rejects.toThrowError('visibility wait consumed entire budget');
+      expect(locator.click).not.toHaveBeenCalled();
+    });
+
+    it('clicks the label of a visually hidden checkbox', async () => {
+      const locator = createMockLocator();
+      const label = createMockLocator();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      const findSpy = vi
+        .spyOn(hiddenControlModule, 'findLabelForHiddenControl')
+        .mockResolvedValue(label as any);
+
+      const driver = createDriver();
+      const result = await driver.click(
+        'testId',
+        'basic-functionality-toggle',
+        new Map(),
+        5000,
+      );
+
+      expect(findSpy).toHaveBeenCalledWith(locator, expect.any(Number));
+      expect(label.click).toHaveBeenCalledOnce();
+      expect(locator.click).not.toHaveBeenCalled();
+      expect(result).toStrictEqual({
+        clicked: true,
+        target: 'testId:basic-functionality-toggle',
+        clickedLabel: true,
+      });
+    });
+
+    it('reports the label click when the page closes during it', async () => {
+      const label = createMockLocator();
+      label.click.mockRejectedValue(
+        new Error('Target page, context or browser has been closed'),
+      );
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        createMockLocator() as any,
+      );
+      vi.spyOn(
+        hiddenControlModule,
+        'findLabelForHiddenControl',
+      ).mockResolvedValue(label as any);
+
+      const driver = createDriver();
+      const result = await driver.click('testId', 'toggle', new Map(), 5000);
+
+      expect(result).toStrictEqual({
+        clicked: true,
+        target: 'testId:toggle',
+        pageClosedAfterClick: true,
+        clickedLabel: true,
+      });
+    });
+
+    it('does not click when the signal aborts while finding the label', async () => {
+      const locator = createMockLocator();
+      const controller = new AbortController();
+      vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+        locator as any,
+      );
+      vi.spyOn(
+        hiddenControlModule,
+        'findLabelForHiddenControl',
+      ).mockImplementation(async () => {
+        controller.abort(new Error('Tool execution timed out'));
+        return undefined;
+      });
+
+      const driver = createDriver();
+      await expect(
+        driver.click(
+          'testId',
+          'toggle',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toThrowError('Tool execution timed out');
       expect(locator.click).not.toHaveBeenCalled();
     });
   });

@@ -28,6 +28,11 @@ export type ClickActionResult = {
   pageClosedAfterClick?: boolean;
   /** Mobile: the keyboard covered the target and was dismissed first. */
   keyboardDismissed?: boolean;
+  /**
+   * Browser: the target was a visually hidden checkbox or radio, so its label
+   * was clicked instead.
+   */
+  clickedLabel?: boolean;
 };
 
 export type ClickOptions = {
