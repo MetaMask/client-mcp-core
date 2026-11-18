@@ -1015,6 +1015,10 @@ export async function routeCommand(
       await routeEventsCommand(args, daemon);
       break;
     }
+    case 'logs': {
+      await routeLogsCommand(args, daemon);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -1361,6 +1365,96 @@ export async function routeEventsCommand(
     action,
     ...(kind === undefined ? {} : { kind }),
   });
+}
+
+const LOGS_USAGE =
+  'Usage: mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]\n' +
+  '       mm logs configure --levels <error,warning,info,log,debug>';
+
+/**
+ * Parses the read flags shared by `mm logs` and `mm network`.
+ *
+ * @param args - CLI arguments.
+ * @param usage - The usage text to print on a bad flag.
+ * @param stringFlags - Extra flags that take a string value.
+ * @returns The read options for the tool.
+ */
+export function parseEventReadArgs(
+  args: string[],
+  usage: string,
+  stringFlags: readonly string[] = [],
+): Record<string, unknown> {
+  const integerFlags = new Set(['--cursor', '--limit']);
+  const textFlags = new Set(['--since', ...stringFlags]);
+  const options: Record<string, unknown> = {};
+  // Every flag takes one value, so the arguments come in flag/value pairs.
+  // Reject anything else: a mistyped flag must not be silently ignored.
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index];
+    const value = args[index + 1];
+    if (
+      flag === undefined ||
+      (!integerFlags.has(flag) && !textFlags.has(flag)) ||
+      value === undefined ||
+      value.startsWith('--')
+    ) {
+      failUsage(usage);
+    }
+    if (integerFlags.has(flag)) {
+      const parsed = parseInt(value, 10);
+      if (Number.isNaN(parsed)) {
+        failUsage(usage);
+      }
+      options[flag.slice(2)] = parsed;
+    } else {
+      options[flag.slice(2)] = value;
+    }
+  }
+  return options;
+}
+
+/**
+ * Routes `mm logs` to the daemon.
+ *
+ * @param args - CLI arguments after `logs`.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
+ */
+export async function routeLogsCommand(
+  args: string[],
+  daemon: DaemonEndpoint,
+): Promise<void> {
+  if (args[0] === 'configure') {
+    const levelsArgument = args[2];
+    if (
+      args.length !== 3 ||
+      args[1] !== '--levels' ||
+      levelsArgument === undefined ||
+      levelsArgument.startsWith('--')
+    ) {
+      failUsage(LOGS_USAGE);
+    }
+    const levels = levelsArgument
+      .split(',')
+      .map((level) => level.trim())
+      .filter(Boolean);
+    if (levels.length === 0) {
+      failUsage(LOGS_USAGE);
+    }
+    await sendRequest(daemon, 'POST', '/tool/logs', {
+      action: 'configure',
+      levels,
+    });
+    return;
+  }
+  if (args[0] !== undefined && !args[0].startsWith('--')) {
+    failUsage(LOGS_USAGE);
+  }
+  await sendRequest(
+    daemon,
+    'POST',
+    '/tool/logs',
+    parseEventReadArgs(args, LOGS_USAGE, ['--grep']),
+  );
 }
 
 /**
@@ -2260,6 +2354,12 @@ Session events (browser only; recorded from launch on, not during it):
                       start of a flow; pass the cursor to logs/network.
   mm events clear [--kind console|network]
                       Empty the buffer; the cursor keeps counting.
+  mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]
+                      Console errors and uncaught exceptions of every page
+                      and the Extension service worker. Oldest first; read
+                      again with the returned cursor while hasMore.
+  mm logs configure --levels <error,warning,info,log,debug>
+                      Levels to record from now on (default: error).
 
 Mobile (iOS/Android only):
   mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]

@@ -39,6 +39,7 @@ import {
   waitForTool,
 } from './interaction.js';
 import { launchTool } from './launch.js';
+import { logsTool } from './logs.js';
 import { mockNetworkTool } from './mock-network.js';
 import {
   closeTabTool,
@@ -100,6 +101,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['get_window_size', getWindowSizeTool],
   ['mock_network', mockNetworkTool],
   ['events', eventsTool],
+  ['logs', logsTool],
   ['scroll_to_element', scrollToElementTool],
   ['device_swipe', deviceSwipeTool],
   ['long_press', longPressTool],
@@ -167,7 +169,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   press_button: 'mutating',
   device_context: 'mutating',
   device_clipboard: 'mutating',
-  // READONLY (14)
+  // READONLY (15)
   hermes_targets: 'readonly',
   get_window_size: 'readonly',
   get_alert_text: 'readonly',
@@ -186,6 +188,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   get_contract_address: 'readonly',
   // `events clear` empties the session event buffer; it never touches the UI.
   events: 'readonly',
+  logs: 'readonly',
   // DISCOVERY (4)
   describe_screen: 'discovery',
   list_testids: 'discovery',
@@ -217,6 +220,7 @@ const BROWSER_ONLY_TOOLS = new Set([
   'clipboard',
   'mock_network',
   'events',
+  'logs',
   'reload',
   'build',
   'inspect',

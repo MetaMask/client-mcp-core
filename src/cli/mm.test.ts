@@ -1058,6 +1058,7 @@ describe('printHelp', () => {
     expect(output).toContain('--pretty');
     expect(output).toContain('MM_PRETTY');
     expect(output).toContain('mm events mark');
+    expect(output).toContain('mm logs configure --levels');
   });
 });
 
@@ -3168,6 +3169,76 @@ describe('routeCommand', () => {
       'process.exit',
     );
     expectFailure(expect.stringContaining('Usage: mm events'), 2);
+  });
+
+  it('routes logs with read flags', async () => {
+    await routeCommand(
+      'logs',
+      [
+        '--cursor',
+        '12',
+        '--limit',
+        '50',
+        '--since',
+        '2026-11-18T10:00:00Z',
+        '--grep',
+        'boom',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({
+        body: JSON.stringify({
+          cursor: 12,
+          limit: 50,
+          since: '2026-11-18T10:00:00Z',
+          grep: 'boom',
+        }),
+      }),
+    );
+    await routeCommand('logs', [], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
+  it('routes logs configure', async () => {
+    await routeCommand(
+      'logs',
+      ['configure', '--levels', 'error, warning'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'configure',
+          levels: ['error', 'warning'],
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    [['--cursor', 'x']],
+    [['--limit']],
+    [['--since']],
+    [['--grep', '--cursor', '1']],
+    [['--grap', 'x']],
+    [['--levels', 'warning']],
+    [['configure']],
+    [['configure', '--levels', ',']],
+    [['configure', '--levels', 'warning', '--cursor', '1']],
+    [['configure', '--levels', 'warning', 'extra']],
+    [['configure', '--levels', 'warning', '--levels', 'error']],
+    [['tail']],
+  ])('exits on bad logs arguments %j', async (args) => {
+    await expect(routeCommand('logs', args, 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm logs'), 2);
   });
 
   it('exits when mock-network has an unknown action', async () => {

@@ -20,6 +20,7 @@ import {
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
   eventsInputSchema,
+  logsInputSchema,
   launchInputSchema,
   scrollToElementInputSchema,
   clickInputSchema,
@@ -558,6 +559,65 @@ describe('eventsInputSchema', () => {
     expect(eventsInputSchema.safeParse({ action: 'read' }).success).toBe(false);
     expect(
       eventsInputSchema.safeParse({ action: 'mark', cursor: 1 }).success,
+    ).toBe(false);
+  });
+});
+
+describe('logsInputSchema', () => {
+  it('accepts reads and configure', () => {
+    expect(logsInputSchema.safeParse({}).success).toBe(true);
+    expect(
+      logsInputSchema.safeParse({
+        action: 'read',
+        cursor: 0,
+        since: '2026-11-18T10:00:00Z',
+        limit: 2000,
+        grep: 'x',
+      }).success,
+    ).toBe(true);
+    expect(logsInputSchema.safeParse({ since: 5 }).success).toBe(true);
+    expect(logsInputSchema.safeParse({ since: '123' }).success).toBe(true);
+    expect(
+      logsInputSchema.safeParse({ action: 'configure', levels: ['warning'] })
+        .success,
+    ).toBe(true);
+    expect(
+      logsInputSchema.safeParse({
+        action: 'configure',
+        levels: ['warn', 'error'],
+      }),
+    ).toMatchObject({ success: true, data: { levels: ['warning', 'error'] } });
+  });
+
+  it('accepts observe through the tool schema', () => {
+    expect(
+      toolSchemas.logs.safeParse({ grep: 'x', observe: 'full' }).success,
+    ).toBe(true);
+    expect(
+      toolSchemas.logs.safeParse({
+        action: 'configure',
+        levels: ['error'],
+        observe: 'diff',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects bad reads and configure', () => {
+    expect(logsInputSchema.safeParse({ since: 'yesterday' }).success).toBe(
+      false,
+    );
+    expect(logsInputSchema.safeParse({ limit: 2001 }).success).toBe(false);
+    expect(logsInputSchema.safeParse({ cursor: -1 }).success).toBe(false);
+    expect(logsInputSchema.safeParse({ url: 'x' }).success).toBe(false);
+    expect(logsInputSchema.safeParse({ grep: 'x'.repeat(257) }).success).toBe(
+      false,
+    );
+    expect(
+      logsInputSchema.safeParse({ action: 'configure', levels: [] }).success,
+    ).toBe(false);
+    expect(
+      logsInputSchema.safeParse({ action: 'configure', levels: ['verbose'] })
+        .success,
     ).toBe(false);
   });
 });

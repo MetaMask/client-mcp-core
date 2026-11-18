@@ -1,5 +1,11 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
-import type { EventKind, EventSummary } from './events.js';
+import type {
+  ConsoleLevel,
+  ConsoleRecord,
+  EventKind,
+  EventPage,
+  EventSummary,
+} from './events.js';
 import type {
   NetworkMockRequestRecord,
   NetworkMockRouteRule,
@@ -296,6 +302,14 @@ export type EventsResult =
   | {
       action: 'clear';
       cleared: EventKind[];
+      summary: EventSummary;
+    };
+
+export type LogsResult =
+  | EventPage<ConsoleRecord>
+  | {
+      action: 'configure';
+      config: { levels: ConsoleLevel[] };
       summary: EventSummary;
     };
 

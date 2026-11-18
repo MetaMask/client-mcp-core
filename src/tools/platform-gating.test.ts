@@ -15,6 +15,7 @@ describe('isBrowserOnlyTool', () => {
     expect(isBrowserOnlyTool('clipboard')).toBe(true);
     expect(isBrowserOnlyTool('mock_network')).toBe(true);
     expect(isBrowserOnlyTool('events')).toBe(true);
+    expect(isBrowserOnlyTool('logs')).toBe(true);
     expect(isBrowserOnlyTool('reload')).toBe(true);
     expect(isBrowserOnlyTool('build')).toBe(true);
     expect(isBrowserOnlyTool('inspect')).toBe(true);

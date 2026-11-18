@@ -58,3 +58,24 @@ export type EventPage<RecordType> = {
   gap: boolean;
   summary: EventSummary;
 };
+
+/** Console levels `mm logs` can record. */
+export type ConsoleLevel = 'error' | 'warning' | 'info' | 'log' | 'debug';
+
+/** A console message or uncaught exception (`mm logs`). */
+export type ConsoleRecord = EventRecordBase & {
+  /** `console.assert` is `error`; `dir`, `table`, `trace` are `log`. */
+  level: ConsoleLevel;
+  /** The message, redacted and cut at 2000 characters. */
+  text: string;
+  /** `url:line:column` (1-based) of the call or the throw, when known. */
+  location?: string;
+  /** An uncaught exception, not a console call. */
+  uncaught?: true;
+};
+
+/** What the session records. Changed by `configure`, from then on. */
+export type EventConfig = {
+  /** Console levels to record. Default `['error']`. */
+  consoleLevels: ConsoleLevel[];
+};
