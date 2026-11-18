@@ -122,9 +122,11 @@ function routeSetRefMap(
 
 /**
  * Returns the a11y tree the agent holds after a response: the delivered
- * observation's tree, else the tree a discovery tool returned. Launch and
- * cleanup start or end a session, so nothing is held after them. Only called
- * for delivered responses: a request that timed out never updates it.
+ * observation's tree, else the tree a discovery tool returned. A successful
+ * launch holds the screen it observed, so the first tap after it can be
+ * compared with that screen; without that observation, after a failed launch
+ * and after cleanup, nothing is held. Only called for delivered responses: a
+ * request that timed out never updates it.
  *
  * @param toolName - The tool name.
  * @param toolResult - The tool response.
@@ -140,8 +142,11 @@ export function screenAfterResponse(
   previous: A11yNodeTrimmed[] | null,
   rootSelector?: unknown,
 ): A11yNodeTrimmed[] | null {
-  if (toolName === 'launch' || toolName === 'cleanup') {
+  if (toolName === 'cleanup') {
     return null;
+  }
+  if (toolName === 'launch') {
+    return toolResult.ok && observations ? observations.a11y.nodes : null;
   }
   if (observations) {
     // The observation is the last tree in the response.
