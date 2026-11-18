@@ -12,6 +12,7 @@ export type {
   PlatformScreenshotOptions,
   ScreenCapture,
   MobilePlatformDriverOptions,
+  HermesDefaults,
 } from './platform';
 export { PlaywrightPlatformDriver, MobilePlatformDriver } from './platform';
 
