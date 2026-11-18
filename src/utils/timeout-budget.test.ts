@@ -182,13 +182,33 @@ describe('resolveActionTimeoutMs', () => {
     expect(
       resolveActionTimeoutMs('scroll_to_element', {}, { platform: 'browser' }),
     ).toBe(DEFAULT_INTERACTION_TIMEOUT_MS);
-    // With an explicit timeout it is used on every platform.
+  });
+
+  it('ignores an explicit timeoutMs for a mobile scroll_to_element', () => {
+    // The mobile driver ignores timeoutMs: a queue budget derived from it
+    // would expire mid-scroll while the swipes carry on.
+    for (const platform of ['ios', 'android']) {
+      expect(
+        resolveActionTimeoutMs(
+          'scroll_to_element',
+          { timeoutMs: 5_000 },
+          { platform },
+        ),
+      ).toBeUndefined();
+    }
+  });
+
+  it('uses an explicit timeoutMs for a browser scroll_to_element', () => {
     expect(
       resolveActionTimeoutMs(
         'scroll_to_element',
         { timeoutMs: 5_000 },
-        { platform: 'ios' },
+        { platform: 'browser' },
       ),
+    ).toBe(5_000);
+    // Without a platform (run_steps budget, CLI) the explicit value is used.
+    expect(
+      resolveActionTimeoutMs('scroll_to_element', { timeoutMs: 5_000 }),
     ).toBe(5_000);
   });
 });
@@ -267,10 +287,31 @@ describe('resolveCliHttpTimeoutMs', () => {
         },
       ),
     ).toBe(fallbackHttpTimeoutMs(180_000));
-    // An explicit timeout is the same on every platform.
-    expect(
-      resolveCliHttpTimeoutMs('scroll_to_element', { timeoutMs: 5_000 }),
-    ).toBe(computeTimeoutBudget(5_000).http);
+  });
+
+  it('covers both platforms for scroll_to_element with an explicit timeoutMs', () => {
+    // The browser uses timeoutMs; mobile keeps the daemon queue default.
+    for (const queueDefaultMs of [DEFAULT_REQUEST_TIMEOUT_MS, 180_000]) {
+      for (const timeoutMs of [5_000, 120_000]) {
+        const cliMs = resolveCliHttpTimeoutMs(
+          'scroll_to_element',
+          { timeoutMs },
+          { queueDefaultMs },
+        );
+        expect(cliMs).toBe(
+          Math.max(
+            computeTimeoutBudget(timeoutMs).http,
+            fallbackHttpTimeoutMs(queueDefaultMs),
+          ),
+        );
+        expect(cliMs).toBeGreaterThanOrEqual(
+          computeTimeoutBudget(timeoutMs).http,
+        );
+        expect(cliMs).toBeGreaterThanOrEqual(
+          fallbackHttpTimeoutMs(queueDefaultMs),
+        );
+      }
+    }
   });
 
   it('covers the queue default for run_steps with a batch deadline', () => {
