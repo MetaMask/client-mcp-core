@@ -587,23 +587,25 @@ Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigat
 
 #### `mm mock-network add '<json-rule-or-config>'`
 
-Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and a response body.
+Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and either a mocked response or a `record` opt-in.
 
 ```bash
 mm mock-network add '{"id":"mock-balance","method":"GET","url":"https://api.example.com/v1/balance","response":{"json":{"balance":"100"}}}'
 ```
 
-A rule object requires:
+A rule object requires `id`, `method` and `url`, plus at least one of `response` or `record`:
 
-| Field              | Description                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                      |
-| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                             |
-| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                          |
-| `response.status`  | HTTP status code (default: 200)                                                                                        |
-| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                    |
-| `response.body`    | Text response body (mutually exclusive with `json`)                                                                    |
-| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`) |
+| Field              | Description                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                                |
+| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                                       |
+| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                                    |
+| `response`         | Mocked response. Omit it to forward the real request unchanged and only record it; `record` is then required                     |
+| `response.status`  | HTTP status code (default: 200)                                                                                                  |
+| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                              |
+| `response.body`    | Text response body (mutually exclusive with `json`)                                                                              |
+| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`)           |
+| `record`           | Optional. Records details of the requests this rule matches. Off by default. See [Record request bodies](#record-request-bodies) |
 
 You can also pass an array of rules or an object with a `routes` array:
 
@@ -612,12 +614,39 @@ mm mock-network add '[{"id":"r1","method":"GET","url":"https://a.com/x","respons
 mm mock-network add '{"routes":[...]}'
 ```
 
-Unmatched same-origin requests are continued unchanged.
+Unmatched same-origin requests are continued unchanged. A rule with `record` and no `response` matches the real request, records it, and forwards it unchanged with the real response. `matched: true` means a rule matched, whether it mocked the response or forwarded it. The record gets the real `status` once the response arrives (within 5 seconds); otherwise `status` is left out. This is the way to capture real traffic such as Segment batches, quotes or RPC calls without inventing a response:
+
+```bash
+mm mock-network add '{"id":"token-list","method":"GET","url":"https://token.api.cx.metamask.io/**","record":{"body":true}}'
+```
 
 A mock only affects requests made after it is added. Data the Extension already fetched stays cached in memory, and waiting or going Home and back does not fetch it again. So:
 
 - Add mocks before you first open the screen that uses them.
 - After you add, change or clear a rule for data that is already loaded, run `mm reload`, then check `mm mock-network requests` for a hit.
+
+##### Record request bodies
+
+Add `record` to a rule to keep the body (and optionally the headers) of each request the rule matches. Keep `response` when the flow needs a mocked response; leave it out to record the real request and forward it unchanged. Use it to check what the Extension sent, for example which analytics events went to Segment:
+
+```bash
+# Mock the response and record what the Extension sent.
+mm mock-network add '{"id":"segment","method":"POST","url":"https://api.segment.io/**","response":{"json":{"success":true}},"record":{"body":true}}'
+# Record the real request and response without mocking them (quotes, token API, RPC).
+mm mock-network add '{"id":"quotes","method":"GET","url":"https://bridge.api.cx.metamask.io/getQuote**","record":{"body":true,"headers":true}}'
+# ...do the flow that should send the events...
+mm mock-network requests --url api.segment.io --bodies
+```
+
+| Field                 | Description                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record.body`         | Record the request body. JSON is parsed. Other text is kept as text. Binary bodies record only their size                                                         |
+| `record.headers`      | Record request headers. The values of `authorization`, `cookie` and any header with `token`, `secret`, `key` or `auth` in the name are replaced with `[REDACTED]` |
+| `record.maxBodyBytes` | Bytes to keep per body (default 65536, max 524288). A longer body is cut and marked `"truncated": true`                                                           |
+
+Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`, whatever the value type (string, array, object or number). A JSON body cut by `maxBodyBytes` keeps no value: it is recorded as `{"type":"json","size":N,"truncated":true}`. Raise `maxBodyBytes` to read it. JSON-like text that does not parse is recorded as `{"type":"text","size":N,"redacted":true}` with no value. Only matched requests are recorded with bodies. Misses never store a body. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+
+Segment sends events in batches, and production builds wait up to about 5 seconds before they send. If no batch shows up, wait and check again.
 
 #### `mm mock-network clear`
 
@@ -640,12 +669,16 @@ mm mock-network list
 Shows recorded matched and missed requests.
 
 ```bash
-mm mock-network requests [--limit <n>]
+mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 ```
 
-| Flag          | Description                                |
-| ------------- | ------------------------------------------ |
-| `--limit <n>` | Maximum number of recent records to return |
+| Flag                   | Description                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `--limit <n>`          | Maximum number of recent records to return (applied after `--url`)                               |
+| `--url <glob-or-text>` | Only return requests whose URL matches this glob (`*`, `**`) or, without `*`, contains this text |
+| `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
+
+Without `--bodies` the output is the same as before: no bodies or headers. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 

@@ -361,7 +361,7 @@ describe('network mock schemas', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.method).toBe('GET');
-      expect(result.data.response.status).toBe(200);
+      expect(result.data.response?.status).toBe(200);
     }
   });
 
@@ -415,6 +415,125 @@ describe('network mock schemas', () => {
       action: 'add',
       rule: route,
       routes: [route],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts record options on a route', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      record: { body: true, headers: true, maxBodyBytes: 1024 },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.record).toStrictEqual({
+        body: true,
+        headers: true,
+        maxBodyBytes: 1024,
+      });
+    }
+  });
+
+  it('accepts a rule with record and no response', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      id: 'segment-record',
+      method: 'post',
+      url: 'https://api.segment.io/**',
+      record: { body: true },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.method).toBe('POST');
+      expect(result.data.response).toBeUndefined();
+      expect(result.data.record).toStrictEqual({ body: true });
+    }
+  });
+
+  it('accepts a rule with an empty record and no response', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      id: 'quotes-record',
+      method: 'get',
+      url: 'https://bridge.api.cx.metamask.io/getQuote**',
+      record: {},
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a rule with neither response nor record', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      id: 'no-response',
+      method: 'get',
+      url: 'https://api.example.com/v1/balance',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        'A mock-network rule must have at least one of response or record',
+      );
+    }
+  });
+
+  it('still requires a response body when response is given', () => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      id: 'empty-response',
+      method: 'get',
+      url: 'https://api.example.com/v1/balance',
+      response: { status: 200 },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('leaves record undefined when not provided', () => {
+    const result = networkMockRouteRuleSchema.safeParse(route);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.record).toBeUndefined();
+    }
+  });
+
+  it('rejects unknown record options and out-of-range maxBodyBytes', () => {
+    expect(
+      networkMockRouteRuleSchema.safeParse({
+        ...route,
+        record: { bodies: true },
+      }).success,
+    ).toBe(false);
+    expect(
+      networkMockRouteRuleSchema.safeParse({
+        ...route,
+        record: { body: true, maxBodyBytes: 0 },
+      }).success,
+    ).toBe(false);
+    expect(
+      networkMockRouteRuleSchema.safeParse({
+        ...route,
+        record: { body: true, maxBodyBytes: 512 * 1024 + 1 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts mock-network requests with url and includeBodies', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'requests',
+      limit: 10,
+      url: 'https://api.segment.io/**',
+      includeBodies: true,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects mock-network requests with an empty url filter', () => {
+    const result = mockNetworkInputSchema.safeParse({
+      action: 'requests',
+      url: '',
     });
 
     expect(result.success).toBe(false);

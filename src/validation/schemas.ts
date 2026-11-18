@@ -121,30 +121,67 @@ const networkMockResponseSchema = z
     },
   );
 
-export const networkMockRouteRuleSchema = z.object({
-  id: z.string().min(1).describe('Stable identifier for this mock route'),
-  method: z
-    .string()
-    .min(1)
-    .transform((method) => method.toUpperCase())
-    .describe('HTTP method to match'),
-  url: z
-    .string()
-    .min(1)
-    .refine(
-      (value) => {
-        try {
-          const parsed = new URL(value);
-          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-        } catch {
-          return false;
-        }
-      },
-      { message: 'url must be an absolute http(s) URL or URL glob' },
-    )
-    .describe('Absolute URL or URL glob to match'),
-  response: networkMockResponseSchema,
-});
+export const networkMockRouteRuleSchema = z
+  .object({
+    id: z.string().min(1).describe('Stable identifier for this mock route'),
+    method: z
+      .string()
+      .min(1)
+      .transform((method) => method.toUpperCase())
+      .describe('HTTP method to match'),
+    url: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => {
+          try {
+            const parsed = new URL(value);
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+          } catch {
+            return false;
+          }
+        },
+        { message: 'url must be an absolute http(s) URL or URL glob' },
+      )
+      .describe('Absolute URL or URL glob to match'),
+    response: networkMockResponseSchema
+      .describe(
+        'Mocked response. Omit it to forward the real request unchanged; then record is required.',
+      )
+      .optional(),
+    record: z
+      .object({
+        body: z
+          .boolean()
+          .describe(
+            'Record the request body. JSON is parsed; secrets such as writeKey are redacted; binary bodies record only their size.',
+          )
+          .optional(),
+        headers: z
+          .boolean()
+          .describe(
+            'Record request headers. Authorization, cookie and any token/secret/key/auth header values are redacted.',
+          )
+          .optional(),
+        maxBodyBytes: z
+          .number()
+          .int()
+          .min(1)
+          .max(512 * 1024)
+          .describe(
+            'Maximum body bytes to keep per request (default 65536). Longer bodies are cut and marked truncated.',
+          )
+          .optional(),
+      })
+      .strict()
+      .describe(
+        'Opt-in capture of request details for requests that match this rule. Off by default.',
+      )
+      .optional(),
+  })
+  .refine((data) => data.response !== undefined || data.record !== undefined, {
+    message: 'A mock-network rule must have at least one of response or record',
+  });
 
 export const networkMockConfigSchema = z.object({
   routes: z.array(networkMockRouteRuleSchema).default([]),
@@ -780,6 +817,19 @@ export const mockNetworkInputSchema = z.union([
   z.object({
     action: z.literal('requests'),
     limit: z.number().int().min(1).max(500).optional(),
+    url: z
+      .string()
+      .min(1)
+      .describe(
+        'Only return requests whose URL matches this glob (* and **) or, without *, contains this text',
+      )
+      .optional(),
+    includeBodies: z
+      .boolean()
+      .describe(
+        'Include recorded request headers and bodies (only for rules with record options)',
+      )
+      .optional(),
   }),
 ]);
 
