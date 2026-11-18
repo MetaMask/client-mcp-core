@@ -125,6 +125,19 @@ export type DaemonState = {
   nonce: string;
   /** Package version of the daemon process (absent in state files written before version tracking) */
   version?: string;
+  /**
+   * Effective queue timeout for tools without an action budget, in
+   * milliseconds (absent in state files written before it was published).
+   */
+  requestTimeoutMs?: number;
   /** Port configuration for sub-services */
   subPorts: PortMap;
 };
+
+/**
+ * What the CLI needs from a daemon to reach it and size its HTTP timeout: a
+ * bare port (tests, callers that have no state) or the daemon state.
+ */
+export type DaemonEndpoint =
+  | number
+  | Pick<DaemonState, 'port' | 'requestTimeoutMs'>;
