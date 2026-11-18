@@ -21,6 +21,7 @@ import {
   mockNetworkInputSchema,
   eventsInputSchema,
   logsInputSchema,
+  networkInputSchema,
   launchInputSchema,
   scrollToElementInputSchema,
   clickInputSchema,
@@ -619,6 +620,36 @@ describe('logsInputSchema', () => {
       logsInputSchema.safeParse({ action: 'configure', levels: ['verbose'] })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('networkInputSchema', () => {
+  it('accepts reads and configure', () => {
+    expect(networkInputSchema.safeParse({}).success).toBe(true);
+    expect(
+      networkInputSchema.safeParse({
+        cursor: 4,
+        limit: 10,
+        url: '**infura**',
+        errors: true,
+        settled: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      networkInputSchema.safeParse({ action: 'configure', rpcErrors: true })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects unknown fields and a configure without rpcErrors', () => {
+    expect(networkInputSchema.safeParse({ grep: 'x' }).success).toBe(false);
+    expect(networkInputSchema.safeParse({ url: '' }).success).toBe(false);
+    expect(networkInputSchema.safeParse({ action: 'configure' }).success).toBe(
+      false,
+    );
+    expect(networkInputSchema.safeParse({ settled: 'true' }).success).toBe(
+      false,
+    );
   });
 });
 

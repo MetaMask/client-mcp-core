@@ -42,6 +42,11 @@ export type CdpSession = {
 export type CdpTargetEvent = {
   kind: CdpTargetKind;
   /**
+   * The CDP target ID. Always set for the Extension service worker; set for
+   * a page once the manager resolved it (the first event from the page).
+   */
+  targetId?: string;
+  /**
    * The page of a page target, or the worker of a service worker target when
    * Playwright reported one. The service worker is identified by its CDP
    * target, so a worker object may be missing or stale after a restart.
@@ -540,7 +545,11 @@ type CdpEntryBase = {
   dropped?: boolean;
 };
 
-type PageEntry = CdpEntryBase & { page: Page };
+type PageEntry = CdpEntryBase & {
+  page: Page;
+  /** The CDP target ID, once the manager resolved it. */
+  targetId?: string;
+};
 
 type ServiceWorkerEntry = CdpEntryBase & {
   /** The CDP target ID; a restarted worker has a new one. */
@@ -797,6 +806,71 @@ export class CdpManager {
     ) {
       throw new CdpDomainInUseError(method, domain);
     }
+  }
+
+  /**
+   * Sends one command to the target a subscribed event came from, on its
+   * persistent session (for example `Network.getResponseBody` for a
+   * request). Only targets that are attached now are reached: a closed page
+   * or a stopped worker fails at once instead of being attached again.
+   *
+   * @param target - The target of a delivered {@link CdpEvent}.
+   * @param method - The CDP method.
+   * @param params - The CDP method parameters.
+   * @param options - Timeout and abort signal.
+   * @returns The raw CDP result.
+   */
+  async sendToEventTarget(
+    target: CdpEventTarget,
+    method: string,
+    params: Record<string, unknown> = {},
+    options: CdpAttachOptions = {},
+  ): Promise<unknown> {
+    this.#assertLive();
+    // The timeout covers the target lookup too: a hanging target-info call
+    // must not hold the caller longer than the timeout.
+    return this.#race(
+      this.#sendToAttachedTarget(target, method, params),
+      method,
+      options,
+    );
+  }
+
+  /**
+   * Finds the attached session of an event target and sends one command on
+   * it.
+   *
+   * @param target - The target of a delivered {@link CdpEvent}.
+   * @param method - The CDP method.
+   * @param params - The CDP method parameters.
+   * @returns The raw CDP result.
+   */
+  async #sendToAttachedTarget(
+    target: CdpEventTarget,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    let session: EventCdpSession | undefined;
+    if (target.kind === 'sw') {
+      session = this.#workerEntries.get(target.targetId)?.session;
+    } else {
+      for (const entry of this.#entries) {
+        if (!('page' in entry) || !entry.session) {
+          continue;
+        }
+        const targetId = await this.#sessionStates
+          .get(entry.session)
+          ?.targetId?.catch(() => undefined);
+        if (targetId === target.targetId) {
+          session = entry.session;
+          break;
+        }
+      }
+    }
+    if (!session) {
+      throw new Error(`CDP target ${target.targetId} is not attached`);
+    }
+    return session.send(method, params);
   }
 
   /**
@@ -1410,6 +1484,8 @@ export class CdpManager {
     }
     const targetId = await state.targetId;
     const { page } = entry;
+    entry.targetId = targetId;
+    entry.event.targetId = targetId;
     return () => ({ kind: 'page', targetId, url: page.url() });
   }
 
@@ -1649,7 +1725,7 @@ export class CdpManager {
       targetId: target.targetId,
       url: target.url,
       worker,
-      event: { kind: 'sw', target: worker },
+      event: { kind: 'sw', targetId: target.targetId, target: worker },
     };
     this.#workerEntries.set(target.targetId, entry);
     this.#entries.add(entry);

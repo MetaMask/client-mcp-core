@@ -334,6 +334,32 @@ export type LogsInput =
     } & EventReadInput)
   | { action: 'configure'; levels: ConsoleLevel[] };
 
+export type NetworkInput =
+  | ({
+      action?: 'read';
+      /**
+       * URL glob (`*`, `**`) or, without `*`, text the URL must contain. A
+       * filtered read returns only settled requests, so a request that
+       * matches when it ends is returned by the read that follows its end.
+       */
+      url?: string;
+      /**
+       * Only errors: HTTP status >= 400, `failure`, or `rpcError`. A
+       * filtered read returns only settled requests, so a request that
+       * becomes an error when it ends is returned by the read that follows
+       * its end.
+       */
+      errors?: boolean;
+      /**
+       * Return only settled requests, in settle order, without needing a
+       * filter: at the end of a step, read the final status of every request
+       * that ended after the cursor, including ones started earlier.
+       * Requests still open are not returned yet.
+       */
+      settled?: boolean;
+    } & EventReadInput)
+  | { action: 'configure'; rpcErrors: boolean };
+
 export type EventsInput =
   | { action: 'mark' }
   | { action: 'clear'; kind?: EventKind };

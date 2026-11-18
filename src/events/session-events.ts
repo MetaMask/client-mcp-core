@@ -2,9 +2,10 @@ import type { BrowserContext } from '@playwright/test';
 
 import { ConsoleSource, DEFAULT_CONSOLE_LEVELS } from './console-source.js';
 import { EventBuffer } from './event-buffer.js';
+import { NetworkSource } from './network-source.js';
 import type { CdpManager, CdpSubscription } from '../platform/cdp-manager.js';
 import { getCdpManager } from '../platform/cdp-manager.js';
-import type { EventConfig } from '../tools/types/events.js';
+import type { EventConfig, NetworkStats } from '../tools/types/events.js';
 import { debugWarn } from '../utils';
 
 /**
@@ -31,7 +32,17 @@ export class SessionEvents {
   readonly context: BrowserContext;
 
   /** What the sources record. Sources read it for each event. */
-  config: EventConfig = { consoleLevels: [...DEFAULT_CONSOLE_LEVELS] };
+  config: EventConfig = {
+    consoleLevels: [...DEFAULT_CONSOLE_LEVELS],
+    rpcErrors: false,
+  };
+
+  /** Counters of the network source. */
+  readonly networkStats: NetworkStats = {
+    pending: 0,
+    ignored: 0,
+    rpcErrorsSkipped: 0,
+  };
 
   readonly #sources: SessionEventSource[];
 
@@ -104,7 +115,7 @@ export class SessionEvents {
  * @returns The sources.
  */
 function createSources(): SessionEventSource[] {
-  return [new ConsoleSource()];
+  return [new ConsoleSource(), new NetworkSource()];
 }
 
 const sessions = new WeakMap<BrowserContext, SessionEvents>();

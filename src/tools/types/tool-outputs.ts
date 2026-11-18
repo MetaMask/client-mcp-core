@@ -5,6 +5,8 @@ import type {
   EventKind,
   EventPage,
   EventSummary,
+  NetworkRecord,
+  NetworkStats,
 } from './events.js';
 import type {
   NetworkMockRequestRecord,
@@ -310,6 +312,14 @@ export type LogsResult =
   | {
       action: 'configure';
       config: { levels: ConsoleLevel[] };
+      summary: EventSummary;
+    };
+
+export type NetworkResult =
+  | (EventPage<NetworkRecord> & { stats: NetworkStats })
+  | {
+      action: 'configure';
+      config: { rpcErrors: boolean };
       summary: EventSummary;
     };
 

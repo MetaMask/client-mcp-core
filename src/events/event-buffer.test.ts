@@ -220,6 +220,289 @@ describe('EventBuffer', () => {
     expect(firstPage.cursor).toBe(1);
   });
 
+  it('returns a record that settled after the cursor even when it started before it', () => {
+    const buffer = new EventBuffer();
+    const old = add(buffer, 'network', 'old'); // seq 1
+    const recent = add(buffer, 'network', 'recent'); // seq 2
+    buffer.settle('network', recent); // settledSeq 3
+
+    const first = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 10,
+    });
+    expect(first.records.map((record) => record.name)).toStrictEqual([
+      'recent',
+    ]);
+    expect(first.cursor).toBe(3);
+
+    // The older record ends late: it settles above the returned cursor and
+    // is returned by the next read, once.
+    old.status = 500;
+    buffer.settle('network', old); // settledSeq 4
+    buffer.settle('network', old);
+    const second = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      cursor: first.cursor,
+      limit: 10,
+    });
+    expect(
+      second.records.map((record) => [record.name, record.status]),
+    ).toStrictEqual([['old', 500]]);
+    expect(second.cursor).toBe(4);
+
+    expect(
+      buffer.read<TestRecord>({
+        kind: 'network',
+        settled: true,
+        cursor: second.cursor,
+        limit: 10,
+      }).records,
+    ).toStrictEqual([]);
+  });
+
+  it('reads settled records in settle order, not start order', () => {
+    const buffer = new EventBuffer();
+    const a = add(buffer, 'network', 'a'); // seq 1
+    const b = add(buffer, 'network', 'b'); // seq 2
+    const c = add(buffer, 'network', 'c'); // seq 3
+    buffer.settle('network', c); // settledSeq 4
+    buffer.settle('network', b); // settledSeq 5
+    buffer.settle('network', a); // settledSeq 6
+
+    const page = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 10,
+    });
+    expect(page.records.map((record) => record.name)).toStrictEqual([
+      'c',
+      'b',
+      'a',
+    ]);
+    expect(
+      page.records.map(
+        (record) => (record as TestRecord & { settledSeq?: number }).settledSeq,
+      ),
+    ).toStrictEqual([4, 5, 6]);
+  });
+
+  it('pages a settled read by settle position', () => {
+    const buffer = new EventBuffer();
+    const a = add(buffer, 'network', 'a');
+    const b = add(buffer, 'network', 'b');
+    const c = add(buffer, 'network', 'c');
+    buffer.settle('network', b); // settledSeq 4
+    buffer.settle('network', c); // settledSeq 5
+    buffer.settle('network', a); // settledSeq 6
+
+    const first = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 2,
+    });
+    expect(first.records.map((record) => record.name)).toStrictEqual([
+      'b',
+      'c',
+    ]);
+    expect(first).toMatchObject({ cursor: 5, hasMore: true });
+
+    const second = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      cursor: first.cursor,
+      limit: 2,
+    });
+    expect(second.records.map((record) => record.name)).toStrictEqual(['a']);
+    expect(second).toMatchObject({ cursor: 6, hasMore: false });
+
+    // `limit` is clamped the same way.
+    const clamped = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 0,
+    });
+    expect(clamped.records).toHaveLength(1);
+    expect(clamped.hasMore).toBe(true);
+  });
+
+  it('reports a gap for a settled read only when a settled record after the cursor was dropped', () => {
+    const buffer = new EventBuffer({ capacity: { network: 1 } });
+    const a = add(buffer, 'network', 'a'); // seq 1
+    buffer.settle('network', a); // settledSeq 2
+    const b = add(buffer, 'network', 'b'); // seq 3, drops a
+
+    const fromStart = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 10,
+    });
+    expect(fromStart.records).toStrictEqual([]);
+    expect(fromStart.gap).toBe(true);
+
+    // A cursor at or above the dropped settle position is not a gap.
+    expect(
+      buffer.read<TestRecord>({
+        kind: 'network',
+        settled: true,
+        cursor: 2,
+        limit: 10,
+      }).gap,
+    ).toBe(false);
+
+    buffer.settle('network', b); // settledSeq 4
+    const next = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      cursor: 3,
+      limit: 10,
+    });
+    expect(next.records.map((record) => record.name)).toStrictEqual(['b']);
+    expect(next.gap).toBe(false);
+  });
+
+  it('reports a gap for a settled read when an unsettled record was dropped', () => {
+    const buffer = new EventBuffer({ capacity: { network: 1 } });
+    add(buffer, 'network', 'open'); // seq 1, never settles
+    const kept = add(buffer, 'network', 'kept'); // seq 2, drops the open one
+
+    const page = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 10,
+    });
+    expect(page.records).toStrictEqual([]);
+    // The open record could have matched once settled, so it is a gap.
+    expect(page.gap).toBe(true);
+
+    buffer.settle('network', kept); // settledSeq 3
+    const next = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      cursor: 2,
+      limit: 10,
+    });
+    expect(next.records.map((record) => record.name)).toStrictEqual(['kept']);
+    expect(next.gap).toBe(false);
+  });
+
+  it('does not report a settled gap for a dropped record before since', () => {
+    const buffer = new EventBuffer({ capacity: { network: 2 } });
+    const first = add(buffer, 'network', 'first', 0);
+    const second = add(buffer, 'network', 'second', 1);
+    buffer.settle('network', first);
+    buffer.settle('network', second);
+    add(buffer, 'network', 'third', 2); // seq 5, drops `first`
+
+    // `first` (t=0) was dropped; a read from t=100 cannot see it anyway.
+    const since = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      since: 100,
+      limit: 10,
+    });
+    expect(since.records).toStrictEqual([]);
+    expect(since.gap).toBe(false);
+
+    const all = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      limit: 10,
+    });
+    expect(all.gap).toBe(true);
+  });
+
+  it('does not settle a record the buffer dropped or cleared', () => {
+    const buffer = new EventBuffer({ capacity: { network: 1 } });
+    const dropped = add(buffer, 'network', 'dropped'); // seq 1
+    const kept = add(buffer, 'network', 'kept'); // seq 2, drops the first
+    buffer.settle('network', dropped);
+    expect(
+      (dropped as TestRecord & { settledSeq?: number }).settledSeq,
+    ).toBeUndefined();
+
+    // No position is burnt for the dropped record.
+    buffer.settle('network', kept);
+    expect((kept as TestRecord & { settledSeq?: number }).settledSeq).toBe(3);
+
+    const cleared = add(buffer, 'network', 'cleared'); // seq 4, drops kept
+    buffer.clear('network');
+    buffer.settle('network', cleared);
+    expect(
+      (cleared as TestRecord & { settledSeq?: number }).settledSeq,
+    ).toBeUndefined();
+  });
+
+  it('reads settled records from a stale cursor with a gap', () => {
+    const buffer = new EventBuffer();
+    const a = add(buffer, 'network', 'a'); // seq 1
+    buffer.settle('network', a); // settledSeq 2
+
+    const page = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      cursor: 50,
+      limit: 10,
+    });
+    expect(page.records.map((record) => record.name)).toStrictEqual(['a']);
+    expect(page.gap).toBe(true);
+    expect(page.cursor).toBe(2);
+  });
+
+  it('filters a settled read by t, the request start', () => {
+    const buffer = new EventBuffer();
+    const a = add(buffer, 'network', 'a', 100);
+    buffer.settle('network', a); // settledSeq 2
+
+    expect(
+      buffer.read<TestRecord>({
+        kind: 'network',
+        settled: true,
+        since: 200,
+        limit: 10,
+      }).records,
+    ).toStrictEqual([]);
+    expect(
+      buffer
+        .read<TestRecord>({
+          kind: 'network',
+          settled: true,
+          since: 100,
+          limit: 10,
+        })
+        .records.map((record) => record.name),
+    ).toStrictEqual(['a']);
+  });
+
+  it('keeps one cursor across kinds, so a mark continues a settled read', () => {
+    const buffer = new EventBuffer();
+    const log = add(buffer, 'console', 'log'); // seq 1
+    const request = add(buffer, 'network', 'request'); // seq 2
+    buffer.settle('network', request); // settledSeq 3
+
+    // A cursor taken before the request settled (`mm events mark`).
+    const page = buffer.read<TestRecord>({
+      kind: 'network',
+      settled: true,
+      cursor: log.seq,
+      limit: 10,
+    });
+    expect(page.records.map((record) => record.name)).toStrictEqual([
+      'request',
+    ]);
+
+    // Its cursor is a buffer position, valid for another kind too.
+    const later = add(buffer, 'console', 'later'); // seq 4
+    const logs = buffer.read<TestRecord>({
+      kind: 'console',
+      cursor: page.cursor,
+      limit: 10,
+    });
+    expect(logs.records.map((record) => record.name)).toStrictEqual(['later']);
+    expect(later.seq).toBe(4);
+  });
+
   it('clamps a limit below one to one record', () => {
     const buffer = new EventBuffer();
     add(buffer, 'console', 'a');

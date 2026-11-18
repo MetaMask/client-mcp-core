@@ -78,4 +78,55 @@ export type ConsoleRecord = EventRecordBase & {
 export type EventConfig = {
   /** Console levels to record. Default `['error']`. */
   consoleLevels: ConsoleLevel[];
+  /** Read JSON-RPC response bodies for `rpcError`. Default false. */
+  rpcErrors: boolean;
+};
+
+/** The JSON-RPC error of a response (`mm network configure --rpc-errors`). */
+export type RpcError = {
+  /** The JSON-RPC error code, when it is a number. */
+  code?: number;
+  /** The error message, redacted and cut at 300 characters. */
+  message: string;
+};
+
+/**
+ * One HTTP(S) request of a page or the Extension service worker
+ * (`mm network`). Created when the request starts and updated in place as
+ * it ends; it keeps its first `seq` and gets a `settledSeq` when it ends
+ * (or its JSON-RPC error is read).
+ */
+export type NetworkRecord = EventRecordBase & {
+  /**
+   * Position of the request when it settled, that is, when no field of it
+   * changed any more. Absent while pending. A filtered `mm network` read
+   * returns settled records in this order.
+   */
+  settledSeq?: number;
+  /** HTTP method. */
+  method: string;
+  /** The URL, redacted. */
+  url: string;
+  /** Lowercase CDP resource type, for example `fetch`, `xhr`, `document`. */
+  type: string;
+  /** HTTP status. Absent while pending and for a request that failed before a response. */
+  status?: number;
+  /** Duration from start to the end of the response or the failure. Absent while pending. */
+  ms?: number;
+  /** Failure text, for example `net::ERR_ABORTED`. */
+  failure?: string;
+  /** JSON-RPC methods of the request body (one for a single call, in order for a batch). */
+  rpcMethods?: string[];
+  /** JSON-RPC error of the response. Only with `mm network configure --rpc-errors`. */
+  rpcError?: RpcError;
+};
+
+/** Counters of the network source, returned by `mm network`. */
+export type NetworkStats = {
+  /** Requests started and not finished yet. */
+  pending: number;
+  /** Requests not recorded because their URL is not http(s) (extension files, `data:`). */
+  ignored: number;
+  /** JSON-RPC responses not read for `rpcError` (too large, too many at once, timeout). */
+  rpcErrorsSkipped: number;
 };

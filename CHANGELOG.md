@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat: add `mm network`, a passive request log for every page and the Extension service worker, with cursor/`--since`/`--limit`/`--url`/`--errors` reads and optional JSON-RPC error capture ([#111](https://github.com/MetaMask/client-mcp-core/pull/111))
 - feat: add `mm logs` to read console errors and uncaught exceptions from every page and the Extension service worker, with `configure` levels, cursor/`--since`/`--limit`/`--grep` reads and redacted text ([#110](https://github.com/MetaMask/client-mcp-core/pull/110))
 - feat: record console and network events in a per-session buffer with one shared cursor, so `mm events mark` bookmarks both kinds and reads report `hasMore`, `gap` and a page summary ([#109](https://github.com/MetaMask/client-mcp-core/pull/109))
 - feat: deliver console and network CDP events from every browser page and the Extension service worker to event subscribers, re-attaching after page, session and MV3 worker restarts ([#107](https://github.com/MetaMask/client-mcp-core/pull/107))
