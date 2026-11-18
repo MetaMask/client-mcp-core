@@ -5,6 +5,8 @@ import type {
   Worker as PlaywrightWorker,
 } from '@playwright/test';
 
+import { ErrorCodes } from '../tools/types/errors.js';
+
 /**
  * Target kinds a {@link CdpManager} can attach to. A string union so more
  * targets (for example a mobile `app`) can be added without changing the
@@ -83,6 +85,74 @@ export type CdpManagerEvent = 'targetAttached' | 'targetDetached';
  */
 export type CdpManagerListener = (event: CdpTargetEvent) => void;
 
+/**
+ * The target a CDP event came from.
+ */
+export type CdpEventTarget = {
+  kind: CdpTargetKind;
+  /**
+   * The CDP target ID. A page keeps its ID across navigations. Chrome can
+   * reuse a service worker's ID after the worker stops and starts again, so
+   * the ID does not tell worker runs apart.
+   */
+  targetId: string;
+  /** The target URL when the event was delivered. */
+  url: string;
+};
+
+/**
+ * A CDP event delivered to a subscriber.
+ *
+ * `params` is the raw CDP payload and is not redacted. A consumer that
+ * persists or prints it must redact it first: it can hold tokens, keys and
+ * other secrets (URLs, request bodies, console text).
+ */
+export type CdpEvent = {
+  target: CdpEventTarget;
+  /** The CDP event name, for example `Network.requestWillBeSent`. */
+  method: string;
+  /** The raw, unredacted CDP event parameters. */
+  params: Record<string, unknown>;
+  /** Daemon wall-clock time (ms since epoch) when the event was delivered. */
+  t: number;
+};
+
+/**
+ * Options for {@link CdpManager.subscribe}.
+ */
+export type CdpSubscribeOptions = {
+  /**
+   * The CDP event names to deliver, for example
+   * `['Network.requestWillBeSent', 'Runtime.consoleAPICalled']`. The domain
+   * of each name (`Network`, `Runtime`) is enabled on every target.
+   */
+  events: readonly string[];
+  /**
+   * Parameters of `<Domain>.enable`, by domain, for example
+   * `{ Network: { maxPostDataSize: 65536 } }`. The first subscriber to enable
+   * a domain on a target sets them.
+   */
+  enable?: Readonly<Record<string, Record<string, unknown>>>;
+  /** Called synchronously for each event, in the order of its target. */
+  onEvent: (event: CdpEvent) => void;
+  /**
+   * Called when a target cannot be attached or enabled, or when `onEvent`
+   * throws. Errors are dropped when it is missing.
+   */
+  onError?: (error: Error) => void;
+};
+
+/**
+ * A live subscription returned by {@link CdpManager.subscribe}.
+ */
+export type CdpSubscription = {
+  /**
+   * Stops delivering events. Removes the event listeners and disables
+   * domains that no other subscriber needs. Idempotent.
+   */
+  unsubscribe(): Promise<void>;
+};
+
 /** How long to wait for the extension service worker by default. */
 export const DEFAULT_SW_ATTACH_TIMEOUT_MS = 30_000;
 
@@ -104,7 +174,41 @@ export const STOPPED_WORKER_MESSAGE =
   'The Extension service worker is not running (MV3 workers stop when idle). ' +
   'Interact with the Extension (open or reload an Extension page) to start it, then retry.';
 
+/**
+ * Error for a `<Domain>.enable` or `<Domain>.disable` refused while an event
+ * subscription holds that domain on the same target. A subscription owns the
+ * domains it enabled: disabling one would silently stop the events, and a
+ * second enable would not be counted, so its last unsubscribe would disable a
+ * domain the user asked for.
+ */
+export class CdpDomainInUseError extends Error {
+  /** The `MM_CDP_BLOCKED` tool error code. */
+  readonly code: typeof ErrorCodes.MM_CDP_BLOCKED = ErrorCodes.MM_CDP_BLOCKED;
+
+  /**
+   * @param method - The refused CDP method.
+   * @param domain - The CDP domain that a subscription holds.
+   */
+  constructor(method: string, domain: string) {
+    super(
+      `CDP method "${method}" is refused while an event subscription holds the ` +
+        `${domain} domain on this target: it would change the events the ` +
+        'subscription receives. Use --fresh to send it on a one-shot session.',
+    );
+    this.name = 'CdpDomainInUseError';
+  }
+}
+
 const EXTENSION_URL = /^chrome-extension:\/\/([a-z]{32})\//u;
+
+/**
+ * Closed-session attach failures allowed for a live page before the manager
+ * reports them once and stops re-attaching it.
+ */
+const MAX_PAGE_REATTACH_FAILURES = 3;
+
+/** How close together (ms) page attach failures must be to count as a loop. */
+const PAGE_REATTACH_WINDOW_MS = 30_000;
 
 /**
  * Errors Playwright throws when a session, its page or its worker is gone.
@@ -174,8 +278,22 @@ function stoppedWorkerError(): Error {
 
 type WorkerMessage = {
   id?: number;
+  method?: string;
+  params?: Record<string, unknown>;
   result?: unknown;
   error?: { code?: number; message?: string };
+};
+
+type CdpEventListener = (params: Record<string, unknown> | undefined) => void;
+
+/**
+ * A cached session that also emits the CDP events of its target, by event
+ * name: a Playwright `CDPSession` for a page, or a
+ * {@link ServiceWorkerCdpSession}.
+ */
+type EventCdpSession = CdpSession & {
+  on(method: string, listener: CdpEventListener): unknown;
+  off(method: string, listener: CdpEventListener): unknown;
 };
 
 type PendingCommand = {
@@ -191,8 +309,10 @@ type PendingCommand = {
  * `Target.attachToTarget` (not flattened, because the wrapper cannot send on
  * a flattened session) and tunnel commands through
  * `Target.sendMessageToTarget`. Chrome still supports that deprecated pair.
+ * Tunneled messages without an `id` are CDP events; they are emitted by
+ * name, like a Playwright `CDPSession` does.
  */
-class ServiceWorkerCdpSession implements CdpSession {
+class ServiceWorkerCdpSession implements EventCdpSession {
   readonly #browserSession: CDPSession;
 
   readonly #sessionId: string;
@@ -202,6 +322,8 @@ class ServiceWorkerCdpSession implements CdpSession {
   readonly #onClose: () => void;
 
   readonly #pending = new Map<number, PendingCommand>();
+
+  readonly #eventListeners = new Map<string, Set<CdpEventListener>>();
 
   #nextId = 1;
 
@@ -259,6 +381,35 @@ class ServiceWorkerCdpSession implements CdpSession {
   }
 
   /**
+   * Listens for a CDP event of the service worker target.
+   *
+   * @param method - The CDP event name.
+   * @param listener - Called with the event parameters.
+   * @returns This session.
+   */
+  on(method: string, listener: CdpEventListener): this {
+    let listeners = this.#eventListeners.get(method);
+    if (!listeners) {
+      listeners = new Set();
+      this.#eventListeners.set(method, listeners);
+    }
+    listeners.add(listener);
+    return this;
+  }
+
+  /**
+   * Removes a CDP event listener.
+   *
+   * @param method - The CDP event name.
+   * @param listener - The listener to remove.
+   * @returns This session.
+   */
+  off(method: string, listener: CdpEventListener): this {
+    this.#eventListeners.get(method)?.delete(listener);
+    return this;
+  }
+
+  /**
    * Detaches this session and fails its pending commands.
    */
   async detach(): Promise<void> {
@@ -291,6 +442,15 @@ class ServiceWorkerCdpSession implements CdpSession {
       return;
     }
     if (message.id === undefined) {
+      if (message.method !== undefined) {
+        for (const listener of this.#eventListeners.get(message.method) ?? []) {
+          try {
+            listener(message.params);
+          } catch {
+            // A failing listener must not break the others.
+          }
+        }
+      }
       return;
     }
     const pending = this.#pending.get(message.id);
@@ -346,6 +506,7 @@ class ServiceWorkerCdpSession implements CdpSession {
     );
     this.#browserSession.off('Target.detachedFromTarget', this.#onDetached);
     this.#browserSession.off('Target.targetDestroyed', this.#onTargetDestroyed);
+    this.#eventListeners.clear();
     for (const pending of this.#pending.values()) {
       pending.reject(this.#closedError());
     }
@@ -373,8 +534,8 @@ class ServiceWorkerCdpSession implements CdpSession {
 
 type CdpEntryBase = {
   event: CdpTargetEvent;
-  session?: CdpSession;
-  opening?: Promise<CdpSession>;
+  session?: EventCdpSession;
+  opening?: Promise<EventCdpSession>;
   /** Set when the entry is dropped, so an in-flight open does not revive it. */
   dropped?: boolean;
 };
@@ -384,6 +545,8 @@ type PageEntry = CdpEntryBase & { page: Page };
 type ServiceWorkerEntry = CdpEntryBase & {
   /** The CDP target ID; a restarted worker has a new one. */
   targetId: string;
+  /** The worker script URL. */
+  url: string;
   /**
    * The Playwright worker, when Playwright reported one. It is only used to
    * notice the worker stopping: the CDP target list decides liveness.
@@ -399,6 +562,84 @@ type ServiceWorkerTarget = {
   targetId: string;
   url: string;
 };
+
+/** A `Target.TargetInfo` as reported by the browser session. */
+type TargetInfo = { type: string; url: string; targetId: string };
+
+/** One active {@link CdpManager.subscribe} call. */
+type Subscription = {
+  options: CdpSubscribeOptions;
+  /** `options.events` without duplicates. */
+  events: string[];
+  /** The domains of `options.events`, in first-seen order. */
+  domains: string[];
+  /** What this subscription added to each session it reached. */
+  records: Map<EventCdpSession, SubscriptionRecord>;
+  active: boolean;
+};
+
+/** What one subscription added to one session. */
+type SubscriptionRecord = {
+  /** Settles when the listeners are on and the domains are enabled. */
+  ready: Promise<void>;
+  /** Event names this subscription listens to on the session. */
+  methods: string[];
+  /** Domains this subscription holds enabled on the session. */
+  domains: string[];
+};
+
+/**
+ * Shared subscription state of one session: one CDP listener per event name
+ * (dispatching to every subscriber) and one reference count per enabled
+ * domain, so subscribers share the session and its enables.
+ */
+type SessionSubscriptionState = {
+  targetId?: Promise<string>;
+  methods: Map<
+    string,
+    { listener: CdpEventListener; subscriptions: Set<Subscription> }
+  >;
+  domains: Map<string, { count: number; enabled: Promise<void> }>;
+};
+
+/**
+ * Reads an Extension service worker target from a target info.
+ *
+ * @param info - The target info.
+ * @returns The target, or undefined for another kind of target.
+ */
+function toServiceWorkerTarget(
+  info: TargetInfo,
+): ServiceWorkerTarget | undefined {
+  if (info.type !== 'service_worker') {
+    return undefined;
+  }
+  const extensionId = extensionIdFromUrl(info.url);
+  return extensionId === undefined
+    ? undefined
+    : { extensionId, targetId: info.targetId, url: info.url };
+}
+
+/**
+ * Converts a thrown value to an error.
+ *
+ * @param error - The thrown value.
+ * @returns The value when it is an error, else an error with its text.
+ */
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * Tells whether a target is gone: its page is closed, or its entry was
+ * dropped after the target went away.
+ *
+ * @param entry - The target entry.
+ * @returns True when nothing can be attached to it any more.
+ */
+function isTargetGone(entry: CdpEntry): boolean {
+  return entry.dropped === true || ('page' in entry && entry.page.isClosed());
+}
 
 /**
  * Persistent CDP sessions for one browser session.
@@ -428,6 +669,27 @@ export class CdpManager {
   readonly #entries = new Set<CdpEntry>();
 
   readonly #listeners = new Map<CdpManagerEvent, Set<CdpManagerListener>>();
+
+  readonly #subscriptions = new Set<Subscription>();
+
+  /**
+   * Closed-session attach failures per live page: the manager re-attaches a
+   * page whose session died, and a page that keeps failing would otherwise be
+   * dropped and re-attached forever, silently. `reported` marks a page over
+   * budget, which `#detach` no longer re-attaches.
+   */
+  readonly #pageAttachFailures = new WeakMap<
+    Page,
+    { count: number; since: number; reported: boolean }
+  >();
+
+  readonly #sessionStates = new WeakMap<
+    EventCdpSession,
+    SessionSubscriptionState
+  >();
+
+  /** The browser session watched for new service worker targets. */
+  #watchedBrowserSession: CDPSession | undefined;
 
   #browserSession: Promise<CDPSession> | undefined;
 
@@ -468,6 +730,12 @@ export class CdpManager {
    * A command that may have reached the target is never re-sent. Only a
    * failure to open the session is retried once.
    *
+   * A `<Domain>.enable` or `<Domain>.disable` is refused with
+   * {@link CdpDomainInUseError} while a subscription holds that domain on
+   * the target (see {@link subscribe}): the subscription enabled the domain
+   * and would disable it on its last unsubscribe. `fresh` commands are not
+   * refused, because they run on a session of their own.
+   *
    * @param target - The page, or the extension service worker.
    * @param method - The CDP method.
    * @param params - The CDP method parameters.
@@ -485,7 +753,7 @@ export class CdpManager {
       return this.#sendFresh(target, method, params, options);
     }
 
-    let acquired: { entry: CdpEntry; session: CdpSession };
+    let acquired: { entry: CdpEntry; session: EventCdpSession };
     try {
       acquired = await this.#acquireSession(target, options);
     } catch (error) {
@@ -496,6 +764,7 @@ export class CdpManager {
       acquired = await this.#acquireSession(target, options);
     }
 
+    this.#assertDomainFree(acquired.session, method);
     try {
       return await this.#race(
         acquired.session.send(method, params),
@@ -507,6 +776,26 @@ export class CdpManager {
         this.#drop(acquired.entry);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Refuses a `<Domain>.enable` or `<Domain>.disable` while a subscription
+   * holds that domain on the session.
+   *
+   * @param session - The session the command would run on.
+   * @param method - The CDP method.
+   */
+  #assertDomainFree(session: EventCdpSession, method: string): void {
+    const match = /^([^.]+)\.(?:enable|disable)$/u.exec(method);
+    const domain = match?.[1];
+    if (domain === undefined) {
+      return;
+    }
+    if (
+      (this.#sessionStates.get(session)?.domains.get(domain)?.count ?? 0) > 0
+    ) {
+      throw new CdpDomainInUseError(method, domain);
     }
   }
 
@@ -540,6 +829,80 @@ export class CdpManager {
   }
 
   /**
+   * Delivers CDP events from every page and the Extension service worker.
+   *
+   * Attaches at once to every open page and to the running service worker,
+   * then to each new page (tab, popup) and each new or restarted worker as
+   * it appears. On each target it enables the domains of `events` once and
+   * shares the target's persistent session with `send` and other
+   * subscribers. A worker that restarts as a new target gets a new session,
+   * so its domains are enabled again.
+   *
+   * Network traffic sent before a target is attached is not delivered.
+   * `Runtime.enable` replays the console messages Chrome kept for the target,
+   * so a late subscriber can receive older console events.
+   *
+   * The subscription owns the domains of `events` on each target it reaches:
+   * while it is active, {@link send} refuses `<Domain>.enable` and
+   * `<Domain>.disable` for those domains, and its last unsubscribe disables
+   * them. A domain the user enabled by hand before subscribing is not
+   * tracked separately.
+   *
+   * Only pages and the Extension service worker are covered: out-of-process
+   * iframes and MV3 offscreen documents are not attached.
+   *
+   * `onEvent` receives the raw CDP `params`, which are not redacted; a
+   * consumer that stores or prints them must redact them first.
+   *
+   * @param options - The event names, enable parameters and callbacks.
+   * @returns The subscription, once the targets open now are attached.
+   */
+  async subscribe(options: CdpSubscribeOptions): Promise<CdpSubscription> {
+    this.#assertLive();
+    const domains: string[] = [];
+    for (const method of options.events) {
+      const dot = method.indexOf('.');
+      if (dot <= 0 || dot === method.length - 1) {
+        throw new Error(
+          `Invalid CDP event name "${method}". Use <Domain>.<event>.`,
+        );
+      }
+      const domain = method.slice(0, dot);
+      if (!domains.includes(domain)) {
+        domains.push(domain);
+      }
+    }
+    if (domains.length === 0) {
+      throw new Error('Subscribe to at least one CDP event');
+    }
+
+    const subscription: Subscription = {
+      options,
+      events: [...new Set(options.events)],
+      domains,
+      records: new Map(),
+      active: true,
+    };
+    if (this.#subscriptions.size === 0) {
+      this.#context.on('page', this.#onPage);
+    }
+    this.#subscriptions.add(subscription);
+
+    await Promise.all([
+      ...this.#context
+        .pages()
+        .map(async (page) =>
+          this.#attachPageForSubscribers(page, [subscription]),
+        ),
+      this.#attachWorkerForSubscribers([subscription]),
+    ]);
+
+    return {
+      unsubscribe: async (): Promise<void> => this.#unsubscribe(subscription),
+    };
+  }
+
+  /**
    * Detaches every cached session and stops listening for service workers.
    * Idempotent.
    */
@@ -549,6 +912,14 @@ export class CdpManager {
     }
     this.#disposed = true;
     this.#context.off('serviceworker', this.#onServiceWorker);
+    for (const subscription of this.#subscriptions) {
+      subscription.active = false;
+    }
+    if (this.#subscriptions.size > 0) {
+      this.#context.off('page', this.#onPage);
+    }
+    this.#subscriptions.clear();
+    this.#unwatchTargets();
     const entries = [...this.#entries];
     const browserSession = this.#browserSession;
     this.#browserSession = undefined;
@@ -576,7 +947,575 @@ export class CdpManager {
     }
     this.#extensionWorkerSeen = true;
     this.#observeWorker(worker);
+    if (this.#subscriptions.size > 0) {
+      // A backup for `Target.targetCreated`; the target list decides.
+      // eslint-disable-next-line no-void
+      void this.#attachWorkerForSubscribers([...this.#subscriptions]);
+    }
   };
+
+  /**
+   * Attaches subscribers to a new page (tab, popup, dapp page).
+   *
+   * @param page - The new page.
+   */
+  readonly #onPage = (page: Page): void => {
+    // eslint-disable-next-line no-void
+    void this.#attachPageForSubscribers(page, [...this.#subscriptions]);
+  };
+
+  /**
+   * Attaches subscribers to a new Extension service worker target, such as
+   * a worker that restarted after MV3 stopped it.
+   *
+   * @param event - The `Target.targetCreated` payload.
+   * @param event.targetInfo - The new target.
+   */
+  readonly #onTargetCreated = (event: { targetInfo: TargetInfo }): void => {
+    const target = toServiceWorkerTarget(event.targetInfo);
+    const knownExtensionId = this.#extensionId();
+    if (
+      target === undefined ||
+      (knownExtensionId !== undefined &&
+        target.extensionId !== knownExtensionId)
+    ) {
+      return;
+    }
+    const subscriptions = [...this.#subscriptions];
+    this.#attachWorkerTarget(target, subscriptions).catch((error: unknown) =>
+      this.#reportAttachError(subscriptions, error, false),
+    );
+  };
+
+  /**
+   * Starts watching the browser session for new service worker targets,
+   * once per browser session.
+   */
+  async #watchTargets(): Promise<void> {
+    const browserSession = await this.#getBrowserSession();
+    if (
+      this.#disposed ||
+      this.#subscriptions.size === 0 ||
+      this.#watchedBrowserSession === browserSession
+    ) {
+      return;
+    }
+    this.#unwatchTargets();
+    browserSession.on('Target.targetCreated', this.#onTargetCreated);
+    this.#watchedBrowserSession = browserSession;
+  }
+
+  /**
+   * Stops watching the browser session for new targets.
+   */
+  #unwatchTargets(): void {
+    this.#watchedBrowserSession?.off(
+      'Target.targetCreated',
+      this.#onTargetCreated,
+    );
+    this.#watchedBrowserSession = undefined;
+  }
+
+  /**
+   * Attaches subscribers to a page. Failures go to their `onError`.
+   *
+   * @param page - The page.
+   * @param subscriptions - The subscribers to attach.
+   * @param retry - Whether this is the re-attach after a failure (it counts
+   * against the page's budget) rather than a new trigger.
+   */
+  async #attachPageForSubscribers(
+    page: Page,
+    subscriptions: Subscription[],
+    retry = false,
+  ): Promise<void> {
+    if (!retry) {
+      // A new trigger (a subscription, a new page) gets a fresh budget; only
+      // the re-attach after a failure counts against it.
+      this.#pageAttachFailures.delete(page);
+    }
+    try {
+      const { entry, session } = await this.#acquireSession(
+        { kind: 'page', page },
+        {},
+      );
+      await Promise.all(
+        subscriptions.map(async (subscription) =>
+          this.#addToSession(subscription, entry, session),
+        ),
+      );
+    } catch (error) {
+      this.#reportAttachError(
+        subscriptions,
+        error,
+        page.isClosed?.(),
+        undefined,
+        page,
+      );
+    }
+  }
+
+  /**
+   * Watches for new worker targets and attaches subscribers to the running
+   * Extension service worker, if any. Does not wait for a stopped worker: a
+   * new worker is attached when its target is created. Failures go to the
+   * subscribers' `onError`.
+   *
+   * @param subscriptions - The subscribers to attach.
+   */
+  async #attachWorkerForSubscribers(
+    subscriptions: Subscription[],
+  ): Promise<void> {
+    try {
+      await this.#watchTargets();
+      if (this.#disposed) {
+        return;
+      }
+      const knownExtensionId = this.#extensionId();
+      const targets = (await this.#serviceWorkerTargets()).filter(
+        (candidate) =>
+          knownExtensionId === undefined ||
+          candidate.extensionId === knownExtensionId,
+      );
+      // While a worker restarts, the list can briefly hold the old and the
+      // new target. Keep the worker already attached (a newer one is
+      // attached by `Target.targetCreated`) rather than switching back.
+      const target =
+        targets.find((candidate) =>
+          this.#workerEntries.has(candidate.targetId),
+        ) ?? targets[0];
+      if (target !== undefined) {
+        await this.#attachWorkerTarget(target, subscriptions);
+      }
+    } catch (error) {
+      this.#reportAttachError(subscriptions, error, false);
+    }
+  }
+
+  /**
+   * Reports a failure to attach subscribers. Target loss is not an error: a
+   * page that closed, or an MV3 worker that stopped and will be attached
+   * again when it restarts, fails routine attaches (for example
+   * `<Domain>.enable` on a session that just closed). A dead session on a
+   * live target is not an error either: the entry is dropped so `#detach`
+   * attaches the subscribers to the live target again.
+   *
+   * @param subscriptions - The subscribers.
+   * @param error - The error.
+   * @param targetGone - Whether the target itself is gone.
+   * @param entry - The target entry, when the failure has one.
+   * @param page - The page, when the failure happens before an entry exists.
+   */
+  #reportAttachError(
+    subscriptions: Subscription[],
+    error: unknown,
+    targetGone: boolean,
+    entry?: CdpEntry,
+    page?: Page,
+  ): void {
+    if (isClosedSessionError(error)) {
+      if (!targetGone) {
+        this.#notePageAttachFailure(
+          subscriptions,
+          error,
+          page ??
+            (entry !== undefined && 'page' in entry ? entry.page : undefined),
+        );
+      }
+      if (entry !== undefined) {
+        // The target outlives its session: drop the entry so `#detach`
+        // attaches the subscribers again on a fresh session.
+        this.#drop(entry);
+      }
+      return;
+    }
+    if (targetGone || toError(error).message === STOPPED_WORKER_MESSAGE) {
+      return;
+    }
+    this.#report(subscriptions, error);
+  }
+
+  /**
+   * Counts a closed-session attach failure for a live page. After
+   * {@link MAX_PAGE_REATTACH_FAILURES} failures in
+   * {@link PAGE_REATTACH_WINDOW_MS}, it reports once and marks the page so
+   * `#detach` stops re-attaching it; a new trigger clears the budget.
+   *
+   * @param subscriptions - The subscribers of the failed attach.
+   * @param error - The closed-session error.
+   * @param page - The live page, when known.
+   */
+  #notePageAttachFailure(
+    subscriptions: Subscription[],
+    error: unknown,
+    page: Page | undefined,
+  ): void {
+    if (page === undefined) {
+      return;
+    }
+    const now = Date.now();
+    const previous = this.#pageAttachFailures.get(page);
+    const inWindow =
+      previous !== undefined && now - previous.since <= PAGE_REATTACH_WINDOW_MS;
+    const state = {
+      count: inWindow ? previous.count + 1 : 1,
+      since: inWindow ? previous.since : now,
+      reported: inWindow && previous.reported,
+    };
+    if (state.count >= MAX_PAGE_REATTACH_FAILURES) {
+      // Report once, then stay quiet: the subscribers hear about the page
+      // once and the manager stops trying until a new trigger.
+      if (!state.reported) {
+        this.#report(subscriptions, error);
+      }
+      state.reported = true;
+    }
+    this.#pageAttachFailures.set(page, state);
+  }
+
+  /**
+   * Opens (or reuses) the session of a live service worker target and adds
+   * subscribers to it.
+   *
+   * @param target - The live service worker target.
+   * @param subscriptions - The subscribers to attach.
+   */
+  async #attachWorkerTarget(
+    target: ServiceWorkerTarget,
+    subscriptions: Subscription[],
+  ): Promise<void> {
+    if (this.#disposed) {
+      return;
+    }
+    const entry = this.#workerEntryFor(target);
+    const session = await this.#openEntry(entry, async () =>
+      this.#openWorkerSession(entry.targetId, () => this.#drop(entry)),
+    );
+    await Promise.all(
+      subscriptions.map(async (subscription) =>
+        this.#addToSession(subscription, entry, session),
+      ),
+    );
+  }
+
+  /**
+   * Adds a subscriber to a session once: listens for its events and enables
+   * its domains, sharing both with the other subscribers of the session.
+   *
+   * @param subscription - The subscriber.
+   * @param entry - The target entry of the session.
+   * @param session - The session.
+   * @returns Settles when the subscriber is ready on the session. Never
+   * rejects: failures go to the subscriber's `onError`.
+   */
+  async #addToSession(
+    subscription: Subscription,
+    entry: CdpEntry,
+    session: EventCdpSession,
+  ): Promise<void> {
+    const existing = subscription.records.get(session);
+    if (existing) {
+      return existing.ready;
+    }
+    if (!subscription.active) {
+      return undefined;
+    }
+    const record: SubscriptionRecord = {
+      ready: Promise.resolve(),
+      methods: [],
+      domains: [],
+    };
+    subscription.records.set(session, record);
+    record.ready = this.#fillRecord(subscription, entry, session, record);
+    return record.ready;
+  }
+
+  /**
+   * Registers the event listeners and domain enables of one subscriber on a
+   * session.
+   *
+   * @param subscription - The subscriber.
+   * @param entry - The target entry of the session.
+   * @param session - The session.
+   * @param record - Where to note what was added.
+   */
+  async #fillRecord(
+    subscription: Subscription,
+    entry: CdpEntry,
+    session: EventCdpSession,
+    record: SubscriptionRecord,
+  ): Promise<void> {
+    const state = this.#sessionState(session);
+    let describe: () => CdpEventTarget;
+    try {
+      describe = await this.#describeTarget(entry, session, state);
+    } catch (error) {
+      // A record only guards a successful attach: delete it so a later
+      // attach trigger retries instead of reusing `record.ready`.
+      if (subscription.records.get(session) === record) {
+        subscription.records.delete(session);
+      }
+      this.#reportAttachError(
+        [subscription],
+        error,
+        isTargetGone(entry),
+        entry,
+      );
+      return;
+    }
+    if (!subscription.active || subscription.records.get(session) !== record) {
+      return;
+    }
+
+    for (const method of subscription.events) {
+      let handler = state.methods.get(method);
+      if (!handler) {
+        const subscriptions = new Set<Subscription>();
+        const listener: CdpEventListener = (params) => {
+          const event: CdpEvent = {
+            target: describe(),
+            method,
+            params: params ?? {},
+            t: Date.now(),
+          };
+          for (const subscriber of [...subscriptions]) {
+            this.#deliver(subscriber, event);
+          }
+        };
+        handler = { listener, subscriptions };
+        state.methods.set(method, handler);
+        session.on(method, listener);
+      }
+      handler.subscriptions.add(subscription);
+      record.methods.push(method);
+    }
+
+    const results = await Promise.allSettled(
+      subscription.domains.map(async (domain) =>
+        this.#enableDomain(subscription, session, state, record, domain),
+      ),
+    );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        this.#reportAttachError(
+          [subscription],
+          result.reason,
+          isTargetGone(entry),
+          entry,
+        );
+      }
+    }
+    if (
+      results.every((result) => result.status === 'fulfilled') &&
+      'page' in entry
+    ) {
+      // The domains are on: the page's attach failures, if any, are over.
+      this.#pageAttachFailures.delete(entry.page);
+    }
+  }
+
+  /**
+   * Enables a domain on a session for one subscriber. The first subscriber
+   * sends `<Domain>.enable`; later ones share it.
+   *
+   * @param subscription - The subscriber.
+   * @param session - The session.
+   * @param state - The session's shared subscription state.
+   * @param record - Where to note the enabled domain.
+   * @param domain - The CDP domain.
+   */
+  async #enableDomain(
+    subscription: Subscription,
+    session: EventCdpSession,
+    state: SessionSubscriptionState,
+    record: SubscriptionRecord,
+    domain: string,
+  ): Promise<void> {
+    let enabled = state.domains.get(domain);
+    if (!enabled) {
+      enabled = {
+        count: 0,
+        enabled: session
+          .send(`${domain}.enable`, subscription.options.enable?.[domain] ?? {})
+          .then(() => undefined),
+      };
+      state.domains.set(domain, enabled);
+    }
+    enabled.count += 1;
+    record.domains.push(domain);
+    try {
+      await enabled.enabled;
+    } catch (error) {
+      record.domains.splice(record.domains.indexOf(domain), 1);
+      enabled.count -= 1;
+      if (enabled.count === 0) {
+        // Let a later attach try again.
+        state.domains.delete(domain);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Returns the shared subscription state of a session.
+   *
+   * @param session - The session.
+   * @returns Its state, created on first use.
+   */
+  #sessionState(session: EventCdpSession): SessionSubscriptionState {
+    let state = this.#sessionStates.get(session);
+    if (!state) {
+      state = { methods: new Map(), domains: new Map() };
+      this.#sessionStates.set(session, state);
+    }
+    return state;
+  }
+
+  /**
+   * Resolves how to tag the events of a session's target.
+   *
+   * @param entry - The target entry.
+   * @param session - The target session.
+   * @param state - The session's shared subscription state.
+   * @returns A function returning the current target tag.
+   */
+  async #describeTarget(
+    entry: CdpEntry,
+    session: EventCdpSession,
+    state: SessionSubscriptionState,
+  ): Promise<() => CdpEventTarget> {
+    if (!('page' in entry)) {
+      const target: CdpEventTarget = {
+        kind: 'sw',
+        targetId: entry.targetId,
+        url: entry.url,
+      };
+      return () => target;
+    }
+    if (state.targetId === undefined) {
+      const lookup = session
+        .send('Target.getTargetInfo', {})
+        .then(
+          (result) =>
+            (result as { targetInfo?: { targetId?: string } } | undefined)
+              ?.targetInfo?.targetId ?? '',
+        );
+      state.targetId = lookup;
+      // A failed lookup is not the target's ID: let a later attach retry.
+      lookup.catch(() => {
+        if (state.targetId === lookup) {
+          state.targetId = undefined;
+        }
+      });
+    }
+    const targetId = await state.targetId;
+    const { page } = entry;
+    return () => ({ kind: 'page', targetId, url: page.url() });
+  }
+
+  /**
+   * Removes one subscriber from a session, and disables the domains that no
+   * other subscriber needs.
+   *
+   * @param subscription - The subscriber.
+   * @param session - The session.
+   * @param record - What the subscriber added to the session.
+   */
+  async #release(
+    subscription: Subscription,
+    session: EventCdpSession,
+    record: SubscriptionRecord,
+  ): Promise<void> {
+    const state = this.#sessionStates.get(session);
+    if (!state) {
+      // The session was detached while attaching; its listeners and domains
+      // went with it.
+      return;
+    }
+    for (const method of record.methods) {
+      const handler = state.methods.get(method);
+      handler?.subscriptions.delete(subscription);
+      if (handler?.subscriptions.size === 0) {
+        session.off(method, handler.listener);
+        state.methods.delete(method);
+      }
+    }
+    const disables: Promise<unknown>[] = [];
+    for (const domain of record.domains) {
+      const enabled = state.domains.get(domain);
+      if (enabled) {
+        enabled.count -= 1;
+        if (enabled.count === 0) {
+          state.domains.delete(domain);
+          disables.push(
+            session.send(`${domain}.disable`, {}).catch(() => undefined),
+          );
+        }
+      }
+    }
+    await Promise.all(disables);
+  }
+
+  /**
+   * Ends a subscription. Idempotent.
+   *
+   * @param subscription - The subscription.
+   */
+  async #unsubscribe(subscription: Subscription): Promise<void> {
+    if (!subscription.active) {
+      return;
+    }
+    subscription.active = false;
+    this.#subscriptions.delete(subscription);
+    if (this.#subscriptions.size === 0) {
+      this.#context.off('page', this.#onPage);
+      this.#unwatchTargets();
+    }
+    const records = [...subscription.records];
+    await Promise.all(
+      records.map(async ([session, record]) => {
+        await record.ready;
+        subscription.records.delete(session);
+        await this.#release(subscription, session, record);
+      }),
+    );
+  }
+
+  /**
+   * Delivers an event to one subscriber.
+   *
+   * @param subscription - The subscriber.
+   * @param event - The event.
+   */
+  #deliver(subscription: Subscription, event: CdpEvent): void {
+    if (!subscription.active) {
+      return;
+    }
+    try {
+      subscription.options.onEvent(event);
+    } catch (error) {
+      this.#report([subscription], error);
+    }
+  }
+
+  /**
+   * Reports an error to subscribers that have `onError`.
+   *
+   * @param subscriptions - The subscribers.
+   * @param error - The error.
+   */
+  #report(subscriptions: Subscription[], error: unknown): void {
+    for (const subscription of subscriptions) {
+      if (!subscription.active) {
+        continue;
+      }
+      try {
+        subscription.options.onError?.(toError(error));
+      } catch {
+        // A failing error handler must not break the other subscribers.
+      }
+    }
+  }
 
   /**
    * Watches a service worker once for its `close` event. MV3 workers stop
@@ -611,19 +1550,19 @@ export class CdpManager {
   async #acquireTarget(
     target: CdpTarget,
     options: CdpAttachOptions,
-  ): Promise<{ entry: CdpEntry; open: () => Promise<CdpSession> }> {
+  ): Promise<{ entry: CdpEntry; open: () => Promise<EventCdpSession> }> {
     if (target.kind === 'page') {
       const entry = this.#pageEntry(target.page);
       return {
         entry,
-        open: async (): Promise<CdpSession> =>
+        open: async (): Promise<EventCdpSession> =>
           this.#openPageSession(target.page),
       };
     }
     const entry = await this.#workerEntry(options);
     return {
       entry,
-      open: async (): Promise<CdpSession> =>
+      open: async (): Promise<EventCdpSession> =>
         this.#openWorkerSession(entry.targetId, () => this.#drop(entry)),
     };
   }
@@ -638,7 +1577,7 @@ export class CdpManager {
   async #acquireSession(
     target: CdpTarget,
     options: CdpAttachOptions,
-  ): Promise<{ entry: CdpEntry; session: CdpSession }> {
+  ): Promise<{ entry: CdpEntry; session: EventCdpSession }> {
     const { entry, open } = await this.#acquireTarget(target, options);
     return { entry, session: await this.#openEntry(entry, open) };
   }
@@ -681,6 +1620,17 @@ export class CdpManager {
       knownExtensionId,
       options,
     );
+    return this.#workerEntryFor(target);
+  }
+
+  /**
+   * Returns the cached entry of a live service worker target, creating it on
+   * first use and dropping the entry of any previous worker.
+   *
+   * @param target - The live service worker target.
+   * @returns Its entry.
+   */
+  #workerEntryFor(target: ServiceWorkerTarget): ServiceWorkerEntry {
     this.#extensionWorkerSeen = true;
     const cached = this.#workerEntries.get(target.targetId);
     if (cached) {
@@ -697,6 +1647,7 @@ export class CdpManager {
     }
     const entry: ServiceWorkerEntry = {
       targetId: target.targetId,
+      url: target.url,
       worker,
       event: { kind: 'sw', target: worker },
     };
@@ -728,16 +1679,9 @@ export class CdpManager {
   async #serviceWorkerTargets(): Promise<ServiceWorkerTarget[]> {
     const browserSession = await this.#getBrowserSession();
     const { targetInfos } = await browserSession.send('Target.getTargets');
-    return (
-      targetInfos as { type: string; url: string; targetId: string }[]
-    ).flatMap((info) => {
-      if (info.type !== 'service_worker') {
-        return [];
-      }
-      const extensionId = extensionIdFromUrl(info.url);
-      return extensionId === undefined
-        ? []
-        : [{ extensionId, targetId: info.targetId, url: info.url }];
+    return (targetInfos as TargetInfo[]).flatMap((info) => {
+      const target = toServiceWorkerTarget(info);
+      return target === undefined ? [] : [target];
     });
   }
 
@@ -756,11 +1700,17 @@ export class CdpManager {
     options: CdpAttachOptions,
   ): Promise<ServiceWorkerTarget> {
     const find = async (): Promise<ServiceWorkerTarget | undefined> => {
-      const targets = await this.#serviceWorkerTargets();
-      return targets.find(
+      const targets = (await this.#serviceWorkerTargets()).filter(
         (target) =>
           knownExtensionId === undefined ||
           target.extensionId === knownExtensionId,
+      );
+      // While a worker restarts, the list can briefly hold the old and the
+      // new target. Keep the worker already attached, like
+      // `#attachWorkerForSubscribers` does, rather than switching back.
+      return (
+        targets.find((target) => this.#workerEntries.has(target.targetId)) ??
+        targets[0]
       );
     };
 
@@ -837,9 +1787,11 @@ export class CdpManager {
    * @param page - The page.
    * @returns Its session.
    */
-  async #openPageSession(page: Page): Promise<CdpSession> {
-    // A Playwright CDPSession has this send/detach surface.
-    return (await this.#context.newCDPSession(page)) as unknown as CdpSession;
+  async #openPageSession(page: Page): Promise<EventCdpSession> {
+    // A Playwright CDPSession has this send/detach/on/off surface.
+    return (await this.#context.newCDPSession(
+      page,
+    )) as unknown as EventCdpSession;
   }
 
   /**
@@ -853,7 +1805,7 @@ export class CdpManager {
   async #openWorkerSession(
     targetId: string,
     onClose: () => void,
-  ): Promise<CdpSession> {
+  ): Promise<EventCdpSession> {
     const browserSession = await this.#getBrowserSession();
     let sessionId: string;
     try {
@@ -911,12 +1863,12 @@ export class CdpManager {
    */
   async #openEntry(
     entry: CdpEntry,
-    open: () => Promise<CdpSession>,
-  ): Promise<CdpSession> {
+    open: () => Promise<EventCdpSession>,
+  ): Promise<EventCdpSession> {
     if (entry.session) {
       return entry.session;
     }
-    entry.opening ??= (async (): Promise<CdpSession> => {
+    entry.opening ??= (async (): Promise<EventCdpSession> => {
       const session = await open();
       if (this.#disposed) {
         await session.detach().catch(() => undefined);
@@ -1050,8 +2002,32 @@ export class CdpManager {
     if (!session) {
       return;
     }
+    // The session's listeners and enabled domains go with it.
+    this.#sessionStates.delete(session);
+    for (const subscription of this.#subscriptions) {
+      subscription.records.delete(session);
+    }
     this.#emit('targetDetached', entry.event);
     await session.detach().catch(() => undefined);
+    if (this.#disposed || this.#subscriptions.size === 0) {
+      return;
+    }
+    // Subscribers keep their events when the target outlives its session:
+    // a page whose session failed, or a worker whose Playwright `close`
+    // fired while its CDP target is still live. A stopped worker is attached
+    // again by `Target.targetCreated` when it restarts.
+    if (!('page' in entry)) {
+      await this.#attachWorkerForSubscribers([...this.#subscriptions]);
+    } else if (
+      !entry.page.isClosed() &&
+      !this.#pageAttachFailures.get(entry.page)?.reported
+    ) {
+      await this.#attachPageForSubscribers(
+        entry.page,
+        [...this.#subscriptions],
+        true,
+      );
+    }
   }
 
   /**

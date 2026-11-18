@@ -1,6 +1,10 @@
 import type { BrowserContext, Page } from '@playwright/test';
 
-import { disposeCdpManager, getCdpManager } from './cdp-manager.js';
+import {
+  CdpDomainInUseError,
+  disposeCdpManager,
+  getCdpManager,
+} from './cdp-manager.js';
 import type {
   IPlatformDriver,
   TargetType,
@@ -537,6 +541,13 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       );
       return { ok: true, result };
     } catch (error) {
+      if (error instanceof CdpDomainInUseError) {
+        return {
+          ok: false,
+          code: ErrorCodes.MM_CDP_BLOCKED,
+          message: error.message,
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return {
         ok: false,
