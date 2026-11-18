@@ -2903,74 +2903,6 @@ describe('createServer abort, ref generations and observations', () => {
         // No unchanged retry after the launch: there is no previous screen.
         expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
       });
-
-      const buildScreen = (prefix: string, count: number): Tree => ({
-        nodes: Array.from({ length: count }, (_, index) => ({
-          ref: `e${index + 1}`,
-          role: 'android.view.ViewGroup',
-          name: `${prefix}-${index + 1}`,
-          path: [],
-          testId: `${prefix}-${index + 1}`,
-        })),
-        refMap: new Map(),
-      });
-
-      it('compares the first click with the screen the launch observed', async () => {
-        await startServer();
-        toolRegistry.set('launch', async () => ({ ok: true, result: {} }));
-        const home = buildScreen('wallet', 40);
-        const torn: Tree = {
-          nodes: home.nodes.slice(0, 12),
-          refMap: new Map(),
-        };
-        const explore = buildScreen('explore', 30);
-        driver.getAccessibilityTree
-          .mockResolvedValueOnce(home)
-          .mockResolvedValueOnce(torn)
-          .mockResolvedValueOnce(explore);
-
-        await post('/launch', {});
-        const { body } = await post('/tool/click', { testId: 'x' });
-
-        // 1 (launch) + 1 torn snapshot + 1 transition retry.
-        expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(3);
-        expect(body.observations?.a11y.nodes[0].testId).toBe('explore-1');
-        expect(
-          (body as unknown as { result: { screenChanged?: boolean } }).result
-            .screenChanged,
-        ).toBe(true);
-      });
-
-      it('does not keep a screen after a failed launch', async () => {
-        await startServer();
-        toolRegistry.set('launch', async () => ({
-          ok: false,
-          error: { code: 'MM_LAUNCH_FAILED', message: 'x' },
-        }));
-        driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
-
-        await post('/launch', {});
-        const { body } = await post('/tool/click', { testId: 'x' });
-
-        // 1 (launch) + 1 (click): no unchanged retry, nothing to compare.
-        expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
-        expect(
-          (body as unknown as { result: Record<string, unknown> }).result,
-        ).not.toHaveProperty('screenChanged');
-      });
-
-      it('does not keep the launch screen after cleanup', async () => {
-        await startServer();
-        toolRegistry.set('launch', async () => ({ ok: true, result: {} }));
-        driver.getAccessibilityTree.mockResolvedValue(buildTree(['Same']));
-
-        await post('/launch', {});
-        await post('/cleanup', { observe: 'none' });
-        await post('/tool/click', { testId: 'x' });
-
-        // 1 (launch) + 1 (click): no unchanged retry after cleanup.
-        expect(driver.getAccessibilityTree).toHaveBeenCalledTimes(2);
-      });
     });
   });
 
@@ -3598,39 +3530,11 @@ describe('screenAfterResponse', () => {
     a11y: { nodes: other },
   } as unknown as StepRecordObservation;
 
-  it('returns null after cleanup', () => {
+  it.each(['launch', 'cleanup'])('returns null after %s', (toolName) => {
     expect(
       screenAfterResponse(
-        'cleanup',
+        toolName,
         { ok: true, result: {} },
-        observation,
-        tree,
-      ),
-    ).toBeNull();
-  });
-
-  it('keeps the screen a successful launch observed', () => {
-    expect(
-      screenAfterResponse(
-        'launch',
-        { ok: true, result: {} },
-        observation,
-        tree,
-      ),
-    ).toBe(other);
-  });
-
-  it('returns null after a launch without an observation', () => {
-    expect(
-      screenAfterResponse('launch', { ok: true, result: {} }, undefined, tree),
-    ).toBeNull();
-  });
-
-  it('returns null after a failed launch', () => {
-    expect(
-      screenAfterResponse(
-        'launch',
-        { ok: false, error: { code: 'MM_LAUNCH_FAILED', message: 'x' } },
         observation,
         tree,
       ),
