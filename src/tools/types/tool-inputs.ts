@@ -1,3 +1,4 @@
+import type { EventKind } from './events.js';
 import type { SmartContractName } from './seeding.js';
 
 export type TabRole = 'extension' | 'notification' | 'dapp' | 'other';
@@ -311,6 +312,10 @@ export type MockNetworkInput =
       url?: string;
       includeBodies?: boolean;
     };
+
+export type EventsInput =
+  | { action: 'mark' }
+  | { action: 'clear'; kind?: EventKind };
 
 export type SetContextInput = {
   context: 'e2e' | 'prod';

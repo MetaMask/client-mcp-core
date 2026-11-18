@@ -1,0 +1,60 @@
+/**
+ * Session event records: console messages (`mm logs`) and network requests
+ * (`mm network`), kept in one buffer per session with a shared cursor.
+ */
+
+/** The record kinds of the session event buffer. */
+export type EventKind = 'console' | 'network';
+
+/** The target a record came from. */
+export type EventRecordTarget = {
+  /** `page` (tab, popup, side panel), `sw` (Extension service worker), or `hermes` (mobile, later). */
+  kind: 'page' | 'sw' | 'hermes';
+  /** The CDP target ID. Chrome can reuse a service worker's ID after a restart. */
+  id: string;
+  /** The target URL (redacted). */
+  url: string;
+};
+
+/** Fields every record has. */
+export type EventRecordBase = {
+  /**
+   * Position in the session, shared by every kind. Starts at 1 for each new
+   * session and only grows.
+   */
+  seq: number;
+  /** Time of the event (a request: its start), epoch ms. */
+  t: number;
+  target: EventRecordTarget;
+};
+
+/** Buffer state, returned with every read and by `mm events mark`. */
+export type EventSummary = {
+  /**
+   * When this session's buffer started, epoch ms. It changes when the
+   * session is relaunched; cursors from before are then meaningless.
+   */
+  startedAt: number;
+  /** The newest `seq` given out. Use it as a cursor. */
+  seq: number;
+  /** Records kept now, by kind. */
+  counts: Record<EventKind, number>;
+  /** Records dropped because the buffer was full, by kind. */
+  dropped: Record<EventKind, number>;
+};
+
+/** One page of records. */
+export type EventPage<RecordType> = {
+  /** Oldest first. */
+  records: RecordType[];
+  /** Pass as `cursor` to the next read to continue without duplicates. */
+  cursor: number;
+  /** More records match than `limit` allowed: read again with `cursor`. */
+  hasMore: boolean;
+  /**
+   * Records after the given cursor (or `since`) were dropped, or the cursor
+   * was from another session (above the newest `seq`).
+   */
+  gap: boolean;
+  summary: EventSummary;
+};
