@@ -22,7 +22,6 @@ import type {
   UnhoverResult,
   WaitForInput,
   WaitForResult,
-  WithinTarget,
 } from './types';
 import { ErrorCodes } from './types';
 import {
@@ -30,6 +29,11 @@ import {
   DEFAULT_INTERACTION_TIMEOUT_MS,
 } from './utils/constants.js';
 import type { TargetType } from './utils/discovery.js';
+import {
+  resolveFrameSelector,
+  resolveWithinScope,
+  scopeTargetToFrame,
+} from './utils/frame-scope.js';
 import { validateTargetSelection } from './utils/targets.js';
 import {
   isInvalidTargetSelection,
@@ -51,12 +55,15 @@ type ValidatedTarget = {
 
 type ValidatedInteraction = {
   target: ValidatedTarget;
+  within: WithinScope | undefined;
   driver: NonNullable<ToolContext['driver']>;
 };
 
 /**
  * Validates session, driver, and target selection for interaction tools.
- * Returns an error response if validation fails, or the resolved target.
+ * Returns an error response if validation fails, or the resolved target
+ * and `within` scope, moved into the iframe of `frame` when it is set (see
+ * `scopeTargetToFrame`; browser only).
  *
  * @param input - The tool input with target selection fields.
  * @param context - The tool execution context.
@@ -108,37 +115,43 @@ function validateInteraction<TResult>(
     };
   }
 
-  return {
-    target: {
-      targetType: validation.type,
-      targetValue: validation.value,
-    },
-    driver: context.driver,
+  const target = {
+    targetType: validation.type,
+    targetValue: validation.value,
   };
-}
-
-/**
- * Converts a WithinTarget input to the WithinScope format expected by the platform driver.
- *
- * @param within - The optional within target from tool input.
- * @returns The resolved scope, or undefined if no within target is provided.
- */
-export function resolveWithinScope(
-  within: WithinTarget | undefined,
-): WithinScope | undefined {
-  if (!within) {
-    return undefined;
+  const within = resolveWithinScope(input.within);
+  const frame = resolveWithinScope(input.frame);
+  if (!frame) {
+    return { target, within, driver: context.driver };
   }
-  if (within.a11yRef) {
-    return { type: 'a11yRef', value: within.a11yRef };
+  if (context.driver.getPlatform() !== 'browser') {
+    return {
+      error: createToolError(
+        ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+        `frame is not supported on ${context.driver.getPlatform()} platform`,
+      ),
+    };
   }
-  if (within.testId) {
-    return { type: 'testId', value: within.testId };
+  try {
+    return {
+      ...scopeTargetToFrame(
+        target,
+        within,
+        resolveFrameSelector(frame, context.refMap),
+      ),
+      driver: context.driver,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      error: createToolError(
+        message.startsWith('Unknown a11yRef')
+          ? ErrorCodes.MM_TARGET_NOT_FOUND
+          : ErrorCodes.MM_INVALID_INPUT,
+        message,
+      ),
+    };
   }
-  if (within.selector) {
-    return { type: 'selector', value: within.selector };
-  }
-  return undefined;
 }
 
 /**
@@ -166,7 +179,7 @@ export async function clickTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
       context.signal,
       {
         ...(input.dismissKeyboard ? { dismissKeyboard: true } : {}),
@@ -219,7 +232,7 @@ export async function typeTool(
       input.text,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
       context.signal,
     );
     return createToolSuccess(result);
@@ -264,7 +277,7 @@ export async function waitForTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
     );
     return createToolSuccess({
       found: true,
@@ -301,7 +314,7 @@ export async function getTextTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
     );
     return createToolSuccess(result);
   } catch (error) {
@@ -352,7 +365,7 @@ export async function inspectTool(
       context.refMap,
       timeoutMs,
       input.styles ?? DEFAULT_INSPECT_STYLES,
-      resolveWithinScope(input.within),
+      validated.within,
     );
     return createToolSuccess(result);
   } catch (error) {
@@ -402,7 +415,7 @@ export async function hoverTool(
       targetValue,
       context.refMap,
       timeoutMs,
-      resolveWithinScope(input.within),
+      validated.within,
       context.signal,
     );
     return createToolSuccess(result);

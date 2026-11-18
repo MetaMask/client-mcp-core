@@ -24,6 +24,7 @@ import {
 import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonEndpoint, DaemonState } from '../types/http.js';
 import { resolveCliHttpTimeoutMs } from '../utils/timeout-budget.js';
+import { A11Y_REF_PATTERN } from '../validation/a11y-ref.js';
 import { OBSERVE_LEVELS } from '../validation/observe-level.js';
 import type { ObserveLevel } from '../validation/observe-level.js';
 
@@ -476,30 +477,56 @@ export async function main(): Promise<void> {
 export function resolveWithinFromArgs(
   args: string[],
 ): { a11yRef: string } | { testId: string } | { selector: string } | undefined {
-  const withinIdx = args.indexOf('--within');
-  if (withinIdx < 0) {
+  return resolveScopeFlag(args, '--within');
+}
+
+/**
+ * Resolves the `--frame` iframe scope from CLI arguments, like `--within`.
+ *
+ * @param args - The CLI arguments to scan.
+ * @returns The iframe target, or undefined if `--frame` is absent.
+ */
+export function resolveFrameFromArgs(
+  args: string[],
+): { a11yRef: string } | { testId: string } | { selector: string } | undefined {
+  return resolveScopeFlag(args, '--frame');
+}
+
+/**
+ * Reads a scope flag (`--within`, `--frame`): "testid:value" is a test ID,
+ * "selector:value" a selector, a ref (e3, f1e3) a ref, else a test ID.
+ *
+ * @param args - The CLI arguments to scan.
+ * @param flag - The flag.
+ * @returns The scope target, or undefined if the flag is absent.
+ */
+function resolveScopeFlag(
+  args: string[],
+  flag: '--within' | '--frame',
+): { a11yRef: string } | { testId: string } | { selector: string } | undefined {
+  const flagIdx = args.indexOf(flag);
+  if (flagIdx < 0) {
     return undefined;
   }
-  const val = args[withinIdx + 1];
+  const val = args[flagIdx + 1];
   if (!val || val.startsWith('--')) {
-    failUsage('--within requires a value');
+    failUsage(`${flag} requires a value`);
   }
 
-  // "testid:value" → testId, "selector:value" → selector, otherwise auto-detect
   if (val.startsWith('testid:')) {
     return { testId: val.slice('testid:'.length) };
   }
   if (val.startsWith('selector:')) {
     return { selector: val.slice('selector:'.length) };
   }
-  return /^e[0-9]+$/u.test(val) ? { a11yRef: val } : { testId: val };
+  return A11Y_REF_PATTERN.test(val) ? { a11yRef: val } : { testId: val };
 }
 
 /**
  * Resolves element targeting from CLI arguments. Supports three targeting modes:
  * --selector <css>  → CSS selector (explicit)
  * --testid <id>     → data-testid value (explicit)
- * positional arg    → a11yRef if /^e\d+$/, otherwise testId (auto-detected)
+ * positional arg    → a11yRef if /^(f\d+)?e\d+$/, otherwise testId (auto-detected)
  *
  * @param args - The CLI arguments after the command name.
  * @returns An object with exactly one of `a11yRef`, `testId`, or `selector`.
@@ -529,7 +556,9 @@ export function resolveTargetFromArgs(
   if (!target) {
     failUsage('element target is required');
   }
-  return /^e[0-9]+$/u.test(target) ? { a11yRef: target } : { testId: target };
+  return A11Y_REF_PATTERN.test(target)
+    ? { a11yRef: target }
+    : { testId: target };
 }
 
 /** Interaction flags that consume the next token as their value. */
@@ -538,6 +567,7 @@ const VALUE_FLAGS = new Set([
   '--selector',
   '--testid',
   '--within',
+  '--frame',
   '--styles',
   '--direction',
   '--maxAttempts',
@@ -593,6 +623,19 @@ export function getPositionalArgs(args: string[]): string[] {
 }
 
 /**
+ * The interaction tools whose input accepts `frame`; the others would drop
+ * it silently.
+ */
+const FRAME_TOOL_PATHS = new Set([
+  '/tool/click',
+  '/tool/type',
+  '/tool/get_text',
+  '/tool/inspect',
+  '/tool/hover',
+  '/tool/wait_for',
+]);
+
+/**
  * Sends an interaction tool request with optional timeout and within scope.
  *
  * @param daemon - The daemon endpoint (a port or the daemon state).
@@ -608,6 +651,7 @@ async function sendInteractionRequest(
 ): Promise<void> {
   const timeoutMs = parseIntFlag(args, '--timeout');
   const within = resolveWithinFromArgs(args);
+  const frame = resolveFrameFromArgs(args);
 
   const body: Record<string, unknown> = {
     ...resolveTargetFromArgs(args),
@@ -618,6 +662,14 @@ async function sendInteractionRequest(
   }
   if (within) {
     body.within = within;
+  }
+  if (frame) {
+    if (!FRAME_TOOL_PATHS.has(toolPath)) {
+      failUsage(
+        `--frame is not supported by ${toolPath.slice('/tool/'.length)}`,
+      );
+    }
+    body.frame = frame;
   }
 
   await sendRequest(daemon, 'POST', toolPath, body);
@@ -647,7 +699,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         failUsage(
-          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--dismiss-keyboard]',
+          'Usage: mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>] [--dismiss-keyboard]',
         );
       }
       await sendInteractionRequest(
@@ -671,7 +723,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         failUsage(
-          'Usage: mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
+          'Usage: mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]',
         );
       }
       const text = hasExplicitTypeTarget
@@ -691,7 +743,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         failUsage(
-          'Usage: mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
+          'Usage: mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]',
         );
       }
       await sendInteractionRequest(daemon, '/tool/get_text', args);
@@ -705,7 +757,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         failUsage(
-          'Usage: mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
+          'Usage: mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]',
         );
       }
       let styles: string[] | undefined;
@@ -734,7 +786,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         failUsage(
-          'Usage: mm hover <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
+          'Usage: mm hover <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]',
         );
       }
       await sendInteractionRequest(daemon, '/tool/hover', args);
@@ -761,18 +813,26 @@ export async function routeCommand(
     case 'reset-viewport':
       await sendRequest(daemon, 'POST', '/tool/reset_viewport', {});
       break;
-    case 'describe-screen':
-      await sendRequest(daemon, 'POST', '/tool/describe_screen', {});
-      break;
-    case 'screenshot': {
-      const nameIdx = args.indexOf('--name');
-      const name = nameIdx >= 0 ? args[nameIdx + 1] : undefined;
+    case 'describe-screen': {
+      const frame = resolveFrameFromArgs(args);
       await sendRequest(
         daemon,
         'POST',
-        '/tool/screenshot',
-        name ? { name } : {},
+        '/tool/describe_screen',
+        frame ? { frame } : {},
       );
+      break;
+    }
+    case 'screenshot': {
+      const nameIdx = args.indexOf('--name');
+      const name = nameIdx >= 0 ? args[nameIdx + 1] : undefined;
+      const selector = parseStringFlag(args, '--selector');
+      const frame = resolveFrameFromArgs(args);
+      await sendRequest(daemon, 'POST', '/tool/screenshot', {
+        ...(name ? { name } : {}),
+        ...(selector ? { selector } : {}),
+        ...(frame ? { frame } : {}),
+      });
       break;
     }
     case 'wait-for': {
@@ -783,7 +843,7 @@ export async function routeCommand(
         !args.includes('--testid')
       ) {
         failUsage(
-          'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]',
+          'Usage: mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]',
         );
       }
       await sendInteractionRequest(daemon, '/tool/wait_for', args);
@@ -1232,9 +1292,19 @@ export async function routeMockNetworkCommand(
 
   if (action === 'requests') {
     const limit = parseIntFlag(args, '--limit');
+    const url = parseStringFlag(args, '--url');
+    if (args.includes('--url') && url === undefined) {
+      process.stderr.write(
+        'Usage: mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]\n',
+      );
+      process.exit(1);
+    }
+    const includeBodies = args.includes('--bodies');
     await sendRequest(daemon, 'POST', '/tool/mock_network', {
       action: 'requests',
       ...(limit === undefined ? {} : { limit }),
+      ...(url === undefined ? {} : { url }),
+      ...(includeBodies ? { includeBodies } : {}),
     });
     return;
   }
@@ -2075,24 +2145,27 @@ Lifecycle:
   mm build [--force]
 
 Interaction:
-  mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm click <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
                       Without --timeout, a target missing after 2s fails at
                       once; with it, the click waits for the target.
-  mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
-  mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
-  mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm type <ref> <text> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
+  mm get-text <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
+  mm inspect <ref> [--styles <prop,prop>] [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
                       Attributes, disabled/readOnly flags and computed styles
                       (browser only). Default styles: color, background-color,
                       opacity, cursor.
-  mm hover <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm hover <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
                       Move the pointer over an element (browser only).
   mm unhover          Move the pointer off the page (browser only).
   mm set-viewport <width> <height>
                       Resize the active page's viewport (browser only).
   mm reset-viewport   Restore the size from before set-viewport.
-  mm describe-screen
-  mm screenshot [--name <name>]
-  mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>]
+  mm describe-screen [--frame <iframe>]
+                      The page tree includes visible iframes (refs f1e1, ...);
+                      --frame lists only that iframe. --frame <iframe> on
+                      actions targets a --testid or --selector inside it.
+  mm screenshot [--name <name>] [--selector <css>] [--frame <iframe>]
+  mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
   mm wait-for-notification [--timeout <ms>]
   mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--timeout <ms>] [--within <scope>] [--direction up|down] [--maxAttempts <n>]
   mm clipboard <read|write> [text]
@@ -2127,7 +2200,7 @@ Advanced:
   mm mock-network add '<json-rule-or-config>'
   mm mock-network clear
   mm mock-network list
-  mm mock-network requests [--limit <n>]
+  mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
   mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
 

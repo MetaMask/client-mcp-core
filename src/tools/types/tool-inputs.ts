@@ -81,6 +81,8 @@ export type DescribeScreenInput = {
   includeScreenshot?: boolean;
   screenshotName?: string;
   includeScreenshotBase64?: boolean;
+  /** Browser only: describe the content of this iframe instead of the page. */
+  frame?: WithinTarget;
 };
 
 export type ScreenshotInput = {
@@ -88,6 +90,10 @@ export type ScreenshotInput = {
   fullPage?: boolean;
   selector?: string;
   includeBase64?: boolean;
+  /**
+   * Browser only: capture this iframe, or the `selector` element inside it.
+   */
+  frame?: WithinTarget;
 };
 
 export type TargetSelection = {
@@ -105,6 +111,8 @@ export type WithinTarget = {
 export type ClickInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
   /**
    * Mobile: when the software keyboard covers the target, dismiss it and
    * tap once more.
@@ -116,16 +124,22 @@ export type TypeInput = TargetSelection & {
   text: string;
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type WaitForInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type GetTextInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type InspectInput = TargetSelection & {
@@ -133,11 +147,15 @@ export type InspectInput = TargetSelection & {
   styles?: string[];
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type HoverInput = TargetSelection & {
   timeoutMs?: number;
   within?: WithinTarget;
+  /** Browser only: the iframe the target (and `within`) is in. */
+  frame?: WithinTarget;
 };
 
 export type UnhoverInput = Record<string, never>;
@@ -214,20 +232,54 @@ export type NetworkMockResponse = {
   body?: string;
 };
 
+export type NetworkMockRecordOptions = {
+  body?: boolean;
+  headers?: boolean;
+  maxBodyBytes?: number;
+};
+
 export type NetworkMockRouteRule = {
   id: string;
   method: string;
   url: string;
-  response: NetworkMockResponse;
+  /**
+   * Mocked response. Omit it to record the real request and forward it
+   * unchanged; `record` is then required.
+   */
+  response?: NetworkMockResponse;
+  record?: NetworkMockRecordOptions;
+};
+
+export type NetworkMockRecordedBody = {
+  type: 'json' | 'text' | 'binary' | 'empty';
+  size: number;
+  truncated?: boolean;
+  /**
+   * True when the value was withheld because it could not be redacted safely.
+   * This happens for JSON-like text that does not parse.
+   */
+  redacted?: boolean;
+  value?: unknown;
 };
 
 export type NetworkMockRequestRecord = {
   timestamp: string;
   method: string;
   url: string;
+  /**
+   * True when a rule matched. A rule with a response mocks the request; a
+   * rule with only record forwards it unchanged.
+   */
   matched: boolean;
   ruleId?: string;
+  /**
+   * Mocked status for a rule with a response, or the real status of a
+   * forwarded request when the response arrived within the status timeout.
+   */
   status?: number;
+  serviceWorker?: boolean;
+  headers?: Record<string, string>;
+  body?: NetworkMockRecordedBody;
 };
 
 export type NetworkMockSummary = {
@@ -247,7 +299,12 @@ export type MockNetworkInput =
     }
   | { action: 'clear' }
   | { action: 'list' }
-  | { action: 'requests'; limit?: number };
+  | {
+      action: 'requests';
+      limit?: number;
+      url?: string;
+      includeBodies?: boolean;
+    };
 
 export type SetContextInput = {
   context: 'e2e' | 'prod';

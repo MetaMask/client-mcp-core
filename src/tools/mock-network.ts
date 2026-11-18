@@ -7,7 +7,9 @@ import type {
 import type {
   MockNetworkInput,
   MockNetworkResult,
+  NetworkMockRecordedBody,
   NetworkMockRequestRecord,
+  NetworkMockResponse,
   NetworkMockRouteRule,
   NetworkMockSummary,
 } from './types';
@@ -15,6 +17,39 @@ import { createToolSuccess, requireActiveSession } from './utils.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 const DEFAULT_MAX_REQUEST_RECORDS = 500;
+export const DEFAULT_MAX_RECORDED_BODY_BYTES = 64 * 1024;
+export const MAX_RECORDED_BODY_BYTES = 512 * 1024;
+export const REDACTED_VALUE = '[REDACTED]';
+/**
+ * How long a forwarded (non-mocked) request waits for its real response
+ * before the record is left without a `status`. The wait never delays the
+ * request itself.
+ */
+const FORWARDED_RESPONSE_TIMEOUT_MS = 5000;
+const SENSITIVE_HEADER_NAMES = new Set([
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+]);
+const SENSITIVE_HEADER_PATTERN = /token|secret|key|auth|session|password/u;
+// Exact field names (compared lowercase, without `-` and `_`), so analytics
+// properties such as `token_symbol` stay readable.
+const SENSITIVE_BODY_FIELDS = new Set([
+  'writekey',
+  'password',
+  'secret',
+  'clientsecret',
+  'apikey',
+  'xapikey',
+  'authorization',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'privatekey',
+  'mnemonic',
+  'seedphrase',
+  'secretrecoveryphrase',
+]);
 const DEFAULT_JSON_HEADERS = {
   'access-control-allow-origin': '*',
   'content-type': 'application/json',
@@ -72,7 +107,10 @@ export async function mockNetworkTool(
   if (input.action === 'requests') {
     return createToolSuccess({
       action: 'requests',
-      requests: manager.getRequests(input.limit),
+      requests: manager.getRequests(input.limit, {
+        url: input.url,
+        includeBodies: input.includeBodies,
+      }),
       summary: manager.getSummary(),
     });
   }
@@ -167,15 +205,35 @@ export class NetworkMockRouteManager {
   /**
    * Gets recorded request hits and misses.
    *
-   * @param limit - Optional maximum number of newest records to return.
+   * @param limit - Optional maximum number of newest records to return,
+   * applied after the URL filter.
+   * @param options - Filter and output options.
+   * @param options.url - URL glob (`*`, `**`) or, without `*`, a substring
+   * the request URL must contain.
+   * @param options.includeBodies - Whether to include recorded request
+   * headers and bodies. Defaults to false.
    * @returns Request records in chronological order.
    */
-  getRequests(limit?: number): NetworkMockRequestRecord[] {
-    const records = [...this.#requestRecords];
-    if (limit === undefined) {
+  getRequests(
+    limit?: number,
+    options: { url?: string; includeBodies?: boolean } = {},
+  ): NetworkMockRequestRecord[] {
+    const { url, includeBodies = false } = options;
+    let records = url
+      ? this.#requestRecords.filter((record) =>
+          matchesUrlFilter(url, record.url),
+        )
+      : [...this.#requestRecords];
+
+    if (limit !== undefined) {
+      records = records.slice(Math.max(records.length - limit, 0));
+    }
+
+    if (includeBodies) {
       return records;
     }
-    return records.slice(Math.max(records.length - limit, 0));
+
+    return records.map(({ body: _body, headers: _headers, ...rest }) => rest);
   }
 
   /**
@@ -251,6 +309,9 @@ export class NetworkMockRouteManager {
   /**
    * Handles an intercepted Playwright route.
    *
+   * A rule with a `response` fulfills the request with the mocked response. A
+   * rule with only `record` records the request and forwards it unchanged.
+   *
    * @param route - The intercepted route.
    */
   async #handleRoute(route: Route): Promise<void> {
@@ -263,41 +324,84 @@ export class NetworkMockRouteManager {
       return;
     }
 
-    this.#recordRequest(
-      request,
-      true,
-      matchedRule.id,
-      matchedRule.response.status,
-    );
+    const record = this.#recordRequest(request, true, matchedRule);
+
+    if (!matchedRule.response) {
+      await route.continue();
+      this.#recordForwardedStatus(request, record).catch(() => undefined);
+      return;
+    }
+
     await route.fulfill({
       status: matchedRule.response.status ?? 200,
-      headers: buildResponseHeaders(matchedRule),
-      body: buildResponseBody(matchedRule),
+      headers: buildResponseHeaders(matchedRule.response),
+      body: buildResponseBody(matchedRule.response),
     });
+  }
+
+  /**
+   * Records the real status of a forwarded request once its response arrives.
+   *
+   * Best effort: this never delays the request, and the record keeps no
+   * `status` when the response is not received in time or the request fails.
+   *
+   * @param request - The forwarded Playwright request.
+   * @param record - The request record to update.
+   */
+  async #recordForwardedStatus(
+    request: PlaywrightRequest,
+    record: NetworkMockRequestRecord,
+  ): Promise<void> {
+    const status = await readResponseStatus(request);
+    if (status !== undefined) {
+      record.status = status;
+    }
   }
 
   /**
    * Records a hit or miss for an intercepted request.
    *
+   * Headers and the body are stored only when the matched rule opts in via
+   * `record`.
+   *
    * @param request - The intercepted Playwright request.
    * @param matched - Whether a rule matched.
-   * @param ruleId - The matched rule id, if any.
-   * @param status - The fulfilled response status, if any.
+   * @param rule - The matched rule, if any.
+   * @returns The record that was stored.
    */
   #recordRequest(
     request: PlaywrightRequest,
     matched: boolean,
-    ruleId?: string,
-    status?: number,
-  ): void {
-    this.#requestRecords.push({
+    rule?: NetworkMockRouteRule,
+  ): NetworkMockRequestRecord {
+    const ruleId = rule?.id;
+    const status = rule?.response?.status;
+    const recordOptions = rule?.record;
+    const headers =
+      recordOptions?.headers || recordOptions?.body
+        ? readRequestHeaders(request)
+        : {};
+
+    const record: NetworkMockRequestRecord = {
       timestamp: new Date().toISOString(),
       method: request.method(),
       url: request.url(),
       matched,
       ...(ruleId ? { ruleId } : {}),
       ...(status ? { status } : {}),
-    });
+      ...(isServiceWorkerRequest(request) ? { serviceWorker: true } : {}),
+      ...(recordOptions?.headers ? { headers: redactHeaders(headers) } : {}),
+      ...(recordOptions?.body
+        ? {
+            body: recordRequestBody(
+              readPostDataBuffer(request),
+              headers['content-type'],
+              recordOptions.maxBodyBytes,
+            ),
+          }
+        : {}),
+    };
+    this.#requestRecords.push(record);
 
     if (this.#requestRecords.length > this.#maxRequestRecords) {
       this.#requestRecords.splice(
@@ -305,6 +409,8 @@ export class NetworkMockRouteManager {
         this.#requestRecords.length - this.#maxRequestRecords,
       );
     }
+
+    return record;
   }
 
   /**
@@ -426,20 +532,20 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Builds response headers for a rule.
+ * Builds response headers for a mocked response.
  *
- * @param rule - The matched route rule.
+ * @param response - The mocked response.
  * @returns Headers for Playwright route fulfillment.
  */
 function buildResponseHeaders(
-  rule: NetworkMockRouteRule,
+  response: NetworkMockResponse,
 ): Record<string, string> {
-  const defaultHeaders = hasJsonResponse(rule)
+  const defaultHeaders = hasJsonResponse(response)
     ? DEFAULT_JSON_HEADERS
     : DEFAULT_TEXT_HEADERS;
 
   const normalized: Record<string, string> = {};
-  for (const [key, value] of Object.entries(rule.response.headers ?? {})) {
+  for (const [key, value] of Object.entries(response.headers ?? {})) {
     normalized[key.toLowerCase()] = value;
   }
 
@@ -450,25 +556,357 @@ function buildResponseHeaders(
 }
 
 /**
- * Builds a response body for a rule.
+ * Builds a response body for a mocked response.
  *
- * @param rule - The matched route rule.
+ * @param response - The mocked response.
  * @returns Body for Playwright route fulfillment.
  */
-function buildResponseBody(rule: NetworkMockRouteRule): string {
-  if (hasJsonResponse(rule)) {
-    return JSON.stringify(rule.response.json);
+function buildResponseBody(response: NetworkMockResponse): string {
+  if (hasJsonResponse(response)) {
+    return JSON.stringify(response.json);
   }
 
-  return rule.response.body ?? '';
+  return response.body ?? '';
 }
 
 /**
- * Checks whether a rule contains a JSON response payload.
+ * Checks whether a mocked response contains a JSON payload.
  *
- * @param rule - The route rule to inspect.
+ * @param response - The mocked response to inspect.
  * @returns True if the response has a json property.
  */
-function hasJsonResponse(rule: NetworkMockRouteRule): boolean {
-  return Object.prototype.hasOwnProperty.call(rule.response, 'json');
+function hasJsonResponse(response: NetworkMockResponse): boolean {
+  return Object.prototype.hasOwnProperty.call(response, 'json');
+}
+
+/**
+ * Checks whether a request URL matches a `requests --url` filter. A filter
+ * with `*` is a URL glob; any other filter is a substring match.
+ *
+ * @param filter - URL glob or substring.
+ * @param url - The recorded request URL.
+ * @returns True if the URL matches the filter.
+ */
+export function matchesUrlFilter(filter: string, url: string): boolean {
+  if (filter.includes('*')) {
+    return matchesUrlPattern(filter, url);
+  }
+  return url.includes(filter);
+}
+
+/**
+ * Checks whether a request header name is sensitive and must be redacted.
+ *
+ * @param name - The header name.
+ * @returns True if the header value must not be recorded.
+ */
+export function isSensitiveHeader(name: string): boolean {
+  const lowerName = name.toLowerCase();
+  return (
+    SENSITIVE_HEADER_NAMES.has(lowerName) ||
+    SENSITIVE_HEADER_PATTERN.test(lowerName)
+  );
+}
+
+/**
+ * Returns request headers with lowercase names and sensitive values
+ * redacted.
+ *
+ * @param headers - The request headers.
+ * @returns The headers safe to record.
+ */
+export function redactHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const redacted: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    redacted[name.toLowerCase()] = isSensitiveHeader(name)
+      ? REDACTED_VALUE
+      : value;
+  }
+  return redacted;
+}
+
+/**
+ * Checks whether a body field name holds a secret.
+ *
+ * @param name - The JSON field name.
+ * @returns True if the field value must be redacted.
+ */
+function isSensitiveBodyField(name: string): boolean {
+  return SENSITIVE_BODY_FIELDS.has(name.toLowerCase().replace(/[-_]/gu, ''));
+}
+
+/**
+ * Replaces the values of sensitive fields in a parsed JSON value.
+ *
+ * @param value - The parsed JSON value.
+ * @returns A copy with sensitive field values redacted.
+ */
+export function redactJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactJsonValue);
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const redacted: Record<string, unknown> = {};
+    for (const [key, fieldValue] of Object.entries(value)) {
+      redacted[key] = isSensitiveBodyField(key)
+        ? REDACTED_VALUE
+        : redactJsonValue(fieldValue);
+    }
+    return redacted;
+  }
+
+  return value;
+}
+
+/**
+ * Converts a captured request body to a bounded, redacted record.
+ *
+ * - JSON bodies (JSON content type, or text that parses as JSON) are parsed
+ *   and sensitive fields such as `writeKey` are redacted, whatever the value
+ *   type.
+ * - A JSON body cut by `maxBytes` is recorded as `{ type: 'json', size,
+ *   truncated: true }` with no value: the kept prefix does not parse, so a
+ *   value of any type cannot be redacted reliably. Raise `maxBodyBytes` to
+ *   get the value.
+ * - JSON-like text that does not parse is recorded as `{ type: 'text', size,
+ *   redacted: true }` with no value, for the same reason.
+ * - Other UTF-8 text is kept as text. Sensitive form fields are redacted.
+ * - Binary bodies are not stored; only the type and size are recorded.
+ *
+ * @param buffer - The raw request body, or null if there is none.
+ * @param contentType - The request content type, if known.
+ * @param maxBytes - Maximum number of body bytes to keep.
+ * @returns The recorded body.
+ */
+export function recordRequestBody(
+  buffer: Buffer | null,
+  contentType?: string,
+  maxBytes = DEFAULT_MAX_RECORDED_BODY_BYTES,
+): NetworkMockRecordedBody {
+  if (!buffer || buffer.length === 0) {
+    return { type: 'empty', size: 0 };
+  }
+
+  const size = buffer.length;
+  const limit = Math.min(Math.max(maxBytes, 1), MAX_RECORDED_BODY_BYTES);
+  const truncated = size > limit;
+  const kept = truncated
+    ? trimToUtf8Boundary(buffer.subarray(0, limit))
+    : buffer;
+
+  if (isBinaryContentType(contentType) || !isProbablyText(kept)) {
+    return { type: 'binary', size };
+  }
+
+  const text = kept.toString('utf8');
+  const jsonLike = isJsonContentType(contentType) || looksLikeJson(text);
+
+  if (jsonLike && truncated) {
+    // A truncated JSON body cannot be parsed, and text redaction cannot cover
+    // non-string values (arrays, objects, numbers), so no value is kept.
+    return { type: 'json', size, truncated: true };
+  }
+
+  if (jsonLike) {
+    try {
+      return {
+        type: 'json',
+        size,
+        value: redactJsonValue(JSON.parse(text)),
+      };
+    } catch {
+      // JSON-like text that does not parse cannot be redacted reliably, so
+      // the value is withheld instead of being recorded unredacted.
+      return { type: 'text', size, redacted: true };
+    }
+  }
+
+  return {
+    type: 'text',
+    size,
+    ...(truncated ? { truncated: true } : {}),
+    value: redactFormBody(text, contentType),
+  };
+}
+
+/**
+ * Redacts sensitive values in a form-encoded text body.
+ *
+ * @param text - The body text.
+ * @param contentType - The request content type, if known.
+ * @returns The text with sensitive form field values redacted.
+ */
+function redactFormBody(text: string, contentType?: string): string {
+  const mediaType = contentType?.split(';')[0]?.trim().toLowerCase();
+  if (mediaType !== 'application/x-www-form-urlencoded') {
+    return text;
+  }
+
+  const params = new URLSearchParams(text);
+  for (const key of new Set(params.keys())) {
+    if (isSensitiveBodyField(key)) {
+      params.set(key, REDACTED_VALUE);
+    }
+  }
+  return params.toString();
+}
+
+/**
+ * Checks whether a content type is JSON.
+ *
+ * @param contentType - The content type header value.
+ * @returns True for `application/json` and `+json` types.
+ */
+function isJsonContentType(contentType?: string): boolean {
+  const mediaType = contentType?.split(';')[0]?.trim().toLowerCase() ?? '';
+  return mediaType === 'application/json' || mediaType.endsWith('+json');
+}
+
+/**
+ * Checks whether a content type is known to be binary.
+ *
+ * @param contentType - The content type header value.
+ * @returns True for image, audio, video, font, octet-stream, protobuf and
+ * multipart bodies.
+ */
+function isBinaryContentType(contentType?: string): boolean {
+  const mediaType = contentType?.split(';')[0]?.trim().toLowerCase() ?? '';
+  return (
+    /^(?:image|audio|video|font)\//u.test(mediaType) ||
+    mediaType === 'application/octet-stream' ||
+    mediaType.includes('protobuf') ||
+    mediaType.startsWith('multipart/')
+  );
+}
+
+/**
+ * Checks whether text starts like a JSON object or array.
+ *
+ * @param text - The body text.
+ * @returns True if the first non-space character is `{` or `[`.
+ */
+function looksLikeJson(text: string): boolean {
+  const first = text.trimStart()[0];
+  return first === '{' || first === '[';
+}
+
+/**
+ * Checks whether a buffer is probably UTF-8 text. A NUL byte, or a body that
+ * does not decode as valid UTF-8, is treated as binary.
+ *
+ * @param buffer - The body bytes.
+ * @returns True if the bytes look like text.
+ */
+function isProbablyText(buffer: Buffer): boolean {
+  if (buffer.includes(0)) {
+    return false;
+  }
+
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Drops a multi-byte UTF-8 character that was cut off at the end of a
+ * truncated buffer.
+ *
+ * @param buffer - The truncated body bytes.
+ * @returns The buffer, ending on a UTF-8 character boundary.
+ */
+function trimToUtf8Boundary(buffer: Buffer): Buffer {
+  // A UTF-8 character is at most 4 bytes, so at most 3 bytes can dangle.
+  for (let drop = 0; drop <= 3 && drop < buffer.length; drop++) {
+    const candidate = buffer.subarray(0, buffer.length - drop);
+    if (isProbablyText(candidate)) {
+      return candidate;
+    }
+  }
+  return buffer;
+}
+
+/**
+ * Reads request headers with lowercase names, without throwing.
+ *
+ * @param request - The intercepted Playwright request.
+ * @returns The request headers, or an empty object.
+ */
+function readRequestHeaders(
+  request: PlaywrightRequest,
+): Record<string, string> {
+  try {
+    const headers: Record<string, string> = {};
+    for (const [name, value] of Object.entries(request.headers())) {
+      headers[name.toLowerCase()] = value;
+    }
+    return headers;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Reads the request body without throwing.
+ *
+ * @param request - The intercepted Playwright request.
+ * @returns The request body bytes, or null.
+ */
+function readPostDataBuffer(request: PlaywrightRequest): Buffer | null {
+  try {
+    return request.postDataBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads the real status of a forwarded request, without throwing.
+ *
+ * The wait is bounded by {@link FORWARDED_RESPONSE_TIMEOUT_MS} so an
+ * unanswered request cannot leak a pending promise.
+ *
+ * @param request - The forwarded Playwright request.
+ * @returns The response status, or undefined if it is not available.
+ */
+async function readResponseStatus(
+  request: PlaywrightRequest,
+): Promise<number | undefined> {
+  try {
+    const statusPromise = request
+      .response()
+      .then((response) => response?.status())
+      .catch(() => undefined);
+
+    const timeout = new Promise<undefined>((resolve) => {
+      const timer = setTimeout(
+        () => resolve(undefined),
+        FORWARDED_RESPONSE_TIMEOUT_MS,
+      );
+      timer.unref();
+    });
+
+    return await Promise.race([statusPromise, timeout]);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Checks whether a request was sent by a service worker.
+ *
+ * @param request - The intercepted Playwright request.
+ * @returns True if Playwright reports a service worker for the request.
+ */
+function isServiceWorkerRequest(request: PlaywrightRequest): boolean {
+  try {
+    return Boolean(request.serviceWorker());
+  } catch {
+    return false;
+  }
 }

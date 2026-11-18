@@ -53,6 +53,12 @@ export const ANIMATION_SETTLE_GRACE_MS = 250;
  */
 export const TESTID_COLLECT_TIMEOUT_MS = 5_000;
 
+/**
+ * Maximum number of iframes whose content a page snapshot includes (hidden
+ * and empty iframes do not count). Their refs use `f1` to `f<max>`.
+ */
+export const MAX_SNAPSHOT_FRAMES = 5;
+
 /** Maximum interval between idle-shutdown checks */
 export const MAX_IDLE_CHECK_INTERVAL_MS = 60_000;
 

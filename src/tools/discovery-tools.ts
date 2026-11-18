@@ -10,6 +10,11 @@ import type {
 import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
 import {
+  nextFrameRefPrefix,
+  resolveFrameSelector,
+  resolveWithinScope,
+} from './utils/frame-scope.js';
+import {
   abortedResponse,
   createToolError,
   createToolSuccess,
@@ -127,7 +132,21 @@ export async function describeScreenTool(
   }
   const { driver } = driverResult;
 
+  const frame = resolveWithinScope(input.frame);
+  if (frame && driver.getPlatform() !== 'browser') {
+    return createToolError(
+      ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
+      `frame is not supported on ${driver.getPlatform()} platform`,
+    );
+  }
+
   try {
+    const frameTarget = frame
+      ? {
+          selector: resolveFrameSelector(frame, context.refMap),
+          refPrefix: nextFrameRefPrefix(context.refMap),
+        }
+      : undefined;
     // Mobile: one device snapshot for both the test IDs and the tree, when
     // the driver supports it, read in parallel with the app state. The
     // browser stays sequential: both reads use the page.
@@ -141,8 +160,11 @@ export async function describeScreenTool(
     if (aborted) {
       return aborted;
     }
-    const { nodes, refMap } = screen ?? (await driver.getAccessibilityTree());
-    context.sessionManager.setRefMap(refMap);
+    const { nodes, refMap } =
+      screen ?? (await driver.getAccessibilityTree(undefined, frameTarget));
+    context.sessionManager.setRefMap(
+      frameTarget ? new Map([...context.refMap, ...refMap]) : refMap,
+    );
 
     const trackedPages = context.sessionManager.getTrackedPages();
     let activeTab: DescribeScreenResult['activeTab'];

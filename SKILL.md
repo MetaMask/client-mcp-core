@@ -257,6 +257,28 @@ On mobile (iOS, Android), the tree is a flat list in screen order. A node is a n
 
 Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails instead of acting on another element. The snapshot stamps each element with a token in its `data-mm-ref` attribute, and the ref selects that token, so two "Send" buttons get two refs that each click their own button, and a price in the name can change without breaking the ref. A ref fails at once with `MM_TARGET_NOT_FOUND` when its element was removed or re-mounted, or when the element now shows other text (a "Next" button became "Confirm"); changing numbers such as `$2.42`, `3.92%` or `00:59` do not count, plain integers (`Account 1`) do. Take a new snapshot when that happens. An element that could not be stamped gets a `role=`/`text=` ref with the exact, case-sensitive name; if a click on it fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
+**Inside iframes (browser).** `describe-screen` also lists what is inside visible iframes (for example the candlestick chart, `advanced-chart-iframe`), after the page's nodes. The iframe element itself has a ref with role `iframe` (`e7`). The refs inside it start with the iframe number, `f1e1`, `f1e2`, ... for the first iframe, `f2e1`, ... for the second, and their `path` ends with `iframe:<title>`. Use them like any ref: `mm click f1e2`, `mm get-text f1e5`. Cross-origin iframes work too.
+
+To look at one iframe only, or to act on an element in it by test ID or selector, pass `--frame` with the iframe element (`testid:<id>`, `selector:<css>`, a bare test ID, or the iframe's ref):
+
+```
+mm describe-screen --frame testid:advanced-chart-iframe      # only the chart's nodes, added to the current refs
+mm describe-screen --frame e7                                 # the same, by the iframe's ref
+mm hover --frame testid:advanced-chart-iframe --selector canvas
+mm get-text --frame testid:advanced-chart-iframe --selector '<css in the chart>'
+mm wait-for --frame testid:advanced-chart-iframe --selector 'text=No chart data'
+mm screenshot --frame testid:advanced-chart-iframe            # the iframe; add --selector for an element in it
+```
+
+`--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. `scroll-to-element` and `long-press` reject it. `describe-screen --frame` keeps the refs you already have and numbers the iframe's refs from `f6` up (`f6e1`, ..., then `f7e1` for the next one), so they never clash with the `f1` to `f5` of page snapshots. Limits:
+
+- Do not combine `--frame` with a ref target or a ref `--within`: an `f1e*` ref already points into its iframe. Use `--testid` or `--selector`.
+- Plain text inside an iframe (such as "No chart data") is not an accessibility node, so it is not in the tree: wait for it with `--selector 'text=...'`.
+- Up to 5 iframes are listed, out of the first 10 on the page; iframes inside iframes are not. Hidden iframes are left out.
+- Inside an iframe, two elements with the same role and name share a selector, so acting on that ref fails in strict mode: use `--frame` with `--testid` or `--selector`.
+- `list-testids` and the `testIds` list cover the page only, not iframes.
+- Browser only: `--frame` fails on mobile.
+
 #### `mm list-testids`
 
 Lists all visible `data-testid` attributes on the current page with text previews.
@@ -288,8 +310,10 @@ mm accessibility-snapshot [--root <selector>]
 Captures a screenshot of the current page.
 
 ```
-mm screenshot [--name <name>]
+mm screenshot [--name <name>] [--selector <css>] [--frame <iframe>]
 ```
+
+`--selector` captures one element. `--frame` (browser) captures an iframe, or with `--selector` the element inside it.
 
 Returns: file path, dimensions.
 
@@ -567,23 +591,25 @@ Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigat
 
 #### `mm mock-network add '<json-rule-or-config>'`
 
-Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and a response body.
+Adds targeted route mocks during an active session. Each rule specifies an HTTP method, URL pattern (exact or glob), and either a mocked response or a `record` opt-in.
 
 ```bash
 mm mock-network add '{"id":"mock-balance","method":"GET","url":"https://api.example.com/v1/balance","response":{"json":{"balance":"100"}}}'
 ```
 
-A rule object requires:
+A rule object requires `id`, `method` and `url`, plus at least one of `response` or `record`:
 
-| Field              | Description                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                      |
-| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                             |
-| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                          |
-| `response.status`  | HTTP status code (default: 200)                                                                                        |
-| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                    |
-| `response.body`    | Text response body (mutually exclusive with `json`)                                                                    |
-| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`) |
+| Field              | Description                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | Stable identifier — adding a rule with an existing id replaces it                                                                |
+| `method`           | HTTP method to match (e.g., `GET`, `POST`)                                                                                       |
+| `url`              | Absolute URL or URL glob (e.g., `https://api.example.com/**`)                                                                    |
+| `response`         | Mocked response. Omit it to forward the real request unchanged and only record it; `record` is then required                     |
+| `response.status`  | HTTP status code (default: 200)                                                                                                  |
+| `response.json`    | JSON response body (mutually exclusive with `body`)                                                                              |
+| `response.body`    | Text response body (mutually exclusive with `json`)                                                                              |
+| `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`)           |
+| `record`           | Optional. Records details of the requests this rule matches. Off by default. See [Record request bodies](#record-request-bodies) |
 
 You can also pass an array of rules or an object with a `routes` array:
 
@@ -592,12 +618,39 @@ mm mock-network add '[{"id":"r1","method":"GET","url":"https://a.com/x","respons
 mm mock-network add '{"routes":[...]}'
 ```
 
-Unmatched same-origin requests are continued unchanged.
+Unmatched same-origin requests are continued unchanged. A rule with `record` and no `response` matches the real request, records it, and forwards it unchanged with the real response. `matched: true` means a rule matched, whether it mocked the response or forwarded it. The record gets the real `status` once the response arrives (within 5 seconds); otherwise `status` is left out. This is the way to capture real traffic such as Segment batches, quotes or RPC calls without inventing a response:
+
+```bash
+mm mock-network add '{"id":"token-list","method":"GET","url":"https://token.api.cx.metamask.io/**","record":{"body":true}}'
+```
 
 A mock only affects requests made after it is added. Data the Extension already fetched stays cached in memory, and waiting or going Home and back does not fetch it again. So:
 
 - Add mocks before you first open the screen that uses them.
 - After you add, change or clear a rule for data that is already loaded, run `mm reload`, then check `mm mock-network requests` for a hit.
+
+##### Record request bodies
+
+Add `record` to a rule to keep the body (and optionally the headers) of each request the rule matches. Keep `response` when the flow needs a mocked response; leave it out to record the real request and forward it unchanged. Use it to check what the Extension sent, for example which analytics events went to Segment:
+
+```bash
+# Mock the response and record what the Extension sent.
+mm mock-network add '{"id":"segment","method":"POST","url":"https://api.segment.io/**","response":{"json":{"success":true}},"record":{"body":true}}'
+# Record the real request and response without mocking them (quotes, token API, RPC).
+mm mock-network add '{"id":"quotes","method":"GET","url":"https://bridge.api.cx.metamask.io/getQuote**","record":{"body":true,"headers":true}}'
+# ...do the flow that should send the events...
+mm mock-network requests --url api.segment.io --bodies
+```
+
+| Field                 | Description                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record.body`         | Record the request body. JSON is parsed. Other text is kept as text. Binary bodies record only their size                                                         |
+| `record.headers`      | Record request headers. The values of `authorization`, `cookie` and any header with `token`, `secret`, `key` or `auth` in the name are replaced with `[REDACTED]` |
+| `record.maxBodyBytes` | Bytes to keep per body (default 65536, max 524288). A longer body is cut and marked `"truncated": true`                                                           |
+
+Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`, whatever the value type (string, array, object or number). A JSON body cut by `maxBodyBytes` keeps no value: it is recorded as `{"type":"json","size":N,"truncated":true}`. Raise `maxBodyBytes` to read it. JSON-like text that does not parse is recorded as `{"type":"text","size":N,"redacted":true}` with no value. Only matched requests are recorded with bodies. Misses never store a body. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+
+Segment sends events in batches, and production builds wait up to about 5 seconds before they send. If no batch shows up, wait and check again.
 
 #### `mm mock-network clear`
 
@@ -620,12 +673,16 @@ mm mock-network list
 Shows recorded matched and missed requests.
 
 ```bash
-mm mock-network requests [--limit <n>]
+mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 ```
 
-| Flag          | Description                                |
-| ------------- | ------------------------------------------ |
-| `--limit <n>` | Maximum number of recent records to return |
+| Flag                   | Description                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `--limit <n>`          | Maximum number of recent records to return (applied after `--url`)                               |
+| `--url <glob-or-text>` | Only return requests whose URL matches this glob (`*`, `**`) or, without `*`, contains this text |
+| `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
+
+Without `--bodies` the output is the same as before: no bodies or headers. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
@@ -753,7 +810,7 @@ Every interaction command (`click`, `type`, `get-text`, `inspect`, `wait-for`) n
 
 | Method           | Format              | Stability                       | When to use                                          |
 | ---------------- | ------------------- | ------------------------------- | ---------------------------------------------------- |
-| **a11y ref**     | `e1`, `e2`, ...     | Ephemeral (per describe-screen) | Default — use refs from the latest `describe-screen` |
+| **a11y ref**     | `e1`, `f1e2`, ...   | Ephemeral (per describe-screen) | Default — use refs from the latest `describe-screen` |
 | **testId**       | `data-testid` value | Stable across sessions          | When you know the testId from earlier output         |
 | **CSS selector** | Any CSS selector    | Fragile                         | Last resort fallback                                 |
 

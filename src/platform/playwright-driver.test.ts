@@ -684,6 +684,23 @@ describe('PlaywrightPlatformDriver', () => {
       expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
         expect.anything(),
         '#main-content',
+        undefined,
+      );
+    });
+
+    it('passes the frame to collectTrimmedA11ySnapshot', async () => {
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        { nodes: [], refMap: new Map() } as any,
+      );
+      const frame = { selector: '[data-testid="chart"]', refPrefix: 'f1' };
+
+      const driver = createDriver();
+      await driver.getAccessibilityTree(undefined, frame);
+
+      expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        undefined,
+        frame,
       );
     });
   });

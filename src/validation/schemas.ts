@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { A11Y_REF_PATTERN } from './a11y-ref.js';
 import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 import {
@@ -60,10 +61,11 @@ export function omitObserve<Input>(input: Input): Input {
 
 export const a11yRefPattern = z
   .string()
-  .regex(/^e[0-9]+$/u)
+  .regex(A11Y_REF_PATTERN)
   .describe(
-    'Accessibility ref from accessibility_snapshot (e.g., e1, e2). ' +
-      'These refs are ephemeral and only valid within the current screen state.',
+    'Accessibility ref from accessibility_snapshot (e.g., e1, e2; f1e3 for ' +
+      'an element inside the first iframe). These refs are ephemeral and ' +
+      'only valid within the current screen state.',
   );
 
 export const targetSelectionSchema = z
@@ -123,30 +125,67 @@ const networkMockResponseSchema = z
     },
   );
 
-export const networkMockRouteRuleSchema = z.object({
-  id: z.string().min(1).describe('Stable identifier for this mock route'),
-  method: z
-    .string()
-    .min(1)
-    .transform((method) => method.toUpperCase())
-    .describe('HTTP method to match'),
-  url: z
-    .string()
-    .min(1)
-    .refine(
-      (value) => {
-        try {
-          const parsed = new URL(value);
-          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-        } catch {
-          return false;
-        }
-      },
-      { message: 'url must be an absolute http(s) URL or URL glob' },
-    )
-    .describe('Absolute URL or URL glob to match'),
-  response: networkMockResponseSchema,
-});
+export const networkMockRouteRuleSchema = z
+  .object({
+    id: z.string().min(1).describe('Stable identifier for this mock route'),
+    method: z
+      .string()
+      .min(1)
+      .transform((method) => method.toUpperCase())
+      .describe('HTTP method to match'),
+    url: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => {
+          try {
+            const parsed = new URL(value);
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+          } catch {
+            return false;
+          }
+        },
+        { message: 'url must be an absolute http(s) URL or URL glob' },
+      )
+      .describe('Absolute URL or URL glob to match'),
+    response: networkMockResponseSchema
+      .describe(
+        'Mocked response. Omit it to forward the real request unchanged; then record is required.',
+      )
+      .optional(),
+    record: z
+      .object({
+        body: z
+          .boolean()
+          .describe(
+            'Record the request body. JSON is parsed; secrets such as writeKey are redacted; binary bodies record only their size.',
+          )
+          .optional(),
+        headers: z
+          .boolean()
+          .describe(
+            'Record request headers. Authorization, cookie and any token/secret/key/auth header values are redacted.',
+          )
+          .optional(),
+        maxBodyBytes: z
+          .number()
+          .int()
+          .min(1)
+          .max(512 * 1024)
+          .describe(
+            'Maximum body bytes to keep per request (default 65536). Longer bodies are cut and marked truncated.',
+          )
+          .optional(),
+      })
+      .strict()
+      .describe(
+        'Opt-in capture of request details for requests that match this rule. Off by default.',
+      )
+      .optional(),
+  })
+  .refine((data) => data.response !== undefined || data.record !== undefined, {
+    message: 'A mock-network rule must have at least one of response or record',
+  });
 
 export const networkMockConfigSchema = z.object({
   routes: z.array(networkMockRouteRuleSchema).default([]),
@@ -390,6 +429,31 @@ export const waitForNotificationInputSchema = z.object({
     .describe('Timeout in milliseconds to wait for notification popup'),
 });
 
+export const frameTargetSchema = z
+  .object({
+    a11yRef: a11yRefPattern.optional(),
+    testId: z.string().min(1).optional(),
+    selector: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      const provided = [data.a11yRef, data.testId, data.selector].filter(
+        Boolean,
+      );
+      return provided.length === 1;
+    },
+    {
+      message:
+        'Exactly one of a11yRef, testId, or selector must be provided in frame',
+    },
+  )
+  .describe(
+    'Browser only: the iframe element (a11yRef, testId, or selector) whose ' +
+      'content the testId or selector target, and within, are in. Refs from ' +
+      'a snapshot (f1e3) already point into their frame: do not combine ' +
+      'frame with a ref target or a ref within.',
+  );
+
 export const listTestIdsInputSchema = z.object({
   limit: z
     .number()
@@ -422,6 +486,16 @@ export const describeScreenInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded screenshot in response'),
+  frame: frameTargetSchema
+    .optional()
+    .describe(
+      'Browser only: describe the content of this iframe instead of the ' +
+        'page. Its refs use a frame number page snapshots never use (f6e1, ' +
+        'f6e2, ..., then f7 for the next one; page snapshots use f1 to f5) ' +
+        'and are added to the current refs. The ' +
+        'page snapshot already includes visible iframes and gives each ' +
+        'iframe element a ref; use frame to see only one.',
+    ),
 });
 
 export const screenshotInputSchema = z.object({
@@ -443,6 +517,11 @@ export const screenshotInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded image in response'),
+  frame: frameTargetSchema
+    .optional()
+    .describe(
+      'Browser only: capture this iframe, or the selector element inside it',
+    ),
 });
 
 export const withinTargetSchema = z
@@ -484,6 +563,7 @@ export const clickInputSchema = targetSelectionSchema.and(
           'MM_TARGET_NOT_FOUND; with it, the click waits for the target to appear',
       ),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
     dismissKeyboard: z
       .boolean()
       .optional()
@@ -505,6 +585,7 @@ export const typeInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -518,6 +599,7 @@ export const waitForInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -531,6 +613,7 @@ export const getTextInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -553,6 +636,7 @@ export const inspectInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for element to become visible'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -566,6 +650,7 @@ export const hoverInputSchema = targetSelectionSchema.and(
       .default(15000)
       .describe('Timeout to wait for the element and hover it'),
     within: withinTargetSchema.optional(),
+    frame: frameTargetSchema.optional(),
   }),
 );
 
@@ -737,6 +822,19 @@ export const mockNetworkInputSchema = z.union([
   z.object({
     action: z.literal('requests'),
     limit: z.number().int().min(1).max(500).optional(),
+    url: z
+      .string()
+      .min(1)
+      .describe(
+        'Only return requests whose URL matches this glob (* and **) or, without *, contains this text',
+      )
+      .optional(),
+    includeBodies: z
+      .boolean()
+      .describe(
+        'Include recorded request headers and bodies (only for rules with record options)',
+      )
+      .optional(),
   }),
 ]);
 
