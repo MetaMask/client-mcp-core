@@ -2,7 +2,11 @@ import type {
   ScreenshotResult,
   ExtensionState,
 } from '../capabilities/types.js';
-import type { TestIdItem, A11yNodeTrimmed } from '../tools/types/discovery.js';
+import type {
+  TestIdItem,
+  A11yNodeTrimmed,
+  FrameSnapshotTarget,
+} from '../tools/types/discovery.js';
 import type {
   CdpInput,
   DeviceButtonName,
@@ -198,8 +202,14 @@ export type IPlatformDriver = {
     signal?: AbortSignal,
   ): Promise<HoverActionResult>;
 
+  /**
+   * @param rootSelector - Optional CSS selector that scopes the tree.
+   * @param frame - Browser only: an iframe element and the prefix of the
+   * refs of its nodes; the tree is then the content of that iframe only.
+   */
   getAccessibilityTree(
     rootSelector?: string,
+    frame?: FrameSnapshotTarget,
   ): Promise<{ nodes: A11yNodeTrimmed[]; refMap: Map<string, string> }>;
 
   getTestIds(limit?: number): Promise<TestIdItem[]>;

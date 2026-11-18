@@ -31,8 +31,8 @@ const INTERACTION_TOOLS: ReadonlySet<string> = new Set([
 export type ActionTimeoutOptions = {
   /**
    * The active platform. `scroll_to_element` only has a timeout on the
-   * browser: on mobile it swipes up to `maxAttempts` and has no timeout of
-   * its own, so it keeps the queue default.
+   * browser: on mobile it swipes up to `maxAttempts` and ignores `timeoutMs`,
+   * so it keeps the queue default even with an explicit `timeoutMs`.
    */
   platform?: string;
 };
@@ -192,6 +192,15 @@ export function resolveActionTimeoutMs(
     // too: the batch deadline is the only action budget run_steps has.
     return resolveBatchActionTimeoutMs(input);
   }
+  if (
+    toolName === 'scroll_to_element' &&
+    options?.platform !== undefined &&
+    options.platform !== 'browser'
+  ) {
+    // The mobile driver ignores timeoutMs, so a queue budget derived from it
+    // would expire while the swipes carry on.
+    return undefined;
+  }
   const record =
     typeof input === 'object' && input !== null
       ? (input as Record<string, unknown>)
@@ -207,13 +216,6 @@ export function resolveActionTimeoutMs(
     return DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS;
   }
   if (INTERACTION_TOOLS.has(toolName)) {
-    if (
-      toolName === 'scroll_to_element' &&
-      options?.platform !== undefined &&
-      options.platform !== 'browser'
-    ) {
-      return undefined;
-    }
     return DEFAULT_INTERACTION_TIMEOUT_MS;
   }
   return undefined;
