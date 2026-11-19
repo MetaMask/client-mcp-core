@@ -1778,7 +1778,7 @@ describe('MobilePlatformDriver', () => {
       expect(items[0].visible).toBe(true);
     });
 
-    it('assumes visibility for elements with zero-size frames', async () => {
+    it('marks elements with zero-size frames as not visible', async () => {
       const backend = createMockBackend({
         getWindowSize: vi.fn().mockResolvedValue({ width: 402, height: 874 }),
         snapshot: vi.fn().mockResolvedValue({
@@ -1798,7 +1798,34 @@ describe('MobilePlatformDriver', () => {
 
       const items = await driver.getTestIds();
 
-      expect(items[0].visible).toBe(true);
+      expect(items[0].visible).toBe(false);
+    });
+
+    it('marks Android zero-height off-screen frames as not visible', async () => {
+      // Android clips an off-screen node to zero height at the edge of its
+      // scroll container (issue #103: wallet home reports import-token-button
+      // at y 6936, height 0). A tap refuses such a frame; visible must too.
+      const backend = createMockBackend({
+        getWindowSize: vi.fn().mockResolvedValue({ width: 1080, height: 2400 }),
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'android',
+          hierarchy: [
+            makeElement({
+              type: 'Button',
+              identifier: 'import-token-button',
+              label: 'Import a token',
+              frame: { x: 0, y: 6936, width: 1080, height: 0 },
+            }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const items = await driver.getTestIds();
+
+      expect(items[0].visible).toBe(false);
     });
 
     it('respects limit', async () => {
