@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- feat: record console and network events in a per-session buffer with one shared cursor, so `mm events mark` bookmarks both kinds and reads report `hasMore`, `gap` and a page summary ([#109](https://github.com/MetaMask/client-mcp-core/pull/109))
-- feat: deliver console and network CDP events from every browser page and the Extension service worker to event subscribers, re-attaching after page, session and MV3 worker restarts ([#107](https://github.com/MetaMask/client-mcp-core/pull/107))
 - feat: `mm` sees and acts inside iframes on the browser, including cross-origin ones such as the candlestick chart. A page snapshot (`describe_screen`, `accessibility_snapshot` without `rootSelector`, observations) lists the content of up to 5 visible iframes after the page, with refs namespaced by frame (`f1e1`, `f2e1`, ...) and a `path` ending in `iframe:<title>`; these refs act inside their iframe. Each iframe element also gets a ref, usable as `frame`. `describe_screen`, `click`, `type`, `hover`, `wait_for`, `get_text`, `inspect` and `screenshot` take `frame` (`--frame <iframe>`) to work inside one iframe, the way Playwright's `frameLocator` does. `mm screenshot` adds `--selector` ([#99](https://github.com/MetaMask/client-mcp-core/pull/99))
 
 ## [0.14.0]
