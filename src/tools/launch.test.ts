@@ -254,6 +254,74 @@ describe('launchTool', () => {
     });
   });
 
+  describe('hermes session defaults', () => {
+    it('keeps the launch metroPort and device on the session driver', async () => {
+      const context = createMockContext({ hasActive: false });
+      const setHermesDefaults = vi.fn();
+      context.sessionManager.getPlatformDriver = () =>
+        ({ setHermesDefaults }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+
+      const result = await launchTool(
+        { platform: 'ios', metroPort: 8085, deviceId: 'UDID-1' },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(setHermesDefaults).toHaveBeenCalledWith({
+        metroPort: 8085,
+        deviceId: 'UDID-1',
+      });
+    });
+
+    it('does not touch the driver when the launch sets no Hermes default', async () => {
+      const context = createMockContext({ hasActive: false });
+      const setHermesDefaults = vi.fn();
+      context.sessionManager.getPlatformDriver = () =>
+        ({ setHermesDefaults }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+
+      await launchTool({ stateMode: 'default' }, context);
+
+      expect(setHermesDefaults).not.toHaveBeenCalled();
+    });
+
+    it('works with a driver that has no Hermes defaults (browser)', async () => {
+      const context = createMockContext({ hasActive: false });
+      context.sessionManager.getPlatformDriver = () =>
+        ({}) as unknown as NonNullable<ToolContext['driver']>;
+
+      const result = await launchTool(
+        { platform: 'browser', metroPort: 8085 },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('does not apply defaults when the launch fails', async () => {
+      const context = createMockContext({ hasActive: false });
+      const setHermesDefaults = vi.fn();
+      context.sessionManager.getPlatformDriver = () =>
+        ({ setHermesDefaults, dispose: vi.fn() }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+      vi.spyOn(context.sessionManager, 'launch').mockRejectedValue(
+        new Error('device failed'),
+      );
+
+      const result = await launchTool(
+        { platform: 'ios', metroPort: 8085 },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      expect(setHermesDefaults).not.toHaveBeenCalled();
+    });
+  });
+
   describe('session already running', () => {
     it('returns error when session already active', async () => {
       const context = createMockContext({ hasActive: true });

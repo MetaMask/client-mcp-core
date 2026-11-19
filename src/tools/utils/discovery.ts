@@ -1352,6 +1352,11 @@ async function snapshotFrame(
  * `f1e2`, ... With `frame`, the snapshot holds only the content of that
  * iframe, with refs `<refPrefix>e1`, ...
  *
+ * Runs on a short-lived session: the snapshot enables the `Accessibility`
+ * domain and disables it afterwards, so it must not share the persistent
+ * session of the CDP manager (a concurrent or later listener on that session
+ * would see the domain turned off).
+ *
  * @param page The Playwright page to snapshot
  * @param rootSelector Optional CSS selector to scope the snapshot to a specific element
  * @param frame Optional iframe element: snapshot only its content

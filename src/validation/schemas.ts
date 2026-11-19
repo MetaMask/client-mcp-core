@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { A11Y_REF_PATTERN } from './a11y-ref.js';
 import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
-import { DEFAULT_INSPECT_STYLES } from '../tools/utils/constants.js';
+import {
+  DEFAULT_CDP_TIMEOUT_MS,
+  DEFAULT_INSPECT_STYLES,
+  DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS,
+} from '../tools/utils/constants.js';
 
 export const observeLevelSchema = z
   .enum(OBSERVE_LEVELS)
@@ -421,7 +425,7 @@ export const waitForNotificationInputSchema = z.object({
     .int()
     .min(1000)
     .max(60000)
-    .default(15000)
+    .default(DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS)
     .describe('Timeout in milliseconds to wait for notification popup'),
 });
 
@@ -749,11 +753,12 @@ export const runStepsInputSchema = z.object({
     .min(1000)
     .max(30_000)
     .describe(
-      'Overall timeout for the batch in milliseconds. ' +
+      'Overall deadline for the batch in milliseconds. ' +
         'When exceeded, remaining steps are marked as skipped and partial results are returned. ' +
-        'The deadline is checked between steps. Capped at 30 000, the default request limit of ' +
-        'the queue and the CLI; to get partial results, leave room for the step in progress ' +
-        'and the observation (e.g. 20 000).',
+        'The deadline is checked between steps, so the step in progress always finishes: each step ' +
+        'keeps its own timeout (15 000 by default; `wait_for` accepts up to 120 000). ' +
+        'The daemon queue and the CLI cover this deadline plus the slowest step, so a batch that ' +
+        'stops at its deadline still returns its partial results. Capped at 30 000.',
     )
     .optional(),
   // Removed in favour of `observe`. Rejected (not ignored) so old callers
@@ -851,7 +856,7 @@ export const cdpInputSchema = z.object({
     .int()
     .min(1000)
     .max(30_000)
-    .default(30_000)
+    .default(DEFAULT_CDP_TIMEOUT_MS)
     .describe(
       'Per-command timeout in milliseconds. ' +
         'Capped at 30 000 to stay within the server request-queue ceiling.',
@@ -873,13 +878,23 @@ export const cdpInputSchema = z.object({
     )
     .optional(),
   target: z
-    .enum(['hermes', 'android-webview'])
-    .default('hermes')
+    .enum(['page', 'sw', 'hermes', 'android-webview'])
     .describe(
-      'Mobile only: CDP target. "hermes" (default) drives the React Native ' +
-        'JS runtime via Metro; "android-webview" drives a debuggable in-app ' +
-        'Android WebView via adb (DOM/Page/Network available). Ignored on browser.',
-    ),
+      'CDP target. Browser: "page" (default) is the active page; "sw" is ' +
+        'the Extension service worker. Mobile: "hermes" (default) drives ' +
+        'the React Native JS runtime via Metro; "android-webview" drives a ' +
+        'debuggable in-app Android WebView via adb (DOM/Page/Network ' +
+        'available). Browser rejects the mobile targets and mobile rejects ' +
+        '"page"/"sw".',
+    )
+    .optional(),
+  fresh: z
+    .boolean()
+    .describe(
+      'Browser only: use a one-shot CDP session for this command and detach ' +
+        'it afterwards, instead of the persistent session shared across calls.',
+    )
+    .optional(),
   urlFilter: z
     .string()
     .min(1)
