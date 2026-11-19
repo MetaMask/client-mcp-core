@@ -250,6 +250,36 @@ describe('PlaywrightPlatformDriver', () => {
       });
     });
 
+    it('does not look for the label when the signal aborted during the target wait', async () => {
+      const locator = createMockLocator();
+      const controller = new AbortController();
+      const reason = new Error('Tool execution timed out');
+      vi.spyOn(discoveryModule, 'waitForTarget').mockImplementation(
+        async () => {
+          controller.abort(reason);
+          return locator as any;
+        },
+      );
+      const findSpy = vi.spyOn(
+        hiddenControlModule,
+        'findLabelForHiddenControl',
+      );
+
+      const driver = createDriver();
+      await expect(
+        driver.click(
+          'testId',
+          'toggle',
+          new Map(),
+          5000,
+          undefined,
+          controller.signal,
+        ),
+      ).rejects.toBe(reason);
+      expect(findSpy).not.toHaveBeenCalled();
+      expect(locator.click).not.toHaveBeenCalled();
+    });
+
     it('does not click when the signal aborts while finding the label', async () => {
       const locator = createMockLocator();
       const controller = new AbortController();

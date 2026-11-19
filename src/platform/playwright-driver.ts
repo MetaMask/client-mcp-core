@@ -131,10 +131,10 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       );
     }
 
+    // The request may have timed out while we waited for the target.
+    signal?.throwIfAborted();
     const label = await findLabelForHiddenControl(locator, remaining);
     const labelResult = label ? { clickedLabel: true } : {};
-
-    // The request may have timed out while we waited for the target.
     signal?.throwIfAborted();
     try {
       await (label ?? locator).click({ timeout: remaining });

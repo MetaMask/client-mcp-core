@@ -7,6 +7,8 @@ import {
 
 const CHECKABLE = 'xpath=self::input[@type="checkbox" or @type="radio"]';
 const WRAPPING_LABEL = 'xpath=ancestor::label[1]';
+const INTERACTIVE_DESCENDANT =
+  'xpath=.//*[self::a[@href] or self::button or self::select or self::textarea or @role="link" or @role="button"]';
 
 type FakeLocator = {
   boundingBox: ReturnType<typeof vi.fn>;
@@ -150,6 +152,56 @@ describe('findLabelForHiddenControl', () => {
     expect(
       await findLabelForHiddenControl(target as any, 5000),
     ).toBeUndefined();
+  });
+
+  it('returns undefined when the wrapping label has a link inside', async () => {
+    const label = fakeLocator({
+      count: 1,
+      children: { [INTERACTIVE_DESCENDANT]: fakeLocator({ count: 1 }) },
+    });
+    const control = fakeLocator({
+      count: 1,
+      id: 'agree',
+      children: {
+        [WRAPPING_LABEL]: label,
+        'xpath=ancestor::*[last()]//label[@for="agree"]': fakeLocator({
+          count: 1,
+        }),
+      },
+    });
+    const target = fakeLocator({
+      box: HIDDEN_BOX,
+      children: { [CHECKABLE]: control },
+    });
+
+    expect(
+      await findLabelForHiddenControl(target as any, 5000),
+    ).toBeUndefined();
+    expect(label.locator).toHaveBeenCalledWith(INTERACTIVE_DESCENDANT);
+    expect(control.getAttribute).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined when the label for the id has a button inside', async () => {
+    const label = fakeLocator({
+      count: 1,
+      children: { [INTERACTIVE_DESCENDANT]: fakeLocator({ count: 2 }) },
+    });
+    const control = fakeLocator({
+      count: 1,
+      id: 'agree',
+      children: {
+        'xpath=ancestor::*[last()]//label[@for="agree"]': label,
+      },
+    });
+    const target = fakeLocator({
+      box: HIDDEN_BOX,
+      children: { [CHECKABLE]: control },
+    });
+
+    expect(
+      await findLabelForHiddenControl(target as any, 5000),
+    ).toBeUndefined();
+    expect(label.locator).toHaveBeenCalledWith(INTERACTIVE_DESCENDANT);
   });
 
   it('returns undefined when several labels point at the id', async () => {

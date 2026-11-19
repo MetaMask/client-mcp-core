@@ -11,6 +11,13 @@ const CHECKABLE_INPUT_XPATH =
   'xpath=self::input[@type="checkbox" or @type="radio"]';
 
 /**
+ * A click on the centre of a label with a link or button inside can hit that
+ * element instead of toggling the input, so such labels are not clicked.
+ */
+const INTERACTIVE_DESCENDANT_XPATH =
+  'xpath=.//*[self::a[@href] or self::button or self::select or self::textarea or @role="link" or @role="button"]';
+
+/**
  * Quotes a value as an XPath 1.0 string literal.
  *
  * @param value The value to quote.
@@ -41,7 +48,8 @@ export function toXPathStringLiteral(value: string): string {
  * @param locator The resolved click target.
  * @param timeoutMs The timeout for reading the target's attributes.
  * @returns The label locator, or undefined when the target is not a visually
- * hidden checkbox or radio with exactly one label.
+ * hidden checkbox or radio with exactly one label, or when that label has a
+ * link, button or other interactive element inside.
  */
 export async function findLabelForHiddenControl(
   locator: Locator,
@@ -63,7 +71,7 @@ export async function findLabelForHiddenControl(
 
   const wrappingLabel = control.locator('xpath=ancestor::label[1]');
   if ((await wrappingLabel.count()) === 1) {
-    return wrappingLabel;
+    return withoutInteractiveContent(wrappingLabel);
   }
 
   const id = await control.getAttribute('id', { timeout: timeoutMs });
@@ -73,5 +81,21 @@ export async function findLabelForHiddenControl(
   const forLabel = control.locator(
     `xpath=ancestor::*[last()]//label[@for=${toXPathStringLiteral(id)}]`,
   );
-  return (await forLabel.count()) === 1 ? forLabel : undefined;
+  if ((await forLabel.count()) !== 1) {
+    return undefined;
+  }
+  return withoutInteractiveContent(forLabel);
+}
+
+/**
+ * Returns the label unless it has an interactive element inside.
+ *
+ * @param label The label to check.
+ * @returns The label, or undefined when it has interactive content.
+ */
+async function withoutInteractiveContent(
+  label: Locator,
+): Promise<Locator | undefined> {
+  const interactive = label.locator(INTERACTIVE_DESCENDANT_XPATH);
+  return (await interactive.count()) > 0 ? undefined : label;
 }
