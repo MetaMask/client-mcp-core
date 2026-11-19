@@ -90,6 +90,8 @@ Later visits to the same tab, and the first visit to a fast screen, show the new
 
 The `observations.a11y.nodes` field contains **only the changed and new nodes** (not all nodes). The baseline resets after `describe-screen`, `accessibility-snapshot`, `launch`, or `cleanup` — the next observation is a full compact one (no `diff` field). A `full` observation also becomes the new baseline; `none` leaves the baseline unchanged. When the diff would be larger than the full observation, the full option-filtered observation is returned instead (no `diff` field).
 
+**Observation timeout:** an observation that takes longer than 8 s never fails the action. The response stays `ok` and carries `observations: { "timedOut": true }` with no tree, and it does not replace the diff baseline. Treat the screen as unknown and run `mm describe-screen` before using refs.
+
 ### Using inline observations (mutating tools)
 
 After a mutating action, the response includes fresh screen data:
@@ -341,6 +343,8 @@ Use `--within` to scope the target inside a parent element. Values use the forma
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 
+**Browser hidden checkbox or radio:** toggles often keep the real `<input type="checkbox">` (and its test id) at 1×1 pixel under decorative elements, for example `mm click --testid basic-functionality-toggle`. When the target is such an input and it has one label (a wrapping `<label>` or `<label for="<id>">`), the label is clicked instead, which toggles the input, and the response includes `clickedLabel: true`. A hidden input without a label, or whose label has a link or button inside (for example "I agree to the terms"), is clicked as before.
+
 **Mobile:** before tapping, iOS hit-tests the tap point. When another element is on top of the target (the keyboard, a sheet, an overlay), nothing is tapped and the click fails with `MM_TARGET_OBSCURED`; the message names the covering element. A target outside the screen fails with `MM_TARGET_NOT_VISIBLE` (run `mm scroll-to-element` first). `--dismiss-keyboard` closes the keyboard when it is the cover and taps once more (the result has `keyboardDismissed: true`). With an observation (not `--observe none`) the result has `screenChanged`: `false` means the screen looks the same as before the click; that is normal for some taps (the open tab) but a hint for a button that should navigate. `true` does not prove that the app navigated: a small change, such as the tapped button's press feedback, also makes it `true`. To confirm a new screen, check for its test ID (see "the first visit to a tab can return the old screen" above). `screenChanged` is left out when there is no earlier screen to compare with: the first click after `mm launch`, unless `mm describe-screen` or another call that returned an observation ran in between.
 
 ```
@@ -589,7 +593,7 @@ Executes multiple tool invocations in sequence from a JSON array. Each step spec
 mm run-steps '{"steps":[{"tool":"click","args":{"a11yRef":"e3"}},{"tool":"wait_for","args":{"a11yRef":"e5"}}]}'
 ```
 
-Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps; if exceeded, remaining steps are marked as skipped and partial results are returned. The whole `run_steps` call is stopped after 30 s (the request limit), so use a lower `batchTimeoutMs` (for example 20000) to get partial results, and split longer flows into several batches. The summary includes a `skipped` count alongside `succeeded` and `failed`.
+Supports `stopOnError` (halt on first failure) and returns per-step results with timing. A top-level `observe` (`none` / `diff` / `full`, default `diff`) sets the observation collected after the batch; see `run_steps` and `observe` above. Use `batchTimeoutMs` (1000–30000 ms) to set an overall deadline — it is checked between steps, so the step in progress always finishes with its own timeout; when the deadline is exceeded, remaining steps are marked as skipped and partial results are returned. The daemon queue and the CLI wait for the deadline plus the slowest step's own timeout, so the call never aborts mid-step with `MM_QUEUE_TIMEOUT`; without `batchTimeoutMs` it keeps the daemon queue default (30 s, or 180 s when the host sets it). The summary includes a `skipped` count alongside `succeeded` and `failed`.
 
 Tool aliases are supported in steps: `navigate_home` / `navigate-home`, `navigate_settings` / `navigate-settings`, and `navigate_notification` / `navigate-notification` resolve to `navigate` with the appropriate `screen` argument. You can also use `ref` as shorthand for `a11yRef` in step args and within targets.
 
@@ -690,48 +694,63 @@ mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 
 Without `--bodies` the output is the same as before: no bodies or headers. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
 
-#### `mm cdp <method> [params-json] [--timeout <ms>] [--target hermes|android-webview] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
+#### `mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
-Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. For pointer hover use `mm hover` / `mm unhover`, and for the viewport size `mm set-viewport` / `mm reset-viewport`, not `Input.dispatchMouseEvent` or `Emulation.setDeviceMetricsOverride`. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`).
+Sends a raw Chrome DevTools Protocol command against the active session. This is an escape hatch for cases where structured tools are insufficient — e.g., evaluating JavaScript, enabling network tracking, or inspecting the DOM tree. For pointer hover use `mm hover` / `mm unhover`, and for the viewport size `mm set-viewport` / `mm reset-viewport`, not `Input.dispatchMouseEvent` or `Emulation.setDeviceMetricsOverride`. It dispatches through the active platform driver, so it works on **both** browser and mobile sessions — but the target runtime and available methods differ (see the table below). On mobile, `--target` selects between the React Native JS runtime (`hermes`, default) and a debuggable in-app Android WebView (`android-webview`). On the browser, `--target` selects the active page (`page`, default) or the Extension service worker (`sw`); browser commands share a persistent CDP session per target, and `--fresh` uses a one-shot session detached after the command.
 
 ```bash
-# Browser
+# Browser — page (default)
 mm cdp Runtime.evaluate '{"expression":"document.title"}'
 mm cdp Network.enable
-mm cdp DOM.getDocument '{"depth":2}' --timeout 60000
+mm cdp DOM.getDocument '{"depth":2}' --timeout 5000
 
-# Mobile (Hermes, default) — evaluate JS in the running React Native app
+# Browser — Extension service worker (the background where state lives)
+mm cdp Runtime.evaluate '{"expression":"typeof globalThis.stateHooks","returnByValue":true}' --target sw
+
+# Browser — one-shot session, detached after the command
+mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --fresh
+
+# Mobile (Hermes, default) — the session keeps the launch Metro port
+mm launch --platform ios --metro-port 8085
+mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}'
+
+# Mobile (Hermes) — override the port for this call only
 mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.metamask --metro-port 8081
 
 # Mobile (Android WebView) — drive the DOM of the in-app browser
 mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\').click()"}' --target android-webview
 ```
 
-| Argument        | Description                                                                                                               |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile) |
-| `[params-json]` | Optional JSON object with method-specific parameters                                                                      |
-| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                  |
-| `--target`      | **Mobile only** — `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Ignored on browser.        |
-| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                          |
-| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port (default: 8081). Ignored on browser.                   |
-| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier. Ignored on browser.                               |
+| Argument        | Description                                                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile)                                                                                             |
+| `[params-json]` | Optional JSON object with method-specific parameters                                                                                                                                                                  |
+| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                                                                                                              |
+| `--target`      | Browser: `page` (default) or `sw` (Extension service worker). Mobile: `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Each platform rejects the other's targets with `MM_INVALID_INPUT`. |
+| `--fresh`       | **Browser only** — run the command on a one-shot CDP session and detach it afterwards instead of the persistent session.                                                                                              |
+| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                                                                                                                      |
+| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port for this call. Defaults to the launch `--metro-port`, then `HERMES_METRO_PORT`, then 8081. Ignored on browser.                                     |
+| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier for this call. Ignored on browser.                                                                                                             |
 
 **Three CDP targets:** the same command reaches different runtimes.
 
 | Aspect            | Browser (Playwright)                                                                             | Mobile — Hermes (`--target hermes`, default)                                                     | Mobile — Android WebView (`--target android-webview`)                                                           |
 | ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Target            | The page's Chrome DevTools session                                                               | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
+| Target            | The active page or the Extension service worker (`--target sw`), each on a persistent session    | The app's Hermes JS engine, via Metro's inspector proxy (needs a DEBUG build with Metro running) | The web page inside a debuggable in-app Android WebView, via adb (needs `setWebContentsDebuggingEnabled(true)`) |
 | Available domains | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, …)                                     | JS-engine subset only (`Runtime`, `Debugger`, `Log`, `HeapProfiler`) — no `DOM`/`Page`/`Network` | Full Chrome surface (`Runtime`, `DOM`, `Network`, `Page`, `Input`)                                              |
 | Use it for        | Web page DOM in the browser                                                                      | The React Native app's own JavaScript                                                            | The web page DOM inside the app's in-app browser                                                                |
 | Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`                |
 | Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      | `Runtime.evaluate` nests the value at `result.result.value`                                                     |
 
-Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
+Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
+
+On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. When device-mcp exports `HermesClient` (needs a device-mcp release with MetaMask/device-mcp P2-02) the session keeps one Hermes connection for its Metro port and app id and reuses it across calls; otherwise each call opens its own connection. A mobile failure names the Metro port it used.
+
+Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). Each platform rejects the other platform's `--target` values with `MM_INVALID_INPUT`. The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
 #### `mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]`
 
-**Mobile only.** Lists and diagnoses the debuggable Hermes targets Metro currently exposes, reporting which target would be chosen or why selection is ambiguous. Use it to confirm Metro is running and the app is registered. Pass `--all` to bypass the appId filter and discover the real appId.
+**Mobile only.** Lists and diagnoses the debuggable Hermes targets Metro currently exposes, reporting which target would be chosen or why selection is ambiguous. Use it to confirm Metro is running and the app is registered. Pass `--all` to bypass the appId filter and discover the real appId. It uses the session's Metro port (the launch `--metro-port`) unless `--metro-port` overrides it, and reports `sessionMetroPort`, the pinned `logicalDeviceId` (`pinnedDeviceId`), whether the persistent connection is open (`connected`), and the session `deviceId`.
 
 ```bash
 mm hermes-targets
@@ -906,6 +925,7 @@ Use `error.code` to decide what to do:
 | `MM_DAEMON_NOT_RUNNING`             | No daemon, or it refused the connection                                                  | Run `mm launch`                                                                                           |
 | `MM_DAEMON_CONNECTION_LOST`         | Connection failed after the request was sent (never resent by `mm`)                      | The action may have run: `mm describe-screen` before you retry                                            |
 | `MM_REQUEST_TIMEOUT`                | The CLI stopped waiting for the daemon                                                   | Action state unknown: `mm describe-screen` before you retry                                               |
+| `MM_QUEUE_TIMEOUT`                  | The daemon stopped the request before it finished; the action may have run               | Action state unknown: `mm describe-screen` before you retry                                               |
 | `VALIDATION_ERROR`                  | Input failed the tool schema                                                             | Fix the arguments (exit 2)                                                                                |
 
 ## Available Contracts (E2E only)

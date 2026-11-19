@@ -92,6 +92,11 @@ export type ClickResult = {
   /** Mobile: the keyboard covered the target and was dismissed first. */
   keyboardDismissed?: boolean;
   /**
+   * Browser: the target was a visually hidden checkbox or radio, so its label
+   * was clicked instead.
+   */
+  clickedLabel?: boolean;
+  /**
    * Mobile, with an observation: whether the screen after the click differs
    * from the last screen the agent received. `false` is a hint (many taps
    * change nothing, e.g. the open tab), not an error.
@@ -221,6 +226,7 @@ export type HermesTargetInfo = {
 };
 
 export type HermesTargetsResult = {
+  /** The Metro port this report used (per-call override, else the session's). */
   metroPort: number;
   expectedAppId: string;
   filterBypassed: boolean;
@@ -230,6 +236,14 @@ export type HermesTargetsResult = {
   chosen?: { id?: string; logicalDeviceId?: string };
   ambiguous?: string;
   noTargetReason?: { code: string; message: string };
+  /** The Metro port the session keeps (the launch `--metro-port`). */
+  sessionMetroPort?: number;
+  /** The pinned Hermes `logicalDeviceId` of the session, once a call pinned one. */
+  pinnedDeviceId?: string;
+  /** Whether the persistent Hermes connection of the session is open. */
+  connected?: boolean;
+  /** The device the session runs on, when the launch or consumer reported it. */
+  deviceId?: string;
 };
 
 export type GetWindowSizeResult = {

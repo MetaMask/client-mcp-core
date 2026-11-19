@@ -1,14 +1,18 @@
 import type { ClipboardInput, ClipboardResult } from './types';
-import { withCdpSession } from './utils/cdp.js';
 import {
   createToolError,
   createToolSuccess,
   requireActiveSession,
 } from './utils.js';
+import { getCdpManager } from '../platform/cdp-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 
 /**
  * Reads from or writes to the system clipboard via CDP.
+ *
+ * Runs on the persistent page session from the CDP manager: the command
+ * enables no domain and leaves no state on the session, so sharing it with
+ * other tools is safe.
  *
  * @param input - The clipboard action and optional text payload.
  * @param context - The tool execution context.
@@ -24,35 +28,39 @@ export async function clipboardTool(
   }
 
   try {
-    return await withCdpSession(context.page, async (cdpSession) => {
-      if (input.action === 'write') {
-        await cdpSession.send('Runtime.evaluate', {
-          expression: `navigator.clipboard.writeText(${JSON.stringify(input.text)})`,
-          awaitPromise: true,
-          userGesture: true,
-        });
+    const { page } = context;
+    const cdpSession = await getCdpManager(page.context()).getSession({
+      kind: 'page',
+      page,
+    });
 
-        return createToolSuccess<ClipboardResult>({
-          action: 'write',
-          success: true,
-          text: input.text,
-        });
-      }
-
-      const result = await cdpSession.send('Runtime.evaluate', {
-        expression: 'navigator.clipboard.readText()',
+    if (input.action === 'write') {
+      await cdpSession.send('Runtime.evaluate', {
+        expression: `navigator.clipboard.writeText(${JSON.stringify(input.text)})`,
         awaitPromise: true,
         userGesture: true,
       });
 
-      const clipboardText =
-        result.result?.value ?? result.result?.description ?? '';
-
       return createToolSuccess<ClipboardResult>({
-        action: 'read',
+        action: 'write',
         success: true,
-        text: clipboardText as string,
+        text: input.text,
       });
+    }
+
+    const result = (await cdpSession.send('Runtime.evaluate', {
+      expression: 'navigator.clipboard.readText()',
+      awaitPromise: true,
+      userGesture: true,
+    })) as { result?: { value?: unknown; description?: string } };
+
+    const clipboardText =
+      result.result?.value ?? result.result?.description ?? '';
+
+    return createToolSuccess<ClipboardResult>({
+      action: 'read',
+      success: true,
+      text: clipboardText as string,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
