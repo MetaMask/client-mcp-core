@@ -4,6 +4,7 @@ import { runStepsTool } from './batch.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
 import type { ToolContext, ToolFunction } from '../types/http.js';
+import { TARGET_TOOL_NAMES } from '../validation/schemas.js';
 
 function createMockContext(
   options: {
@@ -662,6 +663,183 @@ describe('runStepsTool', () => {
         context,
       );
     }
+  });
+
+  describe('ref shorthand for every target tool', () => {
+    // Per-tool step config for the shorthand tests: required extras and a
+    // platform the tool is allowed on (inspect and hover are browser-only,
+    // long_press is mobile-only, scroll_to_element's `within` is
+    // browser-only). Tools without an entry need neither.
+    const STEP_CONFIG: Record<
+      string,
+      {
+        platform?: 'browser' | 'ios' | 'android';
+        args?: Record<string, unknown>;
+        withinPlatform?: 'browser' | 'ios' | 'android';
+      }
+    > = {
+      type: { args: { text: 'hello' } },
+      inspect: { platform: 'browser' },
+      hover: { platform: 'browser' },
+      scroll_to_element: { platform: 'android', withinPlatform: 'browser' },
+      long_press: { platform: 'ios', args: { durationMs: 750 } },
+    };
+
+    it.each(TARGET_TOOL_NAMES)(
+      'normalises a ref step arg to a11yRef for %s',
+      async (tool) => {
+        const config = STEP_CONFIG[tool] ?? {};
+        const handler = vi.fn().mockResolvedValue({ ok: true, result: 'ok' });
+        const context = createMockContext({
+          toolRegistry: new Map([[tool, handler]]),
+          ...(config.platform ? { driverPlatform: config.platform } : {}),
+        });
+
+        const result = await runStepsTool(
+          {
+            steps: [{ tool, args: { ref: 'e1', ...config.args } }],
+          },
+          context,
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.result.summary).toMatchObject({
+            ok: true,
+            total: 1,
+            succeeded: 1,
+            failed: 0,
+          });
+        }
+        expect(handler).toHaveBeenCalledTimes(1);
+        const received = handler.mock.calls[0][0] as Record<string, unknown>;
+        expect(received).not.toHaveProperty('ref');
+        expect(received.a11yRef).toBe('e1');
+      },
+    );
+
+    // Every target tool except long_press, whose schema has no `within`.
+    it.each(TARGET_TOOL_NAMES.filter((tool) => tool !== 'long_press'))(
+      'normalises a within.ref step arg to within.a11yRef for %s',
+      async (tool) => {
+        const config = STEP_CONFIG[tool] ?? {};
+        const handler = vi.fn().mockResolvedValue({ ok: true, result: 'ok' });
+        const platform = config.withinPlatform ?? config.platform;
+        const context = createMockContext({
+          toolRegistry: new Map([[tool, handler]]),
+          ...(platform ? { driverPlatform: platform } : {}),
+        });
+
+        const result = await runStepsTool(
+          {
+            steps: [
+              {
+                tool,
+                args: { testId: 'btn', within: { ref: 'e2' }, ...config.args },
+              },
+            ],
+          },
+          context,
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.result.summary).toMatchObject({
+            ok: true,
+            total: 1,
+            succeeded: 1,
+            failed: 0,
+          });
+        }
+        expect(handler).toHaveBeenCalledTimes(1);
+        const received = handler.mock.calls[0][0] as Record<string, unknown>;
+        expect(received.within).toStrictEqual({ a11yRef: 'e2' });
+      },
+    );
+  });
+
+  describe('frame with the ref shorthand', () => {
+    it.each(['get_text', 'inspect', 'hover'] as const)(
+      'keeps frame steps of %s working with the ref shorthand',
+      async (tool) => {
+        const handler = vi.fn().mockResolvedValue({ ok: true, result: 'ok' });
+        const context = createMockContext({
+          toolRegistry: new Map([[tool, handler]]),
+          driverPlatform: 'browser',
+        });
+
+        const result = await runStepsTool(
+          {
+            steps: [
+              // A ref from a frame snapshot already points into its frame.
+              { tool, args: { ref: 'f1e3' } },
+              // A frame scope goes with a testId or selector target; the
+              // frame object itself has no ref shorthand.
+              {
+                tool,
+                args: { testId: 'zoom-in', frame: { testId: 'chart-iframe' } },
+              },
+            ],
+          },
+          context,
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.result.summary).toMatchObject({
+            ok: true,
+            total: 2,
+            succeeded: 2,
+            failed: 0,
+          });
+        }
+        const first = handler.mock.calls[0][0] as Record<string, unknown>;
+        expect(first).not.toHaveProperty('ref');
+        expect(first.a11yRef).toBe('f1e3');
+        const second = handler.mock.calls[1][0] as Record<string, unknown>;
+        expect(second.testId).toBe('zoom-in');
+        expect(second.frame).toStrictEqual({ testId: 'chart-iframe' });
+      },
+    );
+
+    it('passes a ref combined with frame through for the driver to reject', async () => {
+      // scopeTargetToFrame (browser driver) rejects frame combined with a
+      // ref target: a snapshot ref already points into its frame. run_steps
+      // keeps converting the ref and leaves frame untouched, so the driver,
+      // not the batch layer, does the rejecting.
+      const hoverHandler = vi
+        .fn()
+        .mockResolvedValue({ ok: true, result: 'ok' });
+      const context = createMockContext({
+        toolRegistry: new Map([['hover', hoverHandler]]),
+        driverPlatform: 'browser',
+      });
+
+      const result = await runStepsTool(
+        {
+          steps: [
+            {
+              tool: 'hover',
+              args: { ref: 'e1', frame: { testId: 'chart-iframe' } },
+            },
+          ],
+        },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.summary).toMatchObject({
+          ok: true,
+          total: 1,
+          succeeded: 1,
+          failed: 0,
+        });
+      }
+      const received = hoverHandler.mock.calls[0][0] as Record<string, unknown>;
+      expect(received.a11yRef).toBe('e1');
+      expect(received.frame).toStrictEqual({ testId: 'chart-iframe' });
+    });
   });
 
   it('rejects browser-only tools on non-browser platforms', async () => {
