@@ -335,6 +335,8 @@ Use `--within` to scope the target inside a parent element. Values use the forma
 
 If the page closes after clicking (e.g., confirmation popup), the response includes `pageClosedAfterClick: true` — this is normal, not an error.
 
+**Browser hidden checkbox or radio:** toggles often keep the real `<input type="checkbox">` (and its test id) at 1×1 pixel under decorative elements, for example `mm click --testid basic-functionality-toggle`. When the target is such an input and it has one label (a wrapping `<label>` or `<label for="<id>">`), the label is clicked instead, which toggles the input, and the response includes `clickedLabel: true`. A hidden input without a label, or whose label has a link or button inside (for example "I agree to the terms"), is clicked as before.
+
 **Mobile:** before tapping, iOS hit-tests the tap point. When another element is on top of the target (the keyboard, a sheet, an overlay), nothing is tapped and the click fails with `MM_TARGET_OBSCURED`; the message names the covering element. A target outside the screen fails with `MM_TARGET_NOT_VISIBLE` (run `mm scroll-to-element` first). `--dismiss-keyboard` closes the keyboard when it is the cover and taps once more (the result has `keyboardDismissed: true`). With an observation (not `--observe none`) the result has `screenChanged`: `false` means the screen looks the same as before the click; that is normal for some taps (the open tab) but a hint for a button that should navigate.
 
 ```

@@ -34,6 +34,9 @@ function createMockLocator() {
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
     isDisabled: vi.fn().mockResolvedValue(false),
+    boundingBox: vi
+      .fn()
+      .mockResolvedValue({ x: 0, y: 0, width: 100, height: 40 }),
   };
 }
 
