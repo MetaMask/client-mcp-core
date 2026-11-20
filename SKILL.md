@@ -337,7 +337,7 @@ If the page closes after clicking (e.g., confirmation popup), the response inclu
 
 **Browser hidden checkbox or radio:** toggles often keep the real `<input type="checkbox">` (and its test id) at 1×1 pixel under decorative elements, for example `mm click --testid basic-functionality-toggle`. When the target is such an input and it has one label (a wrapping `<label>` or `<label for="<id>">`), the label is clicked instead, which toggles the input, and the response includes `clickedLabel: true`. A hidden input without a label, or whose label has a link or button inside (for example "I agree to the terms"), is clicked as before.
 
-**Mobile:** before tapping, iOS hit-tests the tap point. When another element is on top of the target (the keyboard, a sheet, an overlay), nothing is tapped and the click fails with `MM_TARGET_OBSCURED`; the message names the covering element. A target outside the screen fails with `MM_TARGET_NOT_VISIBLE` (run `mm scroll-to-element` first). `--dismiss-keyboard` closes the keyboard when it is the cover and taps once more (the result has `keyboardDismissed: true`). With an observation (not `--observe none`) the result has `screenChanged`: `false` means the screen looks the same as before the click; that is normal for some taps (the open tab) but a hint for a button that should navigate.
+**Mobile:** before tapping, the device hit-tests the tap point (iOS; Android with device-mcp 0.9.0 and later). When another element is on top of the target (the keyboard, a sheet, an overlay), nothing is tapped and the click fails with `MM_TARGET_OBSCURED`; the message names the covering element. A target outside the screen fails with `MM_TARGET_NOT_VISIBLE` (run `mm scroll-to-element` first). `--dismiss-keyboard` closes the keyboard when it is the cover and taps once more (the result has `keyboardDismissed: true`). With an observation (not `--observe none`) the result has `screenChanged`: `false` means the screen looks the same as before the click; that is normal for some taps (the open tab) but a hint for a button that should navigate.
 
 ```
 mm click --testid log-in-button --dismiss-keyboard
@@ -736,7 +736,7 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 
 Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
 
-On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. When device-mcp exports `HermesClient` (needs a device-mcp release with MetaMask/device-mcp P2-02) the session keeps one Hermes connection for its Metro port and app id and reuses it across calls; otherwise each call opens its own connection. A mobile failure names the Metro port it used.
+On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
 
 Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). Each platform rejects the other platform's `--target` values with `MM_INVALID_INPUT`. The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
@@ -771,7 +771,7 @@ Taps raw screen coordinates. Prefer element targeting when possible.
 
 #### `mm dismiss-keyboard`
 
-Dismisses the on-screen keyboard.
+Dismisses the on-screen keyboard. On Android it then checks that the keyboard is gone, and fails with `MM_DEVICE_ACTION_FAILED` when it is still shown.
 
 #### `mm dismiss-alert [--accept]`
 

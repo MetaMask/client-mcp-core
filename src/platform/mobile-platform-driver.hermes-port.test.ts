@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   runHermesCdp: vi.fn(),
   HermesClient: vi.fn(),
-  hasHermesClient: true,
 }));
 
 // Uses the real `HermesSession` of device-mcp, so the port precedence is
@@ -15,7 +14,7 @@ vi.mock('./device-mcp-runtime.js', async () => {
     loadDeviceMcp: async () => ({
       ...actual,
       runHermesCdp: mocks.runHermesCdp,
-      HermesClient: mocks.hasHermesClient ? mocks.HermesClient : undefined,
+      HermesClient: mocks.HermesClient,
     }),
   };
 });
@@ -47,7 +46,6 @@ const clients: HermesClientStub[] = [];
 describe('MobilePlatformDriver Hermes port precedence', () => {
   beforeEach(() => {
     clients.length = 0;
-    mocks.hasHermesClient = true;
     mocks.runHermesCdp.mockResolvedValue({ ok: true, result: { value: 2 } });
     mocks.HermesClient.mockImplementation(function (
       this: unknown,
