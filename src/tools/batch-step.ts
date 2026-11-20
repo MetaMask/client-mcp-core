@@ -1,5 +1,12 @@
-/** Tools whose args include a target selection (a11yRef/testId/selector). */
-const TARGET_TOOLS = new Set(['click', 'type', 'wait_for']);
+import { TARGET_TOOL_NAMES } from '../validation/schemas.js';
+
+/**
+ * Tools whose args include a target selection (a11yRef/testId/selector):
+ * {@link TARGET_TOOL_NAMES}, derived from the schemas built on
+ * targetSelectionSchema, so a tool newly added there gets the `ref`
+ * shorthand too.
+ */
+const TARGET_TOOLS = new Set<string>(TARGET_TOOL_NAMES);
 
 /**
  * Maps CLI-style compound tool names to their registry name + injected args.

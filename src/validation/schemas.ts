@@ -1167,6 +1167,25 @@ export const toolSchemas = {
 
 export type ToolName = keyof typeof toolSchemas;
 
+/**
+ * Tool names whose input schema is built on {@link targetSelectionSchema}
+ * (they take an a11yRef/testId/selector target). `run_steps` normalises the
+ * `ref` shorthand (and `within.ref`) for exactly these tools. The
+ * "derives the target tool list from the schemas" test in schemas.test.ts
+ * fails when a schema built on targetSelectionSchema is missing here, so a
+ * new target tool cannot be missed.
+ */
+export const TARGET_TOOL_NAMES: readonly ToolName[] = [
+  'click',
+  'type',
+  'wait_for',
+  'get_text',
+  'inspect',
+  'hover',
+  'scroll_to_element',
+  'long_press',
+];
+
 export type BuildInputZ = z.infer<typeof buildInputSchema>;
 export type LaunchInputZ = z.infer<typeof launchInputSchema>;
 export type CleanupInputZ = z.infer<typeof cleanupInputSchema>;

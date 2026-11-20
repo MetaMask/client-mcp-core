@@ -37,6 +37,7 @@ import {
   omitObserve,
   runStepsInputSchema,
   toolSchemas,
+  TARGET_TOOL_NAMES,
   withObserve,
 } from './schemas.js';
 
@@ -1253,5 +1254,34 @@ describe('runStepsInputSchema batchTimeoutMs', () => {
         batchTimeoutMs: 30_001,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('TARGET_TOOL_NAMES', () => {
+  // Parsing {} through a schema built on targetSelectionSchema always fails
+  // its refine. Tools with required extras (type's text) report those as
+  // further issues, but never drop the refine's. No other schema produces
+  // this message (the within and frame variants say "in within" / "in frame").
+  const TARGET_REQUIRED_MESSAGE =
+    'Exactly one of a11yRef, testId, or selector must be provided';
+
+  it('derives the target tool list from the schemas', () => {
+    const derived: string[] = [];
+    for (const [name, schema] of Object.entries(toolSchemas)) {
+      const parsed = schema.safeParse({});
+      if (
+        !parsed.success &&
+        parsed.error.issues.some(
+          (issue) => issue.message === TARGET_REQUIRED_MESSAGE,
+        )
+      ) {
+        derived.push(name);
+      }
+    }
+
+    // Equal both ways: a schema built on targetSelectionSchema that is not
+    // listed (a new target tool would fail here) and a listed name whose
+    // schema is not built on targetSelectionSchema.
+    expect([...derived].sort()).toStrictEqual([...TARGET_TOOL_NAMES].sort());
   });
 });

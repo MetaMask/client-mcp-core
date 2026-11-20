@@ -14,7 +14,16 @@ import {
  */
 export const TIMEOUT_OVERHEAD_MS = 2_000;
 
-/** Tools whose default action budget is the interaction timeout. */
+/**
+ * Tools whose default action budget is the interaction timeout.
+ *
+ * Deliberately not the schema-derived `TARGET_TOOL_NAMES` exported from
+ * validation/schemas.ts: the two are different ideas. The action-budget list
+ * is about timeout behaviour, and `long_press` — a target tool — has no
+ * timeout concept at all (its schema has no `timeoutMs`; the press is
+ * bounded by `durationMs`), so it keeps the queue default. Every tool here
+ * is a target tool, but not the other way round.
+ */
 const INTERACTION_TOOLS: ReadonlySet<string> = new Set([
   'click',
   'type',
