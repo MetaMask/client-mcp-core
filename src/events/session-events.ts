@@ -1,9 +1,20 @@
 import type { BrowserContext } from '@playwright/test';
 
 import { EventBuffer } from './event-buffer.js';
+import { redactText, truncateText } from './redact.js';
 import type { CdpManager, CdpSubscription } from '../platform/cdp-manager.js';
 import { getCdpManager } from '../platform/cdp-manager.js';
-import { debugWarn } from '../utils';
+import { debugWarn, extractErrorMessage } from '../utils';
+
+/**
+ * How long a call waits for the sources to start. Each attach step of the
+ * CDP manager is bounded already; this caps the wait as a whole, so a call
+ * never hangs on a start that is still running. The start keeps going.
+ */
+export const SESSION_EVENTS_START_WAIT_MS = 5_000;
+
+/** Longest capture error text kept in the buffer summary. */
+const MAX_CAPTURE_ERROR_LENGTH = 300;
 
 /**
  * A producer of event records: it listens to CDP events of every page and
@@ -46,12 +57,55 @@ export class SessionEvents {
   }
 
   /**
+   * Records an error of an event source: it is counted in the buffer
+   * summary (`captureErrors`, `lastCaptureError`) and written to the debug
+   * log. Sources pass it as the `onError` of their CDP subscription. Never
+   * throws.
+   *
+   * @param error - The error.
+   */
+  readonly reportError = (error: unknown): void => {
+    try {
+      debugWarn('session-events.source', error);
+      this.buffer.noteCaptureError(
+        truncateText(
+          redactText(extractErrorMessage(error)),
+          MAX_CAPTURE_ERROR_LENGTH,
+        ),
+      );
+    } catch {
+      // Error reporting must never break event dispatch.
+    }
+  };
+
+  /**
    * Starts every source, once per CDP manager. Safe to call often: a call
    * while the sources run does nothing. When the context's CDP manager was
    * replaced (disposed and created again), the sources start on the new one.
-   * Failures are logged, never thrown: events are best-effort.
+   * Failures are recorded (see {@link reportError}), never thrown: events
+   * are best-effort.
+   *
+   * Waits at most {@link SESSION_EVENTS_START_WAIT_MS} for a start in
+   * progress, so a caller (`mm launch`, `mm logs`, …) never hangs on a
+   * target that does not answer; the start keeps going.
    */
   async ensureStarted(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      this.#start(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, SESSION_EVENTS_START_WAIT_MS);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * Starts every source once per CDP manager, or returns the start in
+   * progress.
+   *
+   * @returns Settles when the sources started. Never rejects.
+   */
+  async #start(): Promise<void> {
     const manager = getCdpManager(this.context);
     if (manager === this.#manager) {
       await this.#starting;
@@ -73,7 +127,7 @@ export class SessionEvents {
         if (result.status === 'fulfilled') {
           return [result.value];
         }
-        debugWarn('session-events.start', result.reason);
+        this.reportError(result.reason);
         return [];
       });
       if (this.#manager !== manager) {

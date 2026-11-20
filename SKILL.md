@@ -759,7 +759,7 @@ Returns `{ cursor, summary }`. Take it at the start of a flow.
 
 Empties the buffer (one kind or all). The cursor keeps counting, so older cursors stay valid.
 
-`summary` is `{ startedAt, seq, counts: { console, network }, dropped: { console, network } }`. `startedAt` (epoch ms) changes when the session is relaunched; `seq` then starts at 1 again. The buffer keeps the newest 1000 console and 2000 network records; older ones are dropped and counted.
+`summary` is `{ startedAt, seq, counts: { console, network }, dropped: { console, network }, captureErrors, lastCaptureError? }`. `startedAt` (epoch ms) changes when the session is relaunched; `seq` then starts at 1 again. The buffer keeps the newest 1000 console and 2000 network records; older ones are dropped and counted. `captureErrors` counts the times the session could not listen to a page or the service worker (for example a target that did not answer within 5 s, or a domain that could not be enabled); `lastCaptureError` is the newest one, redacted. When it grows during a flow, events of that target can be missing. A call that starts the recording waits at most 5 s for a target that does not answer.
 
 ### Mobile device actions (iOS/Android only)
 
