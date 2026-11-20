@@ -557,6 +557,20 @@ describe('ConsoleSource', () => {
     expect(options.events).toStrictEqual(CONSOLE_EVENTS);
   });
 
+  it('records subscription errors in the buffer summary', async () => {
+    const { events, options } = await startSource();
+
+    options.onError?.(
+      new Error('Runtime.enable on page https://dapp.example/ timed out'),
+    );
+
+    expect(events.buffer.summary()).toMatchObject({
+      captureErrors: 1,
+      lastCaptureError:
+        'Runtime.enable on page https://dapp.example/ timed out',
+    });
+  });
+
   it('records only errors by default, and more levels after configure', async () => {
     const { events, emit } = await startSource();
     const now = Date.now() + 10;
