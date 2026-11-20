@@ -48,6 +48,7 @@ import {
   switchToTabTool,
   waitForNotificationTool,
 } from './navigation.js';
+import { networkTool } from './network.js';
 import { screenshotTool } from './screenshot.js';
 import {
   getContractAddressTool,
@@ -102,6 +103,7 @@ export const toolRegistry = new Map<string, ToolFunction<any, any>>([
   ['mock_network', mockNetworkTool],
   ['events', eventsTool],
   ['logs', logsTool],
+  ['network', networkTool],
   ['scroll_to_element', scrollToElementTool],
   ['device_swipe', deviceSwipeTool],
   ['long_press', longPressTool],
@@ -169,7 +171,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   press_button: 'mutating',
   device_context: 'mutating',
   device_clipboard: 'mutating',
-  // READONLY (15)
+  // READONLY (16)
   hermes_targets: 'readonly',
   get_window_size: 'readonly',
   get_alert_text: 'readonly',
@@ -189,6 +191,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // `events clear` empties the session event buffer; it never touches the UI.
   events: 'readonly',
   logs: 'readonly',
+  network: 'readonly',
   // DISCOVERY (4)
   describe_screen: 'discovery',
   list_testids: 'discovery',
@@ -221,6 +224,7 @@ const BROWSER_ONLY_TOOLS = new Set([
   'mock_network',
   'events',
   'logs',
+  'network',
   'reload',
   'build',
   'inspect',
