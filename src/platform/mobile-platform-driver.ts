@@ -88,13 +88,6 @@ export type MobilePlatformDriverOptions = {
 };
 
 /**
- * The loaded device-mcp module, with `HermesClient` optional: a consumer can
- * force a device-mcp older than 0.9.0 (for example with a `resolutions`
- * entry), and that release does not export the client.
- */
-type HermesClientRuntime = Partial<Pick<DeviceMcpRuntime, 'HermesClient'>>;
-
-/**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
  * Wraps DeviceBackend behind the IPlatformDriver interface so the
  * tool layer can interact with iOS/Android devices using the same
@@ -217,16 +210,16 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Returns the persistent client of the session target, creating it on first
-   * use. Returns undefined when the loaded device-mcp has no `HermesClient`
-   * (older than 0.9.0) or the cached client was built for another target: the
-   * caller then uses the one-shot path, so the client is never retargeted.
-   * The client is created without `trackContexts` and without listeners, so
-   * it never sends `Runtime.enable`.
+   * use. Returns undefined when the cached client was built for another
+   * target: the caller then uses the one-shot path, so the client is never
+   * retargeted. The client is created without `trackContexts` and without
+   * listeners, so it never sends `Runtime.enable`.
    *
    * @param runtime - The loaded device-mcp module.
    * @param session - This driver's Hermes session.
    * @param target - The session target (Metro port and app id).
-   * @returns The client, or undefined when unavailable.
+   * @returns The client, or undefined when the cached client is for another
+   * target.
    */
   #getHermesClient(
     runtime: DeviceMcpRuntime,
@@ -240,10 +233,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
         ? existing
         : undefined;
     }
-    const { HermesClient: Client } = runtime as HermesClientRuntime;
-    if (typeof Client !== 'function') {
-      return undefined;
-    }
+    const { HermesClient: Client } = runtime;
     const client = new Client({
       metroPort: target.metroPort,
       appId: target.appId,
@@ -825,8 +815,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * no per-call override) goes through this driver's persistent
    * `HermesClient`, created on first use and reused after. A call with a
    * different `metroPort` or `appId` uses a one-shot `runHermesCdp` instead,
-   * so the persistent client is never retargeted. A loaded device-mcp
-   * without `HermesClient` (older than 0.9.0) always takes the one-shot path.
+   * so the persistent client is never retargeted.
    *
    * @param input - The CDP command input.
    * @returns A discriminated CDP outcome. A failure names the Metro port used.
@@ -857,8 +846,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Runs one CDP command with a fresh discovery fetch and WebSocket, for a
-   * call whose target differs from the session's or for a device-mcp release
-   * without `HermesClient`.
+   * call whose target differs from the session's.
    *
    * @param runtime - The loaded device-mcp module.
    * @param session - This driver's Hermes session.

@@ -736,7 +736,7 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 
 Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
 
-On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. When the loaded device-mcp exports `HermesClient` (0.9.0 and later) the session keeps one Hermes connection for its Metro port and app id and reuses it across calls; otherwise each call opens its own connection. A mobile failure names the Metro port it used.
+On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
 
 Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). Each platform rejects the other platform's `--target` values with `MM_INVALID_INPUT`. The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
