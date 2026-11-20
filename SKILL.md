@@ -42,7 +42,7 @@ The default depends on the tool's category:
 | Category      | Examples                                                                                                                                                                                                                                           | Default `observe` |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | **Mutating**  | click, type, navigate, reload, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
-| **Read-only** | get_state, get_text, inspect, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                           | `none`            |
+| **Read-only** | get_state, get_text, inspect, get_context, set_context, events, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                   | `none`            |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                                    | `none`            |
 | **CDP**       | cdp                                                                                                                                                                                                                                                | `none`            |
 | **Batch**     | run_steps                                                                                                                                                                                                                                          | `diff`            |
@@ -748,6 +748,20 @@ Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures retur
 mm hermes-targets
 mm hermes-targets --all
 ```
+
+### Session events (browser only)
+
+From `mm launch` on, the daemon records events from every page and the Extension's background service worker into one buffer per session. `mm logs` and `mm network` read it. All kinds share one cursor (`seq`), so one `mark` covers both. Traffic during `mm launch` itself (for example self-onboarding) is not recorded. Mobile sessions return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`.
+
+#### `mm events mark`
+
+Returns `{ cursor, summary }`. Take it at the start of a flow.
+
+#### `mm events clear [--kind console|network]`
+
+Empties the buffer (one kind or all). The cursor keeps counting, so older cursors stay valid.
+
+`summary` is `{ startedAt, seq, counts: { console, network }, dropped: { console, network }, captureErrors, lastCaptureError? }`. `startedAt` (epoch ms) changes when the session is relaunched; `seq` then starts at 1 again. The buffer keeps the newest 1000 console and 2000 network records; older ones are dropped and counted. `captureErrors` counts the times the session could not listen to a page or the service worker (for example a target that did not answer within 5 s, or a domain that could not be enabled); `lastCaptureError` is the newest one, redacted. When it grows during a flow, events of that target can be missing. A call that starts the recording waits at most 5 s for a target that does not answer.
 
 ### Mobile device actions (iOS/Android only)
 

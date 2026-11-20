@@ -1,10 +1,14 @@
 import type { LaunchInput, LaunchPrerequisite, LaunchResult } from './types';
 import { ErrorCodes } from './types';
 import { createToolError, createToolSuccess } from './utils.js';
+import { getSessionEvents } from '../events/session-events.js';
 import { cleanupSession } from '../server/cleanup-session.js';
 import type { ISessionManager } from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 import { debugWarn, extractErrorMessage } from '../utils';
+
+/** How long a launch waits for the session event sources to attach. */
+const SESSION_EVENTS_START_WAIT_MS = 5_000;
 
 const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
   {
@@ -44,6 +48,42 @@ function applyHermesDefaults(
     ...(input.metroPort === undefined ? {} : { metroPort: input.metroPort }),
     ...(input.deviceId === undefined ? {} : { deviceId: input.deviceId }),
   });
+}
+
+/**
+ * Starts the session event buffer of a browser session (`mm logs`,
+ * `mm network`), so it records from launch on. Best-effort: a failure never
+ * fails the launch, and the next `events`/`logs`/`network` call retries.
+ *
+ * @param context - The tool execution context.
+ * @param input - The launch input.
+ */
+async function startSessionEvents(
+  context: ToolContext,
+  input: LaunchInput,
+): Promise<void> {
+  try {
+    const platform =
+      context.sessionManager.getPlatformDriver?.()?.getPlatform() ??
+      input.platform ??
+      'browser';
+    if (platform !== 'browser') {
+      return;
+    }
+    const started = getSessionEvents(
+      context.sessionManager.getContext(),
+    ).ensureStarted();
+    // Do not hold the launch on a slow attach: the sources keep starting.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      started,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, SESSION_EVENTS_START_WAIT_MS);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  } catch (error) {
+    debugWarn('launch.session-events', error);
+  }
 }
 
 /**
@@ -96,6 +136,7 @@ export async function launchTool(
         throw error;
       });
     applyHermesDefaults(sessionManager, input);
+    await startSessionEvents(context, input);
     const isProdMode = sessionManager.getEnvironmentMode() === 'prod';
 
     return createToolSuccess({
