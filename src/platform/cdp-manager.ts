@@ -6,6 +6,7 @@ import type {
 } from '@playwright/test';
 
 import { ErrorCodes } from '../tools/types/errors.js';
+import { debugWarn } from '../utils/logger.js';
 
 /**
  * Target kinds a {@link CdpManager} can attach to. A string union so more
@@ -39,7 +40,7 @@ export type CdpSession = {
 /**
  * Payload of the `targetAttached` and `targetDetached` events.
  */
-export type CdpTargetEvent = {
+export type CdpTargetLifecycleEvent = {
   kind: CdpTargetKind;
   /**
    * The page of a page target, or the worker of a service worker target when
@@ -83,7 +84,7 @@ export type CdpManagerEvent = 'targetAttached' | 'targetDetached';
 /**
  * Listener of a {@link CdpManagerEvent}.
  */
-export type CdpManagerListener = (event: CdpTargetEvent) => void;
+export type CdpManagerListener = (event: CdpTargetLifecycleEvent) => void;
 
 /**
  * The target a CDP event came from.
@@ -130,14 +131,19 @@ export type CdpSubscribeOptions = {
   /**
    * Parameters of `<Domain>.enable`, by domain, for example
    * `{ Network: { maxPostDataSize: 65536 } }`. The first subscriber to enable
-   * a domain on a target sets them.
+   * a domain on a target sets them. Parameters are not merged: a later
+   * subscriber that passes other parameters for a domain already enabled on
+   * a target gets the first subscriber's, and an error through `onError`
+   * that names the target and the domain.
    */
   enable?: Readonly<Record<string, Record<string, unknown>>>;
   /** Called synchronously for each event, in the order of its target. */
   onEvent: (event: CdpEvent) => void;
   /**
-   * Called when a target cannot be attached or enabled, or when `onEvent`
-   * throws. Errors are dropped when it is missing.
+   * Called when a target cannot be attached or enabled in time, when the
+   * `enable` parameters conflict with another subscriber's, or when
+   * `onEvent` throws. Without it, errors go to the debug log
+   * (`DEBUG=true`). It must not throw; an error it throws is ignored.
    */
   onError?: (error: Error) => void;
 };
@@ -167,6 +173,16 @@ export const STOPPED_WORKER_WAIT_MS = 2_000;
 export const SW_TARGET_POLL_MS = 200;
 
 /**
+ * How long each step of attaching a subscription to a target may take:
+ * opening the target's session, reading its target info, and each
+ * `<Domain>.enable`. The same bound applies to each `<Domain>.disable` and to
+ * the wait for an attach in progress when a subscription ends. A target that
+ * does not answer (paused in the debugger, frozen) then costs one bound, not
+ * a hang.
+ */
+export const CDP_ATTACH_STEP_TIMEOUT_MS = 5_000;
+
+/**
  * Error for a CDP command that needs the Extension service worker while it is
  * not running.
  */
@@ -175,11 +191,11 @@ export const STOPPED_WORKER_MESSAGE =
   'Interact with the Extension (open or reload an Extension page) to start it, then retry.';
 
 /**
- * Error for a `<Domain>.enable` or `<Domain>.disable` refused while an event
- * subscription holds that domain on the same target. A subscription owns the
- * domains it enabled: disabling one would silently stop the events, and a
- * second enable would not be counted, so its last unsubscribe would disable a
- * domain the user asked for.
+ * Error for a `<Domain>.disable`, or a `<Domain>.enable` with other
+ * parameters, refused while an event subscription holds that domain on the
+ * same target. A subscription owns the domains it enabled: disabling one
+ * would silently stop the events, and an enable with other parameters would
+ * change them (Chrome applies the last `Network.enable`), or be ignored.
  */
 export class CdpDomainInUseError extends Error {
   /** The `MM_CDP_BLOCKED` tool error code. */
@@ -190,13 +206,67 @@ export class CdpDomainInUseError extends Error {
    * @param domain - The CDP domain that a subscription holds.
    */
   constructor(method: string, domain: string) {
+    const reason = method.endsWith('.disable')
+      ? 'it would stop the events the subscription receives.'
+      : 'the domain is already enabled, with parameters this call would ' +
+        'change. Send it without parameters (it then succeeds without ' +
+        'sending anything).';
     super(
       `CDP method "${method}" is refused while an event subscription holds the ` +
-        `${domain} domain on this target: it would change the events the ` +
-        'subscription receives. Use --fresh to send it on a one-shot session.',
+        `${domain} domain on this target: ${reason} Use --fresh to send it on ` +
+        'a one-shot session.',
     );
     this.name = 'CdpDomainInUseError';
   }
+}
+
+/**
+ * Error of a CDP step that did not finish in time.
+ */
+class CdpTimeoutError extends Error {
+  /**
+   * @param message - What timed out.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = 'CdpTimeoutError';
+  }
+}
+
+/**
+ * Serializes CDP parameters with sorted object keys, so equal parameters
+ * compare equal whatever their key order.
+ *
+ * @param value - The parameters.
+ * @returns A stable JSON text.
+ */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : 1));
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/**
+ * Tells whether two sets of `<Domain>.enable` parameters are the same.
+ *
+ * @param left - The first parameters.
+ * @param right - The second parameters.
+ * @returns True when they are equal.
+ */
+function sameParams(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return stableJson(left) === stableJson(right);
 }
 
 const EXTENSION_URL = /^chrome-extension:\/\/([a-z]{32})\//u;
@@ -533,7 +603,7 @@ class ServiceWorkerCdpSession implements EventCdpSession {
 }
 
 type CdpEntryBase = {
-  event: CdpTargetEvent;
+  event: CdpTargetLifecycleEvent;
   session?: EventCdpSession;
   opening?: Promise<EventCdpSession>;
   /** Set when the entry is dropped, so an in-flight open does not revive it. */
@@ -599,7 +669,17 @@ type SessionSubscriptionState = {
     string,
     { listener: CdpEventListener; subscriptions: Set<Subscription> }
   >;
-  domains: Map<string, { count: number; enabled: Promise<void> }>;
+  domains: Map<string, HeldDomain>;
+};
+
+/** A domain that subscribers hold enabled on one session. */
+type HeldDomain = {
+  /** Subscribers holding it. */
+  count: number;
+  /** The bounded `<Domain>.enable`, settled with its CDP result. */
+  enabled: Promise<unknown>;
+  /** The parameters of that enable (the first subscriber's). */
+  params: Record<string, unknown>;
 };
 
 /**
@@ -628,6 +708,39 @@ function toServiceWorkerTarget(
  */
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * Waits for a promise to settle, at most for a time.
+ *
+ * @param promise - The promise. It must not reject.
+ * @param timeoutMs - The longest wait.
+ */
+async function settleWithin(
+  promise: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    promise,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Names a target in an error message. A page is named by its URL without
+ * the query and the fragment, which can hold tokens.
+ *
+ * @param entry - The target entry.
+ * @returns The target name.
+ */
+function describeEntry(entry: CdpEntry): string {
+  if (!('page' in entry)) {
+    return `the Extension service worker (target ${entry.targetId})`;
+  }
+  return `page ${entry.page.url().split(/[?#]/u)[0]}`;
 }
 
 /**
@@ -730,11 +843,14 @@ export class CdpManager {
    * A command that may have reached the target is never re-sent. Only a
    * failure to open the session is retried once.
    *
-   * A `<Domain>.enable` or `<Domain>.disable` is refused with
-   * {@link CdpDomainInUseError} while a subscription holds that domain on
-   * the target (see {@link subscribe}): the subscription enabled the domain
-   * and would disable it on its last unsubscribe. `fresh` commands are not
-   * refused, because they run on a session of their own.
+   * While a subscription holds a domain on the target (see
+   * {@link subscribe}), a `<Domain>.enable` with no parameters, or with the
+   * parameters the subscription enabled it with, sends nothing: the domain
+   * is already enabled, and the call returns the result of the
+   * subscription's enable. A `<Domain>.enable` with other parameters and a
+   * `<Domain>.disable` are refused with {@link CdpDomainInUseError}: they
+   * would change or stop the subscription's events. `fresh` commands are
+   * never refused or skipped, because they run on a session of their own.
    *
    * @param target - The page, or the extension service worker.
    * @param method - The CDP method.
@@ -764,11 +880,11 @@ export class CdpManager {
       acquired = await this.#acquireSession(target, options);
     }
 
-    this.#assertDomainFree(acquired.session, method);
+    const held = this.#heldDomainEnable(acquired.session, method, params);
     try {
       return await this.#race(
-        acquired.session.send(method, params),
-        method,
+        held ?? acquired.session.send(method, params),
+        `CDP call "${method}"`,
         options,
       );
     } catch (error) {
@@ -780,23 +896,39 @@ export class CdpManager {
   }
 
   /**
-   * Refuses a `<Domain>.enable` or `<Domain>.disable` while a subscription
-   * holds that domain on the session.
+   * Checks a `<Domain>.enable` or `<Domain>.disable` against the domains
+   * that subscriptions hold on the session.
    *
    * @param session - The session the command would run on.
    * @param method - The CDP method.
+   * @param params - The CDP method parameters.
+   * @returns The subscription's enable, when the command is a held
+   * `<Domain>.enable` with no or the same parameters (nothing is sent);
+   * undefined when the command must be sent.
+   * @throws {CdpDomainInUseError} For a held `<Domain>.disable`, or a held
+   * `<Domain>.enable` with other parameters.
    */
-  #assertDomainFree(session: EventCdpSession, method: string): void {
-    const match = /^([^.]+)\.(?:enable|disable)$/u.exec(method);
-    const domain = match?.[1];
+  #heldDomainEnable(
+    session: EventCdpSession,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> | undefined {
+    const match = /^(?<domain>[^.]+)\.(?<action>enable|disable)$/u.exec(method);
+    const { domain, action } = match?.groups ?? {};
     if (domain === undefined) {
-      return;
+      return undefined;
+    }
+    const held = this.#sessionStates.get(session)?.domains.get(domain);
+    if (held === undefined || held.count === 0) {
+      return undefined;
     }
     if (
-      (this.#sessionStates.get(session)?.domains.get(domain)?.count ?? 0) > 0
+      action === 'enable' &&
+      (Object.keys(params).length === 0 || sameParams(params, held.params))
     ) {
-      throw new CdpDomainInUseError(method, domain);
+      return held.enabled;
     }
+    throw new CdpDomainInUseError(method, domain);
   }
 
   /**
@@ -1035,9 +1167,9 @@ export class CdpManager {
       this.#pageAttachFailures.delete(page);
     }
     try {
-      const { entry, session } = await this.#acquireSession(
-        { kind: 'page', page },
-        {},
+      const entry = this.#pageEntry(page);
+      const session = await this.#openForSubscribers(entry, async () =>
+        this.#openPageSession(page),
       );
       await Promise.all(
         subscriptions.map(async (subscription) =>
@@ -1067,12 +1199,19 @@ export class CdpManager {
     subscriptions: Subscription[],
   ): Promise<void> {
     try {
-      await this.#watchTargets();
-      if (this.#disposed) {
+      const listed = await this.#race(
+        (async (): Promise<ServiceWorkerTarget[] | undefined> => {
+          await this.#watchTargets();
+          return this.#disposed ? undefined : this.#serviceWorkerTargets();
+        })(),
+        'Listing the Extension service worker targets',
+        { timeoutMs: CDP_ATTACH_STEP_TIMEOUT_MS },
+      );
+      if (listed === undefined || this.#disposed) {
         return;
       }
       const knownExtensionId = this.#extensionId();
-      const targets = (await this.#serviceWorkerTargets()).filter(
+      const targets = (listed as ServiceWorkerTarget[]).filter(
         (candidate) =>
           knownExtensionId === undefined ||
           candidate.extensionId === knownExtensionId,
@@ -1188,7 +1327,7 @@ export class CdpManager {
       return;
     }
     const entry = this.#workerEntryFor(target);
-    const session = await this.#openEntry(entry, async () =>
+    const session = await this.#openForSubscribers(entry, async () =>
       this.#openWorkerSession(entry.targetId, () => this.#drop(entry)),
     );
     await Promise.all(
@@ -1196,6 +1335,34 @@ export class CdpManager {
         this.#addToSession(subscription, entry, session),
       ),
     );
+  }
+
+  /**
+   * Opens (or reuses) the session of a target for subscribers, bounded by
+   * {@link CDP_ATTACH_STEP_TIMEOUT_MS}. On a timeout the entry is dropped: a
+   * session that opens later is detached, and a later attach trigger opens
+   * a new one.
+   *
+   * @param entry - The target entry.
+   * @param open - Opens a new session for the entry's target.
+   * @returns The session.
+   */
+  async #openForSubscribers(
+    entry: CdpEntry,
+    open: () => Promise<EventCdpSession>,
+  ): Promise<EventCdpSession> {
+    try {
+      return await this.#bound(
+        this.#openEntry(entry, open),
+        'Opening a CDP session',
+        entry,
+      );
+    } catch (error) {
+      if (error instanceof CdpTimeoutError) {
+        this.#drop(entry);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1233,6 +1400,14 @@ export class CdpManager {
   /**
    * Registers the event listeners and domain enables of one subscriber on a
    * session.
+   *
+   * Each step (the target info, each `<Domain>.enable`) is bounded by
+   * {@link CDP_ATTACH_STEP_TIMEOUT_MS}. A step that times out is reported,
+   * and the subscriber is removed from this session again (its listeners and
+   * domains are released) so a later attach trigger can retry it; the
+   * subscription stays live on its other targets. Another enable failure is
+   * a definite answer: it is reported, and the subscriber keeps its other
+   * domains on the session.
    *
    * @param subscription - The subscriber.
    * @param entry - The target entry of the session.
@@ -1292,18 +1467,32 @@ export class CdpManager {
 
     const results = await Promise.allSettled(
       subscription.domains.map(async (domain) =>
-        this.#enableDomain(subscription, session, state, record, domain),
+        this.#enableDomain(subscription, entry, session, state, record, domain),
       ),
     );
-    for (const result of results) {
-      if (result.status === 'rejected') {
-        this.#reportAttachError(
-          [subscription],
-          result.reason,
-          isTargetGone(entry),
-          entry,
-        );
+    const timedOut: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        return;
       }
+      if (result.reason instanceof CdpTimeoutError) {
+        timedOut.push(subscription.domains[index]);
+      }
+      this.#reportAttachError(
+        [subscription],
+        result.reason,
+        isTargetGone(entry),
+        entry,
+      );
+    });
+    if (timedOut.length > 0) {
+      if (subscription.records.get(session) === record) {
+        subscription.records.delete(session);
+        // Not awaited: the target is slow. Never rejects.
+        // eslint-disable-next-line no-void
+        void this.#release(subscription, session, record, timedOut);
+      }
+      return;
     }
     if (
       results.every((result) => result.status === 'fulfilled') &&
@@ -1316,9 +1505,12 @@ export class CdpManager {
 
   /**
    * Enables a domain on a session for one subscriber. The first subscriber
-   * sends `<Domain>.enable`; later ones share it.
+   * sends `<Domain>.enable`, bounded by {@link CDP_ATTACH_STEP_TIMEOUT_MS};
+   * later ones share it. A later subscriber that asks for other parameters
+   * gets the first ones, and an error through `onError`.
    *
    * @param subscription - The subscriber.
+   * @param entry - The target entry of the session.
    * @param session - The session.
    * @param state - The session's shared subscription state.
    * @param record - Where to note the enabled domain.
@@ -1326,31 +1518,52 @@ export class CdpManager {
    */
   async #enableDomain(
     subscription: Subscription,
+    entry: CdpEntry,
     session: EventCdpSession,
     state: SessionSubscriptionState,
     record: SubscriptionRecord,
     domain: string,
   ): Promise<void> {
-    let enabled = state.domains.get(domain);
-    if (!enabled) {
-      enabled = {
+    const params = subscription.options.enable?.[domain] ?? {};
+    let held = state.domains.get(domain);
+    if (held) {
+      if (Object.keys(params).length > 0 && !sameParams(params, held.params)) {
+        this.#report(
+          [subscription],
+          new Error(
+            `${domain}.enable parameters ${stableJson(params)} were not ` +
+              `applied on ${describeEntry(entry)}: another subscription ` +
+              `enabled ${domain} there with ${stableJson(held.params)}, ` +
+              'which stay in effect.',
+          ),
+        );
+      }
+    } else {
+      held = {
         count: 0,
-        enabled: session
-          .send(`${domain}.enable`, subscription.options.enable?.[domain] ?? {})
-          .then(() => undefined),
+        enabled: this.#bound(
+          session.send(`${domain}.enable`, params),
+          `${domain}.enable`,
+          entry,
+        ),
+        params,
       };
-      state.domains.set(domain, enabled);
+      state.domains.set(domain, held);
     }
-    enabled.count += 1;
+    held.count += 1;
     record.domains.push(domain);
     try {
-      await enabled.enabled;
+      await held.enabled;
     } catch (error) {
-      record.domains.splice(record.domains.indexOf(domain), 1);
-      enabled.count -= 1;
-      if (enabled.count === 0) {
-        // Let a later attach try again.
-        state.domains.delete(domain);
+      const index = record.domains.indexOf(domain);
+      // The record may have been released meanwhile (unsubscribe).
+      if (index !== -1) {
+        record.domains.splice(index, 1);
+        held.count -= 1;
+        if (held.count === 0 && state.domains.get(domain) === held) {
+          // Let a later attach try again.
+          state.domains.delete(domain);
+        }
       }
       throw error;
     }
@@ -1393,13 +1606,15 @@ export class CdpManager {
       return () => target;
     }
     if (state.targetId === undefined) {
-      const lookup = session
-        .send('Target.getTargetInfo', {})
-        .then(
-          (result) =>
-            (result as { targetInfo?: { targetId?: string } } | undefined)
-              ?.targetInfo?.targetId ?? '',
-        );
+      const lookup = this.#bound(
+        session.send('Target.getTargetInfo', {}),
+        'Target.getTargetInfo',
+        entry,
+      ).then(
+        (result) =>
+          (result as { targetInfo?: { targetId?: string } } | undefined)
+            ?.targetInfo?.targetId ?? '',
+      );
       state.targetId = lookup;
       // A failed lookup is not the target's ID: let a later attach retry.
       lookup.catch(() => {
@@ -1415,24 +1630,31 @@ export class CdpManager {
 
   /**
    * Removes one subscriber from a session, and disables the domains that no
-   * other subscriber needs.
+   * other subscriber needs. Each disable is bounded by
+   * {@link CDP_ATTACH_STEP_TIMEOUT_MS} and its failure is ignored.
    *
    * @param subscription - The subscriber.
    * @param session - The session.
    * @param record - What the subscriber added to the session.
+   * @param timedOut - Domains whose enable timed out: the enable may still
+   * land, so each one no subscriber holds is disabled too.
    */
   async #release(
     subscription: Subscription,
     session: EventCdpSession,
     record: SubscriptionRecord,
+    timedOut: readonly string[] = [],
   ): Promise<void> {
     const state = this.#sessionStates.get(session);
+    const { methods, domains } = record;
+    record.methods = [];
+    record.domains = [];
     if (!state) {
       // The session was detached while attaching; its listeners and domains
       // went with it.
       return;
     }
-    for (const method of record.methods) {
+    for (const method of methods) {
       const handler = state.methods.get(method);
       handler?.subscriptions.delete(subscription);
       if (handler?.subscriptions.size === 0) {
@@ -1440,24 +1662,33 @@ export class CdpManager {
         state.methods.delete(method);
       }
     }
-    const disables: Promise<unknown>[] = [];
-    for (const domain of record.domains) {
-      const enabled = state.domains.get(domain);
-      if (enabled) {
-        enabled.count -= 1;
-        if (enabled.count === 0) {
+    const disable = new Set<string>(
+      timedOut.filter((domain) => !state.domains.has(domain)),
+    );
+    for (const domain of domains) {
+      const held = state.domains.get(domain);
+      if (held) {
+        held.count -= 1;
+        if (held.count === 0) {
           state.domains.delete(domain);
-          disables.push(
-            session.send(`${domain}.disable`, {}).catch(() => undefined),
-          );
+          disable.add(domain);
         }
       }
     }
-    await Promise.all(disables);
+    await Promise.all(
+      [...disable].map(async (domain) =>
+        this.#race(
+          session.send(`${domain}.disable`, {}),
+          `CDP call "${domain}.disable"`,
+          { timeoutMs: CDP_ATTACH_STEP_TIMEOUT_MS },
+        ).catch(() => undefined),
+      ),
+    );
   }
 
   /**
-   * Ends a subscription. Idempotent.
+   * Ends a subscription. Idempotent. Waits for an attach in progress at
+   * most {@link CDP_ATTACH_STEP_TIMEOUT_MS} per target before releasing it.
    *
    * @param subscription - The subscription.
    */
@@ -1474,7 +1705,7 @@ export class CdpManager {
     const records = [...subscription.records];
     await Promise.all(
       records.map(async ([session, record]) => {
-        await record.ready;
+        await settleWithin(record.ready, CDP_ATTACH_STEP_TIMEOUT_MS);
         subscription.records.delete(session);
         await this.#release(subscription, session, record);
       }),
@@ -1499,7 +1730,8 @@ export class CdpManager {
   }
 
   /**
-   * Reports an error to subscribers that have `onError`.
+   * Reports an error to subscribers: to their `onError`, or to the debug
+   * log for a subscriber without one. Never throws.
    *
    * @param subscriptions - The subscribers.
    * @param error - The error.
@@ -1509,8 +1741,13 @@ export class CdpManager {
       if (!subscription.active) {
         continue;
       }
+      const { onError } = subscription.options;
+      if (onError === undefined) {
+        debugWarn('cdp-manager.subscribe', error);
+        continue;
+      }
       try {
-        subscription.options.onError?.(toError(error));
+        onError(toError(error));
       } catch {
         // A failing error handler must not break the other subscribers.
       }
@@ -1912,7 +2149,11 @@ export class CdpManager {
         target.kind === 'page'
           ? await this.#openPageSession(target.page)
           : await this.#openFreshWorkerSession(options);
-      return await this.#race(session.send(method, params), method, options);
+      return await this.#race(
+        session.send(method, params),
+        `CDP call "${method}"`,
+        options,
+      );
     } finally {
       await session?.detach().catch(() => undefined);
     }
@@ -1935,16 +2176,36 @@ export class CdpManager {
   }
 
   /**
+   * Bounds one step of attaching a subscription to a target (or of ending
+   * it) by {@link CDP_ATTACH_STEP_TIMEOUT_MS}.
+   *
+   * @param operation - The step.
+   * @param what - What the step does, used in the timeout error.
+   * @param entry - The target, named in the timeout error.
+   * @returns The step result.
+   */
+  async #bound<Result>(
+    operation: Promise<Result>,
+    what: string,
+    entry: CdpEntry,
+  ): Promise<Result> {
+    return this.#race(operation, `${what} on ${describeEntry(entry)}`, {
+      timeoutMs: CDP_ATTACH_STEP_TIMEOUT_MS,
+    }) as Promise<Result>;
+  }
+
+  /**
    * Races an operation against the timeout and the abort signal.
    *
    * @param operation - The CDP send.
-   * @param method - The method name, used in the timeout error.
+   * @param label - What the operation does, used in the timeout error, for
+   * example `CDP call "Runtime.evaluate"`.
    * @param options - Timeout and abort signal.
    * @returns The operation result.
    */
   async #race(
     operation: Promise<unknown>,
-    method: string,
+    label: string,
     options: CdpAttachOptions,
   ): Promise<unknown> {
     const { timeoutMs, signal } = options;
@@ -1961,9 +2222,7 @@ export class CdpManager {
           timer = setTimeout(
             () =>
               reject(
-                new Error(
-                  `CDP call "${method}" timed out after ${timeoutMs}ms`,
-                ),
+                new CdpTimeoutError(`${label} timed out after ${timeoutMs}ms`),
               ),
             timeoutMs,
           );
@@ -2056,7 +2315,7 @@ export class CdpManager {
    * @param event - The event name.
    * @param payload - The target payload.
    */
-  #emit(event: CdpManagerEvent, payload: CdpTargetEvent): void {
+  #emit(event: CdpManagerEvent, payload: CdpTargetLifecycleEvent): void {
     for (const listener of this.#listeners.get(event) ?? []) {
       listener(payload);
     }

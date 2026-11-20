@@ -1042,6 +1042,15 @@ describe('PlaywrightPlatformDriver', () => {
         'Runtime.disable',
         expect.anything(),
       );
+      // A held enable with no params succeeds without being sent again.
+      expect(
+        await driver.cdp({ method: 'Runtime.enable', timeoutMs: TIMEOUT_MS }),
+      ).toStrictEqual({ ok: true, result: {} });
+      expect(
+        cdpSession.send.mock.calls.filter(
+          ([method]) => method === 'Runtime.enable',
+        ),
+      ).toHaveLength(1);
       await manager.dispose();
     });
 
