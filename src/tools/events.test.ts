@@ -63,6 +63,7 @@ describe('eventsTool', () => {
           seq: 1,
           counts: { console: 1, network: 0 },
           dropped: { console: 0, network: 0 },
+          captureErrors: 0,
         },
       },
     });

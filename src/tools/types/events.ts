@@ -41,6 +41,15 @@ export type EventSummary = {
   counts: Record<EventKind, number>;
   /** Records dropped because the buffer was full, by kind. */
   dropped: Record<EventKind, number>;
+  /**
+   * Errors of the event sources in this session: a page or the service
+   * worker that could not be attached in time, a domain that could not be
+   * enabled, a source that did not start. Events of that target can be
+   * missing from the reads.
+   */
+  captureErrors: number;
+  /** The newest of those errors, redacted and cut at 300 characters. */
+  lastCaptureError?: string;
 };
 
 /** One page of records. */
