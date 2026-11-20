@@ -159,6 +159,22 @@ describe('NetworkSource', () => {
     });
   });
 
+  it('records subscription errors in the buffer summary', async () => {
+    const { events, options } = await startSource();
+
+    options.onError?.(
+      new Error(
+        'Network.enable parameters {"maxPostDataSize":65536} were not applied on page https://dapp.example/',
+      ),
+    );
+
+    expect(events.buffer.summary()).toMatchObject({
+      captureErrors: 1,
+      lastCaptureError:
+        'Network.enable parameters {"maxPostDataSize":65536} were not applied on page https://dapp.example/',
+    });
+  });
+
   it('stops listening for target detaches when unsubscribed', async () => {
     const { subscription, detach, emit, events } = await startSource();
     emit('Network.requestWillBeSent', willBeSent('1', 'https://a/'), PAGE);

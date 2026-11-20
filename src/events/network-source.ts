@@ -189,6 +189,7 @@ export class NetworkSource implements SessionEventSource {
         },
       },
       onEvent: (event) => this.#onEvent(event, manager, events),
+      onError: events.reportError,
     });
     const onDetached = (event: CdpTargetLifecycleEvent): void =>
       this.#onTargetDetached(event, events);

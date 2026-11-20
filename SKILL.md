@@ -826,6 +826,8 @@ An unfiltered read returns every record in start order (`seq`), pending requests
 
 `mm network configure --rpc-errors` reads the body of each JSON-RPC response (up to 64 KiB decoded, at most 8 at a time) and records its `error`; `stats.rpcErrorsSkipped` counts the bodies that were too large, too many at once or gone. The decoded size comes from `Network.dataReceived` when Chrome reports it; without those events the compressed `encodedDataLength` is used, which can undercount. `Network.enable` gets small response-buffer limits, since no bodies are kept otherwise. `--no-rpc-errors` turns it off.
 
+The session holds `Network` and `Runtime` enabled on every page and on the service worker from `mm launch` on. `mm cdp Network.enable` (no params) still succeeds and sends nothing; `mm cdp Network.disable`, or a `Network.enable` with other params, is refused with `MM_CDP_BLOCKED`, because it would stop or change what `mm network` records. Use `--fresh` for those.
+
 #### Per-flow recipe
 
 ```bash
