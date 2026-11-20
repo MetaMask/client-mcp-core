@@ -1,4 +1,4 @@
-import type { EventKind } from './events.js';
+import type { ConsoleLevel, EventKind } from './events.js';
 import type { SmartContractName } from './seeding.js';
 
 export type TabRole = 'extension' | 'notification' | 'dapp' | 'other';
@@ -312,6 +312,27 @@ export type MockNetworkInput =
       url?: string;
       includeBodies?: boolean;
     };
+
+/** Read options shared by `mm logs` and `mm network`. */
+export type EventReadInput = {
+  /** Only records after this cursor (from `mm events mark` or an earlier read). */
+  cursor?: number;
+  /** Only records at or after this time: epoch ms, or an ISO date. */
+  since?: number | string;
+  /** Maximum records (default 500, max 2000). */
+  limit?: number;
+};
+
+export type LogsInput =
+  | ({
+      action?: 'read';
+      /**
+       * Only messages whose text matches this case-sensitive JavaScript
+       * regular expression (at most 256 characters).
+       */
+      grep?: string;
+    } & EventReadInput)
+  | { action: 'configure'; levels: ConsoleLevel[] };
 
 export type EventsInput =
   | { action: 'mark' }

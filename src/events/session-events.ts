@@ -1,9 +1,11 @@
 import type { BrowserContext } from '@playwright/test';
 
+import { ConsoleSource, DEFAULT_CONSOLE_LEVELS } from './console-source.js';
 import { EventBuffer } from './event-buffer.js';
 import { redactText, truncateText } from './redact.js';
 import type { CdpManager, CdpSubscription } from '../platform/cdp-manager.js';
 import { getCdpManager } from '../platform/cdp-manager.js';
+import type { EventConfig } from '../tools/types/events.js';
 import { debugWarn, extractErrorMessage } from '../utils';
 
 /**
@@ -38,6 +40,9 @@ export class SessionEvents {
   readonly buffer = new EventBuffer();
 
   readonly context: BrowserContext;
+
+  /** What the sources record. Sources read it for each event. */
+  config: EventConfig = { consoleLevels: [...DEFAULT_CONSOLE_LEVELS] };
 
   readonly #sources: SessionEventSource[];
 
@@ -153,7 +158,7 @@ export class SessionEvents {
  * @returns The sources.
  */
 function createSources(): SessionEventSource[] {
-  return [];
+  return [new ConsoleSource()];
 }
 
 const sessions = new WeakMap<BrowserContext, SessionEvents>();

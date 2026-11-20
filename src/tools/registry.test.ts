@@ -23,6 +23,7 @@ describe('toolRegistry', () => {
       'clipboard',
       'mock_network',
       'events',
+      'logs',
       'run_steps',
       'cdp',
       'hermes_targets',
@@ -42,7 +43,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(50);
+    expect(toolRegistry.size).toBe(51);
   });
 
   it('stores only functions as values', () => {
@@ -96,9 +97,12 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     },
   );
 
-  it('getToolCategory returns readonly for events', () => {
-    expect(getToolCategory('events')).toBe('readonly');
-  });
+  it.each(['events', 'logs'])(
+    'getToolCategory returns readonly for %s',
+    (toolName) => {
+      expect(getToolCategory(toolName)).toBe('readonly');
+    },
+  );
 
   it('getToolCategory returns readonly for get_context', () => {
     expect(getToolCategory('get_context')).toBe('readonly');
@@ -130,6 +134,7 @@ describe('isBrowserOnlyTool', () => {
     'clipboard',
     'mock_network',
     'events',
+    'logs',
     'reload',
     'build',
     'inspect',

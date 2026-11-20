@@ -862,6 +862,86 @@ export const eventsInputSchema = z.discriminatedUnion('action', [
     .strict(),
 ]);
 
+const eventReadFields = {
+  cursor: z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+      'Only records after this cursor (from events mark, or the cursor of an earlier read)',
+    )
+    .optional(),
+  since: z
+    .union([
+      z.number().int().min(0),
+      z
+        .string()
+        .refine(
+          (value) => /^\d+$/u.test(value) || !Number.isNaN(Date.parse(value)),
+          { message: 'since must be epoch milliseconds or an ISO date' },
+        ),
+    ])
+    .describe('Only records at or after this time: epoch ms or an ISO date')
+    .optional(),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(2000)
+    .describe(
+      'Maximum records (default 500), oldest first; read again with the returned cursor while hasMore',
+    )
+    .optional(),
+};
+
+export const consoleLevelSchema = z.enum([
+  'error',
+  'warning',
+  'info',
+  'log',
+  'debug',
+]);
+
+// `warn` is the name Chrome uses in a few places; accept it as `warning`.
+const consoleLevelInputSchema = z.union([
+  consoleLevelSchema,
+  z.literal('warn').transform((): 'warning' => 'warning'),
+]);
+
+export const logsInputSchema = z.union([
+  z
+    .object({
+      action: z.literal('read').optional(),
+      ...eventReadFields,
+      // Declared here as well as by `withObserve`: on zod 4.4 (our minimum),
+      // a strict union member intersected with the observe object rejects
+      // `observe` instead of merging it.
+      observe: observeLevelSchema.optional(),
+      grep: z
+        .string()
+        .min(1)
+        .max(256)
+        .describe(
+          'Only messages whose text matches this case-sensitive JavaScript ' +
+            'regular expression (at most 256 characters)',
+        )
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('configure'),
+      observe: observeLevelSchema.optional(),
+      levels: z
+        .array(consoleLevelInputSchema)
+        .min(1)
+        .describe(
+          'Console levels to record from now on (default: error); `warn` is accepted as `warning`',
+        ),
+    })
+    .strict(),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -1120,6 +1200,7 @@ export type CdpInputZ = z.infer<typeof cdpInputSchema>;
 export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
 export type EventsInputZ = z.infer<typeof eventsInputSchema>;
+export type LogsInputZ = z.infer<typeof logsInputSchema>;
 export type ScrollToElementInputZ = z.infer<typeof scrollToElementInputSchema>;
 export type DeviceSwipeInputZ = z.infer<typeof deviceSwipeInputSchema>;
 export type LongPressInputZ = z.infer<typeof longPressInputSchema>;
@@ -1174,6 +1255,7 @@ export const toolSchemas = {
   get_window_size: withObserve(getWindowSizeInputSchema),
   mock_network: withObserve(mockNetworkInputSchema),
   events: withObserve(eventsInputSchema),
+  logs: withObserve(logsInputSchema),
   scroll_to_element: withObserve(scrollToElementInputSchema),
   device_swipe: withObserve(deviceSwipeInputSchema),
   long_press: withObserve(longPressInputSchema),
