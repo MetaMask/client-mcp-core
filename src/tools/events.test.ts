@@ -8,7 +8,11 @@ import { getSessionEvents } from '../events/session-events.js';
 import type { ToolContext } from '../types/http.js';
 
 vi.mock('../platform/cdp-manager.js', () => ({
-  getCdpManager: vi.fn().mockReturnValue({}),
+  getCdpManager: vi.fn().mockReturnValue({
+    subscribe: vi.fn().mockResolvedValue({ unsubscribe: vi.fn() }),
+    on: vi.fn(),
+    off: vi.fn(),
+  }),
 }));
 
 /**
@@ -63,6 +67,7 @@ describe('eventsTool', () => {
           seq: 1,
           counts: { console: 1, network: 0 },
           dropped: { console: 0, network: 0 },
+          captureErrors: 0,
         },
       },
     });

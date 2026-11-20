@@ -94,6 +94,10 @@ export class EventBuffer {
 
   #seq = 0;
 
+  #captureErrors = 0;
+
+  #lastCaptureError: string | undefined;
+
   /**
    * @param options - Buffer options.
    * @param options.capacity - Records kept per kind; the oldest record of a
@@ -332,6 +336,17 @@ export class EventBuffer {
   }
 
   /**
+   * Counts an error of an event source, reported in the summary. It takes
+   * no `seq`: it is not a record.
+   *
+   * @param message - The error text, already redacted.
+   */
+  noteCaptureError(message: string): void {
+    this.#captureErrors += 1;
+    this.#lastCaptureError = message;
+  }
+
+  /**
    * @returns The buffer state.
    */
   summary(): EventSummary {
@@ -346,6 +361,10 @@ export class EventBuffer {
         console: this.#kinds.console.dropped,
         network: this.#kinds.network.dropped,
       },
+      captureErrors: this.#captureErrors,
+      ...(this.#lastCaptureError === undefined
+        ? {}
+        : { lastCaptureError: this.#lastCaptureError }),
     };
   }
 }

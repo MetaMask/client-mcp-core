@@ -2,7 +2,11 @@ import type { BrowserContext } from '@playwright/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SessionEventSource } from './session-events.js';
-import { getSessionEvents, SessionEvents } from './session-events.js';
+import {
+  getSessionEvents,
+  SESSION_EVENTS_START_WAIT_MS,
+  SessionEvents,
+} from './session-events.js';
 import { getCdpManager } from '../platform/cdp-manager.js';
 
 vi.mock('../platform/cdp-manager.js', () => ({
@@ -110,6 +114,103 @@ describe('SessionEvents', () => {
     await events.ensureStarted();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(failing.start).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('SessionEvents start bound and errors', () => {
+  beforeEach(() => {
+    getCdpManagerMock.mockReset();
+  });
+
+  /**
+   * Tracks whether a promise settled.
+   *
+   * @param promise - The promise.
+   * @returns Read `settled` later.
+   */
+  function track(promise: Promise<unknown>): { settled: boolean } {
+    const state = { settled: false };
+    promise
+      .finally(() => {
+        state.settled = true;
+      })
+      .catch(() => undefined);
+    return state;
+  }
+
+  it('does not hang later calls on a start that never finishes', async () => {
+    vi.useFakeTimers();
+    try {
+      getCdpManagerMock.mockReturnValue({ id: 1 } as never);
+      const source = {
+        start: vi.fn(async () => new Promise<never>(() => undefined)),
+      };
+      const events = new SessionEvents({} as BrowserContext, [source]);
+
+      const first = track(events.ensureStarted());
+      await vi.advanceTimersByTimeAsync(SESSION_EVENTS_START_WAIT_MS);
+      expect(first.settled).toBe(true);
+
+      // The start is still running: a later call waits one bound, not
+      // forever, and does not start the sources again.
+      const later = track(events.ensureStarted());
+      await vi.advanceTimersByTimeAsync(SESSION_EVENTS_START_WAIT_MS - 1);
+      expect(later.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(later.settled).toBe(true);
+      expect(source.start).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns as soon as the sources started', async () => {
+    getCdpManagerMock.mockReturnValue({ id: 1 } as never);
+    const { source } = createSource();
+    const events = new SessionEvents({} as BrowserContext, [source]);
+
+    expect(await events.ensureStarted()).toBeUndefined();
+    expect(source.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a source that fails to start as a capture error', async () => {
+    getCdpManagerMock.mockReturnValue({ id: 1 } as never);
+    const failing = {
+      start: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            'boom at https://mainnet.infura.io/v3/0123456789abcdef0123456789abcdef',
+          ),
+        ),
+    };
+    const events = new SessionEvents({} as BrowserContext, [failing]);
+
+    await events.ensureStarted();
+
+    expect(events.buffer.summary()).toMatchObject({
+      captureErrors: 1,
+      lastCaptureError: 'boom at https://mainnet.infura.io/v3/[REDACTED]',
+    });
+  });
+
+  it('reportError counts, redacts and cuts an error, and never throws', () => {
+    const events = new SessionEvents({} as BrowserContext, []);
+
+    events.reportError(new Error('x'.repeat(400)));
+    expect(events.buffer.summary().lastCaptureError).toBe(
+      `${'x'.repeat(300)}…`,
+    );
+    events.reportError('plain text');
+    expect(events.buffer.summary()).toMatchObject({
+      captureErrors: 2,
+      lastCaptureError: 'plain text',
+    });
+
+    vi.spyOn(events.buffer, 'noteCaptureError').mockImplementation(() => {
+      throw new Error('buffer broken');
+    });
+    expect(() => events.reportError(new Error('y'))).not.toThrowError();
   });
 });
 

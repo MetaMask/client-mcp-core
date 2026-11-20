@@ -11,7 +11,7 @@ import type {
   CdpEventTarget,
   CdpManager,
   CdpSubscription,
-  CdpTargetEvent,
+  CdpTargetLifecycleEvent,
 } from '../platform/cdp-manager.js';
 import type { NetworkRecord } from '../tools/types/events.js';
 import { debugWarn } from '../utils';
@@ -190,7 +190,7 @@ export class NetworkSource implements SessionEventSource {
       },
       onEvent: (event) => this.#onEvent(event, manager, events),
     });
-    const onDetached = (event: CdpTargetEvent): void =>
+    const onDetached = (event: CdpTargetLifecycleEvent): void =>
       this.#onTargetDetached(event, events);
     manager.on('targetDetached', onDetached);
     return {
@@ -470,7 +470,10 @@ export class NetworkSource implements SessionEventSource {
    * @param event - The detached target.
    * @param events - The session's events.
    */
-  #onTargetDetached(event: CdpTargetEvent, events: SessionEvents): void {
+  #onTargetDetached(
+    event: CdpTargetLifecycleEvent,
+    events: SessionEvents,
+  ): void {
     const { targetId } = event;
     if (targetId === undefined) {
       return;

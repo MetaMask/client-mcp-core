@@ -3,6 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 import type { CdpEvent } from './cdp-manager.js';
 import {
+  CDP_ATTACH_STEP_TIMEOUT_MS,
+  CdpDomainInUseError,
   CdpManager,
   DEFAULT_SW_ATTACH_TIMEOUT_MS,
   STOPPED_WORKER_MESSAGE,
@@ -2641,7 +2643,7 @@ describe('CdpManager subscribe', () => {
     expect(workerCommands(fake, 'session-1')).toContain('Runtime.evaluate');
   });
 
-  it('refuses to enable or disable a domain a subscription holds', async () => {
+  it('refuses to disable a domain a subscription holds', async () => {
     const page = createEventPage();
     const fake = createContext({ pages: [page], targets: [] });
     const session = createEventSession('page-1');
@@ -2649,14 +2651,13 @@ describe('CdpManager subscribe', () => {
     const manager = new CdpManager(fake.context);
     await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
 
-    await expect(
-      manager.send({ kind: 'page', page }, 'Runtime.disable'),
-    ).rejects.toThrowError(
-      'CDP method "Runtime.disable" is refused while an event subscription holds the Runtime domain',
+    const refusal = manager.send({ kind: 'page', page }, 'Runtime.disable');
+    await expect(refusal).rejects.toThrowError(
+      'CDP method "Runtime.disable" is refused while an event subscription holds the Runtime domain on this target: it would stop the events the subscription receives. Use --fresh',
     );
-    await expect(
-      manager.send({ kind: 'page', page }, 'Runtime.enable'),
-    ).rejects.toThrowError('is refused');
+    await expect(refusal).rejects.toBeInstanceOf(CdpDomainInUseError);
+    await expect(refusal).rejects.toMatchObject({ code: 'MM_CDP_BLOCKED' });
+    expect(pageCommands(session)).not.toContain('Runtime.disable');
     // A domain no subscription holds is sent.
     await manager.send({ kind: 'page', page }, 'Network.disable');
     expect(pageCommands(session)).toContain('Network.disable');
@@ -2718,6 +2719,540 @@ describe('CdpManager subscribe', () => {
       manager.subscribe({ events: [], onEvent: vi.fn() }),
     ).rejects.toThrowError('Subscribe to at least one CDP event');
     expect(fake.emitter.listenerCount('page')).toBe(0);
+  });
+});
+
+describe('CdpManager send on a held domain', () => {
+  it('answers a held <Domain>.enable with no or the same params without sending it', async () => {
+    const page = createEventPage();
+    const fake = createContext({
+      pages: [page],
+      swReply: () => ({ result: {} }),
+    });
+    const session = createEventSession('page-1');
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { maxPostDataSize: 1024, maxTotalBufferSize: 10 } },
+      onEvent: vi.fn(),
+    });
+
+    expect(
+      await manager.send({ kind: 'page', page }, 'Network.enable'),
+    ).toStrictEqual({});
+    expect(
+      await manager.send({ kind: 'page', page }, 'Network.enable', {
+        maxTotalBufferSize: 10,
+        maxPostDataSize: 1024,
+      }),
+    ).toStrictEqual({});
+    expect(await manager.send({ kind: 'sw' }, 'Network.enable')).toStrictEqual(
+      {},
+    );
+
+    expect(
+      pageCommands(session).filter((method) => method === 'Network.enable'),
+    ).toHaveLength(1);
+    expect(
+      workerCommands(fake).filter((method) => method === 'Network.enable'),
+    ).toHaveLength(1);
+  });
+
+  it('refuses a held <Domain>.enable with other params', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    const session = createEventSession('page-1');
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { maxPostDataSize: 1024 } },
+      onEvent: vi.fn(),
+    });
+
+    const refusal = manager.send({ kind: 'page', page }, 'Network.enable', {
+      maxPostDataSize: 1,
+    });
+
+    await expect(refusal).rejects.toThrowError(
+      'CDP method "Network.enable" is refused while an event subscription holds the Network domain on this target: the domain is already enabled, with parameters this call would change. Send it without parameters (it then succeeds without sending anything). Use --fresh to send it on a one-shot session.',
+    );
+    await expect(refusal).rejects.toMatchObject({ code: 'MM_CDP_BLOCKED' });
+    expect(
+      pageCommands(session).filter((method) => method === 'Network.enable'),
+    ).toHaveLength(1);
+  });
+
+  it('sends a <Domain>.enable once its last subscriber is gone', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    const session = createEventSession('page-1');
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    const subscription = await manager.subscribe({
+      events: LOG_EVENTS,
+      onEvent: vi.fn(),
+    });
+    await subscription.unsubscribe();
+
+    await manager.send({ kind: 'page', page }, 'Runtime.enable');
+    await manager.send({ kind: 'page', page }, 'Runtime.disable');
+
+    expect(pageCommands(session)).toStrictEqual([
+      'Target.getTargetInfo',
+      'Runtime.enable',
+      'Runtime.disable',
+      'Runtime.enable',
+      'Runtime.disable',
+    ]);
+  });
+
+  it('fails a held <Domain>.enable the same way the subscription enable failed', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    let rejectEnable!: (error: Error) => void;
+    const session = createEventSession('page-1', (method) =>
+      method === 'Runtime.enable'
+        ? new Promise((_resolve, reject) => {
+            rejectEnable = reject;
+          })
+        : {},
+    );
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    const subscribing = manager.subscribe({
+      events: LOG_EVENTS,
+      onEvent: vi.fn(),
+      onError: vi.fn(),
+    });
+    await flush();
+
+    const enabling = manager.send({ kind: 'page', page }, 'Runtime.enable');
+    rejectEnable(new Error('Runtime.enable failed'));
+
+    await expect(enabling).rejects.toThrowError('Runtime.enable failed');
+    await subscribing;
+  });
+});
+
+describe('CdpManager subscribe bounds each attach step', () => {
+  /**
+   * Tracks whether a promise settled.
+   *
+   * @param promise - The promise.
+   * @returns Read `settled` later.
+   */
+  function track(promise: Promise<unknown>): { settled: boolean } {
+    const state = { settled: false };
+    promise
+      .catch(() => undefined)
+      .finally(() => {
+        state.settled = true;
+      })
+      .catch(() => undefined);
+    return state;
+  }
+
+  /**
+   * Answers a method with a promise that never settles.
+   *
+   * @param stuck - The method that never answers.
+   * @returns A send implementation.
+   */
+  function never(stuck: string) {
+    return (method: string): unknown =>
+      method === stuck ? new Promise(() => undefined) : {};
+  }
+
+  it('reports a page whose Runtime.enable never answers and keeps the other targets', async () => {
+    vi.useFakeTimers();
+    try {
+      const stuckPage = createEventPage(`https://dapp.test/a?token=secret`);
+      const goodPage = createEventPage(`${EXTENSION_URL}b.html`);
+      const fake = createContext({ pages: [stuckPage, goodPage] });
+      const stuck = createEventSession('stuck', never('Runtime.enable'));
+      const good = createEventSession('good');
+      fake.newCDPSession.mockImplementation(async (page: Page) =>
+        page === stuckPage ? stuck : good,
+      );
+      const manager = new CdpManager(fake.context);
+      const onError = vi.fn();
+      const onEvent = vi.fn();
+      const subscribing = manager.subscribe({
+        events: LOG_EVENTS,
+        onEvent,
+        onError,
+      });
+      const state = track(subscribing);
+
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS - 1);
+      expect(state.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(state.settled).toBe(true);
+      const subscription = await subscribing;
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `Runtime.enable on page https://dapp.test/a timed out after ${CDP_ATTACH_STEP_TIMEOUT_MS}ms`,
+        }),
+      );
+      // No half-attached state: the stuck page has no listener left, and
+      // its domain is disabled in case the enable lands late.
+      expect(stuck.emitter.listenerCount('Runtime.consoleAPICalled')).toBe(0);
+      expect(pageCommands(stuck)).toContain('Runtime.disable');
+      good.emitter.emit('Runtime.consoleAPICalled', {});
+      emitWorkerEvent(fake, 'Runtime.exceptionThrown', {});
+      expect(onEvent).toHaveBeenCalledTimes(2);
+
+      // Nothing is left on the session: a later subscriber enables the
+      // domain on it again.
+      stuck.send.mockImplementation(async (method: string) =>
+        method === 'Target.getTargetInfo'
+          ? { targetInfo: { targetId: 'stuck' } }
+          : {},
+      );
+      const later = vi.fn();
+      await manager.subscribe({ events: LOG_EVENTS, onEvent: later });
+      stuck.emitter.emit('Runtime.consoleAPICalled', {});
+      expect(later).toHaveBeenCalledTimes(1);
+      expect(
+        pageCommands(stuck).filter((method) => method === 'Runtime.enable'),
+      ).toHaveLength(2);
+
+      const unsubscribing = track(subscription.unsubscribe());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(unsubscribing.settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a page whose Target.getTargetInfo never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = createEventPage();
+      const fake = createContext({ pages: [page], targets: [] });
+      const session = createEventSession('page-1');
+      session.send.mockImplementation(async (method: string) =>
+        never('Target.getTargetInfo')(method),
+      );
+      fake.newCDPSession.mockResolvedValueOnce(session);
+      const manager = new CdpManager(fake.context);
+      const onError = vi.fn();
+      const state = track(
+        manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn(), onError }),
+      );
+
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+
+      expect(state.settled).toBe(true);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `Target.getTargetInfo on page ${PAGE_URL} timed out after ${CDP_ATTACH_STEP_TIMEOUT_MS}ms`,
+        }),
+      );
+      expect(pageCommands(session)).toStrictEqual(['Target.getTargetInfo']);
+      expect(session.emitter.listenerCount('Runtime.consoleAPICalled')).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a page whose session never opens and detaches it if it opens late', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = createEventPage();
+      const fake = createContext({ pages: [page], targets: [] });
+      const late = createEventSession('page-1');
+      let resolveSession!: (session: EventSession) => void;
+      fake.newCDPSession.mockReturnValueOnce(
+        new Promise<EventSession>((resolve) => {
+          resolveSession = resolve;
+        }),
+      );
+      const manager = new CdpManager(fake.context);
+      const onError = vi.fn();
+      const state = track(
+        manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn(), onError }),
+      );
+
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+      expect(state.settled).toBe(true);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `Opening a CDP session on page ${PAGE_URL} timed out after ${CDP_ATTACH_STEP_TIMEOUT_MS}ms`,
+        }),
+      );
+
+      resolveSession(late);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(late.detach).toHaveBeenCalledTimes(1);
+      expect(pageCommands(late)).toStrictEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a worker whose enable never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createContext({ pages: [] });
+      const tunnel = fake.browserSession.send.getMockImplementation();
+      fake.browserSession.send.mockImplementation(
+        async (method: string, params?: Record<string, unknown>) => {
+          if (
+            method === 'Target.sendMessageToTarget' &&
+            String(params?.message).includes('"Runtime.enable"')
+          ) {
+            return {};
+          }
+          return tunnel?.(method, params);
+        },
+      );
+      const manager = new CdpManager(fake.context);
+      const onError = vi.fn();
+      const state = track(
+        manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn(), onError }),
+      );
+
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+
+      expect(state.settled).toBe(true);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `Runtime.enable on the Extension service worker (target ${TARGET_ID}) timed out after ${CDP_ATTACH_STEP_TIMEOUT_MS}ms`,
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a worker target list that never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createContext({ pages: [] });
+      const original = fake.browserSession.send.getMockImplementation();
+      fake.browserSession.send.mockImplementation(
+        async (method: string, params?: Record<string, unknown>) =>
+          method === 'Target.getTargets'
+            ? new Promise(() => undefined)
+            : original?.(method, params),
+      );
+      const manager = new CdpManager(fake.context);
+      const onError = vi.fn();
+      const state = track(
+        manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn(), onError }),
+      );
+
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+
+      expect(state.settled).toBe(true);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `Listing the Extension service worker targets timed out after ${CDP_ATTACH_STEP_TIMEOUT_MS}ms`,
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not wait on unsubscribe for an enable that never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = createEventPage();
+      const fake = createContext({ pages: [], targets: [] });
+      const manager = new CdpManager(fake.context);
+      const onError = vi.fn();
+      const subscription = await manager.subscribe({
+        events: LOG_EVENTS,
+        onEvent: vi.fn(),
+        onError,
+      });
+      const session = createEventSession(
+        'page-1',
+        async () => new Promise(() => undefined),
+      );
+      fake.newCDPSession.mockResolvedValueOnce(session);
+      fake.emitter.emit('page', page);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(pageCommands(session)).toContain('Runtime.enable');
+
+      const state = track(subscription.unsubscribe());
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS - 1);
+      expect(state.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(state.settled).toBe(true);
+
+      expect(session.emitter.listenerCount('Runtime.consoleAPICalled')).toBe(0);
+      // The enable may still land: the domain is disabled, once.
+      expect(
+        pageCommands(session).filter((method) => method === 'Runtime.disable'),
+      ).toHaveLength(1);
+      // An ended subscription hears nothing.
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+      expect(onError).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds each disable on unsubscribe', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = createEventPage();
+      const fake = createContext({ pages: [page], targets: [] });
+      const session = createEventSession('page-1', (method) =>
+        method === 'Runtime.disable' ? new Promise(() => undefined) : {},
+      );
+      fake.newCDPSession.mockResolvedValueOnce(session);
+      const manager = new CdpManager(fake.context);
+      const subscription = await manager.subscribe({
+        events: LOG_EVENTS,
+        onEvent: vi.fn(),
+      });
+
+      const state = track(subscription.unsubscribe());
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS - 1);
+      expect(state.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(state.settled).toBe(true);
+      expect(pageCommands(session)).toContain('Runtime.disable');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('CdpManager subscribe enable parameters', () => {
+  it('reports conflicting enable params with the target and the domain', async () => {
+    const page = createEventPage('https://dapp.test/x?apiKey=k');
+    const fake = createContext({ pages: [page] });
+    const session = createEventSession('page-1');
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { maxPostDataSize: 1024 } },
+      onEvent: vi.fn(),
+    });
+    const onError = vi.fn();
+    const onEvent = vi.fn();
+
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { maxPostDataSize: 65536 } },
+      onEvent,
+      onError,
+    });
+
+    expect(onError.mock.calls.map(([error]) => error.message)).toStrictEqual([
+      'Network.enable parameters {"maxPostDataSize":65536} were not applied on page https://dapp.test/x: another subscription enabled Network there with {"maxPostDataSize":1024}, which stay in effect.',
+      `Network.enable parameters {"maxPostDataSize":65536} were not applied on the Extension service worker (target ${TARGET_ID}): another subscription enabled Network there with {"maxPostDataSize":1024}, which stay in effect.`,
+    ]);
+    // The subscription still receives the events.
+    session.emitter.emit('Network.requestWillBeSent', {});
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(
+      pageCommands(session).filter((method) => method === 'Network.enable'),
+    ).toHaveLength(1);
+  });
+
+  it('accepts no params or the same params in another key order', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    fake.newCDPSession.mockResolvedValueOnce(createEventSession('page-1'));
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { maxPostDataSize: 1, maxTotalBufferSize: 2 } },
+      onEvent: vi.fn(),
+    });
+    const onError = vi.fn();
+
+    await manager.subscribe({ events: NET_EVENTS, onEvent: vi.fn(), onError });
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: {
+        Network: {
+          maxTotalBufferSize: 2,
+          maxPostDataSize: 1,
+          unset: undefined,
+        },
+      },
+      onEvent: vi.fn(),
+      onError,
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('reports a conflict about nested and list params', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    fake.newCDPSession.mockResolvedValueOnce(createEventSession('page-1'));
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { list: [1, { a: null }] } },
+      onEvent: vi.fn(),
+    });
+    const onError = vi.fn();
+
+    await manager.subscribe({
+      events: NET_EVENTS,
+      enable: { Network: { list: [1, { a: 2 }] } },
+      onEvent: vi.fn(),
+      onError,
+    });
+
+    expect(onError).toHaveBeenCalledWith(
+      new Error(
+        `Network.enable parameters {"list":[1,{"a":2}]} were not applied on page ${PAGE_URL}: another subscription enabled Network there with {"list":[1,{"a":null}]}, which stay in effect.`,
+      ),
+    );
+  });
+});
+
+describe('CdpManager subscribe without onError', () => {
+  it('writes errors to the debug log instead', async () => {
+    vi.resetModules();
+    vi.stubEnv('DEBUG', 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const fresh = await import('./cdp-manager.js');
+      const page = createEventPage();
+      const fake = createContext({ pages: [page], targets: [] });
+      const session = createEventSession('page-1', (method) => {
+        if (method === 'Runtime.enable') {
+          throw new Error('Runtime.enable failed');
+        }
+        return {};
+      });
+      fake.newCDPSession.mockResolvedValueOnce(session);
+      const manager = new fresh.CdpManager(fake.context);
+
+      await manager.subscribe({
+        events: LOG_EVENTS,
+        onEvent: () => {
+          throw new Error('onEvent failed');
+        },
+      });
+      session.emitter.emit('Runtime.consoleAPICalled', {});
+
+      expect(warn.mock.calls).toStrictEqual([
+        ['[Server:cdp-manager.subscribe] Runtime.enable failed'],
+        ['[Server:cdp-manager.subscribe] onEvent failed'],
+      ]);
+    } finally {
+      warn.mockRestore();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });
 
@@ -2823,7 +3358,9 @@ describe('CdpManager sendToEventTarget', () => {
         {},
         { timeoutMs: 5 },
       ),
-    ).rejects.toThrowError('timed out after 5ms');
+    ).rejects.toThrowError(
+      'CDP call "Network.getResponseBody" timed out after 5ms',
+    );
 
     resolveInfo({ targetInfo: { targetId: 'page-1' } });
     await subscribing;
@@ -2883,6 +3420,8 @@ describe('CdpManager sendToEventTarget', () => {
         {},
         { timeoutMs: 5 },
       ),
-    ).rejects.toThrowError('timed out after 5ms');
+    ).rejects.toThrowError(
+      'CDP call "Network.getResponseBody" timed out after 5ms',
+    );
   });
 });

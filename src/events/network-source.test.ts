@@ -19,7 +19,7 @@ import type {
   CdpManager,
   CdpSubscribeOptions,
   CdpSubscription,
-  CdpTargetEvent,
+  CdpTargetLifecycleEvent,
 } from '../platform/cdp-manager.js';
 import type { NetworkRecord } from '../tools/types/events.js';
 
@@ -50,26 +50,30 @@ async function startSource(
     params: Record<string, unknown>,
     target?: CdpEventTarget,
   ) => void;
-  detach: (event: CdpTargetEvent) => void;
+  detach: (event: CdpTargetLifecycleEvent) => void;
   options: CdpSubscribeOptions;
   source: NetworkSource;
   manager: CdpManager;
   subscription: CdpSubscription;
 }> {
   let options: CdpSubscribeOptions | undefined;
-  const listeners = new Set<(event: CdpTargetEvent) => void>();
+  const listeners = new Set<(event: CdpTargetLifecycleEvent) => void>();
   const manager = {
     subscribe: vi.fn(async (subscribeOptions: CdpSubscribeOptions) => {
       options = subscribeOptions;
       return { unsubscribe: vi.fn() };
     }),
     sendToEventTarget,
-    on: vi.fn((_event: string, listener: (event: CdpTargetEvent) => void) => {
-      listeners.add(listener);
-    }),
-    off: vi.fn((_event: string, listener: (event: CdpTargetEvent) => void) => {
-      listeners.delete(listener);
-    }),
+    on: vi.fn(
+      (_event: string, listener: (event: CdpTargetLifecycleEvent) => void) => {
+        listeners.add(listener);
+      },
+    ),
+    off: vi.fn(
+      (_event: string, listener: (event: CdpTargetLifecycleEvent) => void) => {
+        listeners.delete(listener);
+      },
+    ),
   } as unknown as CdpManager;
   const events = new SessionEvents({} as BrowserContext, []);
   const source = new NetworkSource();

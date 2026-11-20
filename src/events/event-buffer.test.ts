@@ -37,6 +37,7 @@ describe('EventBuffer', () => {
       seq: 3,
       counts: { console: 2, network: 1 },
       dropped: { console: 0, network: 0 },
+      captureErrors: 0,
     });
   });
 
@@ -543,5 +544,18 @@ describe('EventBuffer', () => {
     expect(second.startedAt).toBeGreaterThan(first.startedAt);
     const third = new EventBuffer();
     expect(third.startedAt).toBeGreaterThan(second.startedAt);
+  });
+
+  it('counts capture errors in the summary without taking a seq', () => {
+    const buffer = new EventBuffer();
+    buffer.noteCaptureError('first');
+    buffer.noteCaptureError('Runtime.enable on page x timed out after 5000ms');
+
+    expect(buffer.seq).toBe(0);
+    expect(buffer.summary()).toMatchObject({
+      seq: 0,
+      captureErrors: 2,
+      lastCaptureError: 'Runtime.enable on page x timed out after 5000ms',
+    });
   });
 });

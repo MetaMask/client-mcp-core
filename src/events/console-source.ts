@@ -426,6 +426,7 @@ export class ConsoleSource implements SessionEventSource {
     return manager.subscribe({
       events: CONSOLE_EVENTS,
       onEvent: (event) => this.#onEvent(event, events, startedAt),
+      onError: events.reportError,
     });
   }
 
