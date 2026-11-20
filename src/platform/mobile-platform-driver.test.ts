@@ -1,3 +1,4 @@
+import { TargetObscuredError } from '@metamask/device-mcp';
 import type { DeviceBackend, UIElement } from '@metamask/device-mcp';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
@@ -558,6 +559,51 @@ describe('MobilePlatformDriver', () => {
       expect(backend.tapElement).toHaveBeenCalledTimes(2);
     });
 
+    it('dismisses the keyboard for the Android TargetObscuredError of device-mcp', async () => {
+      const target = makeElement({ identifier: 'sheet-header-close-button' });
+      const keyboardError = new TargetObscuredError(
+        target,
+        makeElement({ type: 'android.widget.FrameLayout' }),
+        { x: 50, y: 22 },
+        {
+          keyboard: true,
+          obscuredByDescription: 'android.widget.FrameLayout',
+        },
+      );
+      const backend = createMockBackend({
+        platform: 'android',
+        waitForElement: vi.fn().mockResolvedValue(target),
+        tapElement: vi
+          .fn()
+          .mockRejectedValueOnce(keyboardError)
+          .mockResolvedValueOnce({
+            success: true,
+            x: 50,
+            y: 22,
+            targetDescription: '',
+          }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const result = await driver.click(
+        'testId',
+        'sheet-header-close-button',
+        new Map(),
+        5000,
+        undefined,
+        undefined,
+        { dismissKeyboard: true },
+      );
+
+      expect(result).toStrictEqual({
+        clicked: true,
+        target: 'testId:sheet-header-close-button',
+        keyboardDismissed: true,
+      });
+      expect(backend.dismissKeyboard).toHaveBeenCalledTimes(1);
+      expect(backend.tapElement).toHaveBeenCalledTimes(2);
+    });
+
     it('does not tap again when the request is aborted while dismissing', async () => {
       const controller = new AbortController();
       const backend = createMockBackend({
@@ -1099,6 +1145,31 @@ describe('MobilePlatformDriver', () => {
       });
       expect(refMap.get('e1')).toBe('identifier:submit-btn');
       expect(refMap.get('e2')).toBe('label:Email|type:TextField');
+    });
+
+    it('reads a snapshot that has device-mcp warnings and does not report them', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [makeElement({ label: 'Submit', identifier: 'submit' })],
+          raw: '[]',
+          timestamp: Date.now(),
+          warnings: ['ax-tree-truncated(backend=axbridge,depth=60,nodes=900)'],
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const capture = await driver.captureScreen();
+
+      expect(Object.keys(capture).sort()).toStrictEqual([
+        'getTestIds',
+        'nodes',
+        'refMap',
+      ]);
+      expect(capture.nodes.map(({ testId }) => testId)).toStrictEqual([
+        'submit',
+      ]);
+      expect(await capture.getTestIds()).toHaveLength(1);
     });
 
     it('omits bounds for elements with zero-size frames', async () => {

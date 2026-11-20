@@ -4,6 +4,7 @@
  * Tests error pattern matching and classification for various tool handlers.
  */
 
+import { TargetObscuredError } from '@metamask/device-mcp';
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -251,6 +252,38 @@ describe('error-classification', () => {
         ).toStrictEqual({
           code: ErrorCodes.MM_TARGET_OBSCURED,
           message: 'TARGET_OBSCURED: Button id="not found" is covered',
+        });
+      });
+
+      it('maps the Android keyboard TargetObscuredError of device-mcp to MM_TARGET_OBSCURED', () => {
+        const error = new TargetObscuredError(
+          {
+            type: 'android.widget.Button',
+            identifier: 'sheet-header-close-button',
+            frame: { x: 0, y: 2000, width: 100, height: 44 },
+            enabled: true,
+          },
+          {
+            type: 'android.widget.FrameLayout',
+            frame: { x: 0, y: 1500, width: 1080, height: 900 },
+            enabled: true,
+          },
+          { x: 50, y: 2022 },
+          {
+            keyboard: true,
+            obscuredByDescription: 'android.widget.FrameLayout',
+          },
+        );
+
+        expect(
+          classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED),
+        ).toStrictEqual({
+          code: ErrorCodes.MM_TARGET_OBSCURED,
+          message:
+            'TARGET_OBSCURED: android.widget.Button id="sheet-header-close-button" ' +
+            'is covered at (50, 2022) by the keyboard: android.widget.FrameLayout. ' +
+            'Nothing was tapped. ' +
+            'Dismiss the keyboard (device_dismiss_keyboard) and retry.',
         });
       });
 

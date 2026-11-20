@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   setPinnedHermesDeviceId: vi.fn(),
   HermesSession: vi.fn(),
   HermesClient: vi.fn(),
-  // device-mcp 0.7.0 has no HermesClient; only the tests that exercise the
+  // device-mcp before 0.9.0 has no HermesClient; only the tests that exercise the
   // persistent client enable it.
   hasHermesClient: false,
 }));
