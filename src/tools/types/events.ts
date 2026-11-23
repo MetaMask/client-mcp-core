@@ -8,8 +8,13 @@ export type EventKind = 'console' | 'network';
 
 /** The target a record came from. */
 export type EventRecordTarget = {
-  /** `page` (tab, popup, side panel), `sw` (Extension service worker), or `hermes` (mobile, later). */
-  kind: 'page' | 'sw' | 'hermes';
+  /**
+   * `page` (tab, popup, side panel), `sw` (Extension service worker),
+   * `offscreen` (MV3 offscreen document), `iframe` (an out-of-process iframe
+   * of the offscreen document, such as a snaps iframe), or `hermes` (mobile,
+   * later).
+   */
+  kind: 'page' | 'sw' | 'offscreen' | 'iframe' | 'hermes';
   /** The CDP target ID. Chrome can reuse a service worker's ID after a restart. */
   id: string;
   /** The target URL (redacted). */

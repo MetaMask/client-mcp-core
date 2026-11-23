@@ -9,11 +9,16 @@ import { ErrorCodes } from '../tools/types/errors.js';
 import { debugWarn } from '../utils/logger.js';
 
 /**
- * Target kinds a {@link CdpManager} can attach to. A string union so more
- * targets (for example a mobile `app`) can be added without changing the
- * manager interface.
+ * Target kinds a {@link CdpManager} can attach to: a page, the Extension
+ * service worker, the MV3 offscreen document (`offscreen.html`), and an
+ * out-of-process iframe of the offscreen document (`snaps/index.html`, one
+ * per snap job). A string union so more targets (for example a mobile `app`)
+ * can be added without changing the manager interface.
  */
-export type CdpTargetKind = 'page' | 'sw';
+export type CdpTargetKind = 'page' | 'sw' | 'offscreen' | 'iframe';
+
+/** The target kinds that Playwright does not track, see {@link CdpManager.watchSessions}. */
+export type CdpChildTargetKind = 'offscreen' | 'iframe';
 
 /**
  * A CDP target: a page, or the extension's service worker.
@@ -162,6 +167,55 @@ export type CdpSubscription = {
    * domains that no other subscriber needs. Idempotent.
    */
   unsubscribe(): Promise<void>;
+};
+
+/** Listener of one CDP event of a session, called with its parameters. */
+export type CdpEventListener = (
+  params: Record<string, unknown> | undefined,
+) => void;
+
+/** A CDP session that also emits the CDP events of its target, by name. */
+export type CdpEventSession = CdpSession & {
+  on(method: string, listener: CdpEventListener): unknown;
+  off(method: string, listener: CdpEventListener): unknown;
+};
+
+/** A target session handed to a {@link CdpManager.watchSessions} watcher. */
+export type CdpWatchedSession = {
+  /** The target now. Its URL can change after the attach. */
+  target: () => CdpEventTarget;
+  /** The shared persistent session of the target. Do not detach it. */
+  session: CdpEventSession;
+};
+
+/**
+ * Options for {@link CdpManager.watchSessions}.
+ */
+export type CdpWatchSessionsOptions = {
+  /** The target kinds to watch. */
+  kinds: readonly CdpChildTargetKind[];
+  /**
+   * Called once per target session. A new snaps iframe is paused until it
+   * settles (at most {@link CDP_ATTACH_STEP_TIMEOUT_MS}), so a command sent
+   * here (for example `Fetch.enable`) applies before the iframe's first
+   * request.
+   */
+  onAttach: (watched: CdpWatchedSession) => Promise<void> | void;
+  /** Called when a watched session is gone: its target closed or detached. */
+  onDetach?: (target: CdpEventTarget) => void;
+  /** Called for a failure; without it, errors go to the debug log. */
+  onError?: (error: Error) => void;
+};
+
+/**
+ * A live watch returned by {@link CdpManager.watchSessions}.
+ */
+export type CdpSessionWatch = {
+  /**
+   * Stops calling the watcher. The sessions stay attached: they are shared.
+   * Idempotent.
+   */
+  unwatch(): Promise<void>;
 };
 
 /** How long to wait for the extension service worker by default. */
@@ -359,40 +413,50 @@ type WorkerMessage = {
   error?: { code?: number; message?: string };
 };
 
-type CdpEventListener = (params: Record<string, unknown> | undefined) => void;
-
 /**
  * A cached session that also emits the CDP events of its target, by event
  * name: a Playwright `CDPSession` for a page, or a
- * {@link ServiceWorkerCdpSession}.
+ * {@link TunneledCdpSession}.
  */
-type EventCdpSession = CdpSession & {
-  on(method: string, listener: CdpEventListener): unknown;
-  off(method: string, listener: CdpEventListener): unknown;
-};
+type EventCdpSession = CdpEventSession;
 
 type PendingCommand = {
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
 };
 
+type TunnelOptions = {
+  /** Names the target in the closed-session error. */
+  label: string;
+  /**
+   * The browser-level session, which reports `Target.targetDestroyed` with
+   * target discovery on. The session closes when its target is destroyed.
+   */
+  browserSession?: EventCdpSession;
+};
+
 /**
- * A CDP session on a service worker target.
+ * A CDP session on a target that Playwright does not open sessions on: the
+ * service worker, the offscreen document, and its out-of-process iframes.
  *
- * Playwright only opens CDP sessions on pages and frames. A worker target is
- * reached from the browser-level CDP session instead: attach with
- * `Target.attachToTarget` (not flattened, because the wrapper cannot send on
- * a flattened session) and tunnel commands through
- * `Target.sendMessageToTarget`. Chrome still supports that deprecated pair.
- * Tunneled messages without an `id` are CDP events; they are emitted by
- * name, like a Playwright `CDPSession` does.
+ * The target is attached from a parent session (the browser-level session,
+ * or the offscreen document session for an iframe it auto-attached) without
+ * flattening, because Playwright cannot send on a flattened session it did
+ * not create, and commands are tunneled through `Target.sendMessageToTarget`.
+ * Chrome still supports that deprecated pair. Tunneled messages without an
+ * `id` are CDP events; they are emitted by name, like a Playwright
+ * `CDPSession` does.
  */
-class ServiceWorkerCdpSession implements EventCdpSession {
-  readonly #browserSession: CDPSession;
+class TunneledCdpSession implements EventCdpSession {
+  readonly #parent: EventCdpSession;
+
+  readonly #browserSession: EventCdpSession | undefined;
 
   readonly #sessionId: string;
 
   readonly #targetId: string;
+
+  readonly #label: string;
 
   readonly #onClose: () => void;
 
@@ -405,29 +469,32 @@ class ServiceWorkerCdpSession implements EventCdpSession {
   #closed = false;
 
   /**
-   * @param browserSession - The browser-level CDP session.
-   * @param sessionId - The attached service worker session ID.
-   * @param targetId - The attached service worker target ID.
+   * @param parent - The session the target was attached from.
+   * @param sessionId - The attached session ID.
+   * @param targetId - The attached target ID.
    * @param onClose - Called once when the attached target goes away.
+   * @param options - The target label and the browser-level session.
    */
   constructor(
-    browserSession: CDPSession,
+    parent: EventCdpSession,
     sessionId: string,
     targetId: string,
     onClose: () => void,
+    options: TunnelOptions,
   ) {
-    this.#browserSession = browserSession;
+    this.#parent = parent;
+    this.#browserSession = options.browserSession;
     this.#sessionId = sessionId;
     this.#targetId = targetId;
+    this.#label = options.label;
     this.#onClose = onClose;
-    browserSession.on('Target.receivedMessageFromTarget', this.#onMessage);
-    browserSession.on('Target.detachedFromTarget', this.#onDetached);
-    // Target discovery reports a destroyed target when the worker stops.
-    browserSession.on('Target.targetDestroyed', this.#onTargetDestroyed);
+    parent.on('Target.receivedMessageFromTarget', this.#onMessage);
+    parent.on('Target.detachedFromTarget', this.#onDetached);
+    this.#browserSession?.on('Target.targetDestroyed', this.#onTargetDestroyed);
   }
 
   /**
-   * Sends one command to the service worker target.
+   * Sends one command to the attached target.
    *
    * @param method - The CDP method.
    * @param params - The CDP method parameters.
@@ -444,7 +511,7 @@ class ServiceWorkerCdpSession implements EventCdpSession {
       this.#pending.set(id, { resolve, reject });
     });
     try {
-      await this.#browserSession.send('Target.sendMessageToTarget', {
+      await this.#parent.send('Target.sendMessageToTarget', {
         sessionId: this.#sessionId,
         message: JSON.stringify({ id, method, params }),
       });
@@ -456,7 +523,7 @@ class ServiceWorkerCdpSession implements EventCdpSession {
   }
 
   /**
-   * Listens for a CDP event of the service worker target.
+   * Listens for a CDP event of the attached target.
    *
    * @param method - The CDP event name.
    * @param listener - Called with the event parameters.
@@ -491,23 +558,22 @@ class ServiceWorkerCdpSession implements EventCdpSession {
     if (!this.#markClosed()) {
       return;
     }
-    await this.#browserSession
+    await this.#parent
       .send('Target.detachFromTarget', { sessionId: this.#sessionId })
       .catch(() => undefined);
   }
 
   /**
-   * Handles a message tunneled from the service worker.
+   * Handles a message tunneled from the attached target.
    *
-   * @param event - The `Target.receivedMessageFromTarget` payload.
-   * @param event.sessionId - The session that sent the message.
-   * @param event.message - The JSON-encoded CDP message.
+   * @param event - The `Target.receivedMessageFromTarget` payload: the
+   * `sessionId` that sent it and the JSON-encoded CDP `message`.
    */
-  readonly #onMessage = (event: {
-    sessionId: string;
-    message: string;
-  }): void => {
-    if (event.sessionId !== this.#sessionId) {
+  readonly #onMessage = (event: Record<string, unknown> | undefined): void => {
+    if (
+      event?.sessionId !== this.#sessionId ||
+      typeof event.message !== 'string'
+    ) {
       return;
     }
     let message: WorkerMessage;
@@ -541,32 +607,35 @@ class ServiceWorkerCdpSession implements EventCdpSession {
   };
 
   /**
-   * Marks the session closed when the target detaches (the worker stopped).
+   * Marks the session closed when the target detaches (it stopped, or the
+   * iframe was removed).
    *
-   * @param event - The `Target.detachedFromTarget` payload.
-   * @param event.sessionId - The session that detached.
+   * @param event - The `Target.detachedFromTarget` payload, with the
+   * `sessionId` that detached.
    */
-  readonly #onDetached = (event: { sessionId: string }): void => {
-    if (event.sessionId === this.#sessionId) {
+  readonly #onDetached = (event: Record<string, unknown> | undefined): void => {
+    if (event?.sessionId === this.#sessionId) {
       this.#markClosed();
     }
   };
 
   /**
-   * Marks the session closed when its target is destroyed (the worker
-   * stopped). Requires `Target.setDiscoverTargets`.
+   * Marks the session closed when its target is destroyed. Requires
+   * `Target.setDiscoverTargets`.
    *
-   * @param event - The `Target.targetDestroyed` payload.
-   * @param event.targetId - The destroyed target.
+   * @param event - The `Target.targetDestroyed` payload, with the destroyed
+   * `targetId`.
    */
-  readonly #onTargetDestroyed = (event: { targetId: string }): void => {
-    if (event.targetId === this.#targetId) {
+  readonly #onTargetDestroyed = (
+    event: Record<string, unknown> | undefined,
+  ): void => {
+    if (event?.targetId === this.#targetId) {
       this.#markClosed();
     }
   };
 
   /**
-   * Fails every pending command and stops listening for worker messages.
+   * Fails every pending command and stops listening for target messages.
    *
    * @returns False when the session was already closed.
    */
@@ -575,12 +644,12 @@ class ServiceWorkerCdpSession implements EventCdpSession {
       return false;
     }
     this.#closed = true;
-    this.#browserSession.off(
-      'Target.receivedMessageFromTarget',
-      this.#onMessage,
+    this.#parent.off('Target.receivedMessageFromTarget', this.#onMessage);
+    this.#parent.off('Target.detachedFromTarget', this.#onDetached);
+    this.#browserSession?.off(
+      'Target.targetDestroyed',
+      this.#onTargetDestroyed,
     );
-    this.#browserSession.off('Target.detachedFromTarget', this.#onDetached);
-    this.#browserSession.off('Target.targetDestroyed', this.#onTargetDestroyed);
     this.#eventListeners.clear();
     for (const pending of this.#pending.values()) {
       pending.reject(this.#closedError());
@@ -603,7 +672,7 @@ class ServiceWorkerCdpSession implements EventCdpSession {
    * @returns The error used for commands on a closed session.
    */
   #closedError(): Error {
-    return new Error('Session closed. The service worker target is gone.');
+    return new Error(`Session closed. The ${this.#label} target is gone.`);
   }
 }
 
@@ -633,13 +702,45 @@ type ServiceWorkerEntry = CdpEntryBase & {
   worker?: PlaywrightWorker;
 };
 
-type CdpEntry = PageEntry | ServiceWorkerEntry;
+/** The offscreen document, or an out-of-process iframe it auto-attached. */
+type ChildEntry = CdpEntryBase & {
+  kind: CdpChildTargetKind;
+  /** The CDP target ID; a recreated offscreen document has a new one. */
+  targetId: string;
+  /** The target URL. Empty until the target commits its first navigation. */
+  url: string;
+  /** For an iframe, the offscreen document target it was attached through. */
+  parentTargetId?: string;
+};
 
-/** A live `service_worker` target found in the browser target list. */
-type ServiceWorkerTarget = {
+type CdpEntry = PageEntry | ServiceWorkerEntry | ChildEntry;
+
+/**
+ * Tells whether an entry is the offscreen document or one of its iframes.
+ *
+ * @param entry - The target entry.
+ * @returns True for an offscreen document or iframe entry.
+ */
+function isChildEntry(entry: CdpEntry): entry is ChildEntry {
+  return 'kind' in entry;
+}
+
+/** A live Extension target found in the browser target list. */
+type ExtensionTarget = {
   extensionId: string;
   targetId: string;
   url: string;
+};
+
+type ServiceWorkerTarget = ExtensionTarget;
+
+/** One active {@link CdpManager.watchSessions} call. */
+type SessionWatch = {
+  options: CdpWatchSessionsOptions;
+  kinds: ReadonlySet<CdpChildTargetKind>;
+  /** The sessions handed to `onAttach`. */
+  sessions: Set<EventCdpSession>;
+  active: boolean;
 };
 
 /** A `Target.TargetInfo` as reported by the browser session. */
@@ -709,6 +810,46 @@ function toServiceWorkerTarget(
     : { extensionId, targetId: info.targetId, url: info.url };
 }
 
+/** The URL of the MV3 offscreen document, capturing the Extension ID. */
+const OFFSCREEN_URL =
+  /^chrome-extension:\/\/([a-z]{32})\/offscreen\.html(?:[?#]|$)/u;
+
+/**
+ * Target types an offscreen document is never reported as. A tab that
+ * loads `offscreen.html` is a page, which Playwright owns.
+ */
+const NON_OFFSCREEN_TYPES = new Set([
+  'page',
+  'tab',
+  'iframe',
+  'service_worker',
+  'shared_worker',
+  'worker',
+  'browser',
+]);
+
+/**
+ * Reads the Extension offscreen document target from a target info. Chrome
+ * reports it as a `background_page`, or briefly as `other` with an empty URL
+ * while it starts; the URL is what identifies it.
+ *
+ * @param info - The target info.
+ * @returns The target, or undefined for another kind of target.
+ */
+function toOffscreenTarget(info: TargetInfo): ExtensionTarget | undefined {
+  if (NON_OFFSCREEN_TYPES.has(info.type)) {
+    return undefined;
+  }
+  const extensionId = OFFSCREEN_URL.exec(info.url)?.[1];
+  return extensionId === undefined
+    ? undefined
+    : { extensionId, targetId: info.targetId, url: info.url };
+}
+
+/** Message of the error for an offscreen document that is gone. */
+const OFFSCREEN_GONE_MESSAGE =
+  'Session closed. The offscreen document target is gone.';
+
 /**
  * Converts a thrown value to an error.
  *
@@ -746,6 +887,11 @@ async function settleWithin(
  * @returns The target name.
  */
 function describeEntry(entry: CdpEntry): string {
+  if (isChildEntry(entry)) {
+    return entry.kind === 'offscreen'
+      ? `the Extension offscreen document (target ${entry.targetId})`
+      : `an offscreen document iframe (target ${entry.targetId})`;
+  }
   if (!('page' in entry)) {
     return `the Extension service worker (target ${entry.targetId})`;
   }
@@ -766,8 +912,9 @@ function isTargetGone(entry: CdpEntry): boolean {
 /**
  * Persistent CDP sessions for one browser session.
  *
- * Opens and caches one session per target (a page, or the extension service
- * worker), shared by every caller of the same target. Concurrent callers
+ * Opens and caches one session per target (a page, the extension service
+ * worker, the offscreen document or one of its iframes), shared by every
+ * caller of the same target. Concurrent callers
  * share the one in-flight open. A session that turns out to be closed is
  * dropped, and the next call attaches again.
  *
@@ -784,6 +931,15 @@ export class CdpManager {
   readonly #pageEntries = new WeakMap<Page, PageEntry>();
 
   readonly #workerEntries = new Map<string, ServiceWorkerEntry>();
+
+  readonly #offscreenEntries = new Map<string, ChildEntry>();
+
+  readonly #iframeEntries = new Map<string, ChildEntry>();
+
+  readonly #watches = new Set<SessionWatch>();
+
+  /** Auto-attached iframes whose subscribers and watchers are being added. */
+  readonly #childAttaches = new Set<Promise<void>>();
 
   /** Workers already watched for a `close` event. */
   readonly #observedWorkers = new WeakSet<PlaywrightWorker>();
@@ -814,6 +970,9 @@ export class CdpManager {
   #watchedBrowserSession: CDPSession | undefined;
 
   #browserSession: Promise<CDPSession> | undefined;
+
+  /** The in-flight `Target.getTargets`, see {@link #targetInfos}. */
+  #targetList: Promise<TargetInfo[]> | undefined;
 
   /** Whether an Extension service worker was seen during this manager's life. */
   #extensionWorkerSeen = false;
@@ -985,6 +1144,10 @@ export class CdpManager {
     let session: EventCdpSession | undefined;
     if (target.kind === 'sw') {
       session = this.#workerEntries.get(target.targetId)?.session;
+    } else if (target.kind === 'offscreen') {
+      session = this.#offscreenEntries.get(target.targetId)?.session;
+    } else if (target.kind === 'iframe') {
+      session = this.#iframeEntries.get(target.targetId)?.session;
     } else {
       for (const entry of this.#entries) {
         if (!('page' in entry) || !entry.session) {
@@ -1035,11 +1198,14 @@ export class CdpManager {
   }
 
   /**
-   * Delivers CDP events from every page and the Extension service worker.
+   * Delivers CDP events from every page, the Extension service worker, the
+   * MV3 offscreen document and its out-of-process iframes (the snaps
+   * iframes).
    *
-   * Attaches at once to every open page and to the running service worker,
-   * then to each new page (tab, popup) and each new or restarted worker as
-   * it appears. On each target it enables the domains of `events` once and
+   * Attaches at once to every open page, the running service worker and the
+   * offscreen document, then to each new page (tab, popup), each new or
+   * restarted worker, each recreated offscreen document and each new snaps
+   * iframe as it appears. On each target it enables the domains of `events` once and
    * shares the target's persistent session with `send` and other
    * subscribers. A worker that restarts as a new target gets a new session,
    * so its domains are enabled again.
@@ -1054,8 +1220,7 @@ export class CdpManager {
    * them. A domain the user enabled by hand before subscribing is not
    * tracked separately.
    *
-   * Only pages and the Extension service worker are covered: out-of-process
-   * iframes and MV3 offscreen documents are not attached.
+   * Out-of-process iframes of pages are not attached.
    *
    * `onEvent` receives the raw CDP `params`, which are not redacted; a
    * consumer that stores or prints them must redact them first.
@@ -1101,11 +1266,72 @@ export class CdpManager {
           this.#attachPageForSubscribers(page, [subscription]),
         ),
       this.#attachWorkerForSubscribers([subscription]),
+      this.#attachOffscreenForSubscribers([subscription], []),
     ]);
 
     return {
       unsubscribe: async (): Promise<void> => this.#unsubscribe(subscription),
     };
+  }
+
+  /**
+   * Hands every session of the given target kinds to a watcher: the MV3
+   * offscreen document and its out-of-process iframes (the snaps iframes),
+   * which Playwright does not track. Attaches to the ones live now, then to
+   * each recreated offscreen document and each new iframe.
+   *
+   * A new iframe is paused until every watcher's `onAttach` settles (or
+   * {@link CDP_ATTACH_STEP_TIMEOUT_MS} passes), so a command the watcher
+   * sends there, such as `Fetch.enable`, applies before the iframe's first
+   * request. The sessions are shared with subscribers: a watcher must not
+   * detach them, and must undo what it enabled when it stops.
+   *
+   * @param options - The target kinds and callbacks.
+   * @returns The watch, once the targets live now were handed over.
+   */
+  async watchSessions(
+    options: CdpWatchSessionsOptions,
+  ): Promise<CdpSessionWatch> {
+    this.#assertLive();
+    const watch: SessionWatch = {
+      options,
+      kinds: new Set(options.kinds),
+      sessions: new Set(),
+      active: true,
+    };
+    this.#watches.add(watch);
+    await this.#attachOffscreenForSubscribers([], [watch]);
+    await settleWithin(
+      Promise.all(this.#childAttaches).then(() => undefined),
+      CDP_ATTACH_STEP_TIMEOUT_MS,
+    );
+    return {
+      unwatch: async (): Promise<void> => this.#unwatch(watch),
+    };
+  }
+
+  /**
+   * Stops a watch.
+   *
+   * @param watch - The watch to stop.
+   */
+  async #unwatch(watch: SessionWatch): Promise<void> {
+    if (!watch.active) {
+      return;
+    }
+    watch.active = false;
+    watch.sessions.clear();
+    this.#watches.delete(watch);
+    if (!this.#listening()) {
+      this.#unwatchTargets();
+    }
+  }
+
+  /**
+   * @returns Whether a subscription or a watch needs new targets.
+   */
+  #listening(): boolean {
+    return this.#subscriptions.size > 0 || this.#watches.size > 0;
   }
 
   /**
@@ -1125,12 +1351,19 @@ export class CdpManager {
       this.#context.off('page', this.#onPage);
     }
     this.#subscriptions.clear();
+    for (const watch of this.#watches) {
+      watch.active = false;
+      watch.sessions.clear();
+    }
+    this.#watches.clear();
     this.#unwatchTargets();
     const entries = [...this.#entries];
     const browserSession = this.#browserSession;
     this.#browserSession = undefined;
     this.#entries.clear();
     this.#workerEntries.clear();
+    this.#offscreenEntries.clear();
+    this.#iframeEntries.clear();
     await Promise.all([
       ...entries.map(async (entry) => this.#detach(entry)),
       browserSession
@@ -1172,16 +1405,66 @@ export class CdpManager {
 
   /**
    * Attaches subscribers to a new Extension service worker target, such as
-   * a worker that restarted after MV3 stopped it.
+   * a worker that restarted after MV3 stopped it, and to a new offscreen
+   * document.
    *
    * @param event - The `Target.targetCreated` payload.
    * @param event.targetInfo - The new target.
    */
   readonly #onTargetCreated = (event: { targetInfo: TargetInfo }): void => {
-    const target = toServiceWorkerTarget(event.targetInfo);
+    this.#onTargetInfo(event.targetInfo, true);
+  };
+
+  /**
+   * Attaches to an offscreen document once it has its URL (it starts as an
+   * `other` target with an empty URL), and keeps child target URLs current.
+   *
+   * @param event - The `Target.targetInfoChanged` payload.
+   * @param event.targetInfo - The changed target.
+   */
+  readonly #onTargetInfoChanged = (event: { targetInfo: TargetInfo }): void => {
+    this.#onTargetInfo(event.targetInfo, false);
+  };
+
+  /**
+   * Handles a new or changed browser target.
+   *
+   * @param info - The target info.
+   * @param created - Whether the target is new.
+   */
+  #onTargetInfo(info: TargetInfo, created: boolean): void {
+    const child =
+      this.#iframeEntries.get(info.targetId) ??
+      this.#offscreenEntries.get(info.targetId);
+    if (child) {
+      if (info.url !== '') {
+        child.url = info.url;
+      }
+      return;
+    }
     const knownExtensionId = this.#extensionId();
+    const offscreen = toOffscreenTarget(info);
+    if (offscreen) {
+      if (
+        knownExtensionId !== undefined &&
+        offscreen.extensionId !== knownExtensionId
+      ) {
+        return;
+      }
+      const subscriptions = [...this.#subscriptions];
+      const watches = [...this.#watches];
+      this.#attachOffscreenTarget(offscreen, subscriptions, watches).catch(
+        (error: unknown) => {
+          this.#reportAttachError(subscriptions, error, false);
+          this.#reportWatches(watches, error);
+        },
+      );
+      return;
+    }
+    const target = created ? toServiceWorkerTarget(info) : undefined;
     if (
       target === undefined ||
+      this.#subscriptions.size === 0 ||
       (knownExtensionId !== undefined &&
         target.extensionId !== knownExtensionId)
     ) {
@@ -1191,23 +1474,24 @@ export class CdpManager {
     this.#attachWorkerTarget(target, subscriptions).catch((error: unknown) =>
       this.#reportAttachError(subscriptions, error, false),
     );
-  };
+  }
 
   /**
-   * Starts watching the browser session for new service worker targets,
-   * once per browser session.
+   * Starts watching the browser session for new and changed targets, once
+   * per browser session.
    */
   async #watchTargets(): Promise<void> {
     const browserSession = await this.#getBrowserSession();
     if (
       this.#disposed ||
-      this.#subscriptions.size === 0 ||
+      !this.#listening() ||
       this.#watchedBrowserSession === browserSession
     ) {
       return;
     }
     this.#unwatchTargets();
     browserSession.on('Target.targetCreated', this.#onTargetCreated);
+    browserSession.on('Target.targetInfoChanged', this.#onTargetInfoChanged);
     this.#watchedBrowserSession = browserSession;
   }
 
@@ -1218,6 +1502,10 @@ export class CdpManager {
     this.#watchedBrowserSession?.off(
       'Target.targetCreated',
       this.#onTargetCreated,
+    );
+    this.#watchedBrowserSession?.off(
+      'Target.targetInfoChanged',
+      this.#onTargetInfoChanged,
     );
     this.#watchedBrowserSession = undefined;
   }
@@ -1409,6 +1697,381 @@ export class CdpManager {
         this.#addToSession(subscription, entry, session),
       ),
     );
+  }
+
+  /**
+   * Watches for new targets and attaches subscribers and watchers to the
+   * live offscreen document, if any, and to the iframes it already
+   * auto-attached. A missing offscreen document is not an error: it is
+   * attached when its target appears. Failures go to `onError`.
+   *
+   * @param subscriptions - The subscribers to attach.
+   * @param watches - The watchers to hand the sessions to.
+   */
+  async #attachOffscreenForSubscribers(
+    subscriptions: Subscription[],
+    watches: SessionWatch[],
+  ): Promise<void> {
+    try {
+      const listed = await this.#race(
+        (async (): Promise<ExtensionTarget[] | undefined> => {
+          await this.#watchTargets();
+          return this.#disposed ? undefined : this.#offscreenTargets();
+        })(),
+        'Listing the Extension offscreen document targets',
+        { timeoutMs: CDP_ATTACH_STEP_TIMEOUT_MS },
+      );
+      if (listed === undefined || this.#disposed) {
+        return;
+      }
+      const targets = listed as ExtensionTarget[];
+      // The list can briefly hold the old and the recreated document. Keep
+      // the attached one; a newer one is attached by its target events.
+      const target =
+        targets.find((candidate) =>
+          this.#offscreenEntries.has(candidate.targetId),
+        ) ?? targets[0];
+      if (target !== undefined) {
+        await this.#attachOffscreenTarget(target, subscriptions, watches);
+      }
+      await Promise.all(
+        [...this.#iframeEntries.values()].map(async (entry) =>
+          this.#addChildTo(entry, subscriptions, watches),
+        ),
+      );
+    } catch (error) {
+      this.#reportAttachError(subscriptions, error, false);
+      this.#reportWatches(watches, error);
+    }
+  }
+
+  /**
+   * Lists the live offscreen document targets of the Extension.
+   *
+   * @returns The offscreen document targets.
+   */
+  async #offscreenTargets(): Promise<ExtensionTarget[]> {
+    const targetInfos = await this.#targetInfos();
+    const knownExtensionId = this.#extensionId();
+    return targetInfos.flatMap((info) => {
+      const target = toOffscreenTarget(info);
+      return target !== undefined &&
+        (knownExtensionId === undefined ||
+          target.extensionId === knownExtensionId)
+        ? [target]
+        : [];
+    });
+  }
+
+  /**
+   * Opens (or reuses) the session of the live offscreen document and adds
+   * subscribers and watchers to it. Opening it turns on auto-attach for its
+   * iframes, see {@link #onChildAttached}.
+   *
+   * @param target - The live offscreen document target.
+   * @param subscriptions - The subscribers to attach.
+   * @param watches - The watchers to hand the session to.
+   */
+  async #attachOffscreenTarget(
+    target: ExtensionTarget,
+    subscriptions: Subscription[],
+    watches: SessionWatch[],
+  ): Promise<void> {
+    if (this.#disposed) {
+      return;
+    }
+    const entry = this.#offscreenEntryFor(target);
+    let session: EventCdpSession;
+    try {
+      session = await this.#openForSubscribers(entry, async () =>
+        this.#openOffscreenSession(entry),
+      );
+    } catch (error) {
+      if (isClosedSessionError(error)) {
+        this.#drop(entry);
+      }
+      throw error;
+    }
+    await this.#addChildTo(entry, subscriptions, watches, session);
+  }
+
+  /**
+   * Adds subscribers and watchers to an offscreen document or iframe
+   * session. Never rejects.
+   *
+   * @param entry - The child target entry.
+   * @param subscriptions - The subscribers to attach.
+   * @param watches - The watchers to hand the session to.
+   * @param session - The entry's session; defaults to the attached one.
+   */
+  async #addChildTo(
+    entry: ChildEntry,
+    subscriptions: Subscription[],
+    watches: SessionWatch[],
+    session = entry.session,
+  ): Promise<void> {
+    if (session === undefined) {
+      return;
+    }
+    await Promise.all([
+      ...subscriptions.map(async (subscription) =>
+        this.#addToSession(subscription, entry, session),
+      ),
+      ...watches.map(async (watch) => this.#addToWatch(watch, entry, session)),
+    ]);
+  }
+
+  /**
+   * Returns the entry of a live offscreen document. A new target ID means
+   * the document was recreated (the service worker restarted): the old
+   * entry is dropped with its iframes.
+   *
+   * @param target - The live offscreen document target.
+   * @returns The entry.
+   */
+  #offscreenEntryFor(target: ExtensionTarget): ChildEntry {
+    const cached = this.#offscreenEntries.get(target.targetId);
+    if (cached) {
+      cached.url = target.url;
+      return cached;
+    }
+    for (const previous of [...this.#offscreenEntries.values()]) {
+      this.#drop(previous);
+    }
+    const entry: ChildEntry = {
+      kind: 'offscreen',
+      targetId: target.targetId,
+      url: target.url,
+      event: { kind: 'offscreen', targetId: target.targetId },
+    };
+    this.#offscreenEntries.set(target.targetId, entry);
+    this.#entries.add(entry);
+    return entry;
+  }
+
+  /**
+   * Opens a session on the offscreen document and turns on auto-attach for
+   * its iframes only (without the filter Chrome also attaches the service
+   * worker). New iframes wait for the debugger, so subscribers and watchers
+   * are added before their first request.
+   *
+   * @param entry - The offscreen document entry.
+   * @returns The session.
+   */
+  async #openOffscreenSession(entry: ChildEntry): Promise<EventCdpSession> {
+    const browserSession = await this.#getBrowserSession();
+    let sessionId: string;
+    try {
+      ({ sessionId } = (await browserSession.send('Target.attachToTarget', {
+        targetId: entry.targetId,
+        flatten: false,
+      })) as { sessionId: string });
+    } catch (error) {
+      if (isClosedSessionError(error) || isMissingTargetError(error)) {
+        throw new Error(OFFSCREEN_GONE_MESSAGE);
+      }
+      throw error;
+    }
+    const transport = browserSession as unknown as EventCdpSession;
+    const session = new TunneledCdpSession(
+      transport,
+      sessionId,
+      entry.targetId,
+      () => this.#drop(entry),
+      { label: 'offscreen document', browserSession: transport },
+    );
+    session.on('Target.attachedToTarget', (params) =>
+      this.#onChildAttached(entry, session, params),
+    );
+    try {
+      await session.send('Target.setAutoAttach', {
+        autoAttach: true,
+        waitForDebuggerOnStart: true,
+        flatten: false,
+        filter: [{ type: 'iframe', exclude: false }],
+      });
+    } catch (error) {
+      await session.detach();
+      throw error;
+    }
+    return session;
+  }
+
+  /**
+   * Takes an iframe the offscreen document auto-attached: adds subscribers
+   * and watchers to it, then lets it run. Anything else (an iframe already
+   * attached, or one that arrives after the offscreen document or the
+   * manager went away) is resumed and detached.
+   *
+   * @param parent - The offscreen document entry.
+   * @param parentSession - The offscreen document session.
+   * @param params - The `Target.attachedToTarget` payload.
+   */
+  #onChildAttached(
+    parent: ChildEntry,
+    parentSession: EventCdpSession,
+    params: Record<string, unknown> | undefined,
+  ): void {
+    const sessionId = params?.sessionId;
+    const info = params?.targetInfo as TargetInfo | undefined;
+    const waiting = params?.waitingForDebugger === true;
+    if (typeof sessionId !== 'string' || info === undefined) {
+      return;
+    }
+    if (
+      info.type !== 'iframe' ||
+      this.#disposed ||
+      parent.dropped === true ||
+      this.#iframeEntries.has(info.targetId)
+    ) {
+      this.#releaseChild(parentSession, sessionId, waiting).catch(
+        () => undefined,
+      );
+      return;
+    }
+    const entry: ChildEntry = {
+      kind: 'iframe',
+      targetId: info.targetId,
+      url: info.url,
+      parentTargetId: parent.targetId,
+      event: { kind: 'iframe', targetId: info.targetId },
+    };
+    const session = new TunneledCdpSession(
+      parentSession,
+      sessionId,
+      info.targetId,
+      () => this.#drop(entry),
+      { label: 'iframe' },
+    );
+    entry.session = session;
+    this.#entries.add(entry);
+    this.#iframeEntries.set(info.targetId, entry);
+    this.#emit('targetAttached', entry.event);
+
+    const ready = (async (): Promise<void> => {
+      try {
+        await settleWithin(
+          this.#addChildTo(
+            entry,
+            [...this.#subscriptions],
+            [...this.#watches],
+            session,
+          ),
+          CDP_ATTACH_STEP_TIMEOUT_MS,
+        );
+      } finally {
+        if (waiting) {
+          await this.#race(
+            session.send('Runtime.runIfWaitingForDebugger', {}),
+            'Resuming an offscreen document iframe',
+            { timeoutMs: CDP_ATTACH_STEP_TIMEOUT_MS },
+          ).catch(() => undefined);
+        }
+      }
+    })();
+    this.#childAttaches.add(ready);
+    ready
+      .finally(() => this.#childAttaches.delete(ready))
+      .catch(() => undefined);
+  }
+
+  /**
+   * Resumes and detaches an auto-attached target the manager does not keep.
+   *
+   * @param parentSession - The session that auto-attached it.
+   * @param sessionId - The auto-attached session ID.
+   * @param waiting - Whether the target waits for the debugger.
+   */
+  async #releaseChild(
+    parentSession: EventCdpSession,
+    sessionId: string,
+    waiting: boolean,
+  ): Promise<void> {
+    if (waiting) {
+      await parentSession
+        .send('Target.sendMessageToTarget', {
+          sessionId,
+          message: JSON.stringify({
+            id: 1,
+            method: 'Runtime.runIfWaitingForDebugger',
+            params: {},
+          }),
+        })
+        .catch(() => undefined);
+    }
+    await parentSession.send('Target.detachFromTarget', { sessionId });
+  }
+
+  /**
+   * Hands a child target session to a watcher, once. Never rejects: a
+   * failing `onAttach` goes to the watcher's `onError`.
+   *
+   * @param watch - The watcher.
+   * @param entry - The child target entry.
+   * @param session - The entry's session.
+   */
+  async #addToWatch(
+    watch: SessionWatch,
+    entry: ChildEntry,
+    session: EventCdpSession,
+  ): Promise<void> {
+    if (
+      !watch.active ||
+      !watch.kinds.has(entry.kind) ||
+      watch.sessions.has(session)
+    ) {
+      return;
+    }
+    watch.sessions.add(session);
+    try {
+      await this.#bound(
+        (async (): Promise<void> =>
+          watch.options.onAttach({
+            target: () => this.#childTarget(entry),
+            session,
+          }))(),
+        'Preparing a session watcher',
+        entry,
+      );
+    } catch (error) {
+      this.#reportWatches([watch], error);
+    }
+  }
+
+  /**
+   * Reports a watcher failure. A target that went away is not an error.
+   *
+   * @param watches - The watchers.
+   * @param error - The error.
+   */
+  #reportWatches(watches: SessionWatch[], error: unknown): void {
+    if (isClosedSessionError(error)) {
+      return;
+    }
+    for (const watch of watches) {
+      if (!watch.active) {
+        continue;
+      }
+      try {
+        if (watch.options.onError) {
+          watch.options.onError(toError(error));
+        } else {
+          debugWarn('cdp-manager.watchSessions', error);
+        }
+      } catch {
+        // A failing error callback must not break the others.
+      }
+    }
+  }
+
+  /**
+   * Describes an offscreen document or iframe target.
+   *
+   * @param entry - The child target entry.
+   * @returns The target now.
+   */
+  #childTarget(entry: ChildEntry): CdpEventTarget {
+    return { kind: entry.kind, targetId: entry.targetId, url: entry.url };
   }
 
   /**
@@ -1671,6 +2334,9 @@ export class CdpManager {
     session: EventCdpSession,
     state: SessionSubscriptionState,
   ): Promise<() => CdpEventTarget> {
+    if (isChildEntry(entry)) {
+      return () => this.#childTarget(entry);
+    }
     if (!('page' in entry)) {
       const target: CdpEventTarget = {
         kind: 'sw',
@@ -1776,6 +2442,8 @@ export class CdpManager {
     this.#subscriptions.delete(subscription);
     if (this.#subscriptions.size === 0) {
       this.#context.off('page', this.#onPage);
+    }
+    if (!this.#listening()) {
       this.#unwatchTargets();
     }
     const records = [...subscription.records];
@@ -1990,12 +2658,28 @@ export class CdpManager {
    * @returns The live extension service worker targets.
    */
   async #serviceWorkerTargets(): Promise<ServiceWorkerTarget[]> {
-    const browserSession = await this.#getBrowserSession();
-    const { targetInfos } = await browserSession.send('Target.getTargets');
-    return (targetInfos as TargetInfo[]).flatMap((info) => {
+    return (await this.#targetInfos()).flatMap((info) => {
       const target = toServiceWorkerTarget(info);
       return target === undefined ? [] : [target];
     });
+  }
+
+  /**
+   * Lists the browser targets. Concurrent callers (the worker and the
+   * offscreen document attach of one subscription) share one
+   * `Target.getTargets`.
+   *
+   * @returns The browser target infos.
+   */
+  async #targetInfos(): Promise<TargetInfo[]> {
+    this.#targetList ??= (async (): Promise<TargetInfo[]> => {
+      const browserSession = await this.#getBrowserSession();
+      const { targetInfos } = await browserSession.send('Target.getTargets');
+      return targetInfos as TargetInfo[];
+    })().finally(() => {
+      this.#targetList = undefined;
+    });
+    return this.#targetList;
   }
 
   /**
@@ -2133,12 +2817,11 @@ export class CdpManager {
       }
       throw error;
     }
-    return new ServiceWorkerCdpSession(
-      browserSession,
-      sessionId,
-      targetId,
-      onClose,
-    );
+    const transport = browserSession as unknown as EventCdpSession;
+    return new TunneledCdpSession(transport, sessionId, targetId, onClose, {
+      label: 'service worker',
+      browserSession: transport,
+    });
   }
 
   /**
@@ -2342,9 +3025,26 @@ export class CdpManager {
     for (const subscription of this.#subscriptions) {
       subscription.records.delete(session);
     }
+    if (isChildEntry(entry)) {
+      for (const watch of this.#watches) {
+        if (watch.sessions.delete(session)) {
+          try {
+            watch.options.onDetach?.(this.#childTarget(entry));
+          } catch (error) {
+            this.#reportWatches([watch], error);
+          }
+        }
+      }
+    }
     this.#emit('targetDetached', entry.event);
     await session.detach().catch(() => undefined);
-    if (this.#disposed || this.#subscriptions.size === 0) {
+    // An offscreen document or iframe is attached again by its target
+    // events, not here: its session only closes when the target goes away.
+    if (
+      this.#disposed ||
+      this.#subscriptions.size === 0 ||
+      isChildEntry(entry)
+    ) {
       return;
     }
     // Subscribers keep their events when the target outlives its session:
@@ -2377,6 +3077,21 @@ export class CdpManager {
     entry.dropped = true;
     if ('page' in entry) {
       this.#pageEntries.delete(entry.page);
+    } else if (isChildEntry(entry)) {
+      const entries =
+        entry.kind === 'offscreen'
+          ? this.#offscreenEntries
+          : this.#iframeEntries;
+      if (entries.get(entry.targetId) === entry) {
+        entries.delete(entry.targetId);
+      }
+      // The iframes go with their offscreen document: their sessions are
+      // tunneled through it.
+      for (const child of [...this.#iframeEntries.values()]) {
+        if (child.parentTargetId === entry.targetId) {
+          this.#drop(child);
+        }
+      }
     } else {
       this.#workerEntries.delete(entry.targetId);
     }

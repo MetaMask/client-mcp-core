@@ -9,6 +9,8 @@ import type {
   NetworkStats,
 } from './events.js';
 import type {
+  NetworkMockContext,
+  NetworkMockPendingContext,
   NetworkMockRequestRecord,
   NetworkMockRouteRule,
   NetworkMockSummary,
@@ -276,23 +278,36 @@ export type GenerateLocatorsResult = {
   locators: ElementLocatorInfo[];
 };
 
+/**
+ * Where the rules intercept requests now. Empty without rules.
+ */
+export type NetworkMockCoverage = {
+  /** The contexts whose requests the rules intercept now. */
+  contexts: NetworkMockContext[];
+  /**
+   * The contexts not intercepted yet. `iframe` is normal while no snap runs:
+   * each new snaps iframe is intercepted before its first request.
+   */
+  pending: NetworkMockPendingContext[];
+};
+
 export type MockNetworkResult =
-  | {
+  | ({
       action: 'add';
       added: number;
       rules: NetworkMockRouteRule[];
       summary: NetworkMockSummary;
-    }
+    } & NetworkMockCoverage)
   | {
       action: 'clear';
       cleared: boolean;
       summary: NetworkMockSummary;
     }
-  | {
+  | ({
       action: 'list';
       rules: NetworkMockRouteRule[];
       summary: NetworkMockSummary;
-    }
+    } & NetworkMockCoverage)
   | {
       action: 'requests';
       requests: NetworkMockRequestRecord[];

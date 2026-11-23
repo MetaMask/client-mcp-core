@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildPreflightResponse,
   DEFAULT_MAX_RECORDED_BODY_BYTES,
+  FETCH_COMMAND_TIMEOUT_MS,
   findMatchingRule,
+  getFetchPatterns,
   getOriginRoutePattern,
+  isCorsPreflight,
   isSensitiveHeader,
   matchesUrlFilter,
   matchesUrlPattern,
@@ -17,7 +21,18 @@ import {
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import type { NetworkMockRouteRule } from './types';
 import { ErrorCodes } from './types/errors.js';
+import type {
+  CdpEventListener,
+  CdpWatchedSession,
+  CdpWatchSessionsOptions,
+} from '../platform/cdp-manager.js';
 import type { ToolContext } from '../types/http.js';
+
+const cdpMocks = vi.hoisted(() => ({ getCdpManager: vi.fn() }));
+
+vi.mock('../platform/cdp-manager.js', () => ({
+  getCdpManager: cdpMocks.getCdpManager,
+}));
 
 const MOCK_RULE: NetworkMockRouteRule = {
   id: 'accounts-supported-networks',
@@ -1176,6 +1191,693 @@ describe('request redaction helpers', () => {
     ).toBe(false);
     expect(
       matchesUrlFilter('segment', 'https://accounts.api.cx.metamask.io/v1'),
+    ).toBe(false);
+  });
+});
+
+const SCAN_RULE: NetworkMockRouteRule = {
+  id: 'tron-scan',
+  method: 'POST',
+  url: 'https://security-alerts.api.cx.metamask.io/tron/transaction/scan',
+  response: { status: 200, json: { verdict: 'Malicious' } },
+};
+const SCAN_PATTERN = {
+  urlPattern: 'https://security-alerts.api.cx.metamask.io/*',
+  requestStage: 'Request',
+};
+const ACCOUNTS_PATTERN = {
+  urlPattern: 'https://accounts.api.cx.metamask.io/*',
+  requestStage: 'Request',
+};
+
+type FakeFetchSession = CdpWatchedSession & {
+  send: ReturnType<typeof vi.fn>;
+  emit(method: string, params: Record<string, unknown>): void;
+  listenerCount(method: string): number;
+};
+
+/**
+ * Creates a watched offscreen document or iframe session.
+ *
+ * @param kind - The target kind.
+ * @param targetId - The target ID.
+ * @param reply - Answers a command; a returned promise can hang or reject.
+ * @returns The session handed to the watcher, with its handles.
+ */
+function createFetchSession(
+  kind: 'offscreen' | 'iframe',
+  targetId = `${kind}-1`,
+  reply: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => unknown = () => ({}),
+): FakeFetchSession {
+  const listeners = new Map<string, Set<CdpEventListener>>();
+  const send = vi.fn(async (method: string, params: Record<string, unknown>) =>
+    reply(method, params),
+  );
+  const session = {
+    send,
+    detach: vi.fn(async () => undefined),
+    on: vi.fn((method: string, listener: CdpEventListener) => {
+      let set = listeners.get(method);
+      if (!set) {
+        set = new Set();
+        listeners.set(method, set);
+      }
+      set.add(listener);
+    }),
+    off: vi.fn((method: string, listener: CdpEventListener) => {
+      listeners.get(method)?.delete(listener);
+    }),
+  };
+  return {
+    session,
+    target: () => ({ kind, targetId, url: '' }),
+    send,
+    emit(method, params): void {
+      for (const listener of listeners.get(method) ?? []) {
+        listener(params);
+      }
+    },
+    listenerCount: (method) => listeners.get(method)?.size ?? 0,
+  };
+}
+
+/**
+ * Creates a fake CDP manager that hands the given sessions to a watcher.
+ *
+ * @param initial - Sessions live when the watch starts.
+ * @returns The manager mock and its handles.
+ */
+function createFakeCdpManager(initial: FakeFetchSession[] = []) {
+  const watches: CdpWatchSessionsOptions[] = [];
+  const unwatch = vi.fn(async () => undefined);
+  const manager = {
+    watchSessions: vi.fn(async (options: CdpWatchSessionsOptions) => {
+      watches.push(options);
+      for (const watched of initial) {
+        await options.onAttach(watched);
+      }
+      return { unwatch };
+    }),
+  };
+  return {
+    manager,
+    watches,
+    unwatch,
+    attach: async (watched: FakeFetchSession): Promise<void> =>
+      watches.at(-1)?.onAttach(watched),
+    detach: (watched: FakeFetchSession): void =>
+      watches.at(-1)?.onDetach?.(watched.target()),
+  };
+}
+
+/**
+ * Creates a Chromium browser context mock whose CDP manager is `cdp`.
+ *
+ * @param cdp - The fake CDP manager.
+ * @returns The browser context mock.
+ */
+function createCdpBrowserContext(cdp: ReturnType<typeof createFakeCdpManager>) {
+  cdpMocks.getCdpManager.mockReturnValue(cdp.manager);
+  return { ...createMockBrowserContext(), browser: vi.fn(() => ({})) };
+}
+
+/**
+ * Pauses a request on a fake session and lets the handler answer it.
+ *
+ * @param watched - The session.
+ * @param request - The paused request.
+ * @param requestId - The CDP request ID.
+ */
+async function pause(
+  watched: FakeFetchSession,
+  request: Record<string, unknown>,
+  requestId = 'request-1',
+): Promise<void> {
+  watched.emit('Fetch.requestPaused', { requestId, request });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * @param watched - The session.
+ * @param method - The CDP method.
+ * @returns The parameters of each call of the method.
+ */
+function sent(
+  watched: FakeFetchSession,
+  method: string,
+): Record<string, unknown>[] {
+  return watched.send.mock.calls
+    .filter(([name]) => name === method)
+    .map(([, params]) => params as Record<string, unknown>);
+}
+
+describe('NetworkMockRouteManager offscreen document and iframes', () => {
+  it('reports only pages and the service worker without a browser', async () => {
+    const manager = new NetworkMockRouteManager(
+      createMockBrowserContext() as never,
+    );
+    expect(manager.getCoverage()).toStrictEqual({ contexts: [], pending: [] });
+
+    await manager.addRule(MOCK_RULE);
+
+    expect(manager.getCoverage()).toStrictEqual({
+      contexts: ['page', 'sw'],
+      pending: ['offscreen', 'iframe'],
+    });
+    expect(cdpMocks.getCdpManager).not.toHaveBeenCalled();
+  });
+
+  it('does not watch without a browser session', async () => {
+    const cdp = createFakeCdpManager();
+    const browserContext = createCdpBrowserContext(cdp);
+    browserContext.browser.mockReturnValue(null as never);
+    const manager = new NetworkMockRouteManager(browserContext as never);
+
+    await manager.addRule(MOCK_RULE);
+
+    expect(cdp.manager.watchSessions).not.toHaveBeenCalled();
+  });
+
+  it('enables Fetch for the rule origins on the offscreen document and new iframes', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+
+    await manager.addRule(SCAN_RULE);
+
+    expect(cdp.manager.watchSessions).toHaveBeenCalledWith(
+      expect.objectContaining({ kinds: ['offscreen', 'iframe'] }),
+    );
+    expect(sent(offscreen, 'Fetch.enable')).toStrictEqual([
+      { patterns: [SCAN_PATTERN] },
+    ]);
+    expect(manager.getCoverage()).toStrictEqual({
+      contexts: ['page', 'sw', 'offscreen'],
+      pending: ['iframe'],
+    });
+
+    const iframe = createFetchSession('iframe');
+    await cdp.attach(iframe);
+    expect(manager.getCoverage().contexts).toStrictEqual([
+      'page',
+      'sw',
+      'offscreen',
+      'iframe',
+    ]);
+
+    cdp.detach(iframe);
+    expect(manager.getCoverage().pending).toStrictEqual(['iframe']);
+    expect(iframe.listenerCount('Fetch.requestPaused')).toBe(0);
+  });
+
+  it('enables Fetch again when a rule adds an origin, and not for a known one', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+
+    await manager.addRules([SCAN_RULE, MOCK_RULE, BALANCES_RULE]);
+
+    expect(sent(offscreen, 'Fetch.enable')).toStrictEqual([
+      { patterns: [SCAN_PATTERN] },
+      { patterns: [SCAN_PATTERN, ACCOUNTS_PATTERN] },
+    ]);
+    expect(cdp.manager.watchSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it('fulfills a mocked request with a base64 body and records it', async () => {
+    const iframe = createFetchSession('iframe');
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule({
+      ...SCAN_RULE,
+      record: { body: true, headers: true },
+    });
+
+    await pause(iframe, {
+      url: SCAN_RULE.url,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'x' },
+      postData: '{"tx":"0x1"}',
+    });
+
+    expect(sent(iframe, 'Fetch.fulfillRequest')).toStrictEqual([
+      {
+        requestId: 'request-1',
+        responseCode: 200,
+        responseHeaders: [
+          { name: 'access-control-allow-origin', value: '*' },
+          { name: 'content-type', value: 'application/json' },
+        ],
+        body: Buffer.from('{"verdict":"Malicious"}').toString('base64'),
+      },
+    ]);
+    expect(
+      manager.getRequests(undefined, { includeBodies: true }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        method: 'POST',
+        url: SCAN_RULE.url,
+        matched: true,
+        ruleId: SCAN_RULE.id,
+        status: 200,
+        context: 'iframe',
+        headers: {
+          'content-type': 'application/json',
+          authorization: REDACTED_VALUE,
+        },
+        body: { type: 'json', size: 12, value: { tx: '0x1' } },
+      }),
+    ]);
+    expect(manager.getRequests()[0]).not.toHaveProperty('serviceWorker');
+  });
+
+  it('forwards a request a record-only rule or no rule matches', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule({
+      id: 'scan-record',
+      method: 'POST',
+      url: SCAN_RULE.url,
+      record: { body: true },
+    });
+
+    await pause(offscreen, {
+      url: SCAN_RULE.url,
+      method: 'POST',
+      postDataEntries: [
+        { bytes: Buffer.from('{"a":').toString('base64') },
+        { bytes: Buffer.from('1}').toString('base64') },
+        {},
+      ],
+    });
+    await pause(
+      offscreen,
+      { url: `${SCAN_RULE.url}/other`, method: 'GET' },
+      'request-2',
+    );
+
+    expect(sent(offscreen, 'Fetch.continueRequest')).toStrictEqual([
+      { requestId: 'request-1' },
+      { requestId: 'request-2' },
+    ]);
+    const records = manager.getRequests(undefined, { includeBodies: true });
+    expect(records[0]).toStrictEqual(
+      expect.objectContaining({
+        matched: true,
+        context: 'offscreen',
+        body: { type: 'json', size: 7, value: { a: 1 } },
+      }),
+    );
+    expect(records[0]).not.toHaveProperty('status');
+    expect(records[1]).toStrictEqual(
+      expect.objectContaining({ matched: false, context: 'offscreen' }),
+    );
+  });
+
+  it('records an empty body and defaults for a request without details', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule({
+      id: 'scan-get',
+      method: 'GET',
+      url: SCAN_RULE.url,
+      record: { body: true },
+    });
+
+    await pause(offscreen, { url: SCAN_RULE.url });
+    offscreen.emit('Fetch.requestPaused', { requestId: 'request-2' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      manager.getRequests(undefined, { includeBodies: true }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        method: 'GET',
+        matched: true,
+        body: { type: 'empty', size: 0 },
+      }),
+      expect.objectContaining({ method: 'GET', url: '', matched: false }),
+    ]);
+  });
+
+  it('answers the CORS preflight of a mocked request without recording it', async () => {
+    const iframe = createFetchSession('iframe');
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+
+    await pause(iframe, {
+      url: SCAN_RULE.url,
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'null',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    });
+
+    expect(sent(iframe, 'Fetch.fulfillRequest')).toStrictEqual([
+      {
+        requestId: 'request-1',
+        responseCode: 204,
+        responseHeaders: [
+          { name: 'access-control-allow-origin', value: '*' },
+          { name: 'access-control-allow-methods', value: 'POST' },
+          { name: 'access-control-allow-headers', value: 'content-type' },
+        ],
+      },
+    ]);
+    expect(manager.getRequests()).toStrictEqual([]);
+  });
+
+  it('forwards the CORS preflight of a request it does not mock', async () => {
+    const iframe = createFetchSession('iframe');
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule({ ...SCAN_RULE, response: undefined, record: {} });
+
+    await pause(iframe, {
+      url: SCAN_RULE.url,
+      method: 'OPTIONS',
+      headers: { 'access-control-request-method': 'POST' },
+    });
+
+    expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([
+      { requestId: 'request-1' },
+    ]);
+    expect(manager.getRequests()).toStrictEqual([]);
+  });
+
+  it('applies an OPTIONS rule to a preflight', async () => {
+    const iframe = createFetchSession('iframe');
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule({
+      ...SCAN_RULE,
+      id: 'scan-options',
+      method: 'OPTIONS',
+      response: { status: 418, body: 'teapot' },
+    });
+
+    await pause(iframe, {
+      url: SCAN_RULE.url,
+      method: 'OPTIONS',
+      headers: { 'access-control-request-method': 'POST' },
+    });
+
+    expect(sent(iframe, 'Fetch.fulfillRequest')[0]).toStrictEqual(
+      expect.objectContaining({ responseCode: 418 }),
+    );
+    expect(manager.getRequests()).toHaveLength(1);
+  });
+
+  it('ignores Fetch failures on a closed session', async () => {
+    const iframe = createFetchSession('iframe', 'iframe-1', (method) => {
+      if (method !== 'Fetch.enable') {
+        throw new Error('Session closed. The iframe target is gone.');
+      }
+      return {};
+    });
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+
+    await pause(iframe, { url: SCAN_RULE.url, method: 'POST' });
+    await manager.clear();
+
+    expect(sent(iframe, 'Fetch.continueRequest')).toHaveLength(1);
+    expect(sent(iframe, 'Fetch.disable')).toHaveLength(1);
+  });
+
+  it('reports no contexts on list without rules', async () => {
+    const cdp = createFakeCdpManager();
+    const context = createMockContext({
+      browserContext: createCdpBrowserContext(cdp) as never,
+    });
+
+    const listed = await mockNetworkTool({ action: 'list' }, context);
+
+    expect(listed.ok && listed.result).toStrictEqual(
+      expect.objectContaining({ contexts: [], pending: [] }),
+    );
+    expect(cdp.manager.watchSessions).not.toHaveBeenCalled();
+  });
+
+  it('continues a paused request whose fulfill fails', async () => {
+    const iframe = createFetchSession('iframe', 'iframe-1', (method) => {
+      if (method === 'Fetch.fulfillRequest') {
+        throw new Error('Invalid InterceptionId');
+      }
+      return {};
+    });
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+
+    await pause(iframe, { url: SCAN_RULE.url, method: 'POST' });
+
+    expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([
+      { requestId: 'request-1' },
+    ]);
+  });
+
+  it('bounds a Fetch command that never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const iframe = createFetchSession('iframe', 'iframe-1', async (method) =>
+        method === 'Fetch.continueRequest' ? {} : new Promise(() => undefined),
+      );
+      const cdp = createFakeCdpManager();
+      const manager = new NetworkMockRouteManager(
+        createCdpBrowserContext(cdp) as never,
+      );
+      await manager.addRule(SCAN_RULE);
+
+      const attaching = cdp.attach(iframe);
+      await vi.advanceTimersByTimeAsync(FETCH_COMMAND_TIMEOUT_MS);
+      await attaching;
+      expect(manager.getCoverage().pending).toStrictEqual([
+        'offscreen',
+        'iframe',
+      ]);
+
+      iframe.emit('Fetch.requestPaused', {
+        requestId: 'request-1',
+        request: { url: SCAN_RULE.url, method: 'POST' },
+      });
+      await vi.advanceTimersByTimeAsync(FETCH_COMMAND_TIMEOUT_MS);
+
+      expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([
+        { requestId: 'request-1' },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores a paused event without a request ID', async () => {
+    const iframe = createFetchSession('iframe');
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+
+    iframe.emit('Fetch.requestPaused', {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([]);
+  });
+
+  it('disables Fetch and stops watching on clear', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+    const listener = vi.mocked(offscreen.session.on).mock.calls[0]?.[1];
+
+    await manager.clear();
+    listener({ requestId: 'late', request: { url: SCAN_RULE.url } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(cdp.unwatch).toHaveBeenCalledTimes(1);
+    expect(sent(offscreen, 'Fetch.disable')).toStrictEqual([{}]);
+    expect(offscreen.listenerCount('Fetch.requestPaused')).toBe(0);
+    expect(sent(offscreen, 'Fetch.continueRequest')).toStrictEqual([
+      { requestId: 'late' },
+    ]);
+    expect(manager.getRequests()).toStrictEqual([]);
+    expect(manager.getCoverage()).toStrictEqual({ contexts: [], pending: [] });
+  });
+
+  it('retries the watch after it failed', async () => {
+    const cdp = createFakeCdpManager();
+    cdp.manager.watchSessions.mockRejectedValueOnce(new Error('No browser'));
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+
+    await manager.addRule(SCAN_RULE);
+    await manager.syncContexts();
+
+    expect(cdp.manager.watchSessions).toHaveBeenCalledTimes(2);
+    cdp.watches[0]?.onError?.(new Error('attach failed'));
+  });
+
+  it('watches the new CDP manager after a relaunch', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const first = createFakeCdpManager([offscreen]);
+    const browserContext = createCdpBrowserContext(first);
+    const manager = new NetworkMockRouteManager(browserContext as never);
+    await manager.addRule(SCAN_RULE);
+    const second = createFakeCdpManager();
+    cdpMocks.getCdpManager.mockReturnValue(second.manager);
+
+    await manager.syncContexts();
+
+    expect(first.unwatch).toHaveBeenCalledTimes(1);
+    expect(second.manager.watchSessions).toHaveBeenCalledTimes(1);
+    expect(manager.getCoverage().pending).toStrictEqual([
+      'offscreen',
+      'iframe',
+    ]);
+  });
+
+  it('keeps page and service worker routes when the CDP manager is unavailable', async () => {
+    const cdp = createFakeCdpManager();
+    const browserContext = createCdpBrowserContext(cdp);
+    cdpMocks.getCdpManager.mockImplementation(() => {
+      throw new Error('disposed');
+    });
+    const manager = new NetworkMockRouteManager(browserContext as never);
+
+    await manager.addRule(SCAN_RULE);
+
+    expect(browserContext.route).toHaveBeenCalledTimes(1);
+    expect(manager.getCoverage().contexts).toStrictEqual(['page', 'sw']);
+    cdpMocks.getCdpManager.mockReset();
+  });
+
+  it('reports contexts on add and list', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const browserContext = createCdpBrowserContext(cdp);
+    const context = createMockContext({
+      browserContext: browserContext as never,
+    });
+
+    const added = await mockNetworkTool(
+      { action: 'add', rule: SCAN_RULE },
+      context,
+    );
+    const listed = await mockNetworkTool({ action: 'list' }, context);
+
+    for (const response of [added, listed]) {
+      expect(response.ok && response.result).toStrictEqual(
+        expect.objectContaining({
+          contexts: ['page', 'sw', 'offscreen'],
+          pending: ['iframe'],
+        }),
+      );
+    }
+  });
+
+  it('records the context of page and service worker requests', async () => {
+    const manager = new NetworkMockRouteManager(
+      createMockBrowserContext() as never,
+    );
+    await manager.addRule(MOCK_RULE);
+    const browserContext = createMockBrowserContext();
+    const routed = new NetworkMockRouteManager(browserContext as never);
+    await routed.addRule(MOCK_RULE);
+    const handler = browserContext.route.mock.calls[0]?.[1] as (
+      route: unknown,
+    ) => Promise<void>;
+
+    await handler(createMockRoute('GET', MOCK_RULE.url));
+    await handler(
+      createMockRoute('GET', MOCK_RULE.url, { serviceWorker: true }),
+    );
+
+    expect(
+      routed.getRequests().map(({ context, serviceWorker }) => ({
+        context,
+        serviceWorker,
+      })),
+    ).toStrictEqual([
+      { context: 'page', serviceWorker: undefined },
+      { context: 'sw', serviceWorker: true },
+    ]);
+  });
+});
+
+describe('getFetchPatterns', () => {
+  it('returns one request-stage pattern per rule origin', () => {
+    expect(
+      getFetchPatterns([SCAN_RULE, MOCK_RULE, BALANCES_RULE]),
+    ).toStrictEqual([SCAN_PATTERN, ACCOUNTS_PATTERN]);
+    expect(getFetchPatterns([])).toStrictEqual([]);
+  });
+});
+
+describe('buildPreflightResponse', () => {
+  it('echoes a concrete origin and allows credentials', () => {
+    expect(
+      buildPreflightResponse([SCAN_RULE], SCAN_RULE.url, {
+        origin: 'https://dapp.example',
+        'access-control-request-method': 'POST',
+      }),
+    ).toStrictEqual({
+      responseCode: 204,
+      responseHeaders: [
+        { name: 'access-control-allow-origin', value: 'https://dapp.example' },
+        { name: 'access-control-allow-methods', value: 'POST' },
+        { name: 'access-control-allow-headers', value: '*' },
+        { name: 'access-control-allow-credentials', value: 'true' },
+      ],
+    });
+  });
+
+  it('answers nothing without a mocked rule for the requested method', () => {
+    expect(
+      buildPreflightResponse([SCAN_RULE], SCAN_RULE.url, {}),
+    ).toBeUndefined();
+  });
+
+  it('detects browser preflights only', () => {
+    expect(
+      isCorsPreflight('options', { 'access-control-request-method': 'POST' }),
+    ).toBe(true);
+    expect(isCorsPreflight('OPTIONS', {})).toBe(false);
+    expect(
+      isCorsPreflight('POST', { 'access-control-request-method': 'POST' }),
     ).toBe(false);
   });
 });

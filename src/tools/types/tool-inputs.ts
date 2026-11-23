@@ -269,6 +269,16 @@ export type NetworkMockRecordedBody = {
   value?: unknown;
 };
 
+/**
+ * Where a mocked request can come from: a page (tab, popup, dapp), the
+ * Extension service worker, the MV3 offscreen document, or an iframe of the
+ * offscreen document (a snaps iframe).
+ */
+export type NetworkMockContext = 'page' | 'sw' | 'offscreen' | 'iframe';
+
+/** The contexts whose interception depends on a live CDP session. */
+export type NetworkMockPendingContext = 'offscreen' | 'iframe';
+
 export type NetworkMockRequestRecord = {
   timestamp: string;
   method: string;
@@ -281,9 +291,14 @@ export type NetworkMockRequestRecord = {
   ruleId?: string;
   /**
    * Mocked status for a rule with a response, or the real status of a
-   * forwarded request when the response arrived within the status timeout.
+   * forwarded page or service worker request when the response arrived
+   * within the status timeout. Forwarded offscreen document and iframe
+   * requests have none.
    */
   status?: number;
+  /** The context the request came from. */
+  context?: NetworkMockContext;
+  /** True for a service worker request (`context: 'sw'`). */
   serviceWorker?: boolean;
   headers?: Record<string, string>;
   body?: NetworkMockRecordedBody;
