@@ -44,8 +44,8 @@ export type TestIdItem = {
   /**
    * Whether the element is expected to be on-screen. On mobile this is
    * derived from the element frame vs the device viewport intersection and
-   * does not account for occlusion by other content; elements with unknown
-   * geometry are assumed visible.
+   * does not account for occlusion by other content; an unknown viewport is
+   * assumed visible.
    */
   visible: boolean;
 };
