@@ -5,3 +5,4 @@ export type * from './tool-outputs.js';
 export * from './observation.js';
 export * from './discovery.js';
 export type * from './session.js';
+export type * from './events.js';

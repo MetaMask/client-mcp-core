@@ -1011,6 +1011,10 @@ export async function routeCommand(
       await routeMockNetworkCommand(args, daemon);
       break;
     }
+    case 'events': {
+      await routeEventsCommand(args, daemon);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -1320,6 +1324,43 @@ export async function routeMockNetworkCommand(
   }
 
   failUsage('Usage: mm mock-network <add|clear|list|requests> [options]');
+}
+
+const EVENTS_USAGE = 'Usage: mm events <mark | clear [--kind console|network]>';
+
+/**
+ * Routes `mm events` subcommands to the daemon.
+ *
+ * @param args - CLI arguments after `events`.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
+ */
+export async function routeEventsCommand(
+  args: string[],
+  daemon: DaemonEndpoint,
+): Promise<void> {
+  const [action, ...rest] = args;
+  if (action !== 'mark' && action !== 'clear') {
+    failUsage(EVENTS_USAGE);
+  }
+  let kind: string | undefined;
+  if (rest.length > 0) {
+    // Only `clear --kind <console|network>` takes arguments; anything else
+    // (an unknown flag, a stray value, `mark --kind`) is a usage error.
+    if (
+      action !== 'clear' ||
+      rest.length !== 2 ||
+      rest[0] !== '--kind' ||
+      !rest[1] ||
+      rest[1].startsWith('--')
+    ) {
+      failUsage(EVENTS_USAGE);
+    }
+    [, kind] = rest;
+  }
+  await sendRequest(daemon, 'POST', '/tool/events', {
+    action,
+    ...(kind === undefined ? {} : { kind }),
+  });
 }
 
 /**
@@ -2213,6 +2254,12 @@ Advanced:
   mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
   mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
+
+Session events (browser only; recorded from launch on, not during it):
+  mm events mark      Current cursor and summary.startedAt. Take one at the
+                      start of a flow; pass the cursor to logs/network.
+  mm events clear [--kind console|network]
+                      Empty the buffer; the cursor keeps counting.
 
 Mobile (iOS/Android only):
   mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]

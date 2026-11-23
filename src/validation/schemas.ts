@@ -838,6 +838,30 @@ export const mockNetworkInputSchema = z.union([
   }),
 ]);
 
+export const eventKindSchema = z.enum(['console', 'network']);
+
+export const eventsInputSchema = z.discriminatedUnion('action', [
+  z
+    .object({
+      action: z
+        .literal('mark')
+        .describe(
+          'Return the current cursor; pass it to logs/network --cursor later',
+        ),
+    })
+    .strict(),
+  z
+    .object({
+      action: z
+        .literal('clear')
+        .describe('Empty the buffer; the cursor keeps counting'),
+      kind: eventKindSchema
+        .describe('Only clear this kind (default: every kind)')
+        .optional(),
+    })
+    .strict(),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -1095,6 +1119,7 @@ export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
 export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
+export type EventsInputZ = z.infer<typeof eventsInputSchema>;
 export type ScrollToElementInputZ = z.infer<typeof scrollToElementInputSchema>;
 export type DeviceSwipeInputZ = z.infer<typeof deviceSwipeInputSchema>;
 export type LongPressInputZ = z.infer<typeof longPressInputSchema>;
@@ -1148,6 +1173,7 @@ export const toolSchemas = {
   hermes_targets: withObserve(hermesTargetsInputSchema),
   get_window_size: withObserve(getWindowSizeInputSchema),
   mock_network: withObserve(mockNetworkInputSchema),
+  events: withObserve(eventsInputSchema),
   scroll_to_element: withObserve(scrollToElementInputSchema),
   device_swipe: withObserve(deviceSwipeInputSchema),
   long_press: withObserve(longPressInputSchema),

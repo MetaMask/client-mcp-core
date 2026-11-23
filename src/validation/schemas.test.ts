@@ -19,6 +19,7 @@ import {
   setViewportInputSchema,
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
+  eventsInputSchema,
   launchInputSchema,
   scrollToElementInputSchema,
   clickInputSchema,
@@ -539,6 +540,26 @@ describe('network mock schemas', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('eventsInputSchema', () => {
+  it('accepts mark and clear with an optional kind', () => {
+    expect(eventsInputSchema.safeParse({ action: 'mark' }).success).toBe(true);
+    expect(eventsInputSchema.safeParse({ action: 'clear' }).success).toBe(true);
+    expect(
+      eventsInputSchema.safeParse({ action: 'clear', kind: 'console' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an unknown kind, action or field', () => {
+    expect(
+      eventsInputSchema.safeParse({ action: 'clear', kind: 'dom' }).success,
+    ).toBe(false);
+    expect(eventsInputSchema.safeParse({ action: 'read' }).success).toBe(false);
+    expect(
+      eventsInputSchema.safeParse({ action: 'mark', cursor: 1 }).success,
+    ).toBe(false);
   });
 });
 
@@ -1153,6 +1174,7 @@ describe('observe field', () => {
       clipboard: { action: 'read' },
       cdp: { method: 'Runtime.evaluate' },
       mock_network: { action: 'list' },
+      events: { action: 'mark' },
       scroll_to_element: { testId: 'row' },
       device_swipe: { direction: 'up' },
       long_press: { testId: 'row' },

@@ -633,7 +633,7 @@ export function redactHeaders(
  * @param name - The JSON field name.
  * @returns True if the field value must be redacted.
  */
-function isSensitiveBodyField(name: string): boolean {
+export function isSensitiveBodyField(name: string): boolean {
   return SENSITIVE_BODY_FIELDS.has(name.toLowerCase().replace(/[-_]/gu, ''));
 }
 
