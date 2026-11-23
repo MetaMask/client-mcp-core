@@ -808,21 +808,21 @@ HTTP(S) requests of every page and the Extension service worker (gas, security a
 }
 ```
 
-| Field        | Description                                                                                                                |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `settledSeq` | Position when the request became final: it ended, with its `rpcError` read when configured. Absent while pending           |
-| `t`          | Request start, epoch ms                                                                                                    |
-| `url`        | Redacted: API keys in the host or path (such as Infura IDs), credentials, and `key`/`token`/`apiKey`-like params           |
-| `type`       | `fetch`, `xhr`, `document`, `script`, …                                                                                    |
-| `status`     | HTTP status. Absent while pending and when the request failed before a response                                            |
-| `ms`         | Start to end of the response or the failure. Absent while pending                                                          |
-| `failure`    | For example `net::ERR_ABORTED`, `net::ERR_NAME_NOT_RESOLVED`, `net::ERR_FAILED (cors: …)`, `target closed`, or `abandoned` |
-| `rpcMethods` | JSON-RPC methods of the request body; always an array (a batch lists its methods in order)                                 |
-| `rpcError`   | `{ code, message }` of a JSON-RPC error response. Only after `mm network configure --rpc-errors`                           |
+| Field        | Description                                                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `settledSeq` | Position when the request became final: it ended, with its `rpcError` read when configured. Absent while pending                                                                     |
+| `t`          | Request start, epoch ms                                                                                                                                                              |
+| `url`        | Redacted: API keys in the host or path (such as Infura IDs), credentials, and `key`/`token`/`apiKey`-like params                                                                     |
+| `type`       | `fetch`, `xhr`, `document`, `script`, …                                                                                                                                              |
+| `status`     | HTTP status. Absent while pending and when the request failed before a response; a request that fails after its response keeps it                                                    |
+| `ms`         | Start to end of the response or the failure. Absent while pending                                                                                                                    |
+| `failure`    | Set when the request fails, before or after its response: for example `net::ERR_ABORTED`, `net::ERR_NAME_NOT_RESOLVED`, `net::ERR_FAILED (cors: …)`, `target closed`, or `abandoned` |
+| `rpcMethods` | JSON-RPC methods of the request body; always an array (a batch lists its methods in order)                                                                                           |
+| `rpcError`   | `{ code, message }` of a JSON-RPC error response. Only after `mm network configure --rpc-errors`                                                                                     |
 
 `--url` takes a glob (`*`, `**`) or plain text the URL must contain. `--errors` keeps status >= 400, `failure` and `rpcError`. Only `http(s)` requests are recorded (`stats.ignored` counts the rest). A redirect gives one record per hop.
 
-An unfiltered read returns every record in start order (`seq`), pending requests included, and the cursor moves past all of them. A filtered read (`--url`, `--errors`) returns only **settled** requests, in `settledSeq` order: a request may become a match only when it ends (a 404, a failure, an `rpcError`), so it is returned by the read that follows its end, once, even when it started before the cursor. `--settled` asks for that same settle-order read without a filter: at the end of a step, read `--settled --cursor <mark>` to get the final status of every request that finished since the mark, including ones started earlier; requests still open are not returned yet. An unsettled request is never returned by a filtered or `--settled` read, so a request that never ends never matches one. In every case `--since` compares the request start (`t`), not when it ended. Every cursor is a buffer position, so it also continues a read of the other kind or an unfiltered read once `hasMore` is false.
+An unfiltered read returns every record in start order (`seq`), pending requests included, and the cursor moves past all of them. A filtered read (`--url`, `--errors`) returns only **settled** requests, in `settledSeq` order: a request may become a match only when it ends (a 404, a failure, an `rpcError`), so it is returned by the read that follows its end, once, even when it started before the cursor. `--settled` asks for that same settle-order read without a filter: at the end of a step, read `--settled --cursor <mark>` to get the final status of every request that finished since the mark, including ones started earlier; requests still open are not returned yet. An unsettled request is never returned by a filtered or `--settled` read, so a request that never ends never matches one. In every case `--since` compares the request start (`t`), not when it ended. A cursor from a filtered or `--settled` read continues reads of the same mode; for an unfiltered read, use a cursor from `mm events mark` or an unfiltered read.
 
 `mm network configure --rpc-errors` reads the body of each JSON-RPC response (up to 64 KiB decoded, at most 8 at a time) and records its `error`; `stats.rpcErrorsSkipped` counts the bodies that were too large, too many at once or gone. The decoded size comes from `Network.dataReceived` when Chrome reports it; without those events the compressed `encodedDataLength` is used, which can undercount. `Network.enable` gets small response-buffer limits, since no bodies are kept otherwise. `--no-rpc-errors` turns it off.
 
