@@ -3255,3 +3255,173 @@ describe('CdpManager subscribe without onError', () => {
     }
   });
 });
+
+describe('CdpManager sendToEventTarget', () => {
+  it('sends on the persistent session of an attached page or worker', async () => {
+    const page = createEventPage();
+    const other = createEventPage('https://dapp.test/');
+    const fake = createContext({
+      pages: [other, page],
+      swReply: (method) => ({ result: { body: `sw:${method}` } }),
+    });
+    const otherSession = createEventSession('page-0');
+    const pageSession = createEventSession('page-1', (method) => ({
+      body: `page:${method}`,
+    }));
+    fake.newCDPSession.mockImplementation(async (target: Page) =>
+      target === page ? pageSession : otherSession,
+    );
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({ events: NET_EVENTS, onEvent: vi.fn() });
+
+    expect(
+      await manager.sendToEventTarget(
+        { kind: 'page', targetId: 'page-1', url: PAGE_URL },
+        'Network.getResponseBody',
+        { requestId: 'r1' },
+      ),
+    ).toStrictEqual({ body: 'page:Network.getResponseBody' });
+    expect(pageSession.send).toHaveBeenCalledWith('Network.getResponseBody', {
+      requestId: 'r1',
+    });
+    expect(
+      await manager.sendToEventTarget(
+        { kind: 'sw', targetId: TARGET_ID, url: SW_URL },
+        'Network.getResponseBody',
+      ),
+    ).toStrictEqual({ body: 'sw:Network.getResponseBody' });
+    expect(fake.newCDPSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports the target ID on targetDetached', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    const session = createEventSession('page-1');
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
+
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+    page.setClosed(true);
+    page.emitter.emit('close', page);
+    await flush();
+
+    expect(detached).toHaveBeenCalledWith({
+      kind: 'page',
+      target: page,
+      targetId: 'page-1',
+    });
+  });
+
+  it('reports the worker target ID on targetDetached', async () => {
+    const fake = createContext();
+    const manager = new CdpManager(fake.context);
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
+
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+    fake.browserEmitter.emit('Target.targetDestroyed', { targetId: TARGET_ID });
+    await flush();
+
+    expect(detached).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'sw', targetId: TARGET_ID }),
+    );
+  });
+
+  it('times out a command whose target lookup hangs', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    const session = createEventSession('page-1');
+    let resolveInfo!: (value: unknown) => void;
+    session.send.mockImplementation(async (method: string) =>
+      method === 'Target.getTargetInfo'
+        ? new Promise((resolve) => {
+            resolveInfo = resolve;
+          })
+        : {},
+    );
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    const subscribing = manager.subscribe({
+      events: LOG_EVENTS,
+      onEvent: vi.fn(),
+    });
+    await vi.waitFor(() =>
+      expect(session.send).toHaveBeenCalledWith('Target.getTargetInfo', {}),
+    );
+
+    await expect(
+      manager.sendToEventTarget(
+        { kind: 'page', targetId: 'page-1', url: PAGE_URL },
+        'Network.getResponseBody',
+        {},
+        { timeoutMs: 5 },
+      ),
+    ).rejects.toThrowError(
+      'CDP call "Network.getResponseBody" timed out after 5ms',
+    );
+
+    resolveInfo({ targetInfo: { targetId: 'page-1' } });
+    await subscribing;
+  });
+
+  it('fails at once for a target that is not attached', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    const session = createEventSession('page-1');
+    session.send.mockImplementation(async (method: string) => {
+      if (method === 'Target.getTargetInfo') {
+        throw new Error('Target closed');
+      }
+      return {};
+    });
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+
+    await expect(
+      manager.sendToEventTarget(
+        { kind: 'sw', targetId: TARGET_ID, url: SW_URL },
+        'Network.getResponseBody',
+      ),
+    ).rejects.toThrowError(`CDP target ${TARGET_ID} is not attached`);
+
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+    await expect(
+      manager.sendToEventTarget(
+        { kind: 'page', targetId: 'page-1', url: PAGE_URL },
+        'Network.getResponseBody',
+      ),
+    ).rejects.toThrowError('CDP target page-1 is not attached');
+
+    await manager.dispose();
+    await expect(
+      manager.sendToEventTarget(
+        { kind: 'page', targetId: 'page-1', url: PAGE_URL },
+        'Network.getResponseBody',
+      ),
+    ).rejects.toThrowError('CDP manager is disposed');
+  });
+
+  it('times out a slow command', async () => {
+    const page = createEventPage();
+    const fake = createContext({ pages: [page], targets: [] });
+    const session = createEventSession('page-1', async (method) =>
+      method === 'Network.getResponseBody' ? new Promise(() => undefined) : {},
+    );
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+
+    await expect(
+      manager.sendToEventTarget(
+        { kind: 'page', targetId: 'page-1', url: PAGE_URL },
+        'Network.getResponseBody',
+        {},
+        { timeoutMs: 5 },
+      ),
+    ).rejects.toThrowError(
+      'CDP call "Network.getResponseBody" timed out after 5ms',
+    );
+  });
+});

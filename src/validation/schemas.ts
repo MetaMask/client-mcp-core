@@ -942,6 +942,44 @@ export const logsInputSchema = z.union([
     .strict(),
 ]);
 
+export const networkInputSchema = z.union([
+  z
+    .object({
+      action: z.literal('read').optional(),
+      ...eventReadFields,
+      url: z
+        .string()
+        .min(1)
+        .describe(
+          'Only requests whose URL matches this glob (* and **) or, without *, contains this text',
+        )
+        .optional(),
+      errors: z
+        .boolean()
+        .describe('Only errors: HTTP status >= 400, failure, or rpcError')
+        .optional(),
+      settled: z
+        .boolean()
+        .describe(
+          'Return only settled requests, in settle order, without a filter: ' +
+            'every request that ended after the cursor, including ones ' +
+            'started earlier. Requests still open are not returned',
+        )
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('configure'),
+      rpcErrors: z
+        .boolean()
+        .describe(
+          'Read JSON-RPC response bodies (up to 64 KiB) and record their error as rpcError. Default false',
+        ),
+    })
+    .strict(),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -1201,6 +1239,7 @@ export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
 export type EventsInputZ = z.infer<typeof eventsInputSchema>;
 export type LogsInputZ = z.infer<typeof logsInputSchema>;
+export type NetworkInputZ = z.infer<typeof networkInputSchema>;
 export type ScrollToElementInputZ = z.infer<typeof scrollToElementInputSchema>;
 export type DeviceSwipeInputZ = z.infer<typeof deviceSwipeInputSchema>;
 export type LongPressInputZ = z.infer<typeof longPressInputSchema>;
@@ -1256,6 +1295,7 @@ export const toolSchemas = {
   mock_network: withObserve(mockNetworkInputSchema),
   events: withObserve(eventsInputSchema),
   logs: withObserve(logsInputSchema),
+  network: withObserve(networkInputSchema),
   scroll_to_element: withObserve(scrollToElementInputSchema),
   device_swipe: withObserve(deviceSwipeInputSchema),
   long_press: withObserve(longPressInputSchema),

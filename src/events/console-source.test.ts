@@ -594,7 +594,7 @@ describe('ConsoleSource', () => {
       'a1',
     ]);
 
-    events.config = { consoleLevels: ['error', 'warning'] };
+    events.config = { consoleLevels: ['error', 'warning'], rpcErrors: false };
     emit(
       consoleEvent('warning', [{ type: 'string', value: 'w2' }], {
         timestamp: now + 1,

@@ -1019,6 +1019,10 @@ export async function routeCommand(
       await routeLogsCommand(args, daemon);
       break;
     }
+    case 'network': {
+      await routeNetworkCommand(args, daemon);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -1372,28 +1376,38 @@ const LOGS_USAGE =
   '       mm logs configure --levels <error,warning,info,log,debug>';
 
 /**
- * Parses the read flags shared by `mm logs` and `mm network`.
+ * Parses the read flags shared by `mm logs` and `mm network`. Unknown flags,
+ * missing values and stray arguments are usage errors.
  *
  * @param args - CLI arguments.
  * @param usage - The usage text to print on a bad flag.
  * @param stringFlags - Extra flags that take a string value.
+ * @param booleanFlags - Extra flags that take no value.
  * @returns The read options for the tool.
  */
 export function parseEventReadArgs(
   args: string[],
   usage: string,
   stringFlags: readonly string[] = [],
+  booleanFlags: readonly string[] = [],
 ): Record<string, unknown> {
   const integerFlags = new Set(['--cursor', '--limit']);
   const textFlags = new Set(['--since', ...stringFlags]);
+  const booleans = new Set(booleanFlags);
   const options: Record<string, unknown> = {};
-  // Every flag takes one value, so the arguments come in flag/value pairs.
-  // Reject anything else: a mistyped flag must not be silently ignored.
-  for (let index = 0; index < args.length; index += 2) {
+  // Every flag takes one value, or none for a boolean flag. Reject anything
+  // else: a mistyped flag must not be silently ignored.
+  for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
+    if (flag === undefined) {
+      failUsage(usage);
+    }
+    if (booleans.has(flag)) {
+      options[flag.slice(2)] = true;
+      continue;
+    }
     const value = args[index + 1];
     if (
-      flag === undefined ||
       (!integerFlags.has(flag) && !textFlags.has(flag)) ||
       value === undefined ||
       value.startsWith('--')
@@ -1410,6 +1424,7 @@ export function parseEventReadArgs(
     } else {
       options[flag.slice(2)] = value;
     }
+    index += 1;
   }
   return options;
 }
@@ -1455,6 +1470,49 @@ export async function routeLogsCommand(
     'POST',
     '/tool/logs',
     parseEventReadArgs(args, LOGS_USAGE, ['--grep']),
+  );
+}
+
+const NETWORK_USAGE =
+  'Usage: mm network [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--url <glob|text>] [--errors] [--settled]\n' +
+  '       mm network configure --rpc-errors | --no-rpc-errors';
+
+/**
+ * Routes `mm network` to the daemon.
+ *
+ * @param args - CLI arguments after `network`.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
+ */
+export async function routeNetworkCommand(
+  args: string[],
+  daemon: DaemonEndpoint,
+): Promise<void> {
+  if (args[0] === 'configure') {
+    const rest = args.slice(1);
+    const on = rest.length === 1 && rest[0] === '--rpc-errors';
+    const off = rest.length === 1 && rest[0] === '--no-rpc-errors';
+    if (on === off) {
+      failUsage(NETWORK_USAGE);
+    }
+    await sendRequest(daemon, 'POST', '/tool/network', {
+      action: 'configure',
+      rpcErrors: on,
+    });
+    return;
+  }
+  if (args[0] !== undefined && !args[0].startsWith('--')) {
+    failUsage(NETWORK_USAGE);
+  }
+  await sendRequest(
+    daemon,
+    'POST',
+    '/tool/network',
+    parseEventReadArgs(
+      args,
+      NETWORK_USAGE,
+      ['--url'],
+      ['--errors', '--settled'],
+    ),
   );
 }
 
@@ -2361,6 +2419,14 @@ Session events (browser only; recorded from launch on, not during it):
                       again with the returned cursor while hasMore.
   mm logs configure --levels <error,warning,info,log,debug>
                       Levels to record from now on (default: error).
+  mm network [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--url <glob|text>] [--errors] [--settled]
+                      HTTP(S) requests of every page and the Extension
+                      service worker: status, ms, failure, rpcMethods.
+                      --errors: status >= 400, failure or rpcError.
+                      --settled: only requests that ended after the cursor,
+                      in settle order (no filter needed).
+  mm network configure --rpc-errors | --no-rpc-errors
+                      Read JSON-RPC response bodies for rpcError (off).
 
 Mobile (iOS/Android only):
   mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]

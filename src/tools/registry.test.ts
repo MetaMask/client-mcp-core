@@ -24,6 +24,7 @@ describe('toolRegistry', () => {
       'mock_network',
       'events',
       'logs',
+      'network',
       'run_steps',
       'cdp',
       'hermes_targets',
@@ -43,7 +44,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(51);
+    expect(toolRegistry.size).toBe(52);
   });
 
   it('stores only functions as values', () => {
@@ -97,7 +98,7 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     },
   );
 
-  it.each(['events', 'logs'])(
+  it.each(['events', 'logs', 'network'])(
     'getToolCategory returns readonly for %s',
     (toolName) => {
       expect(getToolCategory(toolName)).toBe('readonly');
@@ -135,6 +136,7 @@ describe('isBrowserOnlyTool', () => {
     'mock_network',
     'events',
     'logs',
+    'network',
     'reload',
     'build',
     'inspect',
