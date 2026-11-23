@@ -1,6 +1,7 @@
 import type {
   DeviceBackend,
   ElementQuery,
+  HermesClient,
   HermesSession,
   HermesSessionResolved,
   HermesTarget,
@@ -87,51 +88,6 @@ export type MobilePlatformDriverOptions = {
 };
 
 /**
- * The part of device-mcp's `HermesClient` this driver uses. Declared
- * structurally because device-mcp 0.7.0, which core also supports, does not
- * export the client.
- */
-type HermesClientLike = {
-  /** The Metro port the client was created for. */
-  readonly metroPort: number;
-  /** The app id the client was created for. */
-  readonly appId: string;
-  /** Whether a verified socket is currently open. */
-  readonly isConnected: boolean;
-  /**
-   * Sends one CDP command over the persistent socket.
-   *
-   * @param method - The CDP method.
-   * @param params - The CDP method parameters.
-   * @param options - Per-call timeout.
-   * @param options.timeoutMs - Per-call timeout in milliseconds.
-   * @returns The raw CDP result or a classified failure.
-   */
-  send(
-    method: string,
-    params: Record<string, unknown> | undefined,
-    options: { timeoutMs: number },
-  ): Promise<CdpOutcome>;
-  /** Closes the socket and stops reconnecting. */
-  close(): void;
-};
-
-/** Constructor of device-mcp's `HermesClient`. */
-type HermesClientConstructor = new (options: {
-  metroPort: number;
-  appId: string;
-  pinnedDeviceId?: string;
-  onPin?: (logicalDeviceId: string) => void;
-}) => HermesClientLike;
-
-/** The run-time export to feature-detect `HermesClient` on. */
-type HermesClientRuntime = {
-  // The device-mcp export keeps its public name.
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  HermesClient?: unknown;
-};
-
-/**
  * Platform driver for mobile devices backed by @metamask/device-mcp.
  * Wraps DeviceBackend behind the IPlatformDriver interface so the
  * tool layer can interact with iOS/Android devices using the same
@@ -153,7 +109,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
   // with a different port or app id takes the one-shot path instead, so this
   // client is never retargeted. Created on first use (device-mcp is loaded
   // lazily), so releasing it in dispose() must tolerate it being absent.
-  #hermesClient: HermesClientLike | undefined;
+  #hermesClient: HermesClient | undefined;
 
   // Session defaults kept from the launch (or the driver options). Undefined
   // leaves the choice to device-mcp: env `HERMES_METRO_PORT` /
@@ -254,20 +210,22 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Returns the persistent client of the session target, creating it on first
-   * use. Returns undefined when device-mcp has no `HermesClient` (0.7.0) or
-   * the cached client was built for another target: the caller then uses the
-   * one-shot path, so the client is never retargeted.
+   * use. Returns undefined when the cached client was built for another
+   * target: the caller then uses the one-shot path, so the client is never
+   * retargeted. The client is created without `trackContexts` and without
+   * listeners, so it never sends `Runtime.enable`.
    *
    * @param runtime - The loaded device-mcp module.
    * @param session - This driver's Hermes session.
    * @param target - The session target (Metro port and app id).
-   * @returns The client, or undefined when unavailable.
+   * @returns The client, or undefined when the cached client is for another
+   * target.
    */
   #getHermesClient(
     runtime: DeviceMcpRuntime,
     session: HermesSession,
     target: HermesSessionResolved,
-  ): HermesClientLike | undefined {
+  ): HermesClient | undefined {
     const existing = this.#hermesClient;
     if (existing) {
       return existing.metroPort === target.metroPort &&
@@ -275,11 +233,8 @@ export class MobilePlatformDriver implements IPlatformDriver {
         ? existing
         : undefined;
     }
-    const Client = (runtime as HermesClientRuntime).HermesClient;
-    if (typeof Client !== 'function') {
-      return undefined;
-    }
-    const client = new (Client as HermesClientConstructor)({
+    const { HermesClient: Client } = runtime;
+    const client = new Client({
       metroPort: target.metroPort,
       appId: target.appId,
       pinnedDeviceId: target.pinnedDeviceId,
@@ -500,8 +455,9 @@ export class MobilePlatformDriver implements IPlatformDriver {
   /**
    * @param limit - Maximum number of test IDs to return.
    * @returns Array of test ID items with identifiers from the UI hierarchy.
-   * Visibility reflects whether each element's frame intersects the device
-   * viewport; elements with unknown geometry are assumed visible.
+   * Visibility reflects whether each element's frame overlaps the device
+   * viewport with a positive area (the rule a tap uses); when the viewport
+   * is unknown, elements are assumed visible.
    */
   async getTestIds(limit?: number): Promise<TestIdItem[]> {
     const { hierarchy, viewport } = await this.#snapshotApp();
@@ -860,8 +816,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
    * no per-call override) goes through this driver's persistent
    * `HermesClient`, created on first use and reused after. A call with a
    * different `metroPort` or `appId` uses a one-shot `runHermesCdp` instead,
-   * so the persistent client is never retargeted. Releases of device-mcp
-   * without `HermesClient` (0.7.0) always take the one-shot path.
+   * so the persistent client is never retargeted.
    *
    * @param input - The CDP command input.
    * @returns A discriminated CDP outcome. A failure names the Metro port used.
@@ -892,8 +847,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
 
   /**
    * Runs one CDP command with a fresh discovery fetch and WebSocket, for a
-   * call whose target differs from the session's or for a device-mcp release
-   * without `HermesClient`.
+   * call whose target differs from the session's.
    *
    * @param runtime - The loaded device-mcp module.
    * @param session - This driver's Hermes session.
@@ -1355,8 +1309,9 @@ function normalizeSnapshot(
  * @param items - Accumulator for discovered test ID items.
  * @param max - Maximum number of items to collect.
  * @param viewport - Device viewport in logical points, when known. Elements
- * whose frames do not intersect it are reported `visible: false`; elements
- * with unknown or zero-size geometry are assumed visible.
+ * whose frames do not overlap it with a positive area — including the
+ * zero-height frames Android reports for off-screen rows — are reported
+ * `visible: false`; an unknown viewport is treated as visible.
  * @param viewport.width - Viewport width in logical points.
  * @param viewport.height - Viewport height in logical points.
  */
@@ -1385,14 +1340,18 @@ function collectTestIds(
 }
 
 /**
- * Checks whether an element frame intersects the device viewport.
+ * Checks whether an element frame overlaps the device viewport with a
+ * positive area — the same rule a tap uses (device-mcp `visibleCenter`), so
+ * `visible: true` means a tap will not be refused as off-screen. Android
+ * clips off-screen nodes to zero height at the edge of their scroll
+ * container, so a zero-size frame never counts as visible.
  *
  * @param frame - Element frame in logical points.
  * @param viewport - Device viewport in logical points, when known.
  * @param viewport.width - Viewport width in logical points.
  * @param viewport.height - Viewport height in logical points.
- * @returns False only when a positive-size frame lies entirely outside the
- * viewport; unknown geometry is conservatively treated as visible.
+ * @returns False when the frame has no positive-area overlap with the
+ * viewport; an unknown viewport is conservatively treated as visible.
  */
 function isWithinViewport(
   frame: UIElement['frame'],
@@ -1401,11 +1360,10 @@ function isWithinViewport(
   if (!viewport || viewport.width <= 0 || viewport.height <= 0) {
     return true;
   }
-  if (frame.width <= 0 || frame.height <= 0) {
-    return true;
-  }
-  const intersectsX = frame.x < viewport.width && frame.x + frame.width > 0;
-  const intersectsY = frame.y < viewport.height && frame.y + frame.height > 0;
+  const intersectsX =
+    Math.min(frame.x + frame.width, viewport.width) > Math.max(frame.x, 0);
+  const intersectsY =
+    Math.min(frame.y + frame.height, viewport.height) > Math.max(frame.y, 0);
   return intersectsX && intersectsY;
 }
 

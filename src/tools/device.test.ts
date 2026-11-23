@@ -638,6 +638,24 @@ describe('dismissKeyboardTool', () => {
     }
   });
 
+  it('returns MM_DEVICE_ACTION_FAILED when the Android keyboard stays shown', async () => {
+    const message =
+      'Keyboard still shown after ESCAPE and BACK. ' +
+      'Use device_snapshot to inspect the current UI hierarchy.';
+    const dismissKeyboard = vi.fn().mockRejectedValue(new Error(message));
+    const context = createContext({ driver: { dismissKeyboard } });
+
+    const result = await dismissKeyboardTool({}, context);
+
+    expect(result).toStrictEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: ErrorCodes.MM_DEVICE_ACTION_FAILED,
+        message: `Dismissing keyboard failed: ${message}`,
+      }),
+    });
+  });
+
   it('returns MM_DEVICE_ACTION_FAILED when the driver throws', async () => {
     const dismissKeyboard = vi.fn().mockRejectedValue(new Error('kb boom'));
     const context = createContext({ driver: { dismissKeyboard } });
