@@ -1402,7 +1402,8 @@ export function parseEventReadArgs(
     }
     if (integerFlags.has(flag)) {
       const parsed = parseInt(value, 10);
-      if (Number.isNaN(parsed)) {
+      // A cursor may be 0; a limit below 1 would silently read one record.
+      if (Number.isNaN(parsed) || (flag === '--limit' && parsed < 1)) {
         failUsage(usage);
       }
       options[flag.slice(2)] = parsed;

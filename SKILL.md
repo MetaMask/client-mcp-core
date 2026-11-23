@@ -763,7 +763,7 @@ Empties the buffer (one kind or all). The cursor keeps counting, so older cursor
 
 #### `mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]`
 
-Console errors and uncaught exceptions of every page and the Extension service worker. Returns `{ records, cursor, hasMore, gap, summary }`, oldest first (default 500, max 2000 per read). While `hasMore` is true, read again with the returned `cursor`. `gap: true` means records after your cursor were dropped (buffer full), or your cursor is from an earlier session (it is above the newest `seq` of this one; the read then starts from the oldest record). `--grep` is a case-sensitive JavaScript regular expression of at most 256 characters. A value that starts with `--` is read as a missing flag value; escape it, for example `--grep '\-\-x'`.
+Console errors and uncaught exceptions of every page and the Extension service worker. Returns `{ records, cursor, hasMore, gap, summary }`, oldest first (default 500, max 2000 per read). While `hasMore` is true, read again with the returned `cursor`. `gap: true` means records after your cursor were dropped (buffer full), or your cursor is from an earlier session (it is above the newest `seq` of this one; the read then starts from the oldest record). `--grep` is a case-sensitive JavaScript regular expression of at most 256 characters. The pattern runs in the daemon, so avoid patterns with nested quantifiers such as `(a+)+`. A value that starts with `--` is read as a missing flag value; escape it, for example `--grep '\-\-x'`.
 
 ```json
 {
@@ -780,7 +780,7 @@ Console errors and uncaught exceptions of every page and the Extension service w
 }
 ```
 
-`target.kind` is `page` or `sw`. Uncaught exceptions have `"uncaught": true`. `text` is cut at 2000 characters: URLs in the text and the values of sensitive object fields (`privateKey`, `mnemonic`, `password`, …) are redacted; plain string contents are not scanned (JWTs and `Bearer` tokens excepted). `t` is the CDP time of the message (epoch ms).
+`target.kind` is `page` or `sw`. Uncaught exceptions have `"uncaught": true`. `text` (console arguments, error messages and stacks, uncaught exceptions) is cut at 2000 characters and redacted only for URLs, JWTs, `Bearer` values and sensitive property names in object previews (`privateKey`, `mnemonic`, `password`, …); a secret in free text, such as `new Error('… password hunter2')`, is not detected. `t` is the CDP time of the message (epoch ms).
 
 Only `error` (including `console.assert` and uncaught exceptions) is recorded by default. `mm logs configure --levels error,warning` records more levels from then on, for this session (`warn` is accepted as `warning`). Non-error objects and arrays are rendered from their CDP preview (`{message: 'User rejected', chainId: 1}`, `[1, 2]`); a named property of an array prints as `name: value`, and a sensitive property name prints `[REDACTED]`. A leading format string fills `%s`, `%d`, `%i`, `%f`, `%o`, `%O`, `%c` from its arguments. `mm logs configure` accepts only `--levels <list>`: any other flag or a second `--levels` is a usage error.
 
