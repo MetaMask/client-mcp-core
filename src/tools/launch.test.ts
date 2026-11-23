@@ -94,19 +94,13 @@ describe('launchTool', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('does not hold the launch on a slow start', async () => {
-      vi.useFakeTimers();
-      try {
-        const context = createMockContext({ hasActive: false });
-        ensureStarted.mockReturnValue(new Promise(() => undefined));
+    it('never fails the launch when the event start rejects', async () => {
+      const context = createMockContext({ hasActive: false });
+      ensureStarted.mockRejectedValue(new Error('attach failed'));
 
-        const launched = launchTool({}, context);
-        await vi.advanceTimersByTimeAsync(5_000);
+      const result = await launchTool({}, context);
 
-        expect((await launched).ok).toBe(true);
-      } finally {
-        vi.useRealTimers();
-      }
+      expect(result.ok).toBe(true);
     });
   });
 

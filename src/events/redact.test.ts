@@ -76,6 +76,16 @@ describe('redactUrl', () => {
       `https://x.io/p?data=${REDACTED_VALUE}`,
     ],
     [
+      'hex key value under a harmless name',
+      'https://x.io/?data=0123456789abcdef0123456789abcdef',
+      `https://x.io/?data=${REDACTED_VALUE}`,
+    ],
+    [
+      'digitless key value under a harmless fragment name',
+      'https://x.io/#state=AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEf',
+      `https://x.io/#state=${REDACTED_VALUE}`,
+    ],
+    [
       '0x address kept',
       `https://api.example.com/accounts/${ADDRESS}/balances`,
       `https://api.example.com/accounts/${ADDRESS}/balances`,

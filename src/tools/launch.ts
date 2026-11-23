@@ -7,9 +7,6 @@ import type { ISessionManager } from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 import { debugWarn, extractErrorMessage } from '../utils';
 
-/** How long a launch waits for the session event sources to attach. */
-const SESSION_EVENTS_START_WAIT_MS = 5_000;
-
 const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
   {
     step: 'Unlock Wallet',
@@ -70,17 +67,9 @@ async function startSessionEvents(
     if (platform !== 'browser') {
       return;
     }
-    const started = getSessionEvents(
-      context.sessionManager.getContext(),
-    ).ensureStarted();
-    // Do not hold the launch on a slow attach: the sources keep starting.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      started,
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, SESSION_EVENTS_START_WAIT_MS);
-      }),
-    ]).finally(() => clearTimeout(timer));
+    // `ensureStarted` is bounded (5 s) and never rejects: it does not hold
+    // the launch on a slow attach, and the sources keep starting.
+    await getSessionEvents(context.sessionManager.getContext()).ensureStarted();
   } catch (error) {
     debugWarn('launch.session-events', error);
   }
