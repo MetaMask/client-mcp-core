@@ -68,6 +68,14 @@ On mobile, each observation and `describe-screen` comes from one device snapshot
 
 On Android, a navigating tap can be observed while the new screen is still mounting: the screen-level test IDs are already there but much of the tree is not (P1-32 saw 51 of 360 nodes). The settle retries a screen that is still tearing down (the old screen's test IDs with most of its nodes gone), not one that is still filling in. When an observation looks partial, run `mm describe-screen` before acting on it.
 
+**Android: the first visit to a tab can return the old screen.** A screen that mounts for the first time in the session (for example the Explore or Money tab after an app restart) can take about 2 s to appear (measured on Explore, Android emulator, dev build). The tap works, but the click's observation can still show the old screen, whole or partly removed, and `mm describe-screen` right after the click shows it too. `screenChanged` does not help here: the tapped button's press feedback alone can make it `true`. So after a tap that should open a new screen:
+
+1. Look for the new screen's test ID in the observation (for example `explore-safe-area`, `money-home-view-container`).
+2. If it is not there, run `mm wait-for --testid <that id>`. It returns as soon as the screen is there.
+3. Do not tap again: the first tap already worked, and a second tap on a button can do the action twice.
+
+Later visits to the same tab, and the first visit to a fast screen, show the new screen in the observation.
+
 **Observation Compaction:** Observations are **compacted** before returning: option runs of 3 or more under a combobox or listbox are replaced with a single summary node (e.g., `"55 options (refs e2–e56)"`). The `describe-screen` tool always returns the **full, unfiltered** a11y tree — use it when you need the complete option list.
 
 **Diff-Based Observations:** After the first observation sets a baseline, later calls at level `diff` return **diff-based** observations. The `observations.a11y.diff` field (when present) shows what changed:
@@ -337,7 +345,7 @@ If the page closes after clicking (e.g., confirmation popup), the response inclu
 
 **Browser hidden checkbox or radio:** toggles often keep the real `<input type="checkbox">` (and its test id) at 1×1 pixel under decorative elements, for example `mm click --testid basic-functionality-toggle`. When the target is such an input and it has one label (a wrapping `<label>` or `<label for="<id>">`), the label is clicked instead, which toggles the input, and the response includes `clickedLabel: true`. A hidden input without a label, or whose label has a link or button inside (for example "I agree to the terms"), is clicked as before.
 
-**Mobile:** before tapping, the device hit-tests the tap point (iOS; Android with device-mcp 0.9.0 and later). When another element is on top of the target (the keyboard, a sheet, an overlay), nothing is tapped and the click fails with `MM_TARGET_OBSCURED`; the message names the covering element. A target outside the screen fails with `MM_TARGET_NOT_VISIBLE` (run `mm scroll-to-element` first). `--dismiss-keyboard` closes the keyboard when it is the cover and taps once more (the result has `keyboardDismissed: true`). With an observation (not `--observe none`) the result has `screenChanged`: `false` means the screen looks the same as before the click; that is normal for some taps (the open tab) but a hint for a button that should navigate.
+**Mobile:** before tapping, the device hit-tests the tap point (iOS; Android with device-mcp 0.9.0 and later). When another element is on top of the target (the keyboard, a sheet, an overlay), nothing is tapped and the click fails with `MM_TARGET_OBSCURED`; the message names the covering element. A target outside the screen fails with `MM_TARGET_NOT_VISIBLE` (run `mm scroll-to-element` first). `--dismiss-keyboard` closes the keyboard when it is the cover and taps once more (the result has `keyboardDismissed: true`). With an observation (not `--observe none`) the result has `screenChanged`: `false` means the screen looks the same as before the click; that is normal for some taps (the open tab) but a hint for a button that should navigate. `true` does not prove that the app navigated: a small change, such as the tapped button's press feedback, also makes it `true`. To confirm a new screen, check for its test ID (see "the first visit to a tab can return the old screen" above). `screenChanged` is left out when there is no earlier screen to compare with: the first click after `mm launch`, unless `mm describe-screen` or another call that returned an observation ran in between.
 
 ```
 mm click --testid log-in-button --dismiss-keyboard
