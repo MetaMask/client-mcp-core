@@ -3203,6 +3203,12 @@ describe('routeCommand', () => {
       'http://127.0.0.1:3000/tool/logs',
       expect.objectContaining({ body: JSON.stringify({}) }),
     );
+    // A cursor of 0 is valid (the start of the session).
+    await routeCommand('logs', ['--cursor', '0'], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({ body: JSON.stringify({ cursor: 0 }) }),
+    );
   });
 
   it('routes logs configure', async () => {
@@ -3225,6 +3231,8 @@ describe('routeCommand', () => {
   it.each([
     [['--cursor', 'x']],
     [['--limit']],
+    [['--limit', '0']],
+    [['--limit', '-5']],
     [['--since']],
     [['--grep', '--cursor', '1']],
     [['--grap', 'x']],

@@ -309,8 +309,9 @@ function redactParameters(parameters: string, prefix: '?' | '#'): string {
 
 /**
  * Redacts one `name=value` parameter when its name is sensitive or its value
- * is a JWT. A bare part (no `=`) is redacted when it looks like a key, as in
- * `#<jwt>`.
+ * looks like a key (a JWT, or an opaque segment such as an Infura project
+ * ID), even under a harmless name. A bare part (no `=`) is redacted when it
+ * looks like a key, as in `#<jwt>`.
  *
  * @param pair - The encoded parameter.
  * @returns The parameter with its value replaced, or the input.
@@ -322,7 +323,9 @@ function redactPair(pair: string): string {
   }
   const name = decodeQueryName(pair.slice(0, separator));
   const value = decodeQueryName(pair.slice(separator + 1));
-  return isSensitiveQueryParam(name) || JWT_PATTERN.test(value)
+  return isSensitiveQueryParam(name) ||
+    isSecretUrlSegment(value) ||
+    isOpaquePathKey(value)
     ? `${pair.slice(0, separator)}=${REDACTED_VALUE}`
     : pair;
 }
