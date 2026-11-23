@@ -19,6 +19,9 @@ import {
   setViewportInputSchema,
   networkMockRouteRuleSchema,
   mockNetworkInputSchema,
+  eventsInputSchema,
+  logsInputSchema,
+  networkInputSchema,
   launchInputSchema,
   scrollToElementInputSchema,
   clickInputSchema,
@@ -539,6 +542,115 @@ describe('network mock schemas', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('eventsInputSchema', () => {
+  it('accepts mark and clear with an optional kind', () => {
+    expect(eventsInputSchema.safeParse({ action: 'mark' }).success).toBe(true);
+    expect(eventsInputSchema.safeParse({ action: 'clear' }).success).toBe(true);
+    expect(
+      eventsInputSchema.safeParse({ action: 'clear', kind: 'console' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an unknown kind, action or field', () => {
+    expect(
+      eventsInputSchema.safeParse({ action: 'clear', kind: 'dom' }).success,
+    ).toBe(false);
+    expect(eventsInputSchema.safeParse({ action: 'read' }).success).toBe(false);
+    expect(
+      eventsInputSchema.safeParse({ action: 'mark', cursor: 1 }).success,
+    ).toBe(false);
+  });
+});
+
+describe('logsInputSchema', () => {
+  it('accepts reads and configure', () => {
+    expect(logsInputSchema.safeParse({}).success).toBe(true);
+    expect(
+      logsInputSchema.safeParse({
+        action: 'read',
+        cursor: 0,
+        since: '2026-11-18T10:00:00Z',
+        limit: 2000,
+        grep: 'x',
+      }).success,
+    ).toBe(true);
+    expect(logsInputSchema.safeParse({ since: 5 }).success).toBe(true);
+    expect(logsInputSchema.safeParse({ since: '123' }).success).toBe(true);
+    expect(
+      logsInputSchema.safeParse({ action: 'configure', levels: ['warning'] })
+        .success,
+    ).toBe(true);
+    expect(
+      logsInputSchema.safeParse({
+        action: 'configure',
+        levels: ['warn', 'error'],
+      }),
+    ).toMatchObject({ success: true, data: { levels: ['warning', 'error'] } });
+  });
+
+  it('accepts observe through the tool schema', () => {
+    expect(
+      toolSchemas.logs.safeParse({ grep: 'x', observe: 'full' }).success,
+    ).toBe(true);
+    expect(
+      toolSchemas.logs.safeParse({
+        action: 'configure',
+        levels: ['error'],
+        observe: 'diff',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects bad reads and configure', () => {
+    expect(logsInputSchema.safeParse({ since: 'yesterday' }).success).toBe(
+      false,
+    );
+    expect(logsInputSchema.safeParse({ limit: 2001 }).success).toBe(false);
+    expect(logsInputSchema.safeParse({ cursor: -1 }).success).toBe(false);
+    expect(logsInputSchema.safeParse({ url: 'x' }).success).toBe(false);
+    expect(logsInputSchema.safeParse({ grep: 'x'.repeat(257) }).success).toBe(
+      false,
+    );
+    expect(
+      logsInputSchema.safeParse({ action: 'configure', levels: [] }).success,
+    ).toBe(false);
+    expect(
+      logsInputSchema.safeParse({ action: 'configure', levels: ['verbose'] })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe('networkInputSchema', () => {
+  it('accepts reads and configure', () => {
+    expect(networkInputSchema.safeParse({}).success).toBe(true);
+    expect(
+      networkInputSchema.safeParse({
+        cursor: 4,
+        limit: 10,
+        url: '**infura**',
+        errors: true,
+        settled: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      networkInputSchema.safeParse({ action: 'configure', rpcErrors: true })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects unknown fields and a configure without rpcErrors', () => {
+    expect(networkInputSchema.safeParse({ grep: 'x' }).success).toBe(false);
+    expect(networkInputSchema.safeParse({ url: '' }).success).toBe(false);
+    expect(networkInputSchema.safeParse({ action: 'configure' }).success).toBe(
+      false,
+    );
+    expect(networkInputSchema.safeParse({ settled: 'true' }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -1153,6 +1265,7 @@ describe('observe field', () => {
       clipboard: { action: 'read' },
       cdp: { method: 'Runtime.evaluate' },
       mock_network: { action: 'list' },
+      events: { action: 'mark' },
       scroll_to_element: { testId: 'row' },
       device_swipe: { direction: 'up' },
       long_press: { testId: 'row' },

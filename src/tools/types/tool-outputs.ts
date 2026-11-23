@@ -1,5 +1,14 @@
 import type { TestIdItem, A11yNodeTrimmed } from './discovery.js';
 import type {
+  ConsoleLevel,
+  ConsoleRecord,
+  EventKind,
+  EventPage,
+  EventSummary,
+  NetworkRecord,
+  NetworkStats,
+} from './events.js';
+import type {
   NetworkMockRequestRecord,
   NetworkMockRouteRule,
   NetworkMockSummary,
@@ -288,6 +297,35 @@ export type MockNetworkResult =
       action: 'requests';
       requests: NetworkMockRequestRecord[];
       summary: NetworkMockSummary;
+    };
+
+export type EventsResult =
+  | {
+      action: 'mark';
+      /** Pass to `mm logs --cursor` and `mm network --cursor` later. */
+      cursor: number;
+      summary: EventSummary;
+    }
+  | {
+      action: 'clear';
+      cleared: EventKind[];
+      summary: EventSummary;
+    };
+
+export type LogsResult =
+  | EventPage<ConsoleRecord>
+  | {
+      action: 'configure';
+      config: { levels: ConsoleLevel[] };
+      summary: EventSummary;
+    };
+
+export type NetworkResult =
+  | (EventPage<NetworkRecord> & { stats: NetworkStats })
+  | {
+      action: 'configure';
+      config: { rpcErrors: boolean };
+      summary: EventSummary;
     };
 
 export type SetContextResult = {

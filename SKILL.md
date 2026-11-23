@@ -42,7 +42,7 @@ The default depends on the tool's category:
 | Category      | Examples                                                                                                                                                                                                                                           | Default `observe` |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | **Mutating**  | click, type, navigate, reload, launch, cleanup, build, clipboard, mock_network, scroll_to_element, device_swipe, long_press, tap_coordinates, dismiss_keyboard, dismiss_alert, open_app, close_app, press_button, device_context, device_clipboard | `diff`            |
-| **Read-only** | get_state, get_text, inspect, get_context, set_context, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                                           | `none`            |
+| **Read-only** | get_state, get_text, inspect, get_context, set_context, events, logs, network, get_alert_text, screen_recording, device_logs, generate_locators, hermes_targets                                                                                    | `none`            |
 | **Discovery** | describe_screen, list_testids, accessibility_snapshot, screenshot (data is already in `result`)                                                                                                                                                    | `none`            |
 | **CDP**       | cdp                                                                                                                                                                                                                                                | `none`            |
 | **Batch**     | run_steps                                                                                                                                                                                                                                          | `diff`            |
@@ -742,7 +742,7 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 | Blocked methods   | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess` | `Runtime.terminateExecution`, `Inspector.detached`                                               | `Browser.close`, `Target.closeTarget`, `Target.disposeBrowserContext`, `Browser.crashGpuProcess`                |
 | Result shape      | Standard CDP response                                                                            | `Runtime.evaluate` nests the value at `result.result.value`                                      | `Runtime.evaluate` nests the value at `result.result.value`                                                     |
 
-Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
+Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. An event subscription owns the domains it enables on a target. While it holds one, `<Domain>.enable` with no params (or the subscription's own params) succeeds without sending anything, since the domain is already enabled, and returns `{}`; `<Domain>.enable` with other params and `<Domain>.disable` are refused with `MM_CDP_BLOCKED`, because they would change or stop the subscription's events. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
 
 On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
 
@@ -756,6 +756,99 @@ Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures retur
 mm hermes-targets
 mm hermes-targets --all
 ```
+
+### Session events (browser only)
+
+From `mm launch` on, the daemon records events from every page and the Extension's background service worker into one buffer per session. `mm logs` and `mm network` read it. All kinds share one cursor (`seq`), so one `mark` covers both. Traffic during `mm launch` itself (for example self-onboarding) is not recorded. Mobile sessions return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`.
+
+#### `mm events mark`
+
+Returns `{ cursor, summary }`. Take it at the start of a flow.
+
+#### `mm events clear [--kind console|network]`
+
+Empties the buffer (one kind or all). The cursor keeps counting, so older cursors stay valid.
+
+`summary` is `{ startedAt, seq, counts: { console, network }, dropped: { console, network }, captureErrors, lastCaptureError? }`. `startedAt` (epoch ms) changes when the session is relaunched; `seq` then starts at 1 again. Every appended record and every settled network request (a request that ended) takes the next `seq`, so `seq` can skip values. The buffer keeps the newest 1000 console and 2000 network records; older ones are dropped and counted. `captureErrors` counts the times the session could not listen to a page or the service worker (for example a target that did not answer within 5 s, or a domain that could not be enabled); `lastCaptureError` is the newest one, redacted. When it grows during a flow, events of that target can be missing. A call that starts the recording waits at most 5 s for a target that does not answer.
+
+#### `mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]`
+
+Console errors and uncaught exceptions of every page and the Extension service worker. Returns `{ records, cursor, hasMore, gap, summary }`, oldest first (default 500, max 2000 per read). While `hasMore` is true, read again with the returned `cursor`. `gap: true` means records after your cursor were dropped (buffer full), or your cursor is from an earlier session (it is above the newest `seq` of this one; the read then starts from the oldest record). `--grep` is a case-sensitive JavaScript regular expression of at most 256 characters. The pattern runs in the daemon, so avoid patterns with nested quantifiers such as `(a+)+`. A value that starts with `--` is read as a missing flag value; escape it, for example `--grep '\-\-x'`.
+
+```json
+{
+  "seq": 14,
+  "t": 1795430400123,
+  "target": {
+    "kind": "sw",
+    "id": "A51F9577…",
+    "url": "chrome-extension://…/scripts/app-init.js"
+  },
+  "level": "error",
+  "text": "Fetch failed: https://mainnet.infura.io/v3/[REDACTED]",
+  "location": "chrome-extension://…/scripts/app-init.js:10:5"
+}
+```
+
+`target.kind` is `page` or `sw`. Uncaught exceptions have `"uncaught": true`. `text` (console arguments, error messages and stacks, uncaught exceptions) is cut at 2000 characters and redacted only for URLs, JWTs, `Bearer` values and sensitive property names in object previews (`privateKey`, `mnemonic`, `password`, …); a secret in free text, such as `new Error('… password hunter2')`, is not detected. `t` is the CDP time of the message (epoch ms).
+
+Only `error` (including `console.assert` and uncaught exceptions) is recorded by default. `mm logs configure --levels error,warning` records more levels from then on, for this session (`warn` is accepted as `warning`). Non-error objects and arrays are rendered from their CDP preview (`{message: 'User rejected', chainId: 1}`, `[1, 2]`); a named property of an array prints as `name: value`, and a sensitive property name prints `[REDACTED]`. A leading format string fills `%s`, `%d`, `%i`, `%f`, `%o`, `%O`, `%c` from its arguments. `mm logs configure` accepts only `--levels <list>`: any other flag or a second `--levels` is a usage error.
+
+#### `mm network [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--url <glob|text>] [--errors] [--settled]`
+
+HTTP(S) requests of every page and the Extension service worker (gas, security alerts, bridge, RPC: most Extension traffic comes from the worker). It only listens: it never mocks, blocks or changes a request, and it stores no bodies (use `mm mock-network` for that). One record per request, created when it starts and updated in place when it ends; it keeps its first `seq` and gets a `settledSeq` when it ends. Same paging as `mm logs`, plus `stats: { pending, ignored, rpcErrorsSkipped }`. A request whose page or worker goes away before it ends is finalized with `failure: "target closed"`; one dropped from the pending limit is finalized with `failure: "abandoned"`.
+
+```json
+{
+  "seq": 6,
+  "settledSeq": 11,
+  "t": 1795430400608,
+  "target": {
+    "kind": "sw",
+    "id": "A51F9577…",
+    "url": "chrome-extension://…/scripts/app-init.js"
+  },
+  "method": "POST",
+  "url": "https://mainnet.infura.io/v3/[REDACTED]",
+  "type": "fetch",
+  "status": 200,
+  "ms": 42,
+  "rpcMethods": ["eth_call"],
+  "rpcError": { "code": -32000, "message": "execution reverted" }
+}
+```
+
+| Field        | Description                                                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `settledSeq` | Position when the request became final: it ended, with its `rpcError` read when configured. Absent while pending                                                                     |
+| `t`          | Request start, epoch ms                                                                                                                                                              |
+| `url`        | Redacted: API keys in the host or path (such as Infura IDs), credentials, and `key`/`token`/`apiKey`-like params                                                                     |
+| `type`       | `fetch`, `xhr`, `document`, `script`, …                                                                                                                                              |
+| `status`     | HTTP status. Absent while pending and when the request failed before a response; a request that fails after its response keeps it                                                    |
+| `ms`         | Start to end of the response or the failure. Absent while pending                                                                                                                    |
+| `failure`    | Set when the request fails, before or after its response: for example `net::ERR_ABORTED`, `net::ERR_NAME_NOT_RESOLVED`, `net::ERR_FAILED (cors: …)`, `target closed`, or `abandoned` |
+| `rpcMethods` | JSON-RPC methods of the request body; always an array (a batch lists its methods in order)                                                                                           |
+| `rpcError`   | `{ code, message }` of a JSON-RPC error response. Only after `mm network configure --rpc-errors`                                                                                     |
+
+`--url` takes a glob (`*`, `**`) or plain text the URL must contain. `--errors` keeps status >= 400, `failure` and `rpcError`. Only `http(s)` requests are recorded (`stats.ignored` counts the rest). A redirect gives one record per hop.
+
+An unfiltered read returns every record in start order (`seq`), pending requests included, and the cursor moves past all of them. A filtered read (`--url`, `--errors`) returns only **settled** requests, in `settledSeq` order: a request may become a match only when it ends (a 404, a failure, an `rpcError`), so it is returned by the read that follows its end, once, even when it started before the cursor. `--settled` asks for that same settle-order read without a filter: at the end of a step, read `--settled --cursor <mark>` to get the final status of every request that finished since the mark, including ones started earlier; requests still open are not returned yet. An unsettled request is never returned by a filtered or `--settled` read, so a request that never ends never matches one. In every case `--since` compares the request start (`t`), not when it ended. A cursor from a filtered or `--settled` read continues reads of the same mode; for an unfiltered read, use a cursor from `mm events mark` or an unfiltered read.
+
+`mm network configure --rpc-errors` reads the body of each JSON-RPC response (up to 64 KiB decoded, at most 8 at a time) and records its `error`; `stats.rpcErrorsSkipped` counts the bodies that were too large, too many at once or gone. The decoded size comes from `Network.dataReceived` when Chrome reports it; without those events the compressed `encodedDataLength` is used, which can undercount. `Network.enable` gets small response-buffer limits, since no bodies are kept otherwise. `--no-rpc-errors` turns it off.
+
+The session holds `Network` and `Runtime` enabled on every page and on the service worker from `mm launch` on. `mm cdp Network.enable` (no params) still succeeds and sends nothing; `mm cdp Network.disable`, or a `Network.enable` with other params, is refused with `MM_CDP_BLOCKED`, because it would stop or change what `mm network` records. Use `--fresh` for those.
+
+#### Per-flow recipe
+
+```bash
+mm events mark                          # {"cursor":120,"summary":{"startedAt":1795430400000,...}}
+# ...run the flow...
+mm network --settled --cursor 120       # final status of every request that ended since the mark
+mm network --cursor 120                 # repeat with the returned cursor while hasMore is true
+mm logs --cursor 120
+```
+
+Compare `summary.startedAt` of each read with the one from `mark`. If it changed, the session was relaunched: read again from `--cursor 0` and record a capture gap for the flow. Also record a gap when a read returns `gap: true`. Requests sent during `mm launch` itself are not recorded.
 
 ### Mobile device actions (iOS/Android only)
 

@@ -22,6 +22,9 @@ describe('toolRegistry', () => {
       'describe_screen',
       'clipboard',
       'mock_network',
+      'events',
+      'logs',
+      'network',
       'run_steps',
       'cdp',
       'hermes_targets',
@@ -41,7 +44,7 @@ describe('toolRegistry', () => {
   });
 
   it('has the expected number of entries', () => {
-    expect(toolRegistry.size).toBe(49);
+    expect(toolRegistry.size).toBe(52);
   });
 
   it('stores only functions as values', () => {
@@ -95,6 +98,13 @@ describe('TOOL_CATEGORIES and getToolCategory', () => {
     },
   );
 
+  it.each(['events', 'logs', 'network'])(
+    'getToolCategory returns readonly for %s',
+    (toolName) => {
+      expect(getToolCategory(toolName)).toBe('readonly');
+    },
+  );
+
   it('getToolCategory returns readonly for get_context', () => {
     expect(getToolCategory('get_context')).toBe('readonly');
   });
@@ -124,6 +134,9 @@ describe('isBrowserOnlyTool', () => {
     'wait_for_notification',
     'clipboard',
     'mock_network',
+    'events',
+    'logs',
+    'network',
     'reload',
     'build',
     'inspect',

@@ -1,3 +1,4 @@
+import type { ConsoleLevel, EventKind } from './events.js';
 import type { SmartContractName } from './seeding.js';
 
 export type TabRole = 'extension' | 'notification' | 'dapp' | 'other';
@@ -311,6 +312,57 @@ export type MockNetworkInput =
       url?: string;
       includeBodies?: boolean;
     };
+
+/** Read options shared by `mm logs` and `mm network`. */
+export type EventReadInput = {
+  /** Only records after this cursor (from `mm events mark` or an earlier read). */
+  cursor?: number;
+  /** Only records at or after this time: epoch ms, or an ISO date. */
+  since?: number | string;
+  /** Maximum records (default 500, max 2000). */
+  limit?: number;
+};
+
+export type LogsInput =
+  | ({
+      action?: 'read';
+      /**
+       * Only messages whose text matches this case-sensitive JavaScript
+       * regular expression (at most 256 characters).
+       */
+      grep?: string;
+    } & EventReadInput)
+  | { action: 'configure'; levels: ConsoleLevel[] };
+
+export type NetworkInput =
+  | ({
+      action?: 'read';
+      /**
+       * URL glob (`*`, `**`) or, without `*`, text the URL must contain. A
+       * filtered read returns only settled requests, so a request that
+       * matches when it ends is returned by the read that follows its end.
+       */
+      url?: string;
+      /**
+       * Only errors: HTTP status >= 400, `failure`, or `rpcError`. A
+       * filtered read returns only settled requests, so a request that
+       * becomes an error when it ends is returned by the read that follows
+       * its end.
+       */
+      errors?: boolean;
+      /**
+       * Return only settled requests, in settle order, without needing a
+       * filter: at the end of a step, read the final status of every request
+       * that ended after the cursor, including ones started earlier.
+       * Requests still open are not returned yet.
+       */
+      settled?: boolean;
+    } & EventReadInput)
+  | { action: 'configure'; rpcErrors: boolean };
+
+export type EventsInput =
+  | { action: 'mark' }
+  | { action: 'clear'; kind?: EventKind };
 
 export type SetContextInput = {
   context: 'e2e' | 'prod';

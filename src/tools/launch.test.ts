@@ -13,7 +13,14 @@ import { DriverLifecycle } from '../server/cleanup-session.js';
 import type { SessionLaunchResult } from '../server/session-manager.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
 import { ErrorCodes } from './types/errors.js';
+import { getSessionEvents } from '../events/session-events.js';
 import type { ToolContext } from '../types/http.js';
+
+vi.mock('../events/session-events.js', () => ({
+  getSessionEvents: vi.fn(),
+}));
+
+const ensureStarted = vi.fn();
 
 function createMockContext(
   options: {
@@ -33,6 +40,68 @@ function createMockContext(
 describe('launchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ensureStarted.mockResolvedValue(undefined);
+    vi.mocked(getSessionEvents).mockReturnValue({
+      ensureStarted,
+    } as unknown as ReturnType<typeof getSessionEvents>);
+  });
+
+  describe('session events', () => {
+    it('starts the session events of a browser session', async () => {
+      const context = createMockContext({ hasActive: false });
+      const browserContext = {};
+      vi.mocked(context.sessionManager.getContext).mockReturnValue(
+        browserContext as ReturnType<typeof context.sessionManager.getContext>,
+      );
+
+      const result = await launchTool({}, context);
+
+      expect(result.ok).toBe(true);
+      expect(getSessionEvents).toHaveBeenCalledWith(browserContext);
+      expect(ensureStarted).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start them on mobile', async () => {
+      const context = createMockContext({ hasActive: false });
+      context.sessionManager.getPlatformDriver = () =>
+        ({ getPlatform: () => 'ios' }) as unknown as NonNullable<
+          ReturnType<
+            NonNullable<typeof context.sessionManager.getPlatformDriver>
+          >
+        >;
+
+      await launchTool({ platform: 'ios' }, context);
+
+      expect(getSessionEvents).not.toHaveBeenCalled();
+    });
+
+    it('does not start them for a mobile launch input without a driver', async () => {
+      const context = createMockContext({ hasActive: false });
+
+      await launchTool({ platform: 'android' }, context);
+
+      expect(getSessionEvents).not.toHaveBeenCalled();
+    });
+
+    it('never fails the launch when they fail to start', async () => {
+      const context = createMockContext({ hasActive: false });
+      vi.mocked(getSessionEvents).mockImplementation(() => {
+        throw new Error('no context');
+      });
+
+      const result = await launchTool({}, context);
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('never fails the launch when the event start rejects', async () => {
+      const context = createMockContext({ hasActive: false });
+      ensureStarted.mockRejectedValue(new Error('attach failed'));
+
+      const result = await launchTool({}, context);
+
+      expect(result.ok).toBe(true);
+    });
   });
 
   describe('successful launch', () => {

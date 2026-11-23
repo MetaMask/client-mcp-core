@@ -1,6 +1,7 @@
 import type { LaunchInput, LaunchPrerequisite, LaunchResult } from './types';
 import { ErrorCodes } from './types';
 import { createToolError, createToolSuccess } from './utils.js';
+import { getSessionEvents } from '../events/session-events.js';
 import { cleanupSession } from '../server/cleanup-session.js';
 import type { ISessionManager } from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
@@ -44,6 +45,34 @@ function applyHermesDefaults(
     ...(input.metroPort === undefined ? {} : { metroPort: input.metroPort }),
     ...(input.deviceId === undefined ? {} : { deviceId: input.deviceId }),
   });
+}
+
+/**
+ * Starts the session event buffer of a browser session (`mm logs`,
+ * `mm network`), so it records from launch on. Best-effort: a failure never
+ * fails the launch, and the next `events`/`logs`/`network` call retries.
+ *
+ * @param context - The tool execution context.
+ * @param input - The launch input.
+ */
+async function startSessionEvents(
+  context: ToolContext,
+  input: LaunchInput,
+): Promise<void> {
+  try {
+    const platform =
+      context.sessionManager.getPlatformDriver?.()?.getPlatform() ??
+      input.platform ??
+      'browser';
+    if (platform !== 'browser') {
+      return;
+    }
+    // `ensureStarted` is bounded (5 s) and never rejects: it does not hold
+    // the launch on a slow attach, and the sources keep starting.
+    await getSessionEvents(context.sessionManager.getContext()).ensureStarted();
+  } catch (error) {
+    debugWarn('launch.session-events', error);
+  }
 }
 
 /**
@@ -96,6 +125,7 @@ export async function launchTool(
         throw error;
       });
     applyHermesDefaults(sessionManager, input);
+    await startSessionEvents(context, input);
     const isProdMode = sessionManager.getEnvironmentMode() === 'prod';
 
     return createToolSuccess({

@@ -838,6 +838,148 @@ export const mockNetworkInputSchema = z.union([
   }),
 ]);
 
+export const eventKindSchema = z.enum(['console', 'network']);
+
+export const eventsInputSchema = z.discriminatedUnion('action', [
+  z
+    .object({
+      action: z
+        .literal('mark')
+        .describe(
+          'Return the current cursor; pass it to logs/network --cursor later',
+        ),
+    })
+    .strict(),
+  z
+    .object({
+      action: z
+        .literal('clear')
+        .describe('Empty the buffer; the cursor keeps counting'),
+      kind: eventKindSchema
+        .describe('Only clear this kind (default: every kind)')
+        .optional(),
+    })
+    .strict(),
+]);
+
+const eventReadFields = {
+  cursor: z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+      'Only records after this cursor (from events mark, or the cursor of an earlier read)',
+    )
+    .optional(),
+  since: z
+    .union([
+      z.number().int().min(0),
+      z
+        .string()
+        .refine(
+          (value) => /^\d+$/u.test(value) || !Number.isNaN(Date.parse(value)),
+          { message: 'since must be epoch milliseconds or an ISO date' },
+        ),
+    ])
+    .describe('Only records at or after this time: epoch ms or an ISO date')
+    .optional(),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(2000)
+    .describe(
+      'Maximum records (default 500), oldest first; read again with the returned cursor while hasMore',
+    )
+    .optional(),
+};
+
+export const consoleLevelSchema = z.enum([
+  'error',
+  'warning',
+  'info',
+  'log',
+  'debug',
+]);
+
+// `warn` is the name Chrome uses in a few places; accept it as `warning`.
+const consoleLevelInputSchema = z.union([
+  consoleLevelSchema,
+  z.literal('warn').transform((): 'warning' => 'warning'),
+]);
+
+export const logsInputSchema = z.union([
+  z
+    .object({
+      action: z.literal('read').optional(),
+      ...eventReadFields,
+      // Declared here as well as by `withObserve`: on zod 4.4 (our minimum),
+      // a strict union member intersected with the observe object rejects
+      // `observe` instead of merging it.
+      observe: observeLevelSchema.optional(),
+      grep: z
+        .string()
+        .min(1)
+        .max(256)
+        .describe(
+          'Only messages whose text matches this case-sensitive JavaScript ' +
+            'regular expression (at most 256 characters)',
+        )
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('configure'),
+      observe: observeLevelSchema.optional(),
+      levels: z
+        .array(consoleLevelInputSchema)
+        .min(1)
+        .describe(
+          'Console levels to record from now on (default: error); `warn` is accepted as `warning`',
+        ),
+    })
+    .strict(),
+]);
+
+export const networkInputSchema = z.union([
+  z
+    .object({
+      action: z.literal('read').optional(),
+      ...eventReadFields,
+      url: z
+        .string()
+        .min(1)
+        .describe(
+          'Only requests whose URL matches this glob (* and **) or, without *, contains this text',
+        )
+        .optional(),
+      errors: z
+        .boolean()
+        .describe('Only errors: HTTP status >= 400, failure, or rpcError')
+        .optional(),
+      settled: z
+        .boolean()
+        .describe(
+          'Return only settled requests, in settle order, without a filter: ' +
+            'every request that ended after the cursor, including ones ' +
+            'started earlier. Requests still open are not returned',
+        )
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('configure'),
+      rpcErrors: z
+        .boolean()
+        .describe(
+          'Read JSON-RPC response bodies (up to 64 KiB) and record their error as rpcError. Default false',
+        ),
+    })
+    .strict(),
+]);
+
 export const cdpInputSchema = z.object({
   method: z
     .string()
@@ -1095,6 +1237,9 @@ export type ClipboardInputZ = z.infer<typeof clipboardInputSchema>;
 export type CdpInputZ = z.infer<typeof cdpInputSchema>;
 export type HermesTargetsInputZ = z.infer<typeof hermesTargetsInputSchema>;
 export type MockNetworkInputZ = z.infer<typeof mockNetworkInputSchema>;
+export type EventsInputZ = z.infer<typeof eventsInputSchema>;
+export type LogsInputZ = z.infer<typeof logsInputSchema>;
+export type NetworkInputZ = z.infer<typeof networkInputSchema>;
 export type ScrollToElementInputZ = z.infer<typeof scrollToElementInputSchema>;
 export type DeviceSwipeInputZ = z.infer<typeof deviceSwipeInputSchema>;
 export type LongPressInputZ = z.infer<typeof longPressInputSchema>;
@@ -1148,6 +1293,9 @@ export const toolSchemas = {
   hermes_targets: withObserve(hermesTargetsInputSchema),
   get_window_size: withObserve(getWindowSizeInputSchema),
   mock_network: withObserve(mockNetworkInputSchema),
+  events: withObserve(eventsInputSchema),
+  logs: withObserve(logsInputSchema),
+  network: withObserve(networkInputSchema),
   scroll_to_element: withObserve(scrollToElementInputSchema),
   device_swipe: withObserve(deviceSwipeInputSchema),
   long_press: withObserve(longPressInputSchema),

@@ -1057,6 +1057,9 @@ describe('printHelp', () => {
     expect(output).toContain('--observe <level>');
     expect(output).toContain('--pretty');
     expect(output).toContain('MM_PRETTY');
+    expect(output).toContain('mm events mark');
+    expect(output).toContain('mm logs configure --levels');
+    expect(output).toContain('mm network configure --rpc-errors');
   });
 });
 
@@ -3117,6 +3120,203 @@ describe('routeCommand', () => {
       routeCommand('mock-network', ['add'], 3000),
     ).rejects.toThrowError('process.exit');
     expectFailure(expect.stringContaining('Usage: mm mock-network add'), 2);
+  });
+
+  it('routes events mark', async () => {
+    await routeCommand('events', ['mark'], 3000);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/events',
+      expect.objectContaining({ body: JSON.stringify({ action: 'mark' }) }),
+    );
+  });
+
+  it('routes events clear with and without --kind', async () => {
+    await routeCommand('events', ['clear'], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/events',
+      expect.objectContaining({ body: JSON.stringify({ action: 'clear' }) }),
+    );
+    await routeCommand('events', ['clear', '--kind', 'network'], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/events',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'clear', kind: 'network' }),
+      }),
+    );
+  });
+
+  it('exits when events clear --kind has no value', async () => {
+    await expect(
+      routeCommand('events', ['clear', '--kind'], 3000),
+    ).rejects.toThrowError('process.exit');
+    expectFailure(expect.stringContaining('Usage: mm events'), 2);
+  });
+
+  it.each<[string, string[]]>([
+    ['mark with a flag', ['mark', '--kind', 'console']],
+    ['mark with a stray value', ['mark', 'extra']],
+    ['clear with a stray value', ['clear', 'extra']],
+    ['clear with an unknown flag', ['clear', '--error']],
+    ['clear with a flag after --kind', ['clear', '--kind', 'console', '--x']],
+  ])('exits when events %s', async (_name, args) => {
+    await expect(routeCommand('events', args, 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm events'), 2);
+  });
+
+  it('exits when events has an unknown action', async () => {
+    await expect(routeCommand('events', [], 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm events'), 2);
+  });
+
+  it('routes logs with read flags', async () => {
+    await routeCommand(
+      'logs',
+      [
+        '--cursor',
+        '12',
+        '--limit',
+        '50',
+        '--since',
+        '2026-11-18T10:00:00Z',
+        '--grep',
+        'boom',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({
+        body: JSON.stringify({
+          cursor: 12,
+          limit: 50,
+          since: '2026-11-18T10:00:00Z',
+          grep: 'boom',
+        }),
+      }),
+    );
+    await routeCommand('logs', [], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+    // A cursor of 0 is valid (the start of the session).
+    await routeCommand('logs', ['--cursor', '0'], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({ body: JSON.stringify({ cursor: 0 }) }),
+    );
+  });
+
+  it('routes logs configure', async () => {
+    await routeCommand(
+      'logs',
+      ['configure', '--levels', 'error, warning'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/logs',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'configure',
+          levels: ['error', 'warning'],
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    [['--cursor', 'x']],
+    [['--limit']],
+    [['--limit', '0']],
+    [['--limit', '-5']],
+    [['--since']],
+    [['--grep', '--cursor', '1']],
+    [['--grap', 'x']],
+    [['--levels', 'warning']],
+    [['--error']],
+    [['configure']],
+    [['configure', '--levels', ',']],
+    [['configure', '--levels', 'warning', '--cursor', '1']],
+    [['configure', '--levels', 'warning', 'extra']],
+    [['configure', '--levels', 'warning', '--levels', 'error']],
+    [['tail']],
+  ])('exits on bad logs arguments %j', async (args) => {
+    await expect(routeCommand('logs', args, 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm logs'), 2);
+  });
+
+  it('routes network with read flags', async () => {
+    await routeCommand(
+      'network',
+      [
+        '--cursor',
+        '3',
+        '--url',
+        'https://*.api.cx.metamask.io/**',
+        '--errors',
+        '--settled',
+        '--since',
+        '1700000000000',
+      ],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/network',
+      expect.objectContaining({
+        body: JSON.stringify({
+          cursor: 3,
+          url: 'https://*.api.cx.metamask.io/**',
+          errors: true,
+          settled: true,
+          since: '1700000000000',
+        }),
+      }),
+    );
+    await routeCommand('network', [], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/network',
+      expect.objectContaining({ body: JSON.stringify({}) }),
+    );
+  });
+
+  it('routes network configure', async () => {
+    await routeCommand('network', ['configure', '--rpc-errors'], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'configure', rpcErrors: true }),
+      }),
+    );
+    await routeCommand('network', ['configure', '--no-rpc-errors'], 3000);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:3000/tool/network',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'configure', rpcErrors: false }),
+      }),
+    );
+  });
+
+  it.each([
+    [['--url']],
+    [['--cursor', 'abc']],
+    [['--error']],
+    [['--errors', 'true']],
+    [['--settled', 'true']],
+    [['configure']],
+    [['configure', '--rpc-errors', '--no-rpc-errors']],
+    [['configure', '--rpc-errors', 'extra']],
+    [['requests']],
+  ])('exits on bad network arguments %j', async (args) => {
+    await expect(routeCommand('network', args, 3000)).rejects.toThrowError(
+      'process.exit',
+    );
+    expectFailure(expect.stringContaining('Usage: mm network'), 2);
   });
 
   it('exits when mock-network has an unknown action', async () => {

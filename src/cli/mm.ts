@@ -1011,6 +1011,18 @@ export async function routeCommand(
       await routeMockNetworkCommand(args, daemon);
       break;
     }
+    case 'events': {
+      await routeEventsCommand(args, daemon);
+      break;
+    }
+    case 'logs': {
+      await routeLogsCommand(args, daemon);
+      break;
+    }
+    case 'network': {
+      await routeNetworkCommand(args, daemon);
+      break;
+    }
     case 'cdp': {
       const cdpMethod = args[0];
       if (!cdpMethod) {
@@ -1320,6 +1332,188 @@ export async function routeMockNetworkCommand(
   }
 
   failUsage('Usage: mm mock-network <add|clear|list|requests> [options]');
+}
+
+const EVENTS_USAGE = 'Usage: mm events <mark | clear [--kind console|network]>';
+
+/**
+ * Routes `mm events` subcommands to the daemon.
+ *
+ * @param args - CLI arguments after `events`.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
+ */
+export async function routeEventsCommand(
+  args: string[],
+  daemon: DaemonEndpoint,
+): Promise<void> {
+  const [action, ...rest] = args;
+  if (action !== 'mark' && action !== 'clear') {
+    failUsage(EVENTS_USAGE);
+  }
+  let kind: string | undefined;
+  if (rest.length > 0) {
+    // Only `clear --kind <console|network>` takes arguments; anything else
+    // (an unknown flag, a stray value, `mark --kind`) is a usage error.
+    if (
+      action !== 'clear' ||
+      rest.length !== 2 ||
+      rest[0] !== '--kind' ||
+      !rest[1] ||
+      rest[1].startsWith('--')
+    ) {
+      failUsage(EVENTS_USAGE);
+    }
+    [, kind] = rest;
+  }
+  await sendRequest(daemon, 'POST', '/tool/events', {
+    action,
+    ...(kind === undefined ? {} : { kind }),
+  });
+}
+
+const LOGS_USAGE =
+  'Usage: mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]\n' +
+  '       mm logs configure --levels <error,warning,info,log,debug>';
+
+/**
+ * Parses the read flags shared by `mm logs` and `mm network`. Unknown flags,
+ * missing values and stray arguments are usage errors.
+ *
+ * @param args - CLI arguments.
+ * @param usage - The usage text to print on a bad flag.
+ * @param stringFlags - Extra flags that take a string value.
+ * @param booleanFlags - Extra flags that take no value.
+ * @returns The read options for the tool.
+ */
+export function parseEventReadArgs(
+  args: string[],
+  usage: string,
+  stringFlags: readonly string[] = [],
+  booleanFlags: readonly string[] = [],
+): Record<string, unknown> {
+  const integerFlags = new Set(['--cursor', '--limit']);
+  const textFlags = new Set(['--since', ...stringFlags]);
+  const booleans = new Set(booleanFlags);
+  const options: Record<string, unknown> = {};
+  // Every flag takes one value, or none for a boolean flag. Reject anything
+  // else: a mistyped flag must not be silently ignored.
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
+    if (flag === undefined) {
+      failUsage(usage);
+    }
+    if (booleans.has(flag)) {
+      options[flag.slice(2)] = true;
+      continue;
+    }
+    const value = args[index + 1];
+    if (
+      (!integerFlags.has(flag) && !textFlags.has(flag)) ||
+      value === undefined ||
+      value.startsWith('--')
+    ) {
+      failUsage(usage);
+    }
+    if (integerFlags.has(flag)) {
+      const parsed = parseInt(value, 10);
+      // A cursor may be 0; a limit below 1 would silently read one record.
+      if (Number.isNaN(parsed) || (flag === '--limit' && parsed < 1)) {
+        failUsage(usage);
+      }
+      options[flag.slice(2)] = parsed;
+    } else {
+      options[flag.slice(2)] = value;
+    }
+    index += 1;
+  }
+  return options;
+}
+
+/**
+ * Routes `mm logs` to the daemon.
+ *
+ * @param args - CLI arguments after `logs`.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
+ */
+export async function routeLogsCommand(
+  args: string[],
+  daemon: DaemonEndpoint,
+): Promise<void> {
+  if (args[0] === 'configure') {
+    const levelsArgument = args[2];
+    if (
+      args.length !== 3 ||
+      args[1] !== '--levels' ||
+      levelsArgument === undefined ||
+      levelsArgument.startsWith('--')
+    ) {
+      failUsage(LOGS_USAGE);
+    }
+    const levels = levelsArgument
+      .split(',')
+      .map((level) => level.trim())
+      .filter(Boolean);
+    if (levels.length === 0) {
+      failUsage(LOGS_USAGE);
+    }
+    await sendRequest(daemon, 'POST', '/tool/logs', {
+      action: 'configure',
+      levels,
+    });
+    return;
+  }
+  if (args[0] !== undefined && !args[0].startsWith('--')) {
+    failUsage(LOGS_USAGE);
+  }
+  await sendRequest(
+    daemon,
+    'POST',
+    '/tool/logs',
+    parseEventReadArgs(args, LOGS_USAGE, ['--grep']),
+  );
+}
+
+const NETWORK_USAGE =
+  'Usage: mm network [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--url <glob|text>] [--errors] [--settled]\n' +
+  '       mm network configure --rpc-errors | --no-rpc-errors';
+
+/**
+ * Routes `mm network` to the daemon.
+ *
+ * @param args - CLI arguments after `network`.
+ * @param daemon - The daemon endpoint (a port or the daemon state).
+ */
+export async function routeNetworkCommand(
+  args: string[],
+  daemon: DaemonEndpoint,
+): Promise<void> {
+  if (args[0] === 'configure') {
+    const rest = args.slice(1);
+    const on = rest.length === 1 && rest[0] === '--rpc-errors';
+    const off = rest.length === 1 && rest[0] === '--no-rpc-errors';
+    if (on === off) {
+      failUsage(NETWORK_USAGE);
+    }
+    await sendRequest(daemon, 'POST', '/tool/network', {
+      action: 'configure',
+      rpcErrors: on,
+    });
+    return;
+  }
+  if (args[0] !== undefined && !args[0].startsWith('--')) {
+    failUsage(NETWORK_USAGE);
+  }
+  await sendRequest(
+    daemon,
+    'POST',
+    '/tool/network',
+    parseEventReadArgs(
+      args,
+      NETWORK_USAGE,
+      ['--url'],
+      ['--errors', '--settled'],
+    ),
+  );
 }
 
 /**
@@ -2213,6 +2407,26 @@ Advanced:
   mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
   mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]
   mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]   (mobile only)
+
+Session events (browser only; recorded from launch on, not during it):
+  mm events mark      Current cursor and summary.startedAt. Take one at the
+                      start of a flow; pass the cursor to logs/network.
+  mm events clear [--kind console|network]
+                      Empty the buffer; the cursor keeps counting.
+  mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]
+                      Console errors and uncaught exceptions of every page
+                      and the Extension service worker. Oldest first; read
+                      again with the returned cursor while hasMore.
+  mm logs configure --levels <error,warning,info,log,debug>
+                      Levels to record from now on (default: error).
+  mm network [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--url <glob|text>] [--errors] [--settled]
+                      HTTP(S) requests of every page and the Extension
+                      service worker: status, ms, failure, rpcMethods.
+                      --errors: status >= 400, failure or rpcError.
+                      --settled: only requests that ended after the cursor,
+                      in settle order (no filter needed).
+  mm network configure --rpc-errors | --no-rpc-errors
+                      Read JSON-RPC response bodies for rpcError (off).
 
 Mobile (iOS/Android only):
   mm device-swipe <up|down|left|right> [--startX <n>] [--startY <n>] [--distance <n>]

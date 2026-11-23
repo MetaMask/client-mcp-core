@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
+import { getCdpManager } from './cdp-manager.js';
 import { PlaywrightPlatformDriver } from './playwright-driver.js';
 import type { IPlatformDriver } from './types.js';
 import { createMockSessionManager } from '../tools/test-utils/mock-factories.js';
@@ -1119,6 +1120,52 @@ describe('PlaywrightPlatformDriver', () => {
           flatten: false,
         },
       );
+    });
+
+    it('maps a domain held by a subscription to MM_CDP_BLOCKED', async () => {
+      const cdpSession = {
+        send: vi.fn(async (method: string) =>
+          method === 'Target.getTargetInfo'
+            ? { targetInfo: { targetId: 'page-1' } }
+            : {},
+        ),
+        detach: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const page = createCdpPage(cdpSession);
+      const driver = createDriver(page);
+      const manager = getCdpManager(page.contextMock as never);
+      await manager.subscribe({
+        events: ['Runtime.consoleAPICalled'],
+        onEvent: vi.fn(),
+      });
+
+      const outcome = await driver.cdp({
+        method: 'Runtime.disable',
+        timeoutMs: TIMEOUT_MS,
+      });
+
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.code).toBe('MM_CDP_BLOCKED');
+        expect(outcome.message).toContain('Runtime.disable');
+        expect(outcome.message).toContain('Use --fresh');
+      }
+      expect(cdpSession.send).not.toHaveBeenCalledWith(
+        'Runtime.disable',
+        expect.anything(),
+      );
+      // A held enable with no params succeeds without being sent again.
+      expect(
+        await driver.cdp({ method: 'Runtime.enable', timeoutMs: TIMEOUT_MS }),
+      ).toStrictEqual({ ok: true, result: {} });
+      expect(
+        cdpSession.send.mock.calls.filter(
+          ([method]) => method === 'Runtime.enable',
+        ),
+      ).toHaveLength(1);
+      await manager.dispose();
     });
 
     it.each([
