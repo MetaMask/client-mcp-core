@@ -510,6 +510,10 @@ class TunneledCdpSession implements EventCdpSession {
     const reply = new Promise<unknown>((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
     });
+    // When the parent send fails, the reply can still be rejected (this
+    // session closes with its parent) and nobody awaits it; the caller gets
+    // the parent's error instead.
+    reply.catch(() => undefined);
     try {
       await this.#parent.send('Target.sendMessageToTarget', {
         sessionId: this.#sessionId,

@@ -3452,7 +3452,10 @@ type OffscreenOptions = {
   iframes?: string[];
   /** Fails `Target.attachToTarget` on the offscreen document. */
   attachError?: Error;
-  /** Answers a command tunneled to the offscreen document. */
+  /**
+   * Answers a command tunneled to the offscreen document, including the
+   * `Target.sendMessageToTarget` that carries an iframe command.
+   */
   offscreenReply?: (
     method: string,
     params: Record<string, unknown>,
@@ -3582,7 +3585,10 @@ function createOffscreenContext(options: OffscreenOptions = {}) {
             sessionId,
           );
         }
-        reply = { result: {} };
+        reply = options.offscreenReply?.(
+          message.method,
+          message.params ?? {},
+        ) ?? { result: {} };
       } else {
         reply = options.offscreenReply?.(
           message.method,
@@ -3751,6 +3757,39 @@ describe('CdpManager offscreen document and iframes', () => {
         'Network.getResponseBody',
       ),
     ).toStrictEqual({ body: 'offscreen' });
+  });
+
+  it('fails an iframe command in flight when its offscreen document goes away', async () => {
+    let hold = false;
+    const fake = createOffscreenContext({
+      iframes: [IFRAME_ID],
+      offscreenReply: (method) =>
+        hold && method === 'Target.sendMessageToTarget' ? 'hang' : undefined,
+      childReply: () => (hold ? 'hang' : undefined),
+    });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      hold = true;
+      const sending = watcher.attached[0]?.session.send(
+        'Fetch.continueRequest',
+        { requestId: 'request-1' },
+      );
+      fake.browserEmitter.emit('Target.targetDestroyed', {
+        targetId: OFFSCREEN_ID,
+      });
+
+      await expect(sending).rejects.toThrowError(
+        'Session closed. The offscreen document target is gone.',
+      );
+      await flush();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 
   it('drops an iframe that detaches', async () => {
