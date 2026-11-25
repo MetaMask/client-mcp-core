@@ -7,13 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0]
+
 ### Added
 
-- feat: `mm` sees and acts inside iframes on the browser, including cross-origin ones such as the candlestick chart. A page snapshot (`describe_screen`, `accessibility_snapshot` without `rootSelector`, observations) lists the content of up to 5 visible iframes after the page, with refs namespaced by frame (`f1e1`, `f2e1`, ...) and a `path` ending in `iframe:<title>`; these refs act inside their iframe. Each iframe element also gets a ref, usable as `frame`. `describe_screen`, `click`, `type`, `hover`, `wait_for`, `get_text`, `inspect` and `screenshot` take `frame` (`--frame <iframe>`) to work inside one iframe, the way Playwright's `frameLocator` does. `mm screenshot` adds `--selector` ([#99](https://github.com/MetaMask/client-mcp-core/pull/99))
+- feat: `mm` sees and acts inside iframes on the browser, including cross-origin ones such as the candlestick chart ([#99](https://github.com/MetaMask/client-mcp-core/pull/99))
+- feat: mock requests from snaps and the offscreen document in mm mock-network ([#117](https://github.com/MetaMask/client-mcp-core/pull/117))
+- feat: add mm network, a passive request log for pages and the service worker ([#111](https://github.com/MetaMask/client-mcp-core/pull/111))
+- feat: add mm logs for console errors from pages and the service worker ([#110](https://github.com/MetaMask/client-mcp-core/pull/110))
+- feat: add a session event buffer with one cursor and mm events mark ([#109](https://github.com/MetaMask/client-mcp-core/pull/109))
+- feat: deliver CDP events from pages and the service worker ([#107](https://github.com/MetaMask/client-mcp-core/pull/107))
+- feat: persistent CDP sessions per target and mm cdp --target sw ([#90](https://github.com/MetaMask/client-mcp-core/pull/90))
+- feat: one timeout budget for CLI, queue and action ([#89](https://github.com/MetaMask/client-mcp-core/pull/89))
+- feat: record request bodies in mock-network ([#93](https://github.com/MetaMask/client-mcp-core/pull/93))
+
+### Changed
+
+- docs: wait for a slow first screen after a navigating tap on Android ([#112](https://github.com/MetaMask/client-mcp-core/pull/112))
+- chore: bump @metamask/device-mcp to ^0.9.0 ([#116](https://github.com/MetaMask/client-mcp-core/pull/116))
 
 ### Fixed
 
-- fix: `mm click` on a visually hidden checkbox or radio (such as the input of a toggle) clicks its label instead of waiting out the whole timeout
+- fix: accept the ref shorthand in run_steps for every target tool ([#114](https://github.com/MetaMask/client-mcp-core/pull/114))
+- fix: mobile visible follows the tap rule for zero-height frames ([#115](https://github.com/MetaMask/client-mcp-core/pull/115))
+- fix: mm click on a visually hidden checkbox or radio clicks its label instead of timing out ([#108](https://github.com/MetaMask/client-mcp-core/pull/108))
+- fix: keep the launch Metro port for mobile cdp; persistent Hermes connection ([#91](https://github.com/MetaMask/client-mcp-core/pull/91))
+- fix: retry a mobile observation while the screen is still tearing down ([#88](https://github.com/MetaMask/client-mcp-core/pull/88))
 
 ## [0.14.0]
 
@@ -177,7 +196,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat: initial release
 
-[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/MetaMask/client-mcp-core/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/MetaMask/client-mcp-core/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/MetaMask/client-mcp-core/compare/v0.12.0...v0.13.0
