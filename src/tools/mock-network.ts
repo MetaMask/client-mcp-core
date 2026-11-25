@@ -25,7 +25,10 @@ import type {
   CdpSessionWatch,
   CdpWatchedSession,
 } from '../platform/cdp-manager.js';
-import { getCdpManager } from '../platform/cdp-manager.js';
+import {
+  getCdpManager,
+  isClosedSessionError,
+} from '../platform/cdp-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 import { extractErrorMessage } from '../utils/errors.js';
 import { debugWarn } from '../utils/logger.js';
@@ -576,8 +579,8 @@ export class NetworkMockRouteManager {
   }
 
   /**
-   * Stops the CDP `Fetch` interception: ends the watch, then disables
-   * `Fetch` and removes the listener on each session.
+   * Stops the CDP `Fetch` interception: disables `Fetch` on each session
+   * and ends the watch.
    */
   async #stopFetch(): Promise<void> {
     const current = this.#watch;
@@ -585,17 +588,36 @@ export class NetworkMockRouteManager {
     this.#fetchGeneration += 1;
     const sessions = [...this.#fetchSessions];
     this.#fetchSessions.clear();
-    await (await current?.watch)?.unwatch();
-    await Promise.all(
-      sessions.map(async (fetchSession) => {
-        // The listener stays until `Fetch` is off, so a request paused
-        // meanwhile is still answered.
-        await withFetchTimeout(
-          fetchSession.session.send('Fetch.disable', {}),
-          'Fetch.disable',
-        ).catch(() => undefined);
-        fetchSession.session.off('Fetch.requestPaused', fetchSession.listener);
-      }),
+    // Each `Fetch.disable` is sent before the first `await`, so an add that
+    // overlaps this stop enables the same session only after it.
+    await Promise.all([
+      ...sessions.map(async (fetchSession) => this.#disableFetch(fetchSession)),
+      (async (): Promise<void> => (await current?.watch)?.unwatch())(),
+    ]);
+  }
+
+  /**
+   * Disables `Fetch` on a stopped session. The listener stays until `Fetch`
+   * is off (the disable landed, or the session closed), however long that
+   * takes, so a request paused meanwhile is still answered. Waits at most
+   * {@link FETCH_COMMAND_TIMEOUT_MS}.
+   *
+   * @param fetchSession - The stopped session.
+   */
+  async #disableFetch(fetchSession: FetchSession): Promise<void> {
+    const disabled = (async (): Promise<void> => {
+      try {
+        await fetchSession.session.send('Fetch.disable', {});
+      } catch (error) {
+        if (!isClosedSessionError(error)) {
+          debugWarn('mock-network.fetch', error);
+          return;
+        }
+      }
+      fetchSession.session.off('Fetch.requestPaused', fetchSession.listener);
+    })();
+    await withFetchTimeout(disabled, 'Fetch.disable').catch((error: unknown) =>
+      debugWarn('mock-network.fetch', error),
     );
   }
 
@@ -613,6 +635,9 @@ export class NetworkMockRouteManager {
    * A mocked response that cannot be sent leaves its reason in the record's
    * `mockError`, and the request is continued to the real server.
    *
+   * A stopped session still waiting for its `Fetch.disable` leaves the
+   * request to a later attach of the same session, which hears it too.
+   *
    * @param fetchSession - The session the request was paused on.
    * @param params - The `Fetch.requestPaused` payload.
    * @returns Once the request is answered. Never rejects.
@@ -622,7 +647,13 @@ export class NetworkMockRouteManager {
     params: Record<string, unknown> | undefined,
   ): Promise<void> {
     const requestId = params?.requestId;
-    if (typeof requestId !== 'string') {
+    const owner = [...this.#fetchSessions].find(
+      (candidate) => candidate.session === fetchSession.session,
+    );
+    if (
+      typeof requestId !== 'string' ||
+      (owner !== undefined && owner !== fetchSession)
+    ) {
       return;
     }
     let answered = false;

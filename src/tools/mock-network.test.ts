@@ -30,7 +30,8 @@ import type { ToolContext } from '../types/http.js';
 
 const cdpMocks = vi.hoisted(() => ({ getCdpManager: vi.fn() }));
 
-vi.mock('../platform/cdp-manager.js', () => ({
+vi.mock('../platform/cdp-manager.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../platform/cdp-manager.js')>()),
   getCdpManager: cdpMocks.getCdpManager,
 }));
 
@@ -1646,6 +1647,104 @@ describe('NetworkMockRouteManager offscreen document and iframes', () => {
 
     expect(sent(iframe, 'Fetch.continueRequest')).toHaveLength(1);
     expect(sent(iframe, 'Fetch.disable')).toHaveLength(1);
+    expect(iframe.listenerCount('Fetch.requestPaused')).toBe(0);
+  });
+
+  it('keeps answering a session whose Fetch.disable timed out, until it lands', async () => {
+    vi.useFakeTimers();
+    try {
+      let land = (): void => undefined;
+      const iframe = createFetchSession('iframe', 'iframe-1', async (method) =>
+        method === 'Fetch.disable'
+          ? new Promise((resolve) => {
+              land = (): void => resolve({});
+            })
+          : {},
+      );
+      const cdp = createFakeCdpManager([iframe]);
+      const manager = new NetworkMockRouteManager(
+        createCdpBrowserContext(cdp) as never,
+      );
+      await manager.addRule(SCAN_RULE);
+      const scan = { url: SCAN_RULE.url, method: 'POST' };
+
+      const clearing = manager.clear();
+      await vi.advanceTimersByTimeAsync(FETCH_COMMAND_TIMEOUT_MS);
+      await clearing;
+      iframe.emit('Fetch.requestPaused', {
+        requestId: 'cleared',
+        request: scan,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(iframe.listenerCount('Fetch.requestPaused')).toBe(1);
+      expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([
+        { requestId: 'cleared' },
+      ]);
+
+      await manager.addRule(SCAN_RULE);
+      iframe.emit('Fetch.requestPaused', { requestId: 'added', request: scan });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(iframe.listenerCount('Fetch.requestPaused')).toBe(2);
+      expect(sent(iframe, 'Fetch.fulfillRequest')).toHaveLength(1);
+      expect(manager.getRequests()).toHaveLength(1);
+
+      land();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(iframe.listenerCount('Fetch.requestPaused')).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the listener when Fetch.disable fails on a live session', async () => {
+    const iframe = createFetchSession('iframe', 'iframe-1', (method) => {
+      if (method === 'Fetch.disable') {
+        throw new Error('Internal error');
+      }
+      return {};
+    });
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+
+    await manager.clear();
+
+    expect(iframe.listenerCount('Fetch.requestPaused')).toBe(1);
+  });
+
+  it('disables a cleared session before an add that overlaps the clear enables it', async () => {
+    const offscreen = createFetchSession('offscreen');
+    const cdp = createFakeCdpManager([offscreen]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+    let release = (): void => undefined;
+    cdp.unwatch.mockImplementationOnce(
+      async () =>
+        new Promise<undefined>((resolve) => {
+          release = (): void => resolve(undefined);
+        }),
+    );
+
+    const clearing = manager.clear();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await manager.addRule(SCAN_RULE);
+    release();
+    await clearing;
+
+    expect(
+      offscreen.send.mock.calls
+        .map(([method]) => String(method))
+        .filter((method) => method.startsWith('Fetch.')),
+    ).toStrictEqual(['Fetch.enable', 'Fetch.disable', 'Fetch.enable']);
+    expect(manager.getCoverage().contexts).toContain('offscreen');
+    expect(offscreen.listenerCount('Fetch.requestPaused')).toBe(1);
   });
 
   it('reports no contexts on list without rules', async () => {
