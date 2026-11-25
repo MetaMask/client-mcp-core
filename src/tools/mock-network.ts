@@ -604,9 +604,11 @@ export class NetworkMockRouteManager {
    * iframe session, like {@link #handleRoute} does for a Playwright route.
    * Every paused request is answered: Chrome never resumes it by itself.
    *
-   * A CORS preflight is not recorded, as with `route()`. A snaps iframe has
-   * an opaque origin, so its JSON `POST` is preflighted: the preflight of a
-   * mocked request is fulfilled, see {@link buildPreflightResponse}.
+   * A CORS preflight is answered before any rule is matched and is not
+   * recorded, as with `route()`, so an `OPTIONS` rule only applies to plain
+   * `OPTIONS` requests. A snaps iframe has an opaque origin, so its JSON
+   * `POST` is preflighted: the preflight of a mocked request is fulfilled,
+   * see {@link buildPreflightResponse}.
    *
    * A mocked response that cannot be sent leaves its reason in the record's
    * `mockError`, and the request is continued to the real server.
@@ -644,17 +646,17 @@ export class NetworkMockRouteManager {
         return;
       }
 
-      const matchedRule = findMatchingRule(this.#rules, {
-        method: () => method,
-        url: () => url,
-      });
-      if (!matchedRule && isCorsPreflight(method, headers)) {
+      if (isCorsPreflight(method, headers)) {
         const preflight = buildPreflightResponse(this.#rules, url, headers);
         await (preflight
           ? answer('Fetch.fulfillRequest', preflight)
           : answer('Fetch.continueRequest'));
         return;
       }
+      const matchedRule = findMatchingRule(this.#rules, {
+        method: () => method,
+        url: () => url,
+      });
       const record = this.#recordRequest(
         {
           method,

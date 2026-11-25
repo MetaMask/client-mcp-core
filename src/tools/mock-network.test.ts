@@ -1587,29 +1587,45 @@ describe('NetworkMockRouteManager offscreen document and iframes', () => {
     expect(manager.getRequests()).toStrictEqual([]);
   });
 
-  it('applies an OPTIONS rule to a preflight', async () => {
+  it('leaves an OPTIONS rule to plain OPTIONS requests, as route() does', async () => {
     const iframe = createFetchSession('iframe');
     const cdp = createFakeCdpManager([iframe]);
     const manager = new NetworkMockRouteManager(
       createCdpBrowserContext(cdp) as never,
     );
-    await manager.addRule({
-      ...SCAN_RULE,
-      id: 'scan-options',
-      method: 'OPTIONS',
-      response: { status: 418, body: 'teapot' },
-    });
+    await manager.addRules([
+      SCAN_RULE,
+      {
+        ...SCAN_RULE,
+        id: 'scan-options',
+        method: 'OPTIONS',
+        response: { status: 418, body: 'teapot' },
+      },
+    ]);
 
-    await pause(iframe, {
+    const preflight = (requestMethod: string): Record<string, unknown> => ({
       url: SCAN_RULE.url,
       method: 'OPTIONS',
-      headers: { 'access-control-request-method': 'POST' },
+      headers: { 'access-control-request-method': requestMethod },
     });
+    await pause(iframe, preflight('POST'), 'preflight-post');
+    await pause(iframe, preflight('PUT'), 'preflight-put');
+    await pause(iframe, { url: SCAN_RULE.url, method: 'OPTIONS' }, 'options');
 
-    expect(sent(iframe, 'Fetch.fulfillRequest')[0]).toStrictEqual(
-      expect.objectContaining({ responseCode: 418 }),
-    );
-    expect(manager.getRequests()).toHaveLength(1);
+    expect(
+      sent(iframe, 'Fetch.fulfillRequest').map(
+        ({ requestId, responseCode }) => ({ requestId, responseCode }),
+      ),
+    ).toStrictEqual([
+      { requestId: 'preflight-post', responseCode: 204 },
+      { requestId: 'options', responseCode: 418 },
+    ]);
+    expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([
+      { requestId: 'preflight-put' },
+    ]);
+    expect(manager.getRequests()).toStrictEqual([
+      expect.objectContaining({ method: 'OPTIONS', ruleId: 'scan-options' }),
+    ]);
   });
 
   it('ignores Fetch failures on a closed session', async () => {

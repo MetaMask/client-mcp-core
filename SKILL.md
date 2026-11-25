@@ -642,7 +642,7 @@ Rules apply to requests from four contexts: pages (`page`: tabs, popup, dapps), 
 - `pending: ["iframe"]` is normal while no snap runs. Each new snaps iframe is intercepted before its first request, so a rule added before the snap starts covers it. Check `list` again after the flow: `iframe` is in `contexts` while a snap iframe is open.
 - `offscreen` in `pending` means the offscreen document is not running or could not be attached; its requests and its snaps' requests are then not mocked. The offscreen document is recreated when the service worker restarts, and the rules apply to the new one.
 - Both lists are empty when there are no rules.
-- The JSON `POST` of a snap is preceded by a CORS preflight (`OPTIONS`). For a rule with a `response`, the preflight is answered for you; preflights are never recorded.
+- The JSON `POST` of a snap is preceded by a CORS preflight (`OPTIONS`). For a rule with a `response`, the preflight is answered for you; preflights are never recorded. In every context, an `OPTIONS` rule never sees a preflight, only plain `OPTIONS` requests.
 - If the mocked response of an offscreen document or snap request cannot be sent, the request goes to the real server. Its record keeps `matched: true` but has no `status`, and `mockError` gives the reason.
 
 ##### Record request bodies
