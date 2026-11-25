@@ -406,6 +406,36 @@ describe('network mock schemas', () => {
     expect(result.success).toBe(false);
   });
 
+  it.each([
+    ['an empty name', { '': 'x' }],
+    ['a name with a space', { 'x note': 'x' }],
+    ['a name with a colon', { 'x-note:': 'x' }],
+    ['a value with CR LF', { 'x-note': 'a\r\nset-cookie: b' }],
+    ['a value with LF', { 'x-note': 'a\nb' }],
+    ['a value with NUL', { 'x-note': 'a\0b' }],
+  ])('rejects a response header with %s', (_label, headers) => {
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      response: { json: {}, headers },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts ordinary response headers', () => {
+    const headers = {
+      'Cache-Control': 'no-store',
+      'x-custom_1': 'a, b; c="d" \t é',
+    };
+    const result = networkMockRouteRuleSchema.safeParse({
+      ...route,
+      response: { json: {}, headers },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.response?.headers).toStrictEqual(headers);
+  });
+
   it('accepts mock-network add with one route', () => {
     const result = mockNetworkInputSchema.safeParse({
       action: 'add',

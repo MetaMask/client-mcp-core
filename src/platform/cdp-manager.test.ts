@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext, Page, Worker } from '@playwright/test';
 import { describe, it, expect, vi } from 'vitest';
 
-import type { CdpEvent } from './cdp-manager.js';
+import type { CdpEvent, CdpWatchedSession } from './cdp-manager.js';
 import {
   CDP_ATTACH_STEP_TIMEOUT_MS,
   CdpDomainInUseError,
@@ -370,6 +370,27 @@ describe('CdpManager page targets', () => {
     await manager.getSession({ kind: 'page', page: createPage() });
 
     expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a session and calls the other listeners when a listener throws', async () => {
+    const fake = createContext();
+    const session = createCdpSession();
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    const second = vi.fn();
+    manager
+      .on('targetAttached', () => {
+        throw new Error('listener failed');
+      })
+      .on('targetAttached', second);
+
+    const opened = await manager.getSession({
+      kind: 'page',
+      page: createPage(),
+    });
+
+    expect(opened).toBe(session);
     expect(second).toHaveBeenCalledTimes(1);
   });
 
@@ -3423,5 +3444,869 @@ describe('CdpManager sendToEventTarget', () => {
     ).rejects.toThrowError(
       'CDP call "Network.getResponseBody" timed out after 5ms',
     );
+  });
+});
+
+const OFFSCREEN_URL = `${EXTENSION_URL}offscreen.html`;
+const SNAPS_URL = `${EXTENSION_URL}snaps/index.html`;
+const OFFSCREEN_ID = 'offscreen-1';
+const OFFSCREEN_ID_2 = 'offscreen-2';
+const OFFSCREEN_SESSION = `session-${OFFSCREEN_ID}`;
+const IFRAME_ID = 'iframe-1';
+const IFRAME_ID_2 = 'iframe-2';
+
+type TunneledMessage = {
+  id: number;
+  method: string;
+  params?: Record<string, unknown>;
+};
+
+/** An answer of the fake: a CDP reply, or `hang` for none. */
+type FakeReply = Record<string, unknown> | 'hang' | undefined;
+
+type OffscreenOptions = {
+  targets?: SwTargetInfo[];
+  /**
+   * Iframe target IDs that `Target.setAutoAttach` on the first offscreen
+   * document attaches at once.
+   */
+  iframes?: string[];
+  /** Fails `Target.attachToTarget` on the offscreen document. */
+  attachError?: Error;
+  /**
+   * Answers a command tunneled to the offscreen document, including the
+   * `Target.sendMessageToTarget` that carries an iframe command.
+   */
+  offscreenReply?: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => FakeReply;
+  /** Answers a command tunneled to an iframe. */
+  childReply?: (
+    sessionId: string,
+    method: string,
+    params: Record<string, unknown>,
+  ) => FakeReply;
+};
+
+/**
+ * Creates a fake context whose browser has the Extension service worker and
+ * its offscreen document. Commands to the offscreen document are tunneled
+ * over the browser session, and commands to its iframes over the offscreen
+ * document session, like Chrome does.
+ *
+ * @param options - Targets, auto-attached iframes and answers.
+ * @returns The context mock, its handles and the tunneled commands.
+ */
+function createOffscreenContext(options: OffscreenOptions = {}) {
+  const fake = createContext({
+    pages: [],
+    targets: options.targets ?? [
+      { type: 'service_worker', url: SW_URL, targetId: TARGET_ID },
+      { type: 'background_page', url: OFFSCREEN_URL, targetId: OFFSCREEN_ID },
+    ],
+  });
+  const offscreenCommands: (TunneledMessage & { sessionId: string })[] = [];
+  const childCommands: (TunneledMessage & { sessionId: string })[] = [];
+  const base = fake.browserSession.send.getMockImplementation() as (
+    method: string,
+    params?: Record<string, unknown>,
+  ) => Promise<unknown>;
+
+  const fromSession = (
+    sessionId: string,
+    message: Record<string, unknown>,
+  ): void =>
+    fake.browserEmitter.emit('Target.receivedMessageFromTarget', {
+      sessionId,
+      message: JSON.stringify(message),
+    });
+  const offscreenEvent = (
+    method: string,
+    params: Record<string, unknown>,
+    sessionId = OFFSCREEN_SESSION,
+  ): void => fromSession(sessionId, { method, params });
+  const attachIframe = (
+    targetId: string,
+    {
+      url = '',
+      type = 'iframe',
+      waiting = true,
+      sessionId = OFFSCREEN_SESSION,
+    }: {
+      url?: string;
+      type?: string;
+      waiting?: boolean;
+      sessionId?: string;
+    } = {},
+  ): void =>
+    offscreenEvent(
+      'Target.attachedToTarget',
+      {
+        sessionId: `child-${targetId}`,
+        targetInfo: { targetId, type, url },
+        waitingForDebugger: waiting,
+      },
+      sessionId,
+    );
+  const childEvent = (
+    targetId: string,
+    method: string,
+    params: Record<string, unknown>,
+  ): void =>
+    offscreenEvent('Target.receivedMessageFromTarget', {
+      sessionId: `child-${targetId}`,
+      message: JSON.stringify({ method, params }),
+    });
+
+  fake.browserSession.send.mockImplementation(
+    async (method: string, params?: Record<string, unknown>) => {
+      const targetId = String(params?.targetId);
+      if (
+        method === 'Target.attachToTarget' &&
+        targetId.startsWith('offscreen')
+      ) {
+        if (options.attachError) {
+          throw options.attachError;
+        }
+        fake.emittedTargetIds.push({
+          targetId,
+          flatten: Boolean(params?.flatten),
+        });
+        return { sessionId: `session-${targetId}` };
+      }
+      const sessionId = String(params?.sessionId);
+      if (
+        method !== 'Target.sendMessageToTarget' ||
+        !sessionId.startsWith('session-offscreen')
+      ) {
+        return base(method, params);
+      }
+      const message = JSON.parse(String(params?.message)) as TunneledMessage;
+      offscreenCommands.push({ sessionId, ...message });
+      let reply: FakeReply;
+      if (message.method === 'Target.sendMessageToTarget') {
+        const child = String(message.params?.sessionId);
+        const inner = JSON.parse(
+          String(message.params?.message),
+        ) as TunneledMessage;
+        childCommands.push({ sessionId: child, ...inner });
+        const answer = options.childReply?.(
+          child,
+          inner.method,
+          inner.params ?? {},
+        ) ?? { result: {} };
+        if (answer !== 'hang') {
+          offscreenEvent(
+            'Target.receivedMessageFromTarget',
+            {
+              sessionId: child,
+              message: JSON.stringify({ id: inner.id, ...answer }),
+            },
+            sessionId,
+          );
+        }
+        reply = options.offscreenReply?.(
+          message.method,
+          message.params ?? {},
+        ) ?? { result: {} };
+      } else {
+        reply = options.offscreenReply?.(
+          message.method,
+          message.params ?? {},
+        ) ?? { result: {} };
+        if (
+          message.method === 'Target.setAutoAttach' &&
+          reply !== 'hang' &&
+          sessionId === OFFSCREEN_SESSION
+        ) {
+          for (const iframe of options.iframes ?? []) {
+            attachIframe(iframe, { sessionId });
+          }
+        }
+      }
+      if (reply !== 'hang') {
+        fromSession(sessionId, { id: message.id, ...reply });
+      }
+      return {};
+    },
+  );
+
+  return {
+    ...fake,
+    offscreenCommands,
+    childCommands,
+    offscreenEvent,
+    attachIframe,
+    childEvent,
+    /**
+     * @param sessionId - The child session ID.
+     * @returns The methods tunneled to that iframe, in order.
+     */
+    childMethods: (sessionId = `child-${IFRAME_ID}`): string[] =>
+      childCommands
+        .filter((command) => command.sessionId === sessionId)
+        .map((command) => command.method),
+  };
+}
+
+/**
+ * Creates a watcher whose `onAttach` records each session it receives.
+ *
+ * @param onAttach - Extra work for each session.
+ * @returns The watcher callbacks and what they saw.
+ */
+function createWatcher(
+  onAttach: (watched: CdpWatchedSession) => Promise<void> | void = (): void =>
+    undefined,
+) {
+  const attached: CdpWatchedSession[] = [];
+  return {
+    attached,
+    onAttach: vi.fn(async (watched: CdpWatchedSession) => {
+      attached.push(watched);
+      await onAttach(watched);
+    }),
+    onDetach: vi.fn(),
+    onError: vi.fn(),
+  };
+}
+
+describe('CdpManager offscreen document and iframes', () => {
+  it('attaches subscribers to the offscreen document and the iframes it auto-attaches', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const onEvent = vi.fn();
+    const attached = vi.fn();
+    manager.on('targetAttached', attached);
+
+    await manager.subscribe({ events: LOG_EVENTS, onEvent });
+    await flush();
+    fake.offscreenEvent('Runtime.consoleAPICalled', { type: 'log' });
+    fake.childEvent(IFRAME_ID, 'Runtime.consoleAPICalled', { type: 'error' });
+
+    expect(fake.emittedTargetIds).toContainEqual({
+      targetId: OFFSCREEN_ID,
+      flatten: false,
+    });
+    expect(
+      fake.offscreenCommands.find(
+        (command) => command.method === 'Target.setAutoAttach',
+      )?.params,
+    ).toStrictEqual({
+      autoAttach: true,
+      waitForDebuggerOnStart: true,
+      flatten: false,
+      filter: [{ type: 'iframe', exclude: false }],
+    });
+    expect(fake.childMethods()).toStrictEqual([
+      'Runtime.enable',
+      'Runtime.runIfWaitingForDebugger',
+    ]);
+    expect(
+      onEvent.mock.calls.map((call) => (call[0] as CdpEvent).target),
+    ).toStrictEqual([
+      { kind: 'offscreen', targetId: OFFSCREEN_ID, url: OFFSCREEN_URL },
+      { kind: 'iframe', targetId: IFRAME_ID, url: '' },
+    ]);
+    expect(attached).toHaveBeenCalledWith({
+      kind: 'offscreen',
+      targetId: OFFSCREEN_ID,
+    });
+    expect(attached).toHaveBeenCalledWith({
+      kind: 'iframe',
+      targetId: IFRAME_ID,
+    });
+  });
+
+  it('adds a later subscriber to the iframes already attached', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+    await flush();
+    const onEvent = vi.fn();
+
+    await manager.subscribe({
+      events: ['Network.requestWillBeSent'],
+      onEvent,
+    });
+    fake.childEvent(IFRAME_ID, 'Network.requestWillBeSent', {});
+
+    expect(fake.childMethods()).toContain('Network.enable');
+    expect(onEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the iframe URL current and sends to attached child targets', async () => {
+    const fake = createOffscreenContext({
+      iframes: [IFRAME_ID],
+      childReply: (_sessionId, method) =>
+        method === 'Network.getResponseBody'
+          ? { result: { body: 'iframe' } }
+          : undefined,
+      offscreenReply: (method) =>
+        method === 'Network.getResponseBody'
+          ? { result: { body: 'offscreen' } }
+          : undefined,
+    });
+    const manager = new CdpManager(fake.context);
+    const onEvent = vi.fn();
+    await manager.subscribe({ events: LOG_EVENTS, onEvent });
+    await flush();
+
+    fake.browserEmitter.emit('Target.targetInfoChanged', {
+      targetInfo: { type: 'iframe', url: SNAPS_URL, targetId: IFRAME_ID },
+    });
+    fake.browserEmitter.emit('Target.targetInfoChanged', {
+      targetInfo: { type: 'iframe', url: '', targetId: IFRAME_ID },
+    });
+    fake.childEvent(IFRAME_ID, 'Runtime.consoleAPICalled', {});
+
+    expect(onEvent.mock.calls[0][0].target).toStrictEqual({
+      kind: 'iframe',
+      targetId: IFRAME_ID,
+      url: SNAPS_URL,
+    });
+    expect(
+      await manager.sendToEventTarget(
+        { kind: 'iframe', targetId: IFRAME_ID, url: SNAPS_URL },
+        'Network.getResponseBody',
+      ),
+    ).toStrictEqual({ body: 'iframe' });
+    expect(
+      await manager.sendToEventTarget(
+        { kind: 'offscreen', targetId: OFFSCREEN_ID, url: OFFSCREEN_URL },
+        'Network.getResponseBody',
+      ),
+    ).toStrictEqual({ body: 'offscreen' });
+  });
+
+  it('resumes an iframe when a targetAttached listener throws', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const second = vi.fn();
+    manager
+      .on('targetAttached', (target) => {
+        if (target.kind === 'iframe') {
+          throw new Error('listener failed');
+        }
+      })
+      .on('targetAttached', second);
+    const watcher = createWatcher();
+
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    expect(fake.childMethods()).toStrictEqual([
+      'Runtime.runIfWaitingForDebugger',
+    ]);
+    expect(watcher.attached).toHaveLength(1);
+    expect(second).toHaveBeenCalledWith({
+      kind: 'iframe',
+      targetId: IFRAME_ID,
+    });
+  });
+
+  it('fails an iframe command in flight when its offscreen document goes away', async () => {
+    let hold = false;
+    const fake = createOffscreenContext({
+      iframes: [IFRAME_ID],
+      offscreenReply: (method) =>
+        hold && method === 'Target.sendMessageToTarget' ? 'hang' : undefined,
+      childReply: () => (hold ? 'hang' : undefined),
+    });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      hold = true;
+      const sending = watcher.attached[0]?.session.send(
+        'Fetch.continueRequest',
+        { requestId: 'request-1' },
+      );
+      fake.browserEmitter.emit('Target.targetDestroyed', {
+        targetId: OFFSCREEN_ID,
+      });
+
+      await expect(sending).rejects.toThrowError(
+        'Session closed. The offscreen document target is gone.',
+      );
+      await flush();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
+  it('drops an iframe that detaches', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const detached = vi.fn();
+    manager.on('targetDetached', detached);
+    const watcher = createWatcher();
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    fake.offscreenEvent('Target.detachedFromTarget', {
+      sessionId: `child-${IFRAME_ID}`,
+    });
+    await flush();
+
+    expect(detached).toHaveBeenCalledWith({
+      kind: 'iframe',
+      targetId: IFRAME_ID,
+    });
+    expect(watcher.onDetach).toHaveBeenCalledWith({
+      kind: 'iframe',
+      targetId: IFRAME_ID,
+      url: '',
+    });
+    await expect(
+      manager.sendToEventTarget(
+        { kind: 'iframe', targetId: IFRAME_ID, url: '' },
+        'Runtime.evaluate',
+      ),
+    ).rejects.toThrowError(`CDP target ${IFRAME_ID} is not attached`);
+  });
+
+  it('attaches a recreated offscreen document once it has its URL and drops the old one with its iframes', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const onEvent = vi.fn();
+    const watcher = createWatcher();
+    await manager.subscribe({ events: LOG_EVENTS, onEvent });
+    await manager.watchSessions({
+      kinds: ['offscreen', 'iframe'],
+      ...watcher,
+    });
+    expect(watcher.attached).toHaveLength(2);
+
+    fake.browserEmitter.emit('Target.targetDestroyed', {
+      targetId: OFFSCREEN_ID,
+    });
+    fake.browserEmitter.emit('Target.targetCreated', {
+      targetInfo: { type: 'other', url: '', targetId: OFFSCREEN_ID_2 },
+    });
+    await flush();
+    expect(fake.emittedTargetIds).not.toContainEqual(
+      expect.objectContaining({ targetId: OFFSCREEN_ID_2 }),
+    );
+    fake.browserEmitter.emit('Target.targetInfoChanged', {
+      targetInfo: {
+        type: 'background_page',
+        url: OFFSCREEN_URL,
+        targetId: OFFSCREEN_ID_2,
+      },
+    });
+    await flush();
+    fake.attachIframe(IFRAME_ID_2, { sessionId: `session-${OFFSCREEN_ID_2}` });
+    await flush();
+    fake.offscreenEvent(
+      'Runtime.consoleAPICalled',
+      {},
+      `session-${OFFSCREEN_ID_2}`,
+    );
+
+    expect(watcher.onDetach.mock.calls.map(([target]) => target)).toStrictEqual(
+      [
+        expect.objectContaining({ kind: 'iframe', targetId: IFRAME_ID }),
+        expect.objectContaining({ kind: 'offscreen', targetId: OFFSCREEN_ID }),
+      ],
+    );
+    expect(
+      watcher.attached.map((watched) => watched.target().targetId),
+    ).toStrictEqual([OFFSCREEN_ID, IFRAME_ID, OFFSCREEN_ID_2, IFRAME_ID_2]);
+    expect(onEvent.mock.calls.at(-1)?.[0].target).toStrictEqual({
+      kind: 'offscreen',
+      targetId: OFFSCREEN_ID_2,
+      url: OFFSCREEN_URL,
+    });
+    await expect(
+      watcher.attached[0]?.session.send('Runtime.evaluate', {}),
+    ).rejects.toThrowError(
+      'Session closed. The offscreen document target is gone.',
+    );
+  });
+
+  it('drops the old offscreen document when a recreated one is attached first', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    fake.browserEmitter.emit('Target.targetCreated', {
+      targetInfo: {
+        type: 'background_page',
+        url: OFFSCREEN_URL,
+        targetId: OFFSCREEN_ID_2,
+      },
+    });
+    await flush();
+
+    expect(watcher.onDetach).toHaveBeenCalledWith(
+      expect.objectContaining({ targetId: IFRAME_ID }),
+    );
+    expect(fake.emittedTargetIds.at(-1)).toStrictEqual({
+      targetId: OFFSCREEN_ID_2,
+      flatten: false,
+    });
+  });
+
+  it('ignores offscreen documents of another Extension and offscreen tabs', async () => {
+    const otherUrl = `chrome-extension://${'z'.repeat(32)}/offscreen.html`;
+    const fake = createOffscreenContext({
+      targets: [
+        { type: 'service_worker', url: SW_URL, targetId: TARGET_ID },
+        { type: 'background_page', url: otherUrl, targetId: 'offscreen-x' },
+        { type: 'page', url: OFFSCREEN_URL, targetId: 'offscreen-tab' },
+      ],
+    });
+    const manager = new CdpManager(fake.context);
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn() });
+
+    fake.browserEmitter.emit('Target.targetCreated', {
+      targetInfo: {
+        type: 'background_page',
+        url: otherUrl,
+        targetId: 'offscreen-y',
+      },
+    });
+    await flush();
+
+    expect(fake.emittedTargetIds.map((entry) => entry.targetId)).toStrictEqual([
+      TARGET_ID,
+    ]);
+  });
+
+  it('accepts an offscreen document before the Extension ID is known', async () => {
+    const fake = createOffscreenContext();
+    fake.workers.length = 0;
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+
+    await manager.watchSessions({ kinds: ['offscreen'], ...watcher });
+
+    expect(watcher.attached.map((watched) => watched.target())).toStrictEqual([
+      { kind: 'offscreen', targetId: OFFSCREEN_ID, url: OFFSCREEN_URL },
+    ]);
+  });
+
+  it('does not report an offscreen document that is gone before the attach', async () => {
+    const fake = createOffscreenContext({
+      attachError: new Error('No target with given id found'),
+    });
+    const manager = new CdpManager(fake.context);
+    const onError = vi.fn();
+    const watcher = createWatcher();
+
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn(), onError });
+    await manager.watchSessions({ kinds: ['offscreen'], ...watcher });
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(watcher.onError).not.toHaveBeenCalled();
+    expect(watcher.attached).toHaveLength(0);
+  });
+
+  it('reports an auto-attach failure and detaches the offscreen session', async () => {
+    const fake = createOffscreenContext({
+      offscreenReply: (method) =>
+        method === 'Target.setAutoAttach'
+          ? { error: { message: 'Not allowed' } }
+          : undefined,
+    });
+    const manager = new CdpManager(fake.context);
+    const onError = vi.fn();
+    const watcher = createWatcher();
+
+    await manager.subscribe({ events: LOG_EVENTS, onEvent: vi.fn(), onError });
+    await manager.watchSessions({ kinds: ['offscreen'], ...watcher });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Not allowed' }),
+    );
+    expect(watcher.onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Not allowed' }),
+    );
+    expect(fake.browserSession.send).toHaveBeenCalledWith(
+      'Target.detachFromTarget',
+      { sessionId: OFFSCREEN_SESSION },
+    );
+  });
+
+  it('reports a failed offscreen attach from a target event to watchers', async () => {
+    const fake = createOffscreenContext({
+      targets: [{ type: 'service_worker', url: SW_URL, targetId: TARGET_ID }],
+      attachError: new Error('Not allowed'),
+    });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({ kinds: ['offscreen'], ...watcher });
+
+    fake.browserEmitter.emit('Target.targetCreated', {
+      targetInfo: {
+        type: 'background_page',
+        url: OFFSCREEN_URL,
+        targetId: OFFSCREEN_ID,
+      },
+    });
+    await flush();
+
+    expect(watcher.onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Not allowed' }),
+    );
+  });
+
+  it('writes watcher errors to the debug log without onError', async () => {
+    vi.resetModules();
+    vi.stubEnv('DEBUG', 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const fresh = await import('./cdp-manager.js');
+      const fake = createOffscreenContext({
+        attachError: new Error('Not allowed'),
+      });
+      const manager = new fresh.CdpManager(fake.context);
+
+      const watch = await manager.watchSessions({
+        kinds: ['offscreen'],
+        onAttach: vi.fn(),
+      });
+
+      expect(typeof watch.unwatch).toBe('function');
+      expect(warn).toHaveBeenCalledWith(
+        '[Server:cdp-manager.watchSessions] Not allowed',
+      );
+    } finally {
+      warn.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('pauses a new iframe until the watchers are ready', async () => {
+    const fake = createOffscreenContext();
+    const manager = new CdpManager(fake.context);
+    let release!: () => void;
+    const watcher = createWatcher(async ({ session }) => {
+      await session.send('Fetch.enable', { patterns: [] });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    fake.attachIframe(IFRAME_ID);
+    await flush();
+    expect(fake.childMethods()).toStrictEqual(['Fetch.enable']);
+    release();
+    await flush();
+
+    expect(fake.childMethods()).toStrictEqual([
+      'Fetch.enable',
+      'Runtime.runIfWaitingForDebugger',
+    ]);
+  });
+
+  it('resumes an iframe whose watcher fails or never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createOffscreenContext();
+      const manager = new CdpManager(fake.context);
+      const failing = createWatcher(() => {
+        throw new Error('watcher failed');
+      });
+      const hanging = createWatcher(async () => new Promise(() => undefined));
+      await manager.watchSessions({ kinds: ['iframe'], ...failing });
+      await manager.watchSessions({ kinds: ['iframe'], ...hanging });
+
+      fake.attachIframe(IFRAME_ID);
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+
+      expect(failing.onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'watcher failed' }),
+      );
+      expect(hanging.onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('Preparing a session watcher'),
+        }),
+      );
+      expect(fake.childMethods()).toStrictEqual([
+        'Runtime.runIfWaitingForDebugger',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not resume an iframe that is not waiting for the debugger', async () => {
+    const fake = createOffscreenContext();
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    fake.attachIframe(IFRAME_ID, { waiting: false });
+    await flush();
+
+    expect(watcher.attached).toHaveLength(1);
+    expect(fake.childMethods()).toStrictEqual([]);
+  });
+
+  it('resumes and detaches auto-attached targets it does not keep', async () => {
+    const fake = createOffscreenContext();
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    fake.attachIframe('worker-1', { type: 'worker' });
+    fake.attachIframe(IFRAME_ID);
+    fake.attachIframe(IFRAME_ID);
+    fake.attachIframe('no-wait', { type: 'worker', waiting: false });
+    fake.offscreenEvent('Target.attachedToTarget', { sessionId: 'broken' });
+    await flush();
+
+    expect(watcher.attached).toHaveLength(1);
+    expect(fake.childMethods('child-worker-1')).toStrictEqual([
+      'Runtime.runIfWaitingForDebugger',
+    ]);
+    expect(
+      fake.offscreenCommands
+        .filter((command) => command.method === 'Target.detachFromTarget')
+        .map((command) => command.params?.sessionId)
+        .sort(),
+    ).toStrictEqual([`child-${IFRAME_ID}`, 'child-no-wait', 'child-worker-1']);
+  });
+
+  it('hands sessions only of the watched kinds and stops after unwatch', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+
+    const watch = await manager.watchSessions({
+      kinds: ['iframe'],
+      ...watcher,
+    });
+    expect(
+      watcher.attached.map((watched) => watched.target().kind),
+    ).toStrictEqual(['iframe']);
+    await watch.unwatch();
+    await watch.unwatch();
+    fake.attachIframe(IFRAME_ID_2);
+    await flush();
+
+    expect(watcher.attached).toHaveLength(1);
+    expect(fake.browserEmitter.listenerCount('Target.targetCreated')).toBe(0);
+    expect(fake.browserEmitter.listenerCount('Target.targetInfoChanged')).toBe(
+      0,
+    );
+  });
+
+  it('keeps watching targets while a watch outlives the subscriptions', async () => {
+    const fake = createOffscreenContext();
+    const manager = new CdpManager(fake.context);
+    const subscription = await manager.subscribe({
+      events: LOG_EVENTS,
+      onEvent: vi.fn(),
+    });
+    await manager.watchSessions({ kinds: ['offscreen'], onAttach: vi.fn() });
+
+    await subscription.unsubscribe();
+
+    expect(fake.browserEmitter.listenerCount('Target.targetInfoChanged')).toBe(
+      1,
+    );
+  });
+
+  it('reports a failing onDetach to the watcher', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    watcher.onDetach.mockImplementation(() => {
+      throw new Error('onDetach failed');
+    });
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    fake.offscreenEvent('Target.detachedFromTarget', {
+      sessionId: `child-${IFRAME_ID}`,
+    });
+    await flush();
+
+    expect(watcher.onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'onDetach failed' }),
+    );
+  });
+
+  it('ignores a failing onError', async () => {
+    const fake = createOffscreenContext();
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher(() => {
+      throw new Error('watcher failed');
+    });
+    watcher.onError.mockImplementation(() => {
+      throw new Error('onError failed');
+    });
+
+    const watch = await manager.watchSessions({
+      kinds: ['offscreen'],
+      ...watcher,
+    });
+
+    expect(typeof watch.unwatch).toBe('function');
+    expect(watcher.onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the watches and detaches child targets on dispose', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const watcher = createWatcher();
+    await manager.watchSessions({
+      kinds: ['offscreen', 'iframe'],
+      ...watcher,
+    });
+
+    await manager.dispose();
+    fake.attachIframe(IFRAME_ID_2);
+    await flush();
+
+    expect(watcher.attached).toHaveLength(2);
+    expect(watcher.onDetach).not.toHaveBeenCalled();
+    expect(fake.browserSession.send).toHaveBeenCalledWith(
+      'Target.detachFromTarget',
+      { sessionId: OFFSCREEN_SESSION },
+    );
+    await expect(
+      manager.watchSessions({ kinds: ['iframe'], onAttach: vi.fn() }),
+    ).rejects.toThrowError('CDP manager is disposed');
+  });
+
+  it('releases an iframe auto-attached by an offscreen attach that timed out', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = createOffscreenContext({
+        offscreenReply: (method) =>
+          method === 'Target.setAutoAttach' ? 'hang' : undefined,
+      });
+      const manager = new CdpManager(fake.context);
+      const watcher = createWatcher();
+      const watching = manager.watchSessions({
+        kinds: ['iframe'],
+        ...watcher,
+      });
+      await vi.advanceTimersByTimeAsync(CDP_ATTACH_STEP_TIMEOUT_MS);
+      await watching;
+
+      fake.attachIframe(IFRAME_ID);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(watcher.attached).toHaveLength(0);
+      expect(fake.childMethods()).toStrictEqual([
+        'Runtime.runIfWaitingForDebugger',
+      ]);
+      expect(watcher.onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('Opening a CDP session'),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

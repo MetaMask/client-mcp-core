@@ -621,6 +621,8 @@ A rule object requires `id`, `method` and `url`, plus at least one of `response`
 | `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`)           |
 | `record`           | Optional. Records details of the requests this rule matches. Off by default. See [Record request bodies](#record-request-bodies) |
 
+Response header names must be HTTP tokens such as `x-note`, and values must not contain CR, LF or NUL.
+
 You can also pass an array of rules or an object with a `routes` array:
 
 ```bash
@@ -628,7 +630,7 @@ mm mock-network add '[{"id":"r1","method":"GET","url":"https://a.com/x","respons
 mm mock-network add '{"routes":[...]}'
 ```
 
-Unmatched same-origin requests are continued unchanged. A rule with `record` and no `response` matches the real request, records it, and forwards it unchanged with the real response. `matched: true` means a rule matched, whether it mocked the response or forwarded it. The record gets the real `status` once the response arrives (within 5 seconds); otherwise `status` is left out. This is the way to capture real traffic such as Segment batches, quotes or RPC calls without inventing a response:
+Unmatched same-origin requests are continued unchanged. A rule with `record` and no `response` matches the real request, records it, and forwards it unchanged with the real response. `matched: true` means a rule matched, whether it mocked the response or forwarded it. The record gets the real `status` once the response arrives (within 5 seconds); otherwise `status` is left out. A forwarded request of the offscreen document or a snap never gets a `status`: read it with `mm network`. This is the way to capture real traffic such as Segment batches, quotes or RPC calls without inventing a response:
 
 ```bash
 mm mock-network add '{"id":"token-list","method":"GET","url":"https://token.api.cx.metamask.io/**","record":{"body":true}}'
@@ -638,6 +640,18 @@ A mock only affects requests made after it is added. Data the Extension already 
 
 - Add mocks before you first open the screen that uses them.
 - After you add, change or clear a rule for data that is already loaded, run `mm reload`, then check `mm mock-network requests` for a hit.
+
+Rules apply to requests from four contexts: pages (`page`: tabs, popup, dapps), the Extension service worker (`sw`), the MV3 offscreen document (`offscreen`), and the iframes it runs snaps in (`iframe`: each snap job, such as a Tron or Solana snap calling the security alerts API, runs in its own `snaps/index.html` iframe). `add` and `list` report where the rules intercept requests now:
+
+```json
+{ "contexts": ["page", "sw", "offscreen"], "pending": ["iframe"] }
+```
+
+- `pending: ["iframe"]` is normal while no snap runs. Each new snaps iframe is intercepted before its first request, so a rule added before the snap starts covers it. Check `list` again after the flow: `iframe` is in `contexts` while a snap iframe is open.
+- `offscreen` in `pending` means the offscreen document is not running or could not be attached; its requests and its snaps' requests are then not mocked. The offscreen document is recreated when the service worker restarts, and the rules apply to the new one.
+- Both lists are empty when there are no rules.
+- The JSON `POST` of a snap is preceded by a CORS preflight (`OPTIONS`). For a rule with a `response`, the preflight is answered for you; preflights are never recorded. In every context, an `OPTIONS` rule never sees a preflight, only plain `OPTIONS` requests.
+- If the mocked response of an offscreen document or snap request cannot be sent, the request goes to the real server. Its record keeps `matched: true` but has no `status`, and `mockError` gives the reason.
 
 ##### Record request bodies
 
@@ -658,7 +672,7 @@ mm mock-network requests --url api.segment.io --bodies
 | `record.headers`      | Record request headers. The values of `authorization`, `cookie` and any header with `token`, `secret`, `key` or `auth` in the name are replaced with `[REDACTED]` |
 | `record.maxBodyBytes` | Bytes to keep per body (default 65536, max 524288). A longer body is cut and marked `"truncated": true`                                                           |
 
-Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`, whatever the value type (string, array, object or number). A JSON body cut by `maxBodyBytes` keeps no value: it is recorded as `{"type":"json","size":N,"truncated":true}`. Raise `maxBodyBytes` to read it. JSON-like text that does not parse is recorded as `{"type":"text","size":N,"redacted":true}` with no value. Only matched requests are recorded with bodies. Misses never store a body. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+Secrets in bodies, such as Segment's `writeKey`, `password` or `apiKey`, are replaced with `[REDACTED]`, whatever the value type (string, array, object or number). A JSON body cut by `maxBodyBytes` keeps no value: it is recorded as `{"type":"json","size":N,"truncated":true}`. Raise `maxBodyBytes` to read it. JSON-like text that does not parse is recorded as `{"type":"text","size":N,"redacted":true}` with no value. Only matched requests are recorded with bodies. Misses never store a body. Each record has `context` (`page`, `sw`, `offscreen` or `iframe`), and `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 Segment sends events in batches, and production builds wait up to about 5 seconds before they send. If no batch shows up, wait and check again.
 
@@ -672,7 +686,7 @@ mm mock-network clear
 
 #### `mm mock-network list`
 
-Lists currently active route mocks.
+Lists currently active route mocks, with `contexts` and `pending` like `add`.
 
 ```bash
 mm mock-network list
@@ -692,7 +706,7 @@ mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 | `--url <glob-or-text>` | Only return requests whose URL matches this glob (`*`, `**`) or, without `*`, contains this text |
 | `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
 
-Without `--bodies` the output is the same as before: no bodies or headers. Each record has `"serviceWorker": true` when the Extension's background service worker sent the request.
+Without `--bodies` the output is the same as before: no bodies or headers. Each record has `context` (`page`, `sw`, `offscreen` or `iframe`: where the request came from), and `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
@@ -759,7 +773,7 @@ mm hermes-targets --all
 
 ### Session events (browser only)
 
-From `mm launch` on, the daemon records events from every page and the Extension's background service worker into one buffer per session. `mm logs` and `mm network` read it. All kinds share one cursor (`seq`), so one `mark` covers both. Traffic during `mm launch` itself (for example self-onboarding) is not recorded. Mobile sessions return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`.
+From `mm launch` on, the daemon records events from every page, the Extension's background service worker, the MV3 offscreen document and its snaps iframes into one buffer per session. `mm logs` and `mm network` read it. All kinds share one cursor (`seq`), so one `mark` covers both. Traffic during `mm launch` itself (for example self-onboarding) is not recorded. Mobile sessions return `MM_TOOL_NOT_SUPPORTED_ON_PLATFORM`.
 
 #### `mm events mark`
 
@@ -773,7 +787,7 @@ Empties the buffer (one kind or all). The cursor keeps counting, so older cursor
 
 #### `mm logs [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--grep <regex>]`
 
-Console errors and uncaught exceptions of every page and the Extension service worker. Returns `{ records, cursor, hasMore, gap, summary }`, oldest first (default 500, max 2000 per read). While `hasMore` is true, read again with the returned `cursor`. `gap: true` means records after your cursor were dropped (buffer full), or your cursor is from an earlier session (it is above the newest `seq` of this one; the read then starts from the oldest record). `--grep` is a case-sensitive JavaScript regular expression of at most 256 characters. The pattern runs in the daemon, so avoid patterns with nested quantifiers such as `(a+)+`. A value that starts with `--` is read as a missing flag value; escape it, for example `--grep '\-\-x'`.
+Console errors and uncaught exceptions of every page, the Extension service worker, the offscreen document and its snaps iframes. Returns `{ records, cursor, hasMore, gap, summary }`, oldest first (default 500, max 2000 per read). While `hasMore` is true, read again with the returned `cursor`. `gap: true` means records after your cursor were dropped (buffer full), or your cursor is from an earlier session (it is above the newest `seq` of this one; the read then starts from the oldest record). `--grep` is a case-sensitive JavaScript regular expression of at most 256 characters. The pattern runs in the daemon, so avoid patterns with nested quantifiers such as `(a+)+`. A value that starts with `--` is read as a missing flag value; escape it, for example `--grep '\-\-x'`.
 
 ```json
 {
@@ -790,13 +804,13 @@ Console errors and uncaught exceptions of every page and the Extension service w
 }
 ```
 
-`target.kind` is `page` or `sw`. Uncaught exceptions have `"uncaught": true`. `text` (console arguments, error messages and stacks, uncaught exceptions) is cut at 2000 characters and redacted only for URLs, JWTs, `Bearer` values and sensitive property names in object previews (`privateKey`, `mnemonic`, `password`, …); a secret in free text, such as `new Error('… password hunter2')`, is not detected. `t` is the CDP time of the message (epoch ms).
+`target.kind` is `page`, `sw`, `offscreen` (the MV3 offscreen document) or `iframe` (a snaps iframe of the offscreen document; its `url` is empty until the iframe loads). Uncaught exceptions have `"uncaught": true`. `text` (console arguments, error messages and stacks, uncaught exceptions) is cut at 2000 characters and redacted only for URLs, JWTs, `Bearer` values and sensitive property names in object previews (`privateKey`, `mnemonic`, `password`, …); a secret in free text, such as `new Error('… password hunter2')`, is not detected. `t` is the CDP time of the message (epoch ms).
 
 Only `error` (including `console.assert` and uncaught exceptions) is recorded by default. `mm logs configure --levels error,warning` records more levels from then on, for this session (`warn` is accepted as `warning`). Non-error objects and arrays are rendered from their CDP preview (`{message: 'User rejected', chainId: 1}`, `[1, 2]`); a named property of an array prints as `name: value`, and a sensitive property name prints `[REDACTED]`. A leading format string fills `%s`, `%d`, `%i`, `%f`, `%o`, `%O`, `%c` from its arguments. `mm logs configure` accepts only `--levels <list>`: any other flag or a second `--levels` is a usage error.
 
 #### `mm network [--cursor <n> | --since <iso|epoch-ms>] [--limit <n>] [--url <glob|text>] [--errors] [--settled]`
 
-HTTP(S) requests of every page and the Extension service worker (gas, security alerts, bridge, RPC: most Extension traffic comes from the worker). It only listens: it never mocks, blocks or changes a request, and it stores no bodies (use `mm mock-network` for that). One record per request, created when it starts and updated in place when it ends; it keeps its first `seq` and gets a `settledSeq` when it ends. Same paging as `mm logs`, plus `stats: { pending, ignored, rpcErrorsSkipped }`. A request whose page or worker goes away before it ends is finalized with `failure: "target closed"`; one dropped from the pending limit is finalized with `failure: "abandoned"`.
+HTTP(S) requests of every page, the Extension service worker (gas, security alerts, bridge, RPC: most Extension traffic comes from the worker), the offscreen document and its snaps iframes (`target.kind` as in `mm logs`). It only listens: it never mocks, blocks or changes a request, and it stores no bodies (use `mm mock-network` for that). One record per request, created when it starts and updated in place when it ends; it keeps its first `seq` and gets a `settledSeq` when it ends. Same paging as `mm logs`, plus `stats: { pending, ignored, rpcErrorsSkipped }`. A request whose page, worker, offscreen document or iframe goes away before it ends (the offscreen document goes away when it is recreated) is finalized with `failure: "target closed"`; one dropped from the pending limit is finalized with `failure: "abandoned"`.
 
 ```json
 {

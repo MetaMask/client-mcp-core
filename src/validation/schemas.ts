@@ -99,6 +99,16 @@ export const targetSelectionSchema = z
 const smartContractNames = SMART_CONTRACT_NAMES;
 const hardforks = HARDFORKS;
 
+const httpHeaderNameSchema = z
+  .string()
+  .regex(/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u, {
+    message: 'A response header name must be an HTTP token, such as x-note',
+  });
+
+const httpHeaderValueSchema = z.string().regex(/^[^\r\n\0]*$/u, {
+  message: 'A response header value must not contain CR, LF or NUL',
+});
+
 const networkMockResponseSchema = z
   .object({
     status: z
@@ -109,7 +119,7 @@ const networkMockResponseSchema = z
       .default(200)
       .describe('HTTP status code for the mocked response'),
     headers: z
-      .record(z.string(), z.string())
+      .record(httpHeaderNameSchema, httpHeaderValueSchema)
       .default({})
       .describe('Additional response headers')
       .optional(),
