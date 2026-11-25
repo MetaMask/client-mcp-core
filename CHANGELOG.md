@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs: wait for a slow first screen after a navigating tap on Android ([#112](https://github.com/MetaMask/client-mcp-core/pull/112))
 - chore: bump @metamask/device-mcp to ^0.9.0 ([#116](https://github.com/MetaMask/client-mcp-core/pull/116))
 
-### Fix
+### Fixed
 
 - fix: accept the ref shorthand in run_steps for every target tool ([#114](https://github.com/MetaMask/client-mcp-core/pull/114))
 - fix: mobile visible follows the tap rule for zero-height frames ([#115](https://github.com/MetaMask/client-mcp-core/pull/115))
