@@ -613,6 +613,8 @@ A rule object requires `id`, `method` and `url`, plus at least one of `response`
 | `response.headers` | Additional response headers (optional; keys are normalized to lowercase and can override defaults like `content-type`)           |
 | `record`           | Optional. Records details of the requests this rule matches. Off by default. See [Record request bodies](#record-request-bodies) |
 
+Response header names must be HTTP tokens such as `x-note`, and values must not contain CR, LF or NUL.
+
 You can also pass an array of rules or an object with a `routes` array:
 
 ```bash
@@ -641,6 +643,7 @@ Rules apply to requests from four contexts: pages (`page`: tabs, popup, dapps), 
 - `offscreen` in `pending` means the offscreen document is not running or could not be attached; its requests and its snaps' requests are then not mocked. The offscreen document is recreated when the service worker restarts, and the rules apply to the new one.
 - Both lists are empty when there are no rules.
 - The JSON `POST` of a snap is preceded by a CORS preflight (`OPTIONS`). For a rule with a `response`, the preflight is answered for you; preflights are never recorded.
+- If the mocked response of an offscreen document or snap request cannot be sent, the request goes to the real server. Its record keeps `matched: true` but has no `status`, and `mockError` gives the reason.
 
 ##### Record request bodies
 

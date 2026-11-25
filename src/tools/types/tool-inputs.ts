@@ -296,6 +296,12 @@ export type NetworkMockRequestRecord = {
    * requests have none.
    */
   status?: number;
+  /**
+   * Why the mocked response of an offscreen document or iframe request
+   * could not be sent. The request was then continued to the real server,
+   * if its target was still there, and the record has no `status`.
+   */
+  mockError?: string;
   /** The context the request came from. */
   context?: NetworkMockContext;
   /** True for a service worker request (`context: 'sw'`). */

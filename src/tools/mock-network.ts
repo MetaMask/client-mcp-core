@@ -27,6 +27,7 @@ import type {
 } from '../platform/cdp-manager.js';
 import { getCdpManager } from '../platform/cdp-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
+import { extractErrorMessage } from '../utils/errors.js';
 import { debugWarn } from '../utils/logger.js';
 
 const DEFAULT_MAX_REQUEST_RECORDS = 500;
@@ -607,6 +608,9 @@ export class NetworkMockRouteManager {
    * an opaque origin, so its JSON `POST` is preflighted: the preflight of a
    * mocked request is fulfilled, see {@link buildPreflightResponse}.
    *
+   * A mocked response that cannot be sent leaves its reason in the record's
+   * `mockError`, and the request is continued to the real server.
+   *
    * @param fetchSession - The session the request was paused on.
    * @param params - The `Fetch.requestPaused` payload.
    * @returns Once the request is answered. Never rejects.
@@ -651,7 +655,7 @@ export class NetworkMockRouteManager {
           : answer('Fetch.continueRequest'));
         return;
       }
-      this.#recordRequest(
+      const record = this.#recordRequest(
         {
           method,
           url,
@@ -666,16 +670,22 @@ export class NetworkMockRouteManager {
         await answer('Fetch.continueRequest');
         return;
       }
-      await answer('Fetch.fulfillRequest', {
-        responseCode: matchedRule.response.status ?? 200,
-        responseHeaders: toHeaderEntries(
-          buildResponseHeaders(matchedRule.response),
-        ),
-        body: Buffer.from(
-          buildResponseBody(matchedRule.response),
-          'utf8',
-        ).toString('base64'),
-      });
+      try {
+        await answer('Fetch.fulfillRequest', {
+          responseCode: matchedRule.response.status ?? 200,
+          responseHeaders: toHeaderEntries(
+            buildResponseHeaders(matchedRule.response),
+          ),
+          body: Buffer.from(
+            buildResponseBody(matchedRule.response),
+            'utf8',
+          ).toString('base64'),
+        });
+      } catch (error) {
+        delete record.status;
+        record.mockError = extractErrorMessage(error);
+        throw error;
+      }
     } catch (error) {
       debugWarn('mock-network.fetch', error);
     } finally {

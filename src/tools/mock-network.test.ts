@@ -1646,10 +1646,10 @@ describe('NetworkMockRouteManager offscreen document and iframes', () => {
     expect(cdp.manager.watchSessions).not.toHaveBeenCalled();
   });
 
-  it('continues a paused request whose fulfill fails', async () => {
+  it('continues a paused request whose fulfill fails, and says so in its record', async () => {
     const iframe = createFetchSession('iframe', 'iframe-1', (method) => {
       if (method === 'Fetch.fulfillRequest') {
-        throw new Error('Invalid InterceptionId');
+        throw new Error('Invalid header');
       }
       return {};
     });
@@ -1663,6 +1663,17 @@ describe('NetworkMockRouteManager offscreen document and iframes', () => {
 
     expect(sent(iframe, 'Fetch.continueRequest')).toStrictEqual([
       { requestId: 'request-1' },
+    ]);
+    expect(manager.getRequests()).toStrictEqual([
+      {
+        timestamp: expect.any(String),
+        method: 'POST',
+        url: SCAN_RULE.url,
+        matched: true,
+        ruleId: SCAN_RULE.id,
+        context: 'iframe',
+        mockError: 'Invalid header',
+      },
     ]);
   });
 
