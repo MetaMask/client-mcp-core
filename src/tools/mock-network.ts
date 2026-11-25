@@ -206,6 +206,13 @@ export class NetworkMockRouteManager {
     | { manager: CdpManager; watch: Promise<CdpSessionWatch | undefined> }
     | undefined;
 
+  /**
+   * Bumped by each stop of the interception. An attach carries the
+   * generation of the watch that started it, so one that arrives after its
+   * watch stopped is ignored.
+   */
+  #fetchGeneration = 0;
+
   #fetchPatterns: FetchPattern[] = [];
 
   #fetchPatternKey = '';
@@ -290,10 +297,11 @@ export class NetworkMockRouteManager {
       // A disposed manager (the browser was relaunched) took its sessions
       // with it; watch the current one.
       await this.#stopFetch();
+      const generation = this.#fetchGeneration;
       const watch = cdpManager
         .watchSessions({
           kinds: PENDING_CONTEXTS,
-          onAttach: async (watched) => this.#onFetchAttach(watched),
+          onAttach: async (watched) => this.#onFetchAttach(watched, generation),
           onDetach: (target) => this.#onFetchDetach(target),
           onError: (error) => debugWarn('mock-network.fetch', error),
         })
@@ -302,7 +310,7 @@ export class NetworkMockRouteManager {
           return undefined;
         });
       this.#watch = { manager: cdpManager, watch };
-      if ((await watch) === undefined && this.#watch.watch === watch) {
+      if ((await watch) === undefined && this.#watch?.watch === watch) {
         this.#watch = undefined;
       }
       return;
@@ -492,9 +500,24 @@ export class NetworkMockRouteManager {
    * Starts intercepting an offscreen document or iframe session: listens for
    * paused requests, then enables `Fetch` for the rule origins.
    *
+   * The session joins `#fetchSessions` before the first `await`, so a stop
+   * that comes later always disables it.
+   *
    * @param watched - The session handed over by the CDP manager.
+   * @param generation - The generation of the watch that handed it over.
    */
-  async #onFetchAttach(watched: CdpWatchedSession): Promise<void> {
+  async #onFetchAttach(
+    watched: CdpWatchedSession,
+    generation: number,
+  ): Promise<void> {
+    if (
+      generation !== this.#fetchGeneration ||
+      [...this.#fetchSessions].some(
+        (fetchSession) => fetchSession.session === watched.session,
+      )
+    ) {
+      return;
+    }
     const fetchSession: FetchSession = {
       kind: watched.target().kind as NetworkMockPendingContext,
       session: watched.session,
@@ -558,6 +581,7 @@ export class NetworkMockRouteManager {
   async #stopFetch(): Promise<void> {
     const current = this.#watch;
     this.#watch = undefined;
+    this.#fetchGeneration += 1;
     const sessions = [...this.#fetchSessions];
     this.#fetchSessions.clear();
     await (await current?.watch)?.unwatch();

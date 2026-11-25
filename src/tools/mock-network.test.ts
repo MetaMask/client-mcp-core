@@ -1737,6 +1737,82 @@ describe('NetworkMockRouteManager offscreen document and iframes', () => {
     expect(manager.getCoverage()).toStrictEqual({ contexts: [], pending: [] });
   });
 
+  it('leaves alone an iframe that attaches while clear stops the watch', async () => {
+    const cdp = createFakeCdpManager();
+    let release = (): void => undefined;
+    const started = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    cdp.manager.watchSessions.mockImplementationOnce(async (options) => {
+      cdp.watches.push(options);
+      await started;
+      return { unwatch: cdp.unwatch };
+    });
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    const adding = manager.addRule(SCAN_RULE);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const clearing = manager.clear();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const iframe = createFetchSession('iframe');
+    await cdp.attach(iframe);
+    release();
+    await Promise.all([adding, clearing]);
+
+    expect(sent(iframe, 'Fetch.enable')).toStrictEqual([]);
+    expect(iframe.listenerCount('Fetch.requestPaused')).toBe(0);
+    expect(manager.getCoverage()).toStrictEqual({ contexts: [], pending: [] });
+
+    await manager.addRule(SCAN_RULE);
+    await cdp.attach(iframe);
+    await pause(iframe, { url: SCAN_RULE.url, method: 'POST' });
+
+    expect(iframe.listenerCount('Fetch.requestPaused')).toBe(1);
+    expect(sent(iframe, 'Fetch.fulfillRequest')).toHaveLength(1);
+    expect(manager.getRequests()).toHaveLength(1);
+  });
+
+  it('does not fail an add whose watch fails while clear stops it', async () => {
+    const cdp = createFakeCdpManager();
+    let fail = (): void => undefined;
+    cdp.manager.watchSessions.mockImplementationOnce(
+      async () =>
+        new Promise((_resolve, reject) => {
+          fail = (): void => reject(new Error('No browser'));
+        }),
+    );
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    const adding = manager.addRule(SCAN_RULE);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const clearing = manager.clear();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fail();
+
+    expect(await Promise.all([adding, clearing])).toStrictEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('takes a session handed over twice only once', async () => {
+    const iframe = createFetchSession('iframe');
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule(SCAN_RULE);
+
+    await cdp.attach(iframe);
+
+    expect(iframe.listenerCount('Fetch.requestPaused')).toBe(1);
+    expect(sent(iframe, 'Fetch.enable')).toHaveLength(1);
+  });
+
   it('retries the watch after it failed', async () => {
     const cdp = createFakeCdpManager();
     cdp.manager.watchSessions.mockRejectedValueOnce(new Error('No browser'));
