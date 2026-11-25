@@ -3105,14 +3105,20 @@ export class CdpManager {
   }
 
   /**
-   * Emits a target event.
+   * Emits a target event. Never throws: callers emit in the middle of an
+   * attach (an iframe still waits to be resumed), so a failing listener is
+   * only logged and the others are still called.
    *
    * @param event - The event name.
    * @param payload - The target payload.
    */
   #emit(event: CdpManagerEvent, payload: CdpTargetLifecycleEvent): void {
     for (const listener of this.#listeners.get(event) ?? []) {
-      listener(payload);
+      try {
+        listener(payload);
+      } catch (error) {
+        debugWarn('cdp-manager.events', error);
+      }
     }
   }
 

@@ -373,6 +373,27 @@ describe('CdpManager page targets', () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 
+  it('opens a session and calls the other listeners when a listener throws', async () => {
+    const fake = createContext();
+    const session = createCdpSession();
+    fake.newCDPSession.mockResolvedValueOnce(session);
+    const manager = new CdpManager(fake.context);
+    const second = vi.fn();
+    manager
+      .on('targetAttached', () => {
+        throw new Error('listener failed');
+      })
+      .on('targetAttached', second);
+
+    const opened = await manager.getSession({
+      kind: 'page',
+      page: createPage(),
+    });
+
+    expect(opened).toBe(session);
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores a session detach failure on dispose', async () => {
     const fake = createContext();
     const session = createCdpSession();
@@ -3757,6 +3778,31 @@ describe('CdpManager offscreen document and iframes', () => {
         'Network.getResponseBody',
       ),
     ).toStrictEqual({ body: 'offscreen' });
+  });
+
+  it('resumes an iframe when a targetAttached listener throws', async () => {
+    const fake = createOffscreenContext({ iframes: [IFRAME_ID] });
+    const manager = new CdpManager(fake.context);
+    const second = vi.fn();
+    manager
+      .on('targetAttached', (target) => {
+        if (target.kind === 'iframe') {
+          throw new Error('listener failed');
+        }
+      })
+      .on('targetAttached', second);
+    const watcher = createWatcher();
+
+    await manager.watchSessions({ kinds: ['iframe'], ...watcher });
+
+    expect(fake.childMethods()).toStrictEqual([
+      'Runtime.runIfWaitingForDebugger',
+    ]);
+    expect(watcher.attached).toHaveLength(1);
+    expect(second).toHaveBeenCalledWith({
+      kind: 'iframe',
+      targetId: IFRAME_ID,
+    });
   });
 
   it('fails an iframe command in flight when its offscreen document goes away', async () => {
