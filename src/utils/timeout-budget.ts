@@ -17,9 +17,6 @@ export const TIMEOUT_OVERHEAD_MS = 2_000;
 /**
  * Tools whose default action budget is the interaction timeout.
  *
- * `screenshot` counts only when it has a target to wait for (a selector or a
- * frame): a full-page capture keeps the queue default.
- *
  * Deliberately not the schema-derived `TARGET_TOOL_NAMES` exported from
  * validation/schemas.ts: the two are different ideas. The action-budget list
  * is about timeout behaviour, and `long_press` — a target tool — has no
@@ -223,8 +220,7 @@ export function resolveActionTimeoutMs(
     record?.selector === undefined &&
     record?.frame === undefined
   ) {
-    // A full-page capture has no target to wait for: it keeps the queue
-    // default instead of the interaction budget a selector gets.
+    // A full-page capture has no target to wait for: keep the queue default.
     return undefined;
   }
   const requested = record?.timeoutMs;

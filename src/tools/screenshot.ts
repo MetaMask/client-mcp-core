@@ -1,7 +1,6 @@
 import { classifyScreenshotError } from './error-classification.js';
 import type { ScreenshotInput, ScreenshotToolResult } from './types';
 import { ErrorCodes } from './types';
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
 import {
   resolveFrameSelector,
   resolveWithinScope,
@@ -59,9 +58,9 @@ export async function screenshotTool(
       fullPage: input.fullPage ?? true,
       selector,
       includeBase64: input.includeBase64,
-      ...(selector === undefined
-        ? {}
-        : { timeoutMs: input.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS }),
+      ...(selector !== undefined && input.timeoutMs !== undefined
+        ? { timeoutMs: input.timeoutMs }
+        : {}),
     });
 
     const response: ScreenshotToolResult = {

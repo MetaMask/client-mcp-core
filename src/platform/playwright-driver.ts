@@ -464,8 +464,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
     options: PlatformScreenshotOptions,
   ): Promise<ScreenshotResult> {
     if (options.selector !== undefined) {
-      // A missing target must fail as a target error, not as a screenshot
-      // timeout at Playwright's 30 s default (the daemon queue limit).
+      // Fail a missing selector as a target error before the capture.
       await waitForTarget(
         this.#getPage(),
         'selector',

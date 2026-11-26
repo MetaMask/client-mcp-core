@@ -14,7 +14,6 @@ import {
   createMockPage,
 } from './test-utils/mock-playwright.js';
 import { ErrorCodes } from './types/errors.js';
-import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
 import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
@@ -307,7 +306,7 @@ describe('screenshotTool', () => {
       }
     });
 
-    it('passes the timeout to the driver, defaulting to the interaction budget', async () => {
+    it('passes an explicit timeout to the driver', async () => {
       const context = createMockContext();
       const screenshot = vi
         .spyOn(context.driver as any, 'screenshot')
@@ -319,12 +318,7 @@ describe('screenshotTool', () => {
       );
 
       await screenshotTool({ selector: '.modal' }, context);
-      expect(screenshot).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          selector: '.modal',
-          timeoutMs: DEFAULT_INTERACTION_TIMEOUT_MS,
-        }),
-      );
+      expect(screenshot.mock.calls[1][0]).not.toHaveProperty('timeoutMs');
     });
 
     it('does not set a timeout for a full-page capture', async () => {

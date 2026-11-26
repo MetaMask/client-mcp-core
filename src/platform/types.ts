@@ -94,11 +94,7 @@ export type PlatformScreenshotOptions = {
   fullPage?: boolean;
   selector?: string;
   includeBase64?: boolean;
-  /**
-   * Browser only: how long to wait for `selector` before the capture
-   * (default 15000). A selector that matches no element fails with a
-   * target-not-found error.
-   */
+  /** Browser: how long to wait for `selector`, in ms. */
   timeoutMs?: number;
 };
 
