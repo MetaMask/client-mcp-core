@@ -32,6 +32,7 @@ import {
   parseIntFlag,
   parseStringFlag,
   parseLaunchArgs,
+  validateLaunchArgs,
   readSelfOnboardingInput,
   printHelp,
   resolveRuntime,
@@ -658,12 +659,33 @@ describe('parseIntFlag', () => {
     expect(parseIntFlag(['--other', '5000'], '--timeout')).toBeUndefined();
   });
 
-  it('returns undefined for NaN values', () => {
-    expect(parseIntFlag(['--timeout', 'abc'], '--timeout')).toBeUndefined();
+  it('keeps 0 and negative integers valid', () => {
+    expect(parseIntFlag(['--timeout', '0'], '--timeout')).toBe(0);
+    expect(parseIntFlag(['--x', '-10'], '--x')).toBe(-10);
   });
 
-  it('returns undefined when no value follows flag', () => {
-    expect(parseIntFlag(['--timeout'], '--timeout')).toBeUndefined();
+  it.each(['abc', '12abc', '1.5', '', '1e3'])(
+    'exits for non-integer value %j',
+    (value) => {
+      expect(() =>
+        parseIntFlag(['--timeout', value], '--timeout'),
+      ).toThrowError('process.exit');
+      expectFailure(`--timeout expects an integer, got "${value}"`, 2);
+    },
+  );
+
+  it('exits when no value follows flag', () => {
+    expect(() => parseIntFlag(['--timeout'], '--timeout')).toThrowError(
+      'process.exit',
+    );
+    expectFailure('--timeout expects an integer, got ""', 2);
+  });
+
+  it('exits when the next token is another flag', () => {
+    expect(() =>
+      parseIntFlag(['--timeout', '--limit', '5'], '--timeout'),
+    ).toThrowError('process.exit');
+    expectFailure('--timeout expects an integer, got "--limit"', 2);
   });
 });
 
@@ -1042,6 +1064,52 @@ describe('parseLaunchArgs', () => {
       );
       expect(result).not.toHaveProperty('goal');
       expect(result).not.toHaveProperty('flowTags');
+    },
+  );
+});
+
+describe('validateLaunchArgs', () => {
+  it('accepts every allowed value', () => {
+    expect(() =>
+      validateLaunchArgs({
+        context: 'e2e',
+        stateMode: 'onboarding',
+        platform: 'android',
+      }),
+    ).not.toThrowError();
+  });
+
+  it('accepts absent values (schema defaults apply)', () => {
+    expect(() => validateLaunchArgs({})).not.toThrowError();
+  });
+
+  it.each(['nope', 'E2E', ''])('exits for invalid --context %j', (value) => {
+    expect(() => validateLaunchArgs({ context: value })).toThrowError(
+      'process.exit',
+    );
+    expectFailure(`--context expects one of: e2e, prod, got "${value}"`, 2);
+  });
+
+  it.each(['nope', 'Default', ''])('exits for invalid --state %j', (value) => {
+    expect(() => validateLaunchArgs({ stateMode: value })).toThrowError(
+      'process.exit',
+    );
+    expectFailure(
+      `--state expects one of: default, onboarding, custom, got "${value}"`,
+      2,
+    );
+  });
+
+  it.each(['nope', 'Chrome', ''])(
+    'exits for invalid --platform %j',
+    (value) => {
+      expect(() => validateLaunchArgs({ platform: value })).toThrowError(
+        'process.exit',
+      );
+      expectFailure(
+        `--platform expects one of: browser, ios, android, got "${value}"`,
+        2,
+      );
     },
   );
 });
@@ -4144,6 +4212,74 @@ describe('main', () => {
     );
 
     process.argv = origArgv;
+  });
+
+  it('rejects an invalid launch arg before discovering the daemon', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'launch', '--state', 'nope'];
+
+    try {
+      await expect(main()).rejects.toThrowError('process.exit');
+      const line = expectFailure(
+        '--state expects one of: default, onboarding, custom, got "nope"',
+        2,
+      );
+      expect(line.error.code).toBe('MM_INVALID_INPUT');
+      expect(readDaemonState).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      process.argv = origArgv;
+    }
+  });
+
+  it('rejects an unknown command before discovering the daemon', async () => {
+    const { readDaemonState } = await import('../server/daemon-state.js');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'frobnicate'];
+
+    try {
+      await expect(main()).rejects.toThrowError('process.exit');
+      const line = expectFailure(
+        expect.stringContaining("unknown command 'frobnicate'"),
+        2,
+      );
+      expect(line.error.code).toBe('MM_INVALID_INPUT');
+      expect(readDaemonState).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      process.argv = origArgv;
+    }
+  });
+
+  it('rejects an unknown command even when a daemon is running', async () => {
+    const { readDaemonState, isDaemonAlive } =
+      await import('../server/daemon-state.js');
+    vi.mocked(readDaemonState).mockResolvedValueOnce({
+      port: 3000,
+      pid: 123,
+      nonce: 'abc',
+      startedAt: '2024-01-01',
+      version: '1.0.0',
+      subPorts: {},
+    });
+    vi.mocked(isDaemonAlive).mockResolvedValueOnce(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const origArgv = process.argv;
+    process.argv = ['node', 'mm', 'frobnicate'];
+
+    try {
+      await expect(main()).rejects.toThrowError('process.exit');
+      expectFailure(expect.stringContaining("unknown command 'frobnicate'"), 2);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      process.argv = origArgv;
+    }
   });
 
   it('sends the global --observe level with the request', async () => {
