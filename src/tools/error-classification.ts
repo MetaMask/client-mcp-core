@@ -78,11 +78,34 @@ export function isPageClosedError(error: unknown): boolean {
 }
 
 /**
+ * Reads a target error that already carries the agent-facing code: the
+ * mobile driver's `MobileRefError` (a ref the tool cannot use; nothing was
+ * sent to the device), with its own hint.
+ *
+ * @param error - The thrown error.
+ * @returns The code, message and hint, or undefined for other errors.
+ */
+export function readTargetRefError(
+  error: unknown,
+): { code: string; message: string; hint?: string } | undefined {
+  const typed = error as { code?: unknown; hint?: unknown } | null | undefined;
+  if (typed?.code !== ErrorCodes.MM_TARGET_NOT_FOUND) {
+    return undefined;
+  }
+  return {
+    code: ErrorCodes.MM_TARGET_NOT_FOUND,
+    message: extractErrorMessage(error),
+    ...(typeof typed.hint === 'string' ? { hint: typed.hint } : {}),
+  };
+}
+
+/**
  * Classify an interaction error into a specific error code.
  *
  * @param error - The error to classify
  * @param fallbackCode - The fallback error code if no pattern matches
- * @returns Object with error code and message
+ * @returns Object with error code, message and, for a ref the tool cannot
+ * use, a hint
  */
 export function classifyInteractionError(
   error: unknown,
@@ -90,8 +113,14 @@ export function classifyInteractionError(
 ): {
   code: string;
   message: string;
+  hint?: string;
 } {
   const message = extractErrorMessage(error);
+
+  const refError = readTargetRefError(error);
+  if (refError) {
+    return refError;
+  }
 
   // Typed device-mcp errors first: their messages can contain "not found"
   // or "timed out" text that the patterns below would misread.
@@ -135,6 +164,7 @@ export function classifyInteractionError(
 export function classifyClickError(error: unknown): {
   code: string;
   message: string;
+  hint?: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_CLICK_FAILED);
 }
@@ -148,6 +178,7 @@ export function classifyClickError(error: unknown): {
 export function classifyTypeError(error: unknown): {
   code: string;
   message: string;
+  hint?: string;
 } {
   const message = extractErrorMessage(error);
   if (ERROR_PATTERNS.notEditable.some((pattern) => message.includes(pattern))) {
@@ -165,6 +196,7 @@ export function classifyTypeError(error: unknown): {
 export function classifyWaitError(error: unknown): {
   code: string;
   message: string;
+  hint?: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_WAIT_TIMEOUT);
 }
@@ -178,6 +210,7 @@ export function classifyWaitError(error: unknown): {
 export function classifyGetTextError(error: unknown): {
   code: string;
   message: string;
+  hint?: string;
 } {
   return classifyInteractionError(error, ErrorCodes.MM_GETTEXT_FAILED);
 }

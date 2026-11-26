@@ -63,6 +63,27 @@ const HERMES_BLOCKED_METHOD_CODE = 'HERMES_BLOCKED_METHOD';
 // agent-facing contract matches the browser and Hermes drivers.
 const WEBVIEW_BLOCKED_METHOD_CODE = 'WEBVIEW_BLOCKED_METHOD';
 
+/**
+ * A mobile ref that the tool cannot use. Nothing was sent to the device.
+ * `hint` says what to do instead; without it the default hint of the code
+ * applies.
+ */
+export class MobileRefError extends Error {
+  readonly code = ErrorCodes.MM_TARGET_NOT_FOUND;
+
+  readonly hint: string | undefined;
+
+  /**
+   * @param message - What is wrong with the ref.
+   * @param hint - What to do instead.
+   */
+  constructor(message: string, hint?: string) {
+    super(message);
+    this.name = 'MobileRefError';
+    this.hint = hint;
+  }
+}
+
 /** Options of `MobilePlatformDriver`. */
 export type MobilePlatformDriverOptions = {
   /**
@@ -310,12 +331,25 @@ export class MobilePlatformDriver implements IPlatformDriver {
     options?: ClickOptions,
   ): Promise<ClickActionResult> {
     rejectWithinScope(within);
-    const query = resolveTargetToQuery(targetType, targetValue, refMap);
     const deadline = Date.now() + timeoutMs;
-    const element = await this.#backend.waitForElement(query, timeoutMs);
+    const boundsRef =
+      targetType === 'a11yRef'
+        ? parseBoundsRef(refMap.get(targetValue))
+        : undefined;
+    // A bounds ref (unnamed or ambiguous node) is tapped on the element
+    // found at its snapshot bounds, never on the first element that matches
+    // a query: that can be another element with the same identity.
+    const query = boundsRef
+      ? boundsRef.query
+      : resolveTargetToQuery(targetType, targetValue, refMap);
+    const locate = async (waitMs: number): Promise<UIElement> =>
+      boundsRef
+        ? this.#elementAtBounds(targetValue, boundsRef, deadline)
+        : this.#backend.waitForElement(query, waitMs);
+    const element = await locate(timeoutMs);
     // The request may have timed out while we waited for the target.
     signal?.throwIfAborted();
-    const target = `${targetType}:${targetValue}`;
+    const target = `${targetType}:${targetValue}${boundsRef ? ' (bounds)' : ''}`;
     try {
       await withTimeout(
         this.#backend.tapElement(query, { element }),
@@ -335,10 +369,7 @@ export class MobilePlatformDriver implements IPlatformDriver {
       'dismissKeyboard',
     );
     signal?.throwIfAborted();
-    const moved = await this.#backend.waitForElement(
-      query,
-      Math.max(0, deadline - Date.now()),
-    );
+    const moved = await locate(Math.max(0, deadline - Date.now()));
     signal?.throwIfAborted();
     await withTimeout(
       this.#backend.tapElement(query, { element: moved }),
@@ -346,6 +377,39 @@ export class MobilePlatformDriver implements IPlatformDriver {
       'tapElement',
     );
     return { clicked: true, target, keyboardDismissed: true };
+  }
+
+  /**
+   * Finds the element of a bounds ref in a new device snapshot: the element
+   * with the same type and identity at the same frame (1 point tolerance).
+   * The element comes from the backend's own snapshot, so `tapElement` can
+   * run its viewport check and hit test on it.
+   *
+   * @param ref - The ref, for the error message.
+   * @param boundsRef - The parsed bounds ref.
+   * @param deadline - Epoch ms by which the snapshot must return.
+   * @returns The element.
+   * @throws When no such element is on the screen any more.
+   */
+  async #elementAtBounds(
+    ref: string,
+    boundsRef: BoundsRef,
+    deadline: number,
+  ): Promise<UIElement> {
+    const { hierarchy } = await withTimeout(
+      this.#backend.snapshot(),
+      deadline - Date.now(),
+      'snapshot',
+    );
+    const element = findAtBounds(hierarchy, boundsRef);
+    if (!element) {
+      const { x, y, width, height } = boundsRef.frame;
+      throw new MobileRefError(
+        `Element of ref ${ref} not found at its snapshot bounds ` +
+          `(${x}, ${y} ${width}x${height}): the screen changed after the snapshot. Nothing was tapped.`,
+      );
+    }
+    return element;
   }
 
   /**
@@ -1116,7 +1180,10 @@ function readScrollOutcome(
 }
 
 /**
- * Resolves a target selector to a DeviceBackend ElementQuery.
+ * Resolves a target selector to a DeviceBackend ElementQuery. A bounds ref
+ * (an unnamed or ambiguous node, see `normalizeSnapshot`) is refused: a
+ * query cannot find it, or can find another element with the same identity.
+ * Only `click` uses bounds refs, before calling this.
  *
  * @param targetType - The selector type (a11yRef, testId, selector).
  * @param targetValue - The selector value.
@@ -1132,10 +1199,14 @@ function resolveTargetToQuery(
     case 'a11yRef': {
       const resolution = refMap.get(targetValue);
       if (!resolution) {
-        throw new Error(
+        throw new MobileRefError(
           `Unknown a11yRef: ${targetValue}. ` +
             `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
         );
+      }
+      const boundsRef = parseBoundsRef(resolution);
+      if (boundsRef) {
+        throw boundsRefError(targetValue, boundsRef);
       }
       return parseStableIdentifier(resolution);
     }
@@ -1212,12 +1283,20 @@ function parseStableIdentifier(stableId: string): ElementQuery {
  * with no targeting value, and the ancestor list was most of the payload.
  * Targeting is by `ref` or `testId`.
  *
- * Only a node with a testId, label or value gets a refMap entry, so only
- * its ref can be targeted. Kept nodes with none of them are listed (with
- * `bounds`, for `tap-coordinates`) but their ref does not resolve:
- * unlabelled tap targets (see `isUnlabelledTapTarget`), progress indicators
- * (kept for the screen settle) and unnamed controls. Ambiguity is computed
- * over the kept nodes.
+ * Every node gets a refMap entry. A node with a testId, label or value that
+ * no other kept node shares gets its stable identifier, which `click`,
+ * `type` and the other target tools turn into an element query. Two other
+ * kinds get a bounds ref (see `BoundsRef`) instead, with the node's frame:
+ *
+ * - unnamed nodes (no testId, label or value): unlabelled tap targets (see
+ * `isUnlabelledTapTarget`), progress indicators and unnamed controls. A
+ * query cannot find them.
+ * - ambiguous nodes (another kept node has the same stable identifier; the
+ * node is marked `ambiguous`): a query finds the first of them, which can
+ * be another element.
+ *
+ * Only `click` uses a bounds ref: it taps the element found at those bounds
+ * in a new snapshot. The other tools refuse it.
  *
  * @param hierarchy - The UIElement tree from a device snapshot (after
  * `filterAppHierarchy`).
@@ -1232,7 +1311,8 @@ function normalizeSnapshot(
   refMap: Map<string, string>;
 } {
   const nodes: A11yNodeTrimmed[] = [];
-  const refMap = new Map<string, string>();
+  const entries: { node: A11yNodeTrimmed; el: UIElement; stableId?: string }[] =
+    [];
   const stableIdCount = new Map<string, string[]>();
   let refCounter = 0;
 
@@ -1273,8 +1353,8 @@ function normalizeSnapshot(
         stableId = `value:${el.value}|type:${role}`;
       }
 
+      entries.push({ node, el, ...(stableId ? { stableId } : {}) });
       if (stableId) {
-        refMap.set(ref, stableId);
         const refs = stableIdCount.get(stableId) ?? [];
         refs.push(ref);
         stableIdCount.set(stableId, refs);
@@ -1288,18 +1368,148 @@ function normalizeSnapshot(
 
   walk(pruneLayoutOnly(hierarchy, platform));
 
-  for (const refs of stableIdCount.values()) {
-    if (refs.length > 1) {
-      for (const ref of refs) {
-        const node = nodes.find((nd) => nd.ref === ref);
-        if (node) {
-          node.ambiguous = true;
-        }
-      }
+  const refMap = new Map<string, string>();
+  for (const { node, el, stableId } of entries) {
+    const matches = stableId ? (stableIdCount.get(stableId)?.length ?? 0) : 0;
+    if (stableId && matches === 1) {
+      refMap.set(node.ref, stableId);
+      continue;
     }
+    if (matches > 1) {
+      node.ambiguous = true;
+    }
+    const { x, y, width, height } = el.frame;
+    refMap.set(
+      node.ref,
+      formatBoundsRef({
+        frame: { x, y, width, height },
+        query: identityQuery(el, node.role),
+        ...(matches > 1 ? { matches } : {}),
+      }),
+    );
   }
 
   return { nodes, refMap };
+}
+
+/**
+ * A ref that `click` resolves by the node's snapshot frame instead of an
+ * element query (see `normalizeSnapshot`). Stored in the refMap as
+ * `bounds:` followed by the JSON of this object.
+ */
+type BoundsRef = {
+  /** The node's frame in the snapshot. */
+  frame: UIElement['frame'];
+  /**
+   * The node's identity: its stable identifier as a query, or only its type
+   * for an unnamed node.
+   */
+  query: ElementQuery;
+  /** Ambiguous nodes: how many kept nodes share the identity. */
+  matches?: number;
+};
+
+const BOUNDS_REF_PREFIX = 'bounds:';
+
+/** Frame tolerance, in points (iOS) or pixels (Android). */
+const BOUNDS_TOLERANCE = 1;
+
+/**
+ * The identity of a node, as in its stable identifier: the identifier, else
+ * the label and type, else the value and type, else only the type.
+ *
+ * @param el - The element.
+ * @param role - Its role (type, or `element`).
+ * @returns The query.
+ */
+function identityQuery(el: UIElement, role: string): ElementQuery {
+  if (el.identifier) {
+    return { identifier: el.identifier };
+  }
+  if (el.label) {
+    return { label: el.label, type: role };
+  }
+  return el.value ? { text: el.value, type: role } : { type: role };
+}
+
+/**
+ * @param boundsRef - The bounds ref.
+ * @returns The refMap value.
+ */
+function formatBoundsRef(boundsRef: BoundsRef): string {
+  return `${BOUNDS_REF_PREFIX}${JSON.stringify(boundsRef)}`;
+}
+
+/**
+ * @param value - A refMap value, if any.
+ * @returns The bounds ref, or undefined for a stable identifier.
+ */
+function parseBoundsRef(value: string | undefined): BoundsRef | undefined {
+  return value?.startsWith(BOUNDS_REF_PREFIX)
+    ? (JSON.parse(value.slice(BOUNDS_REF_PREFIX.length)) as BoundsRef)
+    : undefined;
+}
+
+/**
+ * The error of a tool other than `click` given a bounds ref.
+ *
+ * @param ref - The ref.
+ * @param boundsRef - The parsed bounds ref.
+ * @returns The error, with a hint that names what works.
+ */
+function boundsRefError(ref: string, boundsRef: BoundsRef): MobileRefError {
+  const { frame, matches } = boundsRef;
+  if (matches) {
+    return new MobileRefError(
+      `Ref ${ref} is ambiguous (${matches} elements on the screen have the same test ID, or the same label and type); only click can use it. Nothing was sent to the device.`,
+      `Target it by a unique \`--testid\`, or run \`mm click ${ref}\`: it taps the listed element at its bounds.`,
+    );
+  }
+  const centerX = Math.round(frame.x + frame.width / 2);
+  const centerY = Math.round(frame.y + frame.height / 2);
+  return new MobileRefError(
+    `Ref ${ref} has no test ID, label or value; only click can use it. Nothing was sent to the device.`,
+    `Run \`mm click ${ref}\` (it taps the element at its bounds) or \`mm tap-coordinates ${centerX} ${centerY}\`.`,
+  );
+}
+
+/**
+ * Finds the element of a bounds ref in a raw snapshot: the same type and
+ * identity, at the same frame. An unnamed ref only matches an element with
+ * no identifier, label or value. The deepest match wins: an unnamed wrapper
+ * of the same type and frame (layout-only, so not listed) can enclose the
+ * listed node.
+ *
+ * @param elements - The hierarchy to search.
+ * @param boundsRef - The bounds ref.
+ * @returns The element, or undefined.
+ */
+function findAtBounds(
+  elements: UIElement[],
+  boundsRef: BoundsRef,
+): UIElement | undefined {
+  const { frame, query } = boundsRef;
+  const { identifier, label, text, type } = query;
+  const named = Boolean(identifier ?? label ?? text);
+  const matches = (el: UIElement): boolean =>
+    (['x', 'y', 'width', 'height'] as const).every(
+      (key) => Math.abs(el.frame[key] - frame[key]) <= BOUNDS_TOLERANCE,
+    ) &&
+    (type === undefined || (el.type || 'element') === type) &&
+    (named
+      ? (!identifier || el.identifier === identifier) &&
+        (!label || el.label === label) &&
+        (!text || el.value === text)
+      : !el.identifier && !el.label && !el.value);
+  for (const el of elements) {
+    const found =
+      (el.children && findAtBounds(el.children, boundsRef)) ??
+      (matches(el) ? el : undefined);
+    if (found) {
+      return found;
+    }
+  }
+  return undefined;
 }
 
 /**

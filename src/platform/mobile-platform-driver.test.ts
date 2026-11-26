@@ -1368,8 +1368,12 @@ describe('MobilePlatformDriver', () => {
             role: 'UIActivityIndicatorView',
           }),
         ]);
-        // Only nodes with a testId, label or value can be resolved.
-        expect([...refMap.keys()]).toStrictEqual(['e1', 'e2']);
+        // Nodes with a testId, label or value get a stable identifier; the
+        // unnamed ones get a bounds ref.
+        expect(refMap.get('e1')).toBe('identifier:wallet-screen');
+        expect(refMap.get('e2')).toBe('label:Balance|type:StaticText');
+        expect(refMap.get('e3')).toMatch(/^bounds:/u);
+        expect(refMap.get('e4')).toMatch(/^bounds:/u);
       });
 
       it('gives a dropped node no ref, so every ref resolves', async () => {
@@ -1429,7 +1433,7 @@ describe('MobilePlatformDriver', () => {
         ]);
       });
 
-      it('lists an unlabelled tap target with bounds but no ref', async () => {
+      it('lists an unlabelled tap target with bounds and a bounds ref', async () => {
         const driver = new MobilePlatformDriver(
           snapshotWith('ios', [
             makeElement({
@@ -1468,7 +1472,13 @@ describe('MobilePlatformDriver', () => {
           },
           expect.objectContaining({ ref: 'e2', name: 'Send' }),
         ]);
-        expect([...refMap]).toStrictEqual([['e2', 'label:Send|type:Button']]);
+        expect([...refMap]).toStrictEqual([
+          [
+            'e1',
+            'bounds:{"frame":{"x":10,"y":20,"width":48,"height":48},"query":{"type":"RCTViewComponentView"}}',
+          ],
+          ['e2', 'label:Send|type:Button'],
+        ]);
       });
 
       it('reduces the real Android login snapshot (47 -> 15 nodes)', async () => {
@@ -1480,7 +1490,7 @@ describe('MobilePlatformDriver', () => {
 
         // After filterAppHierarchy: 47 elements. 32 are layout-only
         // (unnamed FrameLayout/View/ScrollView/WebView/small ViewGroups...);
-        // 3 unlabelled ViewGroup leaves are kept as tap targets (no ref).
+        // 3 unlabelled ViewGroup leaves are kept as tap targets (bounds refs).
         expect(
           nodes.map((node) => node.testId ?? (node.name || node.role)),
         ).toStrictEqual([
@@ -1503,14 +1513,10 @@ describe('MobilePlatformDriver', () => {
         expect(nodes.map((node) => node.ref)).toStrictEqual(
           nodes.map((_node, index) => `e${index + 1}`),
         );
-        expect([...refMap.keys()]).toStrictEqual(
-          nodes
-            .filter((node) => node.testId ?? node.name)
-            .map((node) => node.ref),
-        );
+        expect([...refMap.keys()]).toStrictEqual(nodes.map((node) => node.ref));
         expect(
           nodes
-            .filter((node) => !refMap.has(node.ref))
+            .filter((node) => refMap.get(node.ref)?.startsWith('bounds:'))
             .map((node) => node.bounds),
         ).toStrictEqual([
           { x: 0, y: 0, width: 1080, height: 2400 },
@@ -1558,7 +1564,7 @@ describe('MobilePlatformDriver', () => {
           'Trade',
         ]);
         // The 4 unlabelled action buttons (Buy, Swap, Send, Receive) right
-        // after `wallet-action-buttons`: listed with bounds, no ref.
+        // after `wallet-action-buttons`: listed with bounds and a bounds ref.
         const actions = nodes.findIndex(
           (node) => node.testId === 'wallet-action-buttons',
         );
@@ -1577,15 +1583,17 @@ describe('MobilePlatformDriver', () => {
           { role: 'RCTViewComponentView', name: '', x: 300, y: 242 },
         ]);
         for (const button of actionButtons) {
-          expect(refMap.has(button.ref)).toBe(false);
+          expect(refMap.get(button.ref)).toMatch(/^bounds:/u);
         }
-        // Every node with a testId or a name has a ref that resolves.
-        expect([...refMap.keys()]).toStrictEqual(
-          nodes
-            .filter((node) => node.testId ?? node.name)
-            .map((node) => node.ref),
+        // Every listed node has a ref.
+        expect([...refMap.keys()]).toStrictEqual(nodes.map((node) => node.ref));
+        expect(
+          [...refMap.values()].filter((value) => !value.startsWith('bounds:')),
+        ).toHaveLength(
+          nodes.filter(
+            (node) => (node.testId ?? node.name) && node.ambiguous !== true,
+          ).length,
         );
-        expect(refMap.size).toBe(57);
         // P1-14 AC1: at most 15 kB (was 183 kB with path, 55 kB flat).
         expect(JSON.stringify(nodes).length).toBeLessThan(11_000);
       });
@@ -2414,6 +2422,358 @@ describe('MobilePlatformDriver', () => {
 
       expect(locators).toStrictEqual([]);
     });
+  });
+});
+
+describe('MobilePlatformDriver bounds refs (#119, P1-46)', () => {
+  const okFrame = { x: 20, y: 100, width: 120, height: 40 };
+  const otherFrame = { x: 20, y: 300, width: 120, height: 40 };
+
+  /**
+   * A backend whose snapshot always returns the given hierarchy.
+   *
+   * @param hierarchy - The snapshot hierarchy.
+   * @param platform - The device platform.
+   * @returns The backend.
+   */
+  function backendWith(
+    hierarchy: UIElement[],
+    platform: 'ios' | 'android' = 'ios',
+  ): DeviceBackend {
+    return createMockBackend({
+      platform,
+      snapshot: vi.fn().mockResolvedValue({
+        platform,
+        hierarchy,
+        raw: '[]',
+        timestamp: 0,
+      }),
+    });
+  }
+
+  const sameLabel = (): UIElement[] => [
+    makeElement({
+      type: 'UIView',
+      children: [
+        makeElement({ type: 'Button', label: 'Earn', frame: okFrame }),
+        makeElement({ type: 'Button', label: 'Earn', frame: otherFrame }),
+      ],
+    }),
+  ];
+
+  const sameTestId = (): UIElement[] => [
+    makeElement({
+      type: 'UIView',
+      children: [
+        makeElement({ identifier: 'row', label: 'A', frame: okFrame }),
+        makeElement({ identifier: 'row', label: 'B', frame: otherFrame }),
+      ],
+    }),
+  ];
+
+  const unnamed = (): UIElement[] => [
+    makeElement({
+      type: 'UIView',
+      children: [
+        makeElement({ type: 'RCTViewComponentView', frame: okFrame }),
+        makeElement({ type: 'Button', label: 'Send', frame: otherFrame }),
+      ],
+    }),
+  ];
+
+  it.each([
+    ['share a label', sameLabel],
+    ['share a test ID', sameTestId],
+  ])(
+    'marks two nodes that %s ambiguous and gives them bounds refs',
+    async (_name, hierarchy) => {
+      const driver = new MobilePlatformDriver(backendWith(hierarchy()));
+
+      const { nodes, refMap } = await driver.getAccessibilityTree();
+
+      expect(nodes.map((node) => node.ambiguous)).toStrictEqual([true, true]);
+      expect(refMap.get('e1')).toMatch(/^bounds:.*"matches":2/u);
+      expect(refMap.get('e2')).toMatch(/^bounds:.*"matches":2/u);
+    },
+  );
+
+  it.each([
+    ['share a label', sameLabel, 'label:Earn'],
+    ['share a test ID', sameTestId, 'identifier:row'],
+  ])(
+    'click on an ambiguous ref (two nodes %s) taps the listed node, not the first match',
+    async (_name, hierarchy) => {
+      const backend = backendWith(hierarchy());
+      const driver = new MobilePlatformDriver(backend);
+      const { refMap } = await driver.getAccessibilityTree();
+
+      const result = await driver.click('a11yRef', 'e2', refMap, 5000);
+
+      expect(result).toStrictEqual({
+        clicked: true,
+        target: 'a11yRef:e2 (bounds)',
+      });
+      expect(backend.waitForElement).not.toHaveBeenCalled();
+      const [, options] = vi.mocked(backend.tapElement).mock.calls[0] ?? [];
+      // The element from the new snapshot, at the second node's frame.
+      expect(options?.element?.frame).toStrictEqual(otherFrame);
+      const snapshot = await vi.mocked(backend.snapshot).mock.results.at(-1)
+        ?.value;
+      expect(options?.element).toBe(snapshot.hierarchy[0].children[1]);
+    },
+  );
+
+  it.each([
+    [
+      'type',
+      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
+        driver.type('a11yRef', 'e2', 'x', refMap, 5000),
+    ],
+    [
+      'wait-for',
+      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
+        driver.waitForElement('a11yRef', 'e2', refMap, 5000),
+    ],
+    [
+      'get-text',
+      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
+        driver.getText('a11yRef', 'e2', refMap, 5000),
+    ],
+    [
+      'scroll-to-element',
+      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
+        driver.scrollToElement('a11yRef', 'e2', refMap),
+    ],
+    [
+      'long-press',
+      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
+        driver.longPress('a11yRef', 'e2', refMap),
+    ],
+  ])(
+    '%s refuses an ambiguous ref before any device call',
+    async (_tool, run) => {
+      const backend = backendWith(sameLabel());
+      const driver = new MobilePlatformDriver(backend);
+      const { refMap } = await driver.getAccessibilityTree();
+      vi.mocked(backend.snapshot).mockClear();
+
+      const error = await run(driver, refMap).catch(
+        (thrown: unknown) => thrown,
+      );
+
+      expect(error).toMatchObject({
+        code: 'MM_TARGET_NOT_FOUND',
+        message: expect.stringContaining(
+          'Ref e2 is ambiguous (2 elements on the screen',
+        ),
+        hint: expect.stringContaining('--testid'),
+      });
+      for (const method of [
+        'snapshot',
+        'waitForElement',
+        'tapElement',
+        'tapCoordinates',
+        'typeText',
+        'getElementText',
+        'scrollToElement',
+        'longPress',
+      ] as const) {
+        expect(backend[method]).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it('click on an unnamed ref taps the element at its bounds', async () => {
+    const backend = backendWith(unnamed());
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+
+    const result = await driver.click('a11yRef', 'e1', refMap, 5000);
+
+    expect(result).toStrictEqual({
+      clicked: true,
+      target: 'a11yRef:e1 (bounds)',
+    });
+    expect(backend.tapElement).toHaveBeenCalledWith(
+      { type: 'RCTViewComponentView' },
+      {
+        element: expect.objectContaining({
+          type: 'RCTViewComponentView',
+          frame: okFrame,
+        }),
+      },
+    );
+  });
+
+  it('other tools refuse an unnamed ref and name click and tap-coordinates', async () => {
+    const backend = backendWith(unnamed());
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+
+    await expect(
+      driver.type('a11yRef', 'e1', 'x', refMap, 5000),
+    ).rejects.toMatchObject({
+      code: 'MM_TARGET_NOT_FOUND',
+      message:
+        'Ref e1 has no test ID, label or value; only click can use it. Nothing was sent to the device.',
+      hint: 'Run `mm click e1` (it taps the element at its bounds) or `mm tap-coordinates 80 120`.',
+    });
+    expect(backend.waitForElement).not.toHaveBeenCalled();
+  });
+
+  it('click on a bounds ref fails when the screen changed, and taps nothing', async () => {
+    const backend = backendWith(sameLabel());
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+    // The second button moved: the ref is stale.
+    vi.mocked(backend.snapshot).mockResolvedValue({
+      platform: 'ios',
+      hierarchy: [
+        makeElement({ type: 'Button', label: 'Earn', frame: okFrame }),
+        makeElement({
+          type: 'Button',
+          label: 'Earn',
+          frame: { ...otherFrame, y: 500 },
+        }),
+      ],
+      raw: '[]',
+      timestamp: 0,
+    });
+
+    await expect(
+      driver.click('a11yRef', 'e2', refMap, 5000),
+    ).rejects.toMatchObject({
+      code: 'MM_TARGET_NOT_FOUND',
+      message: expect.stringContaining(
+        'Element of ref e2 not found at its snapshot bounds (20, 300 120x40)',
+      ),
+    });
+    expect(backend.tapElement).not.toHaveBeenCalled();
+    expect(backend.tapCoordinates).not.toHaveBeenCalled();
+  });
+
+  it('an unnamed ref does not match a named element at the same frame', async () => {
+    const backend = backendWith(unnamed());
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+    vi.mocked(backend.snapshot).mockResolvedValue({
+      platform: 'ios',
+      hierarchy: [
+        makeElement({
+          type: 'RCTViewComponentView',
+          label: 'Now named',
+          frame: okFrame,
+        }),
+      ],
+      raw: '[]',
+      timestamp: 0,
+    });
+
+    await expect(
+      driver.click('a11yRef', 'e1', refMap, 5000),
+    ).rejects.toMatchObject({ code: 'MM_TARGET_NOT_FOUND' });
+  });
+
+  it('picks the deepest element when an unnamed wrapper has the same frame and type', async () => {
+    const inner = makeElement({
+      type: 'android.view.ViewGroup',
+      frame: okFrame,
+    });
+    const backend = backendWith(
+      [
+        makeElement({
+          type: 'android.view.ViewGroup',
+          frame: okFrame,
+          children: [inner],
+        }),
+      ],
+      'android',
+    );
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+
+    await driver.click('a11yRef', 'e1', refMap, 5000);
+
+    expect(vi.mocked(backend.tapElement).mock.calls[0]?.[1]?.element).toBe(
+      inner,
+    );
+  });
+
+  it('a bounds click reports a viewport refusal of the backend as is', async () => {
+    const backend = backendWith(unnamed());
+    vi.mocked(backend.tapElement).mockRejectedValue(
+      Object.assign(new Error('Element is outside the viewport'), {
+        code: 'ELEMENT_NOT_IN_VIEWPORT',
+      }),
+    );
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+
+    await expect(
+      driver.click('a11yRef', 'e1', refMap, 5000),
+    ).rejects.toMatchObject({ code: 'ELEMENT_NOT_IN_VIEWPORT' });
+  });
+
+  it('a bounds click finds the element again after dismissing the keyboard', async () => {
+    const backend = backendWith(unnamed());
+    vi.mocked(backend.tapElement)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('TARGET_OBSCURED'), {
+          code: 'TARGET_OBSCURED',
+          keyboard: true,
+        }),
+      )
+      .mockResolvedValueOnce({
+        success: true,
+        x: 80,
+        y: 120,
+        targetDescription: '',
+      });
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+    vi.mocked(backend.snapshot).mockClear();
+
+    const result = await driver.click(
+      'a11yRef',
+      'e1',
+      refMap,
+      5000,
+      undefined,
+      undefined,
+      { dismissKeyboard: true },
+    );
+
+    expect(result).toStrictEqual({
+      clicked: true,
+      target: 'a11yRef:e1 (bounds)',
+      keyboardDismissed: true,
+    });
+    expect(backend.snapshot).toHaveBeenCalledTimes(2);
+    expect(backend.tapElement).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps stable identifiers for unique named nodes', async () => {
+    const driver = new MobilePlatformDriver(backendWith(unnamed()));
+
+    const { refMap } = await driver.getAccessibilityTree();
+
+    expect(refMap.get('e2')).toBe('label:Send|type:Button');
+  });
+
+  it('gives an ambiguous value-only node a text identity', async () => {
+    const backend = backendWith([
+      makeElement({ type: 'StaticText', value: '1', frame: okFrame }),
+      makeElement({ type: 'StaticText', value: '1', frame: otherFrame }),
+    ]);
+    const driver = new MobilePlatformDriver(backend);
+    const { refMap } = await driver.getAccessibilityTree();
+
+    await driver.click('a11yRef', 'e1', refMap, 5000);
+
+    expect(backend.tapElement).toHaveBeenCalledWith(
+      { text: '1', type: 'StaticText' },
+      { element: expect.objectContaining({ frame: okFrame }) },
+    );
   });
 });
 

@@ -18,17 +18,20 @@ export function createToolSuccess<TResult>(
  *
  * @param code - The error code identifying the failure type.
  * @param message - A human-readable error description.
+ * @param hint - What to do next, when the code's default hint does not fit.
  * @returns A failed tool response containing the error.
  */
 export function createToolError<TResult = never>(
   code: string,
   message: string,
+  hint?: string,
 ): ToolResponse<TResult> {
   return {
     ok: false,
     error: {
       code,
       message,
+      ...(hint === undefined ? {} : { hint }),
     },
   };
 }

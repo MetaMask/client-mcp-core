@@ -1,4 +1,7 @@
-import { classifyInteractionError } from './error-classification.js';
+import {
+  classifyInteractionError,
+  readTargetRefError,
+} from './error-classification.js';
 import type {
   CloseAppInput,
   DeviceClipboardInput,
@@ -173,6 +176,10 @@ export async function scrollToElementTool(
       );
       return createToolError(errorInfo.code, errorInfo.message);
     }
+    const refError = readTargetRefError(error);
+    if (refError) {
+      return createToolError(refError.code, refError.message, refError.hint);
+    }
     const message = error instanceof Error ? error.message : String(error);
     return createToolError(
       scrollErrorCode(error),
@@ -285,6 +292,10 @@ export async function longPressTool(
       target: `${resolved.targetType}:${resolved.targetValue}`,
     });
   } catch (error) {
+    const refError = readTargetRefError(error);
+    if (refError) {
+      return createToolError(refError.code, refError.message, refError.hint);
+    }
     const message = error instanceof Error ? error.message : String(error);
     return createToolError(
       ErrorCodes.MM_DEVICE_ACTION_FAILED,
