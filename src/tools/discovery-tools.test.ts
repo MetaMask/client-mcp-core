@@ -25,6 +25,7 @@ import type { ToolContext } from '../types/http.js';
 function createMockPage(): Page {
   return {
     url: vi.fn().mockReturnValue('chrome-extension://ext-123/home.html'),
+    locator: vi.fn(() => ({ count: vi.fn().mockResolvedValue(0) })),
   } as unknown as Page;
 }
 

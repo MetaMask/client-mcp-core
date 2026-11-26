@@ -143,7 +143,11 @@ export async function describeScreenTool(
   try {
     const frameTarget = frame
       ? {
-          selector: resolveFrameSelector(frame, context.refMap),
+          selector: await resolveFrameSelector(
+            frame,
+            context.refMap,
+            context.page,
+          ),
           refPrefix: nextFrameRefPrefix(context.refMap),
         }
       : undefined;

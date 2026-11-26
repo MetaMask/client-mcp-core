@@ -384,6 +384,10 @@ export function classifyScreenshotError(error: unknown): {
     }
   }
 
+  if (message.startsWith('Frame not found')) {
+    return { code: ErrorCodes.MM_TARGET_NOT_FOUND, message };
+  }
+
   return {
     code: ErrorCodes.MM_SCREENSHOT_FAILED,
     message: `Screenshot failed: ${message}`,

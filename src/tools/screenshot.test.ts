@@ -19,7 +19,9 @@ function createMockContext(
   } = {},
 ): ToolContext {
   const { hasActive = true } = options;
-  const page = {} as ToolContext['page'];
+  const page = {
+    locator: vi.fn(() => ({ count: vi.fn().mockResolvedValue(0) })),
+  } as unknown as ToolContext['page'];
   const sessionManager = createMockSessionManager({ hasActive });
 
   return {
@@ -262,6 +264,65 @@ describe('screenshotTool', () => {
         expect(result.error.code).toBe(
           ErrorCodes.MM_TOOL_NOT_SUPPORTED_ON_PLATFORM,
         );
+      }
+    });
+
+    it('captures the only iframe of a wrapper frame target', async () => {
+      const context = createMockContext();
+      const first = vi.fn();
+      const element = {
+        count: vi.fn().mockResolvedValue(1),
+        and: vi.fn().mockReturnValue({ count: vi.fn().mockResolvedValue(0) }),
+        locator: vi.fn().mockReturnValue({
+          count: vi.fn().mockResolvedValue(1),
+        }),
+        first,
+      };
+      first.mockReturnValue(element);
+      vi.mocked(context.page.locator).mockReturnValue(element as any);
+      vi.spyOn(context.sessionManager, 'screenshot').mockResolvedValue({
+        path: '/path/to/frame.png',
+        width: 400,
+        height: 300,
+        base64: 'mock-base64',
+      });
+
+      const result = await screenshotTool(
+        { name: 'frame', frame: { testId: 'advanced-chart-iframe' } },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(context.sessionManager.screenshot).toHaveBeenCalledWith({
+        name: 'frame',
+        fullPage: true,
+        selector: '[data-testid="advanced-chart-iframe"] iframe',
+      });
+    });
+
+    it('returns MM_TARGET_NOT_FOUND when the frame target holds no iframe', async () => {
+      const context = createMockContext();
+      const first = vi.fn();
+      const element = {
+        count: vi.fn().mockResolvedValue(1),
+        and: vi.fn().mockReturnValue({ count: vi.fn().mockResolvedValue(0) }),
+        locator: vi.fn().mockReturnValue({
+          count: vi.fn().mockResolvedValue(0),
+        }),
+        first,
+      };
+      first.mockReturnValue(element);
+      vi.mocked(context.page.locator).mockReturnValue(element as any);
+
+      const result = await screenshotTool(
+        { frame: { testId: 'advanced-chart-iframe' } },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toContain('is not an iframe');
       }
     });
 

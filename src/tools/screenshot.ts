@@ -48,7 +48,11 @@ export async function screenshotTool(
     const screenshotName = input.name ?? `screenshot-${Date.now()}`;
     let { selector } = input;
     if (frame) {
-      const frameSelector = resolveFrameSelector(frame, context.refMap);
+      const frameSelector = await resolveFrameSelector(
+        frame,
+        context.refMap,
+        context.page,
+      );
       selector = selector
         ? selectorInFrame(frameSelector, selector)
         : frameSelector;

@@ -69,7 +69,7 @@ type ValidatedInteraction = {
  * @param context - The tool execution context.
  * @returns Either an error response or the validated target.
  */
-function validateInteraction<TResult>(
+async function validateInteraction<TResult>(
   input:
     | ClickInput
     | TypeInput
@@ -78,7 +78,7 @@ function validateInteraction<TResult>(
     | InspectInput
     | HoverInput,
   context: ToolContext,
-): { error: ToolResponse<TResult> } | ValidatedInteraction {
+): Promise<{ error: ToolResponse<TResult> } | ValidatedInteraction> {
   const missingSession = requireActiveSession<TResult>(context);
   if (missingSession) {
     return { error: missingSession };
@@ -137,7 +137,7 @@ function validateInteraction<TResult>(
       ...scopeTargetToFrame(
         target,
         within,
-        resolveFrameSelector(frame, context.refMap),
+        await resolveFrameSelector(frame, context.refMap, context.page),
       ),
       driver: context.driver,
     };
@@ -145,7 +145,8 @@ function validateInteraction<TResult>(
     const message = error instanceof Error ? error.message : String(error);
     return {
       error: createToolError(
-        message.startsWith('Unknown a11yRef')
+        message.startsWith('Unknown a11yRef') ||
+          message.startsWith('Frame not found')
           ? ErrorCodes.MM_TARGET_NOT_FOUND
           : ErrorCodes.MM_INVALID_INPUT,
         message,
@@ -165,7 +166,7 @@ export async function clickTool(
   input: ClickInput,
   context: ToolContext,
 ): Promise<ToolResponse<ClickResult>> {
-  const validated = validateInteraction<ClickResult>(input, context);
+  const validated = await validateInteraction<ClickResult>(input, context);
   if ('error' in validated) {
     return validated.error;
   }
@@ -217,7 +218,7 @@ export async function typeTool(
   input: TypeInput,
   context: ToolContext,
 ): Promise<ToolResponse<TypeResult>> {
-  const validated = validateInteraction<TypeResult>(input, context);
+  const validated = await validateInteraction<TypeResult>(input, context);
   if ('error' in validated) {
     return validated.error;
   }
@@ -263,7 +264,7 @@ export async function waitForTool(
   input: WaitForInput,
   context: ToolContext,
 ): Promise<ToolResponse<WaitForResult>> {
-  const validated = validateInteraction<WaitForResult>(input, context);
+  const validated = await validateInteraction<WaitForResult>(input, context);
   if ('error' in validated) {
     return validated.error;
   }
@@ -300,7 +301,7 @@ export async function getTextTool(
   input: GetTextInput,
   context: ToolContext,
 ): Promise<ToolResponse<GetTextResult>> {
-  const validated = validateInteraction<GetTextResult>(input, context);
+  const validated = await validateInteraction<GetTextResult>(input, context);
   if ('error' in validated) {
     return validated.error;
   }
@@ -342,7 +343,7 @@ export async function inspectTool(
   input: InspectInput,
   context: ToolContext,
 ): Promise<ToolResponse<InspectResult>> {
-  const validated = validateInteraction<InspectResult>(input, context);
+  const validated = await validateInteraction<InspectResult>(input, context);
   if ('error' in validated) {
     return validated.error;
   }
@@ -393,7 +394,7 @@ export async function hoverTool(
   input: HoverInput,
   context: ToolContext,
 ): Promise<ToolResponse<HoverResult>> {
-  const validated = validateInteraction<HoverResult>(input, context);
+  const validated = await validateInteraction<HoverResult>(input, context);
   if ('error' in validated) {
     return validated.error;
   }

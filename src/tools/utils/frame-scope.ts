@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test';
+
 import { MAX_SNAPSHOT_FRAMES } from './constants.js';
 import type { TargetType, WithinScope } from './discovery.js';
 import type { WithinTarget } from '../types';
@@ -94,27 +96,53 @@ function testIdOrSelector(type: 'testId' | 'selector', value: string): string {
 /**
  * Resolves the iframe of a frame scope to a Playwright selector. A ref of
  * the iframe element (from a snapshot of its page) resolves through the
- * ref map.
+ * ref map. A test ID or selector whose element is a wrapper around exactly
+ * one iframe resolves to that iframe, as on the MetaMask Extension chart.
  *
  * @param frame - The iframe, as a ref, test ID or selector.
  * @param refMap - Map of a11y refs to selectors.
+ * @param page - The Playwright page, to look at a test ID or selector target.
  * @returns The selector of the iframe element.
  */
-export function resolveFrameSelector(
+export async function resolveFrameSelector(
   frame: WithinScope,
   refMap: Map<string, string>,
-): string {
-  if (frame.type !== 'a11yRef') {
-    return testIdOrSelector(frame.type, frame.value);
+  page: Page,
+): Promise<string> {
+  if (frame.type === 'a11yRef') {
+    const selector = refMap.get(frame.value);
+    if (!selector) {
+      throw new Error(
+        `Unknown a11yRef: ${frame.value}. ` +
+          `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
+      );
+    }
+    return selector;
   }
-  const selector = refMap.get(frame.value);
-  if (!selector) {
-    throw new Error(
-      `Unknown a11yRef: ${frame.value}. ` +
-        `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
-    );
+
+  const selector = testIdOrSelector(frame.type, frame.value);
+  const target = page.locator(selector);
+  if ((await target.count()) === 0) {
+    // No match: the caller's wait gives the missing target its own error.
+    return selector;
   }
-  return selector;
+  const element = target.first();
+  if ((await element.and(page.locator('iframe')).count()) > 0) {
+    return selector;
+  }
+  const iframeCount = await element.locator('iframe').count();
+  if (iframeCount === 1) {
+    return `${selector} iframe`;
+  }
+  if (iframeCount === 0) {
+    throw new Error(`Frame not found: ${selector} is not an iframe`);
+  }
+  throw new Error(
+    `Frame not found: ${selector} is not an iframe and contains ` +
+      `${iframeCount} iframes; target one by its ref from ` +
+      `describe-screen, or with a selector that matches one ` +
+      `(for example selector:${selector} iframe:nth-of-type(1))`,
+  );
 }
 
 /**

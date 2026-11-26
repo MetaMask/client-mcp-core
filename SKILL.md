@@ -278,6 +278,8 @@ mm wait-for --frame testid:advanced-chart-iframe --selector 'text=No chart data'
 mm screenshot --frame testid:advanced-chart-iframe            # the iframe; add --selector for an element in it
 ```
 
+A `testid:` or `selector:` target that is not an iframe itself but holds exactly one iframe (the chart puts its test ID on a wrapper) resolves to that iframe.
+
 `--frame` works with `click`, `type`, `hover`, `wait-for`, `get-text`, `inspect` and `screenshot`; `--within` is then searched inside the iframe. `scroll-to-element` and `long-press` reject it. `describe-screen --frame` keeps the refs you already have and numbers the iframe's refs from `f6` up (`f6e1`, ..., then `f7e1` for the next one), so they never clash with the `f1` to `f5` of page snapshots. Limits:
 
 - Do not combine `--frame` with a ref target or a ref `--within`: an `f1e*` ref already points into its iframe. Use `--testid` or `--selector`.

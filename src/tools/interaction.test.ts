@@ -34,10 +34,33 @@ function createMockLocator() {
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
     isDisabled: vi.fn().mockResolvedValue(false),
+    count: vi.fn().mockResolvedValue(0),
     boundingBox: vi
       .fn()
       .mockResolvedValue({ x: 0, y: 0, width: 100, height: 40 }),
   };
+}
+
+/**
+ * Builds a page whose frame target is one element with the given iframes.
+ *
+ * @param iframeCount - How many iframes the element holds inside.
+ * @returns The page.
+ */
+function createFrameTargetPage(iframeCount: number) {
+  const page = createMockPage();
+  const element = {
+    ...createMockLocator(),
+    count: vi.fn().mockResolvedValue(1),
+    and: vi.fn().mockReturnValue({ count: vi.fn().mockResolvedValue(0) }),
+    locator: vi.fn().mockReturnValue({
+      count: vi.fn().mockResolvedValue(iframeCount),
+    }),
+    first: vi.fn(),
+  };
+  element.first.mockReturnValue(element);
+  page.locator.mockReturnValue(element as any);
+  return page;
 }
 
 function createMockPage() {
@@ -1823,7 +1846,7 @@ describe('interaction frame scope', () => {
     `${CHART} >> internal:control=enter-frame >> ${selector}`;
 
   it('moves a testId target into the iframe of frame', async () => {
-    const page = {};
+    const page = createMockPage();
     const context = createMockContext({ page });
     vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
       createMockLocator() as any,
@@ -1846,8 +1869,55 @@ describe('interaction frame scope', () => {
     );
   });
 
+  it('resolves a frame target that is a wrapper around one iframe', async () => {
+    const page = createFrameTargetPage(1);
+    const context = createMockContext({ page });
+    vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
+      createMockLocator() as any,
+    );
+
+    const result = await clickTool(
+      { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
+      context,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
+      page,
+      'selector',
+      `${CHART} iframe >> internal:control=enter-frame >> [data-testid="zoom-in"]`,
+      context.refMap,
+      15000,
+      undefined,
+      { missingTargetWaitMs: 2000 },
+    );
+  });
+
+  it.each([
+    [0, 'is not an iframe'],
+    [2, 'contains 2 iframes'],
+  ])(
+    'returns MM_TARGET_NOT_FOUND when the frame target holds %i iframes',
+    async (iframeCount, message) => {
+      const page = createFrameTargetPage(iframeCount);
+      const waitForTarget = vi.spyOn(discoveryModule, 'waitForTarget');
+
+      const result = await clickTool(
+        { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
+        createMockContext({ page }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toContain(message);
+      }
+      expect(waitForTarget).not.toHaveBeenCalled();
+    },
+  );
+
   it('moves the within parent into the iframe and keeps the target relative to it', async () => {
-    const page = {};
+    const page = createMockPage();
     const context = createMockContext({ page });
     vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
       createMockLocator() as any,
