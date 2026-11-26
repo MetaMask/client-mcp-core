@@ -86,6 +86,24 @@ async function setUp(): Promise<{
   return { backend, context };
 }
 
+/**
+ * @param backend - The fake device.
+ */
+function expectNoDeviceCall(backend: DeviceBackend): void {
+  for (const method of [
+    'snapshot',
+    'waitForElement',
+    'tapElement',
+    'tapCoordinates',
+    'typeText',
+    'getElementText',
+    'scrollToElement',
+    'longPress',
+  ] as const) {
+    expect(backend[method]).not.toHaveBeenCalled();
+  }
+}
+
 describe('mobile refs that a query cannot resolve (#119, P1-46)', () => {
   it.each([
     [
@@ -121,9 +139,7 @@ describe('mobile refs that a query cannot resolve (#119, P1-46)', () => {
       expect(exitCodeForError(ErrorCodes.MM_TARGET_NOT_FOUND)).toBe(
         CliExitCodes.TARGET,
       );
-      expect(backend.snapshot).not.toHaveBeenCalled();
-      expect(backend.tapElement).not.toHaveBeenCalled();
-      expect(backend.tapCoordinates).not.toHaveBeenCalled();
+      expectNoDeviceCall(backend);
     },
   );
 
@@ -142,12 +158,8 @@ describe('mobile refs that a query cannot resolve (#119, P1-46)', () => {
   });
 
   it('click taps an unnamed ref by its bounds; type names click and tap-coordinates', async () => {
-    const { context } = await setUp();
+    const { backend, context } = await setUp();
 
-    expect(await clickTool({ a11yRef: 'e3' }, context)).toStrictEqual({
-      ok: true,
-      result: { clicked: true, target: 'a11yRef:e3 (bounds)' },
-    });
     expect(await typeTool({ a11yRef: 'e3', text: 'x' }, context)).toStrictEqual(
       {
         ok: false,
@@ -159,6 +171,11 @@ describe('mobile refs that a query cannot resolve (#119, P1-46)', () => {
         },
       },
     );
+    expectNoDeviceCall(backend);
+    expect(await clickTool({ a11yRef: 'e3' }, context)).toStrictEqual({
+      ok: true,
+      result: { clicked: true, target: 'a11yRef:e3 (bounds)' },
+    });
   });
 
   it('run-steps applies the same rules to its steps', async () => {

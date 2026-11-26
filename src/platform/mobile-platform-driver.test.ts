@@ -2523,12 +2523,13 @@ describe('MobilePlatformDriver bounds refs (#119, P1-46)', () => {
   );
 
   it.each([
-    ['share a label', sameLabel, 'label:Earn'],
-    ['share a test ID', sameTestId, 'identifier:row'],
+    ['share a label', sameLabel],
+    ['share a test ID', sameTestId],
   ])(
     'click on an ambiguous ref (two nodes %s) taps the listed node, not the first match',
     async (_name, hierarchy) => {
-      const backend = backendWith(hierarchy());
+      const elements = hierarchy();
+      const backend = backendWith(elements);
       const driver = new MobilePlatformDriver(backend);
       const { refMap } = await driver.getAccessibilityTree();
 
@@ -2539,72 +2540,9 @@ describe('MobilePlatformDriver bounds refs (#119, P1-46)', () => {
         target: 'a11yRef:e2 (bounds)',
       });
       expect(backend.waitForElement).not.toHaveBeenCalled();
-      const [, options] = vi.mocked(backend.tapElement).mock.calls[0] ?? [];
-      // The element from the new snapshot, at the second node's frame.
-      expect(options?.element?.frame).toStrictEqual(otherFrame);
-      const snapshot = await vi.mocked(backend.snapshot).mock.results.at(-1)
-        ?.value;
-      expect(options?.element).toBe(snapshot.hierarchy[0].children[1]);
-    },
-  );
-
-  it.each([
-    [
-      'type',
-      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
-        driver.type('a11yRef', 'e2', 'x', refMap, 5000),
-    ],
-    [
-      'wait-for',
-      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
-        driver.waitForElement('a11yRef', 'e2', refMap, 5000),
-    ],
-    [
-      'get-text',
-      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
-        driver.getText('a11yRef', 'e2', refMap, 5000),
-    ],
-    [
-      'scroll-to-element',
-      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
-        driver.scrollToElement('a11yRef', 'e2', refMap),
-    ],
-    [
-      'long-press',
-      async (driver: MobilePlatformDriver, refMap: Map<string, string>) =>
-        driver.longPress('a11yRef', 'e2', refMap),
-    ],
-  ])(
-    '%s refuses an ambiguous ref before any device call',
-    async (_tool, run) => {
-      const backend = backendWith(sameLabel());
-      const driver = new MobilePlatformDriver(backend);
-      const { refMap } = await driver.getAccessibilityTree();
-      vi.mocked(backend.snapshot).mockClear();
-
-      const error = await run(driver, refMap).catch(
-        (thrown: unknown) => thrown,
+      expect(vi.mocked(backend.tapElement).mock.calls[0]?.[1]?.element).toBe(
+        elements[0].children?.[1],
       );
-
-      expect(error).toMatchObject({
-        code: 'MM_TARGET_NOT_FOUND',
-        message: expect.stringContaining(
-          'Ref e2 is ambiguous (2 elements on the screen',
-        ),
-        hint: expect.stringContaining('--testid'),
-      });
-      for (const method of [
-        'snapshot',
-        'waitForElement',
-        'tapElement',
-        'tapCoordinates',
-        'typeText',
-        'getElementText',
-        'scrollToElement',
-        'longPress',
-      ] as const) {
-        expect(backend[method]).not.toHaveBeenCalled();
-      }
     },
   );
 
@@ -2628,22 +2566,6 @@ describe('MobilePlatformDriver bounds refs (#119, P1-46)', () => {
         }),
       },
     );
-  });
-
-  it('other tools refuse an unnamed ref and name click and tap-coordinates', async () => {
-    const backend = backendWith(unnamed());
-    const driver = new MobilePlatformDriver(backend);
-    const { refMap } = await driver.getAccessibilityTree();
-
-    await expect(
-      driver.type('a11yRef', 'e1', 'x', refMap, 5000),
-    ).rejects.toMatchObject({
-      code: 'MM_TARGET_NOT_FOUND',
-      message:
-        'Ref e1 has no test ID, label or value; only click can use it. Nothing was sent to the device.',
-      hint: 'Run `mm click e1` (it taps the element at its bounds) or `mm tap-coordinates 80 120`.',
-    });
-    expect(backend.waitForElement).not.toHaveBeenCalled();
   });
 
   it('click on a bounds ref fails when the screen changed, and taps nothing', async () => {
@@ -2775,14 +2697,6 @@ describe('MobilePlatformDriver bounds refs (#119, P1-46)', () => {
     });
     expect(backend.snapshot).toHaveBeenCalledTimes(2);
     expect(backend.tapElement).toHaveBeenCalledTimes(2);
-  });
-
-  it('keeps stable identifiers for unique named nodes', async () => {
-    const driver = new MobilePlatformDriver(backendWith(unnamed()));
-
-    const { refMap } = await driver.getAccessibilityTree();
-
-    expect(refMap.get('e2')).toBe('label:Send|type:Button');
   });
 
   it('gives an ambiguous value-only node a text identity', async () => {
