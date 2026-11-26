@@ -3,7 +3,6 @@
 /* eslint-disable n/no-sync */
 /* eslint-disable require-atomic-updates */
 import { cosmiconfig } from 'cosmiconfig';
-import { readFileSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
@@ -30,7 +29,6 @@ import {
   getPositionalArgs,
   isConnectionError,
   isTransientError,
-  KNOWN_COMMANDS,
   parseIntFlag,
   parseStringFlag,
   parseLaunchArgs,
@@ -54,6 +52,7 @@ import {
   sleep,
   main,
 } from './mm.js';
+import type { RoutedCommand } from './mm.js';
 import {
   DEFAULT_CDP_TIMEOUT_MS,
   DEFAULT_INTERACTION_TIMEOUT_MS,
@@ -3925,9 +3924,9 @@ describe('routeCommand', () => {
   });
 
   it('exits for unknown command', async () => {
-    await expect(routeCommand('unknown-cmd', [], 3000)).rejects.toThrowError(
-      'process.exit',
-    );
+    await expect(
+      routeCommand('unknown-cmd' as RoutedCommand, [], 3000),
+    ).rejects.toThrowError('process.exit');
     expectFailure(expect.stringContaining("unknown command 'unknown-cmd'"), 2);
   });
 
@@ -3937,31 +3936,11 @@ describe('routeCommand', () => {
     'knowledge-sessions',
     'knowledge-summarize',
   ])('exits for removed %s command', async (command) => {
-    await expect(routeCommand(command, [], 3000)).rejects.toThrowError(
-      'process.exit',
-    );
+    await expect(
+      routeCommand(command as RoutedCommand, [], 3000),
+    ).rejects.toThrowError('process.exit');
     expectFailure(expect.stringContaining(`unknown command '${command}'`), 2);
     expect(globalThis.fetch).not.toHaveBeenCalled();
-  });
-});
-
-describe('KNOWN_COMMANDS', () => {
-  it('matches the routeCommand switch, in both directions', () => {
-    const source = readFileSync(new URL('./mm.ts', import.meta.url), 'utf8');
-    const start = source.indexOf('export async function routeCommand(');
-    expect(start).toBeGreaterThan(-1);
-    const router = source.slice(start, source.indexOf('\n}\n', start));
-    const cases = [...router.matchAll(/^ {4}case '([^']+)':/gmu)].map(
-      (match) => match[1],
-    );
-
-    const lifecycle = ['serve', 'stop', 'launch', 'cleanup'];
-    expect(lifecycle.filter((name) => !KNOWN_COMMANDS.has(name))).toStrictEqual(
-      [],
-    );
-    expect(
-      [...KNOWN_COMMANDS].filter((name) => !lifecycle.includes(name)).sort(),
-    ).toStrictEqual(cases.sort());
   });
 });
 

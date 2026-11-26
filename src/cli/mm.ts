@@ -45,20 +45,8 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
 
 const AUTO_START_COMMANDS = new Set(['launch', 'serve']);
 
-/**
- * Every command the CLI accepts: the lifecycle commands handled in `main`
- * (`serve`, `stop`, `launch`, `cleanup`) and every case of the `routeCommand`
- * switch below. `main` checks it before `discoverDaemon`, so an unknown
- * command is a usage error (exit 2) with or without a daemon. Keep this list
- * in sync with the switch.
- */
-export const KNOWN_COMMANDS = new Set([
-  // Lifecycle (handled in `main`).
-  'serve',
-  'stop',
-  'launch',
-  'cleanup',
-  // Routed by `routeCommand`.
+/** Commands handled by `routeCommand`; its switch is exhaustive over this list. */
+const ROUTED_COMMANDS = [
   'status',
   'click',
   'type',
@@ -111,7 +99,27 @@ export const KNOWN_COMMANDS = new Set([
   'screen-recording',
   'device-logs',
   'generate-locators',
-]);
+] as const;
+
+/** A command routed by `routeCommand`. */
+export type RoutedCommand = (typeof ROUTED_COMMANDS)[number];
+
+const LIFECYCLE_COMMANDS = ['serve', 'stop', 'launch', 'cleanup'] as const;
+
+/**
+ * Whether `main` handles the command: a lifecycle command or a routed one.
+ *
+ * @param command - The first CLI argument.
+ * @returns True for a known command.
+ */
+function isKnownCommand(
+  command: string,
+): command is RoutedCommand | (typeof LIFECYCLE_COMMANDS)[number] {
+  return (
+    (LIFECYCLE_COMMANDS as readonly string[]).includes(command) ||
+    (ROUTED_COMMANDS as readonly string[]).includes(command)
+  );
+}
 
 const DAEMON_POLL_INTERVAL_MS = 200;
 const DAEMON_START_TIMEOUT_MS = 30_000;
@@ -500,7 +508,7 @@ export async function main(): Promise<void> {
   const args = remainingArgs;
   const command = args[0];
 
-  if (!KNOWN_COMMANDS.has(command)) {
+  if (!isKnownCommand(command)) {
     failUsage(`unknown command '${command}'. Run 'mm --help' for usage.`);
   }
 
@@ -516,17 +524,11 @@ export async function main(): Promise<void> {
     return;
   }
 
-  // Parse and validate launch args before discovering the daemon: a bad value
-  // must exit 2 without starting a daemon (and its Anvil/fixture ports).
-  const launchArgs =
-    command === 'launch' ? parseLaunchArgs(args.slice(1)) : undefined;
-  if (launchArgs) {
+  if (command === 'launch') {
+    // Parse and validate before discovery: a bad value must start no daemon.
+    const launchArgs = parseLaunchArgs(args.slice(1));
     validateLaunchArgs(launchArgs);
-  }
-
-  const daemonState = await discoverDaemon(worktreeRoot, command);
-
-  if (launchArgs) {
+    const daemonState = await discoverDaemon(worktreeRoot, command);
     if (typeof launchArgs.extensionPath === 'string') {
       launchArgs.extensionPath = path.resolve(
         worktreeRoot,
@@ -539,6 +541,8 @@ export async function main(): Promise<void> {
     await sendRequest(daemonState, 'POST', '/launch', launchArgs);
     return;
   }
+
+  const daemonState = await discoverDaemon(worktreeRoot, command);
 
   if (command === 'cleanup') {
     const shutdown = args.includes('--shutdown');
@@ -767,7 +771,7 @@ async function sendInteractionRequest(
  * @param daemon - The daemon endpoint (a port or the daemon state).
  */
 export async function routeCommand(
-  command: string,
+  command: RoutedCommand,
   args: string[],
   daemon: DaemonEndpoint,
 ): Promise<void> {
@@ -1353,8 +1357,13 @@ export async function routeCommand(
     case 'generate-locators':
       await sendRequest(daemon, 'POST', '/tool/generate_locators', {});
       break;
-    default:
-      failUsage(`unknown command '${command}'. Run 'mm --help' for usage.`);
+    default: {
+      // A name in ROUTED_COMMANDS without a case narrows to a literal here.
+      const exhaustive: never = command;
+      failUsage(
+        `unknown command '${String(exhaustive)}'. Run 'mm --help' for usage.`,
+      );
+    }
   }
 }
 
