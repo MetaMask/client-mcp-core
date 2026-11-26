@@ -2345,6 +2345,20 @@ describe('routeCommand', () => {
     );
   });
 
+  it('routes screenshot with --timeout', async () => {
+    await routeCommand(
+      'screenshot',
+      ['--selector', '.legend', '--timeout', '2000'],
+      3000,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/tool/screenshot',
+      expect.objectContaining({
+        body: JSON.stringify({ selector: '.legend', timeoutMs: 2000 }),
+      }),
+    );
+  });
+
   it('routes describe-screen with --frame', async () => {
     await routeCommand(
       'describe-screen',

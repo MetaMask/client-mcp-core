@@ -92,6 +92,10 @@ export type ScreenshotInput = {
   selector?: string;
   includeBase64?: boolean;
   /**
+   * Browser only: how long to wait for `selector` to appear (default 15000).
+   */
+  timeoutMs?: number;
+  /**
    * Browser only: capture this iframe, or the `selector` element inside it.
    */
   frame?: WithinTarget;

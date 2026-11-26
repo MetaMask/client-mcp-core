@@ -9,7 +9,12 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { screenshotTool } from './screenshot.js';
 import { createMockSessionManager } from './test-utils/mock-factories.js';
+import {
+  createMockLocator,
+  createMockPage,
+} from './test-utils/mock-playwright.js';
 import { ErrorCodes } from './types/errors.js';
+import { DEFAULT_INTERACTION_TIMEOUT_MS } from './utils/constants.js';
 import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
@@ -19,7 +24,9 @@ function createMockContext(
   } = {},
 ): ToolContext {
   const { hasActive = true } = options;
-  const page = {} as ToolContext['page'];
+  const locator = createMockLocator();
+  vi.spyOn(locator, 'first').mockReturnValue(locator);
+  const page = createMockPage({ locatorMock: locator });
   const sessionManager = createMockSessionManager({ hasActive });
 
   return {
@@ -265,7 +272,7 @@ describe('screenshotTool', () => {
       }
     });
 
-    it('returns MM_SCREENSHOT_FAILED for an unknown frame ref', async () => {
+    it('returns MM_TARGET_NOT_FOUND for an unknown frame ref', async () => {
       const result = await screenshotTool(
         { frame: { a11yRef: 'e4' } },
         createMockContext(),
@@ -273,9 +280,65 @@ describe('screenshotTool', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_SCREENSHOT_FAILED);
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
         expect(result.error.message).toContain('Unknown a11yRef: e4');
       }
+    });
+  });
+
+  describe('with a selector timeout', () => {
+    it('returns MM_TARGET_NOT_FOUND when the selector matches nothing', async () => {
+      const context = createMockContext();
+      vi.spyOn(context.driver as any, 'screenshot').mockRejectedValue(
+        new Error(
+          'Selector [data-testid="does-not-exist"] matched 0 elements after 2000ms',
+        ),
+      );
+
+      const result = await screenshotTool(
+        { selector: '[data-testid="does-not-exist"]' },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toContain('matched 0 elements');
+      }
+    });
+
+    it('passes the timeout to the driver, defaulting to the interaction budget', async () => {
+      const context = createMockContext();
+      const screenshot = vi
+        .spyOn(context.driver as any, 'screenshot')
+        .mockResolvedValue({ path: '/path/to/screenshot.png', base64: '' });
+
+      await screenshotTool({ selector: '.modal', timeoutMs: 2000 }, context);
+      expect(screenshot).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selector: '.modal', timeoutMs: 2000 }),
+      );
+
+      await screenshotTool({ selector: '.modal' }, context);
+      expect(screenshot).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          selector: '.modal',
+          timeoutMs: DEFAULT_INTERACTION_TIMEOUT_MS,
+        }),
+      );
+    });
+
+    it('does not set a timeout for a full-page capture', async () => {
+      const context = createMockContext();
+      const screenshot = vi
+        .spyOn(context.driver as any, 'screenshot')
+        .mockResolvedValue({ path: '/path/to/screenshot.png', base64: '' });
+
+      await screenshotTool({}, context);
+
+      expect(screenshot).toHaveBeenCalledWith(
+        expect.objectContaining({ fullPage: true }),
+      );
+      expect(screenshot.mock.calls[0][0]).not.toHaveProperty('timeoutMs');
     });
   });
 

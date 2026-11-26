@@ -384,6 +384,12 @@ export function classifyScreenshotError(error: unknown): {
     }
   }
 
+  for (const pattern of ERROR_PATTERNS.targetNotFound) {
+    if (message.includes(pattern)) {
+      return { code: ErrorCodes.MM_TARGET_NOT_FOUND, message };
+    }
+  }
+
   return {
     code: ErrorCodes.MM_SCREENSHOT_FAILED,
     message: `Screenshot failed: ${message}`,

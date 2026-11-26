@@ -884,6 +884,22 @@ describe('error-classification', () => {
       });
     });
 
+    describe('when the error indicates the target matched nothing', () => {
+      it('returns TARGET_NOT_FOUND code', () => {
+        // Arrange
+        const error = new Error(
+          'Selector [data-testid="does-not-exist"] matched 0 elements after 2000ms',
+        );
+
+        // Act
+        const result = classifyScreenshotError(error);
+
+        // Assert
+        expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.message).toContain('matched 0 elements');
+      });
+    });
+
     describe('when error does not indicate page closure', () => {
       it('returns SCREENSHOT_FAILED code', () => {
         // Arrange
