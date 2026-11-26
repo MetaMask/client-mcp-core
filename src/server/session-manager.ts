@@ -94,15 +94,9 @@ export type SessionLaunchResult = {
   sessionId: string;
   extensionId: string;
   state: ExtensionState;
-  /**
-   * Mobile only: the Metro port the launch resolved. Core keeps it as the
-   * session's Hermes default when the launch has no `metroPort`.
-   */
+  /** Mobile: the Metro port the launch resolved. */
   metroPort?: number;
-  /**
-   * Mobile only: the device the launch resolved. Core keeps it as the session's
-   * Hermes default when the launch has no `deviceId`.
-   */
+  /** Mobile: the device the launch resolved. */
   deviceId?: string;
 };
 

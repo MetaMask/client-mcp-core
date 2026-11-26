@@ -32,9 +32,8 @@ const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
  * Keeps the launch Metro port and device on the session's driver, so later
  * `cdp` and `hermes-targets` calls use the launched target without passing a
  * per-call flag (B5). The launch flags win over the values the consumer
- * resolved; when neither sets a value, the driver keeps its own
- * `HERMES_METRO_PORT` / 8081 fallback. Drivers that do not implement
- * `setHermesDefaults` (the browser driver) are left alone.
+ * resolved. Drivers that do not implement `setHermesDefaults` (the browser
+ * driver) are left alone.
  *
  * @param sessionManager - The session manager that owns the driver.
  * @param input - The launch input.
