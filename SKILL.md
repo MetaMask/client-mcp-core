@@ -735,16 +735,16 @@ mm cdp Runtime.evaluate '{"expression":"1+1","returnByValue":true}' --app-id io.
 mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\').click()"}' --target android-webview
 ```
 
-| Argument        | Description                                                                                                                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile)                                                                                             |
-| `[params-json]` | Optional JSON object with method-specific parameters                                                                                                                                                                  |
-| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                                                                                                              |
-| `--target`      | Browser: `page` (default) or `sw` (Extension service worker). Mobile: `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Each platform rejects the other's targets with `MM_INVALID_INPUT`. |
-| `--fresh`       | **Browser only** — run the command on a one-shot CDP session and detach it afterwards instead of the persistent session.                                                                                              |
-| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                                                                                                                      |
-| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port for this call. Defaults to the launch `--metro-port`, then `HERMES_METRO_PORT`, then 8081. Ignored on browser.                                     |
-| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier for this call. Ignored on browser.                                                                                                             |
+| Argument        | Description                                                                                                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<method>`      | CDP method name (e.g., `Runtime.evaluate`, `DOM.getDocument` on browser; `Runtime.evaluate`, `Debugger.enable` on mobile)                                                                                                       |
+| `[params-json]` | Optional JSON object with method-specific parameters                                                                                                                                                                            |
+| `--timeout`     | Per-command timeout in ms (default: 30 000, max: 30 000)                                                                                                                                                                        |
+| `--target`      | Browser: `page` (default) or `sw` (Extension service worker). Mobile: `hermes` (default, RN JS runtime) or `android-webview` (in-app WebView DOM). Each platform rejects the other's targets with `MM_INVALID_INPUT`.           |
+| `--fresh`       | **Browser only** — run the command on a one-shot CDP session and detach it afterwards instead of the persistent session.                                                                                                        |
+| `--url-filter`  | **`--target android-webview` only** — select the WebView page whose URL contains this substring.                                                                                                                                |
+| `--metro-port`  | **Mobile (Hermes) only** — override the Metro inspector proxy port for this call. Defaults to the launch `--metro-port`, then the port the consumer's launch resolved, then `HERMES_METRO_PORT`, then 8081. Ignored on browser. |
+| `--app-id`      | **Mobile (Hermes) only** — override the expected app bundle identifier for this call. Ignored on browser.                                                                                                                       |
 
 **Three CDP targets:** the same command reaches different runtimes.
 
@@ -758,13 +758,13 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 
 Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. An event subscription owns the domains it enables on a target. While it holds one, `<Domain>.enable` with no params (or the subscription's own params) succeeds without sending anything, since the domain is already enabled, and returns `{}`; `<Domain>.enable` with other params and `<Domain>.disable` are refused with `MM_CDP_BLOCKED`, because they would change or stop the subscription's events. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
 
-On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
+On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`, else the port the consumer's launch resolved), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
 
 Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). Each platform rejects the other platform's `--target` values with `MM_INVALID_INPUT`. The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
 #### `mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]`
 
-**Mobile only.** Lists and diagnoses the debuggable Hermes targets Metro currently exposes, reporting which target would be chosen or why selection is ambiguous. Use it to confirm Metro is running and the app is registered. Pass `--all` to bypass the appId filter and discover the real appId. It uses the session's Metro port (the launch `--metro-port`) unless `--metro-port` overrides it, and reports `sessionMetroPort`, the pinned `logicalDeviceId` (`pinnedDeviceId`), whether the persistent connection is open (`connected`), and the session `deviceId`.
+**Mobile only.** Lists and diagnoses the debuggable Hermes targets Metro currently exposes, reporting which target would be chosen or why selection is ambiguous. Use it to confirm Metro is running and the app is registered. Pass `--all` to bypass the appId filter and discover the real appId. It uses the session's Metro port (the launch `--metro-port`, else the port the consumer's launch resolved) unless `--metro-port` overrides it, and reports `sessionMetroPort`, the pinned `logicalDeviceId` (`pinnedDeviceId`), whether the persistent connection is open (`connected`), and the session `deviceId`.
 
 ```bash
 mm hermes-targets
