@@ -366,10 +366,6 @@ export class NetworkMockRouteManager {
   /**
    * Gets recorded request hits and misses.
    *
-   * The URL filter is applied to the recorded (redacted) URL, as `mm network`
-   * does with its records: a filter on a non-secret part of the URL still
-   * matches.
-   *
    * @param limit - Optional maximum number of newest records to return,
    * applied after the URL filter.
    * @param options - Filter and output options.
@@ -757,10 +753,6 @@ export class NetworkMockRouteManager {
 
   /**
    * Records a hit or miss for an intercepted request.
-   *
-   * The URL is stored redacted, like the `mm network` records, so a key in
-   * its path or query never reaches the output. Matching uses the raw URL
-   * and has happened before this call.
    *
    * Headers and the body are stored only when the matched rule opts in via
    * `record`.

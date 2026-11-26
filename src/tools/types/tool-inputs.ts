@@ -282,12 +282,6 @@ export type NetworkMockPendingContext = 'offscreen' | 'iframe';
 export type NetworkMockRequestRecord = {
   timestamp: string;
   method: string;
-  /**
-   * The request URL, with secrets redacted like an `mm network` record:
-   * credentials, key-like host labels and path segments (such as an Infura
-   * project ID) and sensitive query values. A `requests --url` filter runs
-   * on this redacted URL.
-   */
   url: string;
   /**
    * True when a rule matched. A rule with a response mocks the request; a
@@ -321,9 +315,7 @@ export type NetworkMockSummary = {
   requestCount: number;
   hits: number;
   misses: number;
-  /** The URL of the last matched request, redacted like the request record. */
   lastMatchedUrl?: string;
-  /** The URL of the last request, redacted like the request record. */
   lastRequestUrl?: string;
 };
 

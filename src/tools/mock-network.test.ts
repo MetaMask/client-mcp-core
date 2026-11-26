@@ -55,8 +55,6 @@ const BALANCES_RULE: NetworkMockRouteRule = {
   },
 };
 
-// An Infura-style project ID: 32 hex characters, the shape of the key in
-// `https://bitcoin-mainnet.infura.io/v3/<key>/…`.
 const INFURA_KEY = '0123456789abcdef0123456789abcdef';
 const INFURA_HOST = 'https://bitcoin-mainnet.infura.io';
 const INFURA_REDACTED_URL = `${INFURA_HOST}/v3/[REDACTED]/esplora/blocks`;
