@@ -210,7 +210,11 @@ function createFramePage(options: FramePageOptions): {
       }
     },
   );
-  const pageSession = { send, detach: vi.fn().mockResolvedValue(undefined) };
+  const pageSession = {
+    send,
+    on: vi.fn(),
+    detach: vi.fn().mockResolvedValue(undefined),
+  };
 
   const frameSessionDetach = failCleanup
     ? vi.fn().mockRejectedValue(new Error('Target closed'))
