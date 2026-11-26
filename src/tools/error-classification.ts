@@ -78,9 +78,8 @@ export function isPageClosedError(error: unknown): boolean {
 }
 
 /**
- * Reads a target error that already carries the agent-facing code: the
- * mobile driver's `MobileRefError` (a ref the tool cannot use; nothing was
- * sent to the device), with its own hint.
+ * Reads the mobile driver's `MobileRefError`, which already carries the
+ * agent-facing code and its own hint.
  *
  * @param error - The thrown error.
  * @returns The code, message and hint, or undefined for other errors.
@@ -104,8 +103,7 @@ export function readTargetRefError(
  *
  * @param error - The error to classify
  * @param fallbackCode - The fallback error code if no pattern matches
- * @returns Object with error code, message and, for a ref the tool cannot
- * use, a hint
+ * @returns Object with error code, message and optional hint
  */
 export function classifyInteractionError(
   error: unknown,
