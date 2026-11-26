@@ -1682,7 +1682,7 @@ describe('MobilePlatformDriver', () => {
       expect(nodes[1].ambiguous).toBeUndefined();
     });
 
-    it('does not flag identifier-based refs', async () => {
+    it('flags a label ref that also finds a node with a test ID, not the test ID ref', async () => {
       const backend = createMockBackend({
         snapshot: vi.fn().mockResolvedValue({
           platform: 'ios',
@@ -1696,10 +1696,35 @@ describe('MobilePlatformDriver', () => {
       });
       const driver = new MobilePlatformDriver(backend);
 
-      const { nodes } = await driver.getAccessibilityTree();
+      const { nodes, refMap } = await driver.getAccessibilityTree();
 
       expect(nodes[0].ambiguous).toBeUndefined();
-      expect(nodes[1].ambiguous).toBeUndefined();
+      expect(refMap.get('e1')).toBe('identifier:ok-btn');
+      // `{ label: 'OK', type: 'Button' }` finds `ok-btn` first.
+      expect(nodes[1].ambiguous).toBe(true);
+      expect(refMap.get('e2')).toMatch(/^bounds:.*"matches":2/u);
+    });
+
+    it('flags a value ref that also finds a node with that label', async () => {
+      const backend = createMockBackend({
+        snapshot: vi.fn().mockResolvedValue({
+          platform: 'ios',
+          hierarchy: [
+            makeElement({ type: 'StaticText', label: '1 ETH' }),
+            makeElement({ type: 'StaticText', value: '1 ETH' }),
+          ],
+          raw: '[]',
+          timestamp: Date.now(),
+        }),
+      });
+      const driver = new MobilePlatformDriver(backend);
+
+      const { nodes } = await driver.getAccessibilityTree();
+
+      expect(nodes.map((node) => node.ambiguous)).toStrictEqual([
+        undefined,
+        true,
+      ]);
     });
   });
 

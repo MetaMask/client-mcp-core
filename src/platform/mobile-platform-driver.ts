@@ -1313,7 +1313,6 @@ function normalizeSnapshot(
   const nodes: A11yNodeTrimmed[] = [];
   const entries: { node: A11yNodeTrimmed; el: UIElement; stableId?: string }[] =
     [];
-  const stableIdCount = new Map<string, string[]>();
   let refCounter = 0;
 
   /**
@@ -1354,11 +1353,6 @@ function normalizeSnapshot(
       }
 
       entries.push({ node, el, ...(stableId ? { stableId } : {}) });
-      if (stableId) {
-        const refs = stableIdCount.get(stableId) ?? [];
-        refs.push(ref);
-        stableIdCount.set(stableId, refs);
-      }
 
       if (el.children?.length) {
         walk(el.children);
@@ -1370,7 +1364,13 @@ function normalizeSnapshot(
 
   const refMap = new Map<string, string>();
   for (const { node, el, stableId } of entries) {
-    const matches = stableId ? (stableIdCount.get(stableId)?.length ?? 0) : 0;
+    const query = identityQuery(el, node.role);
+    // How many kept nodes the query of this node finds exactly, as device-mcp
+    // matches it: a label ref also finds a node with a testId and the same
+    // label and type.
+    const matches = stableId
+      ? entries.filter((entry) => matchesExactly(entry.el, query)).length
+      : 0;
     if (stableId && matches === 1) {
       refMap.set(node.ref, stableId);
       continue;
@@ -1383,13 +1383,32 @@ function normalizeSnapshot(
       node.ref,
       formatBoundsRef({
         frame: { x, y, width, height },
-        query: identityQuery(el, node.role),
+        query,
         ...(matches > 1 ? { matches } : {}),
       }),
     );
   }
 
   return { nodes, refMap };
+}
+
+/**
+ * Whether an element matches a query exactly, by device-mcp's rules
+ * (`matchesQuery` with `exact`): equal identifier, equal label, `text`
+ * equal to the value or the label, equal type.
+ *
+ * @param el - The element.
+ * @param query - The query.
+ * @returns True when every field of the query matches.
+ */
+function matchesExactly(el: UIElement, query: ElementQuery): boolean {
+  const { identifier, label, text, type } = query;
+  return (
+    (identifier === undefined || el.identifier === identifier) &&
+    (label === undefined || el.label === label) &&
+    (text === undefined || el.value === text || el.label === text) &&
+    (type === undefined || (el.type || 'element') === type)
+  );
 }
 
 /**
