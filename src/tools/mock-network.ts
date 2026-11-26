@@ -17,6 +17,7 @@ import type {
   NetworkMockSummary,
 } from './types';
 import { createToolSuccess, requireActiveSession } from './utils.js';
+import { redactText, redactUrl } from '../events/redact.js';
 import type {
   CdpEventListener,
   CdpEventSession,
@@ -364,6 +365,10 @@ export class NetworkMockRouteManager {
 
   /**
    * Gets recorded request hits and misses.
+   *
+   * The URL filter is applied to the recorded (redacted) URL, as `mm network`
+   * does with its records: a filter on a non-secret part of the URL still
+   * matches.
    *
    * @param limit - Optional maximum number of newest records to return,
    * applied after the URL filter.
@@ -716,7 +721,7 @@ export class NetworkMockRouteManager {
         });
       } catch (error) {
         delete record.status;
-        record.mockError = extractErrorMessage(error);
+        record.mockError = redactText(extractErrorMessage(error));
         throw error;
       }
     } catch (error) {
@@ -753,6 +758,10 @@ export class NetworkMockRouteManager {
   /**
    * Records a hit or miss for an intercepted request.
    *
+   * The URL is stored redacted, like the `mm network` records, so a key in
+   * its path or query never reaches the output. Matching uses the raw URL
+   * and has happened before this call.
+   *
    * Headers and the body are stored only when the matched rule opts in via
    * `record`.
    *
@@ -777,7 +786,7 @@ export class NetworkMockRouteManager {
     const record: NetworkMockRequestRecord = {
       timestamp: new Date().toISOString(),
       method: request.method,
-      url: request.url,
+      url: redactUrl(request.url),
       matched,
       ...(ruleId ? { ruleId } : {}),
       ...(status ? { status } : {}),

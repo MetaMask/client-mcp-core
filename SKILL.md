@@ -694,7 +694,7 @@ mm mock-network list
 
 #### `mm mock-network requests`
 
-Shows recorded matched and missed requests.
+Shows recorded matched and missed requests. URLs are redacted the same way as `mm network` records: credentials, key-like path segments (such as an Infura project ID) and sensitive query values are replaced with `[REDACTED]`, so a key never reaches the output.
 
 ```bash
 mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
@@ -706,7 +706,7 @@ mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 | `--url <glob-or-text>` | Only return requests whose URL matches this glob (`*`, `**`) or, without `*`, contains this text |
 | `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
 
-Without `--bodies` the output is the same as before: no bodies or headers. Each record has `context` (`page`, `sw`, `offscreen` or `iframe`: where the request came from), and `"serviceWorker": true` when the Extension's background service worker sent the request.
+`--url` matches against the recorded (redacted) URL, as `mm network --url` does, so filter on a non-secret part of the URL (for example `esplora`); a filter that names a secret does not match. Without `--bodies` the output is the same as before: no bodies or headers. Each record has `context` (`page`, `sw`, `offscreen` or `iframe`: where the request came from), and `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 

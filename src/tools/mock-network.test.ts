@@ -55,6 +55,12 @@ const BALANCES_RULE: NetworkMockRouteRule = {
   },
 };
 
+// An Infura-style project ID: 32 hex characters, the shape of the key in
+// `https://bitcoin-mainnet.infura.io/v3/<key>/…`.
+const INFURA_KEY = '0123456789abcdef0123456789abcdef';
+const INFURA_HOST = 'https://bitcoin-mainnet.infura.io';
+const INFURA_REDACTED_URL = `${INFURA_HOST}/v3/[REDACTED]/esplora/blocks`;
+
 function createMockBrowserContext() {
   return {
     route: vi.fn().mockResolvedValue(undefined),
@@ -207,6 +213,89 @@ describe('mockNetworkTool', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe(ErrorCodes.MM_NO_ACTIVE_SESSION);
+    }
+  });
+
+  it('redacts an Infura project ID in the path and an apiKey query in request records', async () => {
+    const browserContext = createMockBrowserContext();
+    const context = createMockContext({ browserContext });
+    const rawUrl = `${INFURA_HOST}/v3/${INFURA_KEY}/esplora/blocks?apiKey=${INFURA_KEY}`;
+
+    await mockNetworkTool(
+      {
+        action: 'add',
+        rule: {
+          ...MOCK_RULE,
+          id: 'infura',
+          url: `${INFURA_HOST}/**`,
+        },
+      },
+      context,
+    );
+    const routeHandler = browserContext.route.mock.calls[0]?.[1];
+    await routeHandler(createMockRoute('GET', rawUrl));
+
+    const result = await mockNetworkTool({ action: 'requests' }, context);
+
+    expect(result.ok).toBe(true);
+    if (result.ok && result.result.action === 'requests') {
+      expect(result.result.requests).toStrictEqual([
+        expect.objectContaining({
+          url: `${INFURA_REDACTED_URL}?apiKey=[REDACTED]`,
+          matched: true,
+          ruleId: 'infura',
+        }),
+      ]);
+      expect(result.result.summary).toMatchObject({
+        lastMatchedUrl: `${INFURA_REDACTED_URL}?apiKey=[REDACTED]`,
+        lastRequestUrl: `${INFURA_REDACTED_URL}?apiKey=[REDACTED]`,
+      });
+      expect(JSON.stringify(result.result)).not.toContain(INFURA_KEY);
+    }
+  });
+
+  it('matches a rule whose URL contains the key, and filters on the redacted URL', async () => {
+    const browserContext = createMockBrowserContext();
+    const context = createMockContext({ browserContext });
+    const rawUrl = `${INFURA_HOST}/v3/${INFURA_KEY}/esplora/blocks`;
+
+    await mockNetworkTool(
+      {
+        action: 'add',
+        rule: {
+          ...MOCK_RULE,
+          id: 'infura-keyed',
+          url: `${INFURA_HOST}/v3/${INFURA_KEY}/esplora/**`,
+        },
+      },
+      context,
+    );
+    const routeHandler = browserContext.route.mock.calls[0]?.[1];
+    await routeHandler(createMockRoute('GET', rawUrl));
+
+    const substring = await mockNetworkTool(
+      { action: 'requests', url: 'esplora' },
+      context,
+    );
+    const glob = await mockNetworkTool(
+      { action: 'requests', url: `${INFURA_HOST}/**` },
+      context,
+    );
+
+    expect(substring.ok && substring.result.action === 'requests').toBe(true);
+    if (substring.ok && substring.result.action === 'requests') {
+      expect(substring.result.requests).toStrictEqual([
+        expect.objectContaining({
+          url: INFURA_REDACTED_URL,
+          matched: true,
+          ruleId: 'infura-keyed',
+        }),
+      ]);
+    }
+    expect(glob.ok && glob.result.action === 'requests').toBe(true);
+    if (glob.ok && glob.result.action === 'requests') {
+      expect(glob.result.requests).toHaveLength(1);
+      expect(glob.result.requests[0]?.url).toBe(INFURA_REDACTED_URL);
     }
   });
 });
@@ -1790,6 +1879,34 @@ describe('NetworkMockRouteManager offscreen document and iframes', () => {
         mockError: 'Invalid header',
       },
     ]);
+  });
+
+  it('redacts a URL echoed in a mock error', async () => {
+    const rawUrl = `${INFURA_HOST}/v3/${INFURA_KEY}/esplora/blocks`;
+    const iframe = createFetchSession('iframe', 'iframe-1', (method) => {
+      if (method === 'Fetch.fulfillRequest') {
+        throw new Error(
+          `Fetch.fulfillRequest failed for ${rawUrl}: Invalid header`,
+        );
+      }
+      return {};
+    });
+    const cdp = createFakeCdpManager([iframe]);
+    const manager = new NetworkMockRouteManager(
+      createCdpBrowserContext(cdp) as never,
+    );
+    await manager.addRule({
+      ...SCAN_RULE,
+      url: `${INFURA_HOST}/**`,
+    });
+
+    await pause(iframe, { url: rawUrl, method: 'POST' });
+
+    const [record] = manager.getRequests();
+    expect(record?.mockError).toBe(
+      `Fetch.fulfillRequest failed for ${INFURA_REDACTED_URL}: Invalid header`,
+    );
+    expect(record?.url).toBe(INFURA_REDACTED_URL);
   });
 
   it('bounds a Fetch command that never answers', async () => {
