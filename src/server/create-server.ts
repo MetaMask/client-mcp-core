@@ -100,9 +100,8 @@ type ObservedTree = {
   animationsSettled?: boolean;
 };
 
-/** The browser page when the tool started. */
+/** A tool's start time and browser page URL (undefined without one). */
 type PageBeforeTool = {
-  /** Undefined without a browser page. */
   url: string | undefined;
   startedAt: number;
 };
@@ -463,10 +462,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     };
   }
 
-  /**
-   * @returns The URL of the active browser page, or undefined when there is
-   * no browser page.
-   */
+  /** @returns The URL of the active browser page, if there is one. */
   function browserPageUrl(): string | undefined {
     if (
       !config.sessionManager.hasActiveSession() ||
