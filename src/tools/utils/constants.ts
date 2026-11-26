@@ -48,6 +48,14 @@ export const ANIMATION_SETTLE_TIMEOUT_MS = 1_000;
 export const ANIMATION_SETTLE_GRACE_MS = 250;
 
 /**
+ * When a browser tool changed the page URL (a hash route included), its
+ * observation reads the page no earlier than this long after the tool
+ * started. The new route can render after the animation wait ended
+ * (P1-44: Extension settings rendered up to ~90 ms after the hash change).
+ */
+export const NAVIGATION_SETTLE_MIN_MS = 200;
+
+/**
  * Cap on the in-page testId collection call. After it, collection falls
  * back to per-element locator calls.
  */

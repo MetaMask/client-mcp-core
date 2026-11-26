@@ -24,6 +24,7 @@ import type { StepRecordObservation } from '../tools/types/observation.js';
 import {
   OBSERVATION_TIMEOUT_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
+  NAVIGATION_SETTLE_MIN_MS,
 } from '../tools/utils/constants.js';
 import { waitForAnimationsToSettle } from '../tools/utils/discovery.js';
 import type {
@@ -1239,6 +1240,57 @@ describe('createServer with active session', () => {
         expect(body.observations?.animationsSettled).toBe(settled);
       },
     );
+
+    describe('after a URL change', () => {
+      /**
+       * Starts a tool on a browser page whose URL becomes `urlAfter`, and
+       * returns when its observation read the test IDs.
+       *
+       * @param urlAfter - The page URL after the tool.
+       * @returns The time from the tool start to the test ID read, in ms.
+       */
+      async function msUntilObservationRead(urlAfter: string): Promise<number> {
+        const { collectTestIds } = await import('../tools/utils/discovery.js');
+        let url = 'chrome-extension://test/home.html';
+        mockSM.getPage.mockReturnValue({
+          waitForLoadState: vi.fn(async () => undefined),
+          url: () => url,
+        } as never);
+        mockSM.getPlatformDriver.mockReturnValue({
+          getPlatform: () => 'browser',
+          cdp: vi.fn(async () => {
+            url = urlAfter;
+            return { ok: true, result: {} };
+          }),
+        });
+        let readAt = 0;
+        vi.mocked(collectTestIds).mockImplementationOnce(async () => {
+          readAt = Date.now();
+          return [];
+        });
+
+        const startedAt = Date.now();
+        await post('/tool/cdp', {
+          method: 'Runtime.evaluate',
+          observe: 'full',
+        });
+        return readAt - startedAt;
+      }
+
+      it('reads the page no earlier than NAVIGATION_SETTLE_MIN_MS after the tool started', async () => {
+        expect(
+          await msUntilObservationRead(
+            'chrome-extension://test/home.html#settings',
+          ),
+        ).toBeGreaterThanOrEqual(NAVIGATION_SETTLE_MIN_MS - 5);
+      });
+
+      it('reads the page at once when the URL did not change', async () => {
+        expect(
+          await msUntilObservationRead('chrome-extension://test/home.html'),
+        ).toBeLessThan(NAVIGATION_SETTLE_MIN_MS / 2);
+      });
+    });
 
     it('omits animationsSettled when the call does not wait for animations', async () => {
       mockSM.getPage.mockReturnValue({
