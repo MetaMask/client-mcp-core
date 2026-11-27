@@ -101,11 +101,39 @@ export function encodeLogValue(value: string): string {
   );
 }
 
+// A tool name as `run_steps` accepts it in `steps[].tool`. The schema takes
+// any string, so only names of this shape are logged.
+const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/u;
+
+/**
+ * Lists the tool of each `run_steps` step, for example `click,wait_for`.
+ * Step args are not read: their targets would each need the redaction above.
+ *
+ * @param steps - The `steps` field of the request body.
+ * @returns The comma-separated tool names, or `` when there are none.
+ */
+function describeBatchTools(steps: unknown): string {
+  if (!Array.isArray(steps)) {
+    return '';
+  }
+  return steps
+    .map((step) =>
+      typeof step === 'object' && step !== null
+        ? (step as { tool?: unknown }).tool
+        : undefined,
+    )
+    .filter(
+      (tool): tool is string =>
+        typeof tool === 'string' && TOOL_NAME_PATTERN.test(tool),
+    )
+    .join(',');
+}
+
 /**
  * Describes what a request acted on, for the daemon log: the target element,
- * screen, tab, URL or CDP method from the request body, and the file a
- * screenshot was saved to. Typed text, CDP params and launch secrets are never
- * read.
+ * screen, tab, URL or CDP method from the request body, the tools of a
+ * `run_steps` batch, and the file a screenshot was saved to. Typed text, CDP
+ * params, batch step args and launch secrets are never read.
  *
  * @param input - The JSON request body.
  * @param body - The JSON response body.
@@ -123,6 +151,10 @@ export function describeTarget(input: unknown, body: unknown): string {
           field === 'url' ? redactUrl(value) : value,
         )}`;
       }
+    }
+    const tools = describeBatchTools(record.steps);
+    if (tools !== '') {
+      fields += ` steps=${encodeLogValue(tools)}`;
     }
   }
   if (typeof body === 'object' && body !== null) {

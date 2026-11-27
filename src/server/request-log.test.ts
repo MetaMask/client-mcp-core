@@ -186,6 +186,49 @@ describe('describeTarget', () => {
     ).toBe('');
   });
 
+  it('logs the tools of a run_steps batch, not their args', () => {
+    const line = describeTarget(
+      {
+        steps: [
+          { tool: 'click', args: { testId: 'confirm-btn' } },
+          { tool: 'type', args: { testId: 'password', text: 'hunter2' } },
+          { tool: 'wait_for', args: { selector: 'text=Done' } },
+        ],
+      },
+      { ok: true },
+    );
+    expect(line).toBe(' steps=click,type,wait_for');
+  });
+
+  it.each([
+    ['a tool name with spaces', [{ tool: 'click now' }]],
+    ['a tool name with a newline', [{ tool: 'click\n[INFO] x' }]],
+    ['an uppercase tool name', [{ tool: 'Click' }]],
+    ['a step that is not an object', ['click', null]],
+    ['a step without a tool', [{ args: {} }]],
+  ])('leaves out %s', (_name, steps) => {
+    expect(describeTarget({ steps }, { ok: true })).toBe('');
+  });
+
+  it('keeps the valid tools of a batch with an invalid one', () => {
+    expect(
+      describeTarget(
+        {
+          steps: [
+            { tool: 'click' },
+            { tool: 'Bad Tool' },
+            { tool: 'screenshot' },
+          ],
+        },
+        { ok: true },
+      ),
+    ).toBe(' steps=click,screenshot');
+  });
+
+  it('adds nothing for an empty batch', () => {
+    expect(describeTarget({ steps: [] }, { ok: true })).toBe('');
+  });
+
   it.each([
     ['no body', undefined],
     ['an empty body', {}],
@@ -250,6 +293,36 @@ describe('formatRequestLogLine', () => {
       ),
     ).toBe(
       '[INFO] POST /tool/click 200 ok=false code=MM_CLICK_TIMEOUT testid=confirm-btn 15080ms',
+    );
+  });
+
+  it('puts the batch tools after the failed-step count', () => {
+    expect(
+      formatRequestLogLine(
+        {
+          method: 'POST',
+          path: '/tool/run_steps',
+          status: 200,
+          input: { steps: [{ tool: 'click' }, { tool: 'wait_for' }] },
+        },
+        {
+          ok: true,
+          result: {
+            steps: [
+              { tool: 'click', ok: true },
+              {
+                tool: 'wait_for',
+                ok: false,
+                error: { code: 'MM_WAIT_TIMEOUT' },
+              },
+            ],
+            summary: { total: 2, failed: 1 },
+          },
+        },
+        900,
+      ),
+    ).toBe(
+      '[INFO] POST /tool/run_steps 200 ok=true failed=1/2 code=MM_WAIT_TIMEOUT steps=click,wait_for 900ms',
     );
   });
 
