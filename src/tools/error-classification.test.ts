@@ -356,6 +356,23 @@ describe('error-classification', () => {
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
       });
+
+      it('returns TARGET_NOT_FOUND for a frame wrapper with several iframes', () => {
+        // Arrange
+        const error = new Error(
+          "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+        );
+
+        // Act
+        const result = classifyInteractionError(
+          error,
+          ErrorCodes.MM_CLICK_FAILED,
+        );
+
+        // Assert
+        expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.message).toContain('strict mode violation');
+      });
     });
 
     describe('when error indicates timeout', () => {
@@ -897,6 +914,20 @@ describe('error-classification', () => {
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
         expect(result.message).toContain('matched 0 elements');
+      });
+
+      it('returns TARGET_NOT_FOUND code for several matching iframes', () => {
+        // Arrange
+        const error = new Error(
+          "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+        );
+
+        // Act
+        const result = classifyScreenshotError(error);
+
+        // Assert
+        expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.message).toContain('strict mode violation');
       });
     });
 

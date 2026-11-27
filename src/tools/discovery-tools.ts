@@ -11,7 +11,7 @@ import { ErrorCodes } from './types';
 import { DEFAULT_TESTID_LIMIT } from './utils/constants.js';
 import {
   nextFrameRefPrefix,
-  resolveFrameSelector,
+  resolveFrameElementSelector,
   resolveWithinScope,
 } from './utils/frame-scope.js';
 import {
@@ -143,7 +143,7 @@ export async function describeScreenTool(
   try {
     const frameTarget = frame
       ? {
-          selector: await resolveFrameSelector(
+          selector: await resolveFrameElementSelector(
             frame,
             context.refMap,
             context.page,

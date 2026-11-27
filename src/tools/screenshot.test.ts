@@ -25,8 +25,6 @@ function createMockContext(
   const { hasActive = true } = options;
   const locator = createMockLocator();
   vi.spyOn(locator, 'first').mockReturnValue(locator);
-  // No frame target in the DOM by default: the resolver keeps the selector.
-  vi.mocked(locator.count).mockResolvedValue(0);
   const page = createMockPage({ locatorMock: locator });
   const sessionManager = createMockSessionManager({ hasActive });
 
@@ -230,11 +228,15 @@ describe('screenshotTool', () => {
 
   describe('with frame scoping', () => {
     it.each([
-      ['the iframe', { frame: { testId: 'chart' } }, '[data-testid="chart"]'],
+      [
+        'the iframe',
+        { frame: { testId: 'chart' } },
+        '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
+      ],
       [
         'an element inside the iframe',
         { frame: { selector: 'iframe.chart' }, selector: '.legend' },
-        'iframe.chart >> internal:control=enter-frame >> .legend',
+        'iframe.chart >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> .legend',
       ],
     ])('captures %s', async (_label, input, selector) => {
       const context = createMockContext();
@@ -273,20 +275,8 @@ describe('screenshotTool', () => {
       }
     });
 
-    it('captures the only iframe of a wrapper frame target', async () => {
+    it('captures the iframe inside a wrapper frame target', async () => {
       const context = createMockContext();
-      const first = vi.fn();
-      const element = {
-        count: vi.fn().mockResolvedValue(1),
-        and: vi.fn().mockReturnValue({ count: vi.fn().mockResolvedValue(0) }),
-        locator: vi.fn().mockReturnValue({
-          count: vi.fn().mockResolvedValue(1),
-        }),
-        waitFor: vi.fn().mockResolvedValue(undefined),
-        first,
-      };
-      first.mockReturnValue(element);
-      vi.mocked(context.page.locator).mockReturnValue(element as any);
       vi.spyOn(context.sessionManager, 'screenshot').mockResolvedValue({
         path: '/path/to/frame.png',
         width: 400,
@@ -303,23 +293,20 @@ describe('screenshotTool', () => {
       expect(context.sessionManager.screenshot).toHaveBeenCalledWith({
         name: 'frame',
         fullPage: true,
-        selector: '[data-testid="advanced-chart-iframe"] iframe',
+        selector:
+          '[data-testid="advanced-chart-iframe"] >> xpath=descendant-or-self::iframe',
       });
     });
 
     it('returns MM_TARGET_NOT_FOUND when the frame target holds no iframe', async () => {
       const context = createMockContext();
-      const first = vi.fn();
-      const element = {
-        count: vi.fn().mockResolvedValue(1),
-        and: vi.fn().mockReturnValue({ count: vi.fn().mockResolvedValue(0) }),
-        locator: vi.fn().mockReturnValue({
-          count: vi.fn().mockResolvedValue(0),
-        }),
-        first,
-      };
-      first.mockReturnValue(element);
-      vi.mocked(context.page.locator).mockReturnValue(element as any);
+      const locator = createMockLocator();
+      vi.mocked(locator.first).mockReturnValue(locator);
+      const timeout = new Error('locator.waitFor: Timeout 2000ms exceeded.');
+      timeout.name = 'TimeoutError';
+      vi.mocked(locator.waitFor).mockRejectedValue(timeout);
+      vi.mocked(locator.count).mockResolvedValue(0);
+      vi.mocked(context.page.locator).mockReturnValue(locator);
 
       const result = await screenshotTool(
         { frame: { testId: 'advanced-chart-iframe' } },
@@ -329,7 +316,31 @@ describe('screenshotTool', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
-        expect(result.error.message).toContain('is not an iframe');
+        expect(result.error.message).toContain('matched 0 elements');
+      }
+    });
+
+    it('returns MM_TARGET_NOT_FOUND when the frame target holds several iframes', async () => {
+      const context = createMockContext();
+      const first = createMockLocator();
+      const locator = createMockLocator();
+      vi.mocked(locator.first).mockReturnValue(first);
+      vi.mocked(locator.waitFor).mockRejectedValue(
+        new Error(
+          "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+        ),
+      );
+      vi.mocked(context.page.locator).mockReturnValue(locator);
+
+      const result = await screenshotTool(
+        { frame: { testId: 'advanced-chart-iframe' } },
+        context,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toContain('strict mode violation');
       }
     });
 

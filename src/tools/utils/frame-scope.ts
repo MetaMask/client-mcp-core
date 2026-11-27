@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { MAX_SNAPSHOT_FRAMES } from './constants.js';
+import { FRAME_ATTACH_TIMEOUT_MS, MAX_SNAPSHOT_FRAMES } from './constants.js';
 import type { TargetType, WithinScope } from './discovery.js';
 import type { WithinTarget } from '../types';
 
@@ -94,21 +94,55 @@ function testIdOrSelector(type: 'testId' | 'selector', value: string): string {
 }
 
 /**
+ * Playwright selector step that picks the target itself when it is an
+ * iframe, else the only iframe inside it. It is part of the frame selector
+ * so that the tools' waits wait for an iframe that renders after a
+ * navigation; several iframes fail in strict mode.
+ */
+const IFRAME_OR_SELF_SELECTOR = 'xpath=descendant-or-self::iframe';
+
+/**
+ * Builds the Playwright selector of an iframe from the target element.
+ *
+ * @param selector - The selector of the iframe or of its wrapper.
+ * @returns The selector, followed by the iframe step.
+ */
+function iframeOrSelf(selector: string): string {
+  return `${selector} >> ${IFRAME_OR_SELF_SELECTOR}`;
+}
+
+/**
+ * Returns the selector before the iframe step, when it has one.
+ *
+ * `describe-screen` reads the frame through CDP, which takes a plain CSS
+ * selector, not the Playwright chain that `resolveFrameSelector` builds.
+ *
+ * @param selector - A frame selector.
+ * @returns The selector without the iframe step.
+ */
+export function frameSelectorBase(selector: string): string {
+  const suffix = ` >> ${IFRAME_OR_SELF_SELECTOR}`;
+  return selector.endsWith(suffix)
+    ? selector.slice(0, -suffix.length)
+    : selector;
+}
+
+/**
  * Resolves the iframe of a frame scope to a Playwright selector. A ref of
  * the iframe element (from a snapshot of its page) resolves through the
- * ref map. A test ID or selector whose element is a wrapper around exactly
- * one iframe resolves to that iframe, as on the MetaMask Extension chart.
+ * ref map. A test ID or selector resolves to the element itself when it is
+ * an iframe, or to the only iframe inside it, as on the MetaMask Extension
+ * chart. The iframe step is part of the selector, so the caller's wait
+ * covers an iframe that renders after a navigation.
  *
  * @param frame - The iframe, as a ref, test ID or selector.
  * @param refMap - Map of a11y refs to selectors.
- * @param page - The Playwright page, to look at a test ID or selector target.
  * @returns The selector of the iframe element.
  */
-export async function resolveFrameSelector(
+export function resolveFrameSelector(
   frame: WithinScope,
   refMap: Map<string, string>,
-  page: Page,
-): Promise<string> {
+): string {
   if (frame.type === 'a11yRef') {
     const selector = refMap.get(frame.value);
     if (!selector) {
@@ -120,29 +154,54 @@ export async function resolveFrameSelector(
     return selector;
   }
 
-  const selector = testIdOrSelector(frame.type, frame.value);
-  const target = page.locator(selector);
-  if ((await target.count()) === 0) {
-    // No match: the caller's wait gives the missing target its own error.
+  return iframeOrSelf(testIdOrSelector(frame.type, frame.value));
+}
+
+/**
+ * Resolves a frame scope to the plain CSS selector of its iframe, for
+ * `describe-screen`, which reads the frame through CDP. A test ID or
+ * selector that is a wrapper around one iframe is waited for, so an iframe
+ * that renders late is found.
+ *
+ * @param frame - The iframe, as a ref, test ID or selector.
+ * @param refMap - Map of a11y refs to selectors.
+ * @param page - The Playwright page, to find the iframe inside a wrapper.
+ * @returns The plain CSS selector of the iframe element.
+ */
+export async function resolveFrameElementSelector(
+  frame: WithinScope,
+  refMap: Map<string, string>,
+  page: Page,
+): Promise<string> {
+  const selector = resolveFrameSelector(frame, refMap);
+  const base = frameSelectorBase(selector);
+  if (base === selector) {
     return selector;
   }
-  const element = target.first();
-  if ((await element.and(page.locator('iframe')).count()) > 0) {
-    return selector;
+
+  const iframe = page.locator(selector);
+  try {
+    await iframe.first().waitFor({
+      state: 'attached',
+      timeout: FRAME_ATTACH_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error(`Frame not found: no iframe matches ${base}`);
+    }
+    throw error;
   }
-  const iframeCount = await element.locator('iframe').count();
-  if (iframeCount === 1) {
-    return `${selector} iframe`;
+  const iframeCount = await iframe.count();
+  if (iframeCount > 1) {
+    throw new Error(
+      `Frame not found: ${base} resolves to ${iframeCount} iframes; ` +
+        `target one by its ref from describe-screen, or with a selector ` +
+        `that matches one (for example selector:${base} iframe:nth-of-type(1))`,
+    );
   }
-  if (iframeCount === 0) {
-    throw new Error(`Frame not found: ${selector} is not an iframe`);
-  }
-  throw new Error(
-    `Frame not found: ${selector} is not an iframe and contains ` +
-      `${iframeCount} iframes; target one by its ref from ` +
-      `describe-screen, or with a selector that matches one ` +
-      `(for example selector:${selector} iframe:nth-of-type(1))`,
-  );
+  const target = page.locator(base).first();
+  const isIframe = (await target.and(page.locator('iframe')).count()) > 0;
+  return isIframe ? base : `${base} iframe`;
 }
 
 /**

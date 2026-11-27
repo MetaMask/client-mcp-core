@@ -7,6 +7,7 @@ import {
   withCdpSession,
 } from './cdp.js';
 import {
+  FRAME_ATTACH_TIMEOUT_MS,
   MAX_SNAPSHOT_FRAMES,
   TESTID_COLLECT_TIMEOUT_MS,
   TEXT_PREVIEW_MAX_LENGTH,
@@ -444,12 +445,6 @@ const MAX_SNAPSHOT_FRAMES_TRIED = MAX_SNAPSHOT_FRAMES * 2;
  * How long a snapshot waits for an iframe element, in milliseconds.
  */
 const FRAME_ELEMENT_TIMEOUT_MS = 2_000;
-
-/**
- * How long `describe_screen` with a frame waits for the iframe to be
- * attached, in milliseconds.
- */
-const FRAME_ATTACH_TIMEOUT_MS = 5_000;
 
 /**
  * Extracts the normalized ARIA role from a CDP accessibility node.

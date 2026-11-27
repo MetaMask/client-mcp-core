@@ -59,6 +59,12 @@ export const TESTID_COLLECT_TIMEOUT_MS = 5_000;
  */
 export const MAX_SNAPSHOT_FRAMES = 5;
 
+/**
+ * How long `describe_screen` with a frame waits for the iframe to be
+ * attached, in milliseconds.
+ */
+export const FRAME_ATTACH_TIMEOUT_MS = 5_000;
+
 /** Maximum interval between idle-shutdown checks */
 export const MAX_IDLE_CHECK_INTERVAL_MS = 60_000;
 

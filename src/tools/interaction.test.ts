@@ -38,28 +38,35 @@ function createMockLocator() {
     boundingBox: vi
       .fn()
       .mockResolvedValue({ x: 0, y: 0, width: 100, height: 40 }),
+    first: vi.fn(),
   };
 }
 
 /**
- * Builds a page whose frame target is one element with the given iframes.
+ * Builds a page whose frame target wait fails: no iframe at all, or a
+ * wrapper with several iframes.
  *
- * @param iframeCount - How many iframes the element holds inside.
+ * @param failure - How the frame target fails to resolve to one iframe.
  * @returns The page.
  */
-function createFrameTargetPage(iframeCount: number) {
+function createFrameTargetPage(failure: 'none' | 'several') {
   const page = createMockPage();
-  const element = {
-    ...createMockLocator(),
-    count: vi.fn().mockResolvedValue(1),
-    and: vi.fn().mockReturnValue({ count: vi.fn().mockResolvedValue(0) }),
-    locator: vi.fn().mockReturnValue({
-      count: vi.fn().mockResolvedValue(iframeCount),
-    }),
-    first: vi.fn(),
-  };
-  element.first.mockReturnValue(element);
-  page.locator.mockReturnValue(element as any);
+  const first = createMockLocator();
+  const locator = createMockLocator();
+  vi.mocked(locator.first).mockReturnValue(first);
+  if (failure === 'none') {
+    vi.mocked(first.waitFor).mockRejectedValue(
+      createTimeoutError('Timeout 2000ms exceeded'),
+    );
+    vi.mocked(locator.count).mockResolvedValue(0);
+  } else {
+    vi.mocked(locator.waitFor).mockRejectedValue(
+      new Error(
+        "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+      ),
+    );
+  }
+  page.locator.mockReturnValue(locator as any);
   return page;
 }
 
@@ -1843,6 +1850,8 @@ describe('interaction frame scope', () => {
 
   const CHART = '[data-testid="advanced-chart-iframe"]';
   const inChart = (selector: string): string =>
+    `${CHART} >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> ${selector}`;
+  const inChartByRef = (selector: string): string =>
     `${CHART} >> internal:control=enter-frame >> ${selector}`;
 
   it('moves a testId target into the iframe of frame', async () => {
@@ -1869,8 +1878,8 @@ describe('interaction frame scope', () => {
     );
   });
 
-  it('resolves a frame target that is a wrapper around one iframe', async () => {
-    const page = createFrameTargetPage(1);
+  it('waits for the iframe inside a wrapper as part of the target', async () => {
+    const page = createMockPage();
     const context = createMockContext({ page });
     vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
       createMockLocator() as any,
@@ -1885,7 +1894,7 @@ describe('interaction frame scope', () => {
     expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
       page,
       'selector',
-      `${CHART} iframe >> internal:control=enter-frame >> [data-testid="zoom-in"]`,
+      inChart('[data-testid="zoom-in"]'),
       context.refMap,
       15000,
       undefined,
@@ -1894,13 +1903,12 @@ describe('interaction frame scope', () => {
   });
 
   it.each([
-    [0, 'is not an iframe'],
-    [2, 'contains 2 iframes'],
-  ])(
-    'returns MM_TARGET_NOT_FOUND when the frame target holds %i iframes',
-    async (iframeCount, message) => {
-      const page = createFrameTargetPage(iframeCount);
-      const waitForTarget = vi.spyOn(discoveryModule, 'waitForTarget');
+    ['holds no iframe', 'none', 'matched 0 elements'],
+    ['holds several iframes', 'several', 'strict mode violation'],
+  ] as const)(
+    'returns MM_TARGET_NOT_FOUND when the frame target %s',
+    async (_label, failure, message) => {
+      const page = createFrameTargetPage(failure);
 
       const result = await clickTool(
         { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
@@ -1912,9 +1920,24 @@ describe('interaction frame scope', () => {
         expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
         expect(result.error.message).toContain(message);
       }
-      expect(waitForTarget).not.toHaveBeenCalled();
     },
   );
+
+  it('returns MM_PAGE_CLOSED when the page closes while it waits for the frame target', async () => {
+    vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+      new Error('Target page, context or browser has been closed'),
+    );
+
+    const result = await clickTool(
+      { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
+      createMockContext(),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+    }
+  });
 
   it('moves the within parent into the iframe and keeps the target relative to it', async () => {
     const page = createMockPage();
@@ -1942,7 +1965,7 @@ describe('interaction frame scope', () => {
       {
         type: 'selector',
         value:
-          'iframe.chart >> internal:control=enter-frame >> [data-testid="chart-pane"]',
+          'iframe.chart >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> [data-testid="chart-pane"]',
       },
     );
   });
@@ -1966,7 +1989,7 @@ describe('interaction frame scope', () => {
     expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
       page,
       'selector',
-      inChart('text=No chart data'),
+      inChartByRef('text=No chart data'),
       context.refMap,
       15000,
       undefined,
