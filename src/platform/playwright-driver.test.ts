@@ -4,6 +4,10 @@ import { getCdpManager } from './cdp-manager.js';
 import { PlaywrightPlatformDriver } from './playwright-driver.js';
 import type { IPlatformDriver } from './types.js';
 import { createMockSessionManager } from '../tools/test-utils/mock-factories.js';
+import {
+  DEFAULT_INTERACTION_TIMEOUT_MS,
+  MISSING_TARGET_WAIT_MS,
+} from '../tools/utils/constants.js';
 import * as discoveryModule from '../tools/utils/discovery.js';
 import * as hiddenControlModule from '../tools/utils/hidden-control.js';
 import * as inspectModule from '../tools/utils/inspect.js';
@@ -862,6 +866,80 @@ describe('PlaywrightPlatformDriver', () => {
         fullPage: true,
         selector: undefined,
       });
+    });
+
+    it('waits for the selector with the given budget before capturing', async () => {
+      const page = createMockPage();
+      const sessionManager = createMockSessionManager({ hasActive: true });
+      const wait = vi
+        .spyOn(discoveryModule, 'waitForTarget')
+        .mockResolvedValue(createMockLocator() as any);
+
+      const driver = new PlaywrightPlatformDriver(
+        () => page as any,
+        sessionManager as any,
+      );
+
+      await driver.screenshot({
+        name: 'element',
+        selector: '.modal',
+        timeoutMs: 2000,
+      });
+
+      expect(wait).toHaveBeenCalledWith(
+        page,
+        'selector',
+        '.modal',
+        expect.any(Map),
+        2000,
+        undefined,
+        { missingTargetWaitMs: MISSING_TARGET_WAIT_MS },
+      );
+      expect(sessionManager.screenshot).toHaveBeenCalledOnce();
+    });
+
+    it('defaults the selector budget to the interaction timeout', async () => {
+      const wait = vi
+        .spyOn(discoveryModule, 'waitForTarget')
+        .mockResolvedValue(createMockLocator() as any);
+      const driver = createDriver();
+
+      await driver.screenshot({ name: 'element', selector: '.modal' });
+
+      expect(wait).toHaveBeenCalledWith(
+        expect.anything(),
+        'selector',
+        '.modal',
+        expect.any(Map),
+        DEFAULT_INTERACTION_TIMEOUT_MS,
+        undefined,
+        { missingTargetWaitMs: MISSING_TARGET_WAIT_MS },
+      );
+    });
+
+    it('does not wait without a selector', async () => {
+      const wait = vi.spyOn(discoveryModule, 'waitForTarget');
+      const driver = createDriver();
+
+      await driver.screenshot({ name: 'page', fullPage: true });
+
+      expect(wait).not.toHaveBeenCalled();
+    });
+
+    it('does not capture when the selector matches nothing', async () => {
+      vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+        new Error('Selector .missing matched 0 elements after 2000ms'),
+      );
+      const sessionManager = createMockSessionManager({ hasActive: true });
+      const driver = new PlaywrightPlatformDriver(
+        () => createMockPage() as any,
+        sessionManager as any,
+      );
+
+      await expect(
+        driver.screenshot({ name: 'element', selector: '.missing' }),
+      ).rejects.toThrowError('matched 0 elements');
+      expect(sessionManager.screenshot).not.toHaveBeenCalled();
     });
   });
 

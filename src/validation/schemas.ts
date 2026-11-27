@@ -532,6 +532,16 @@ export const screenshotInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded image in response'),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(60000)
+    .optional()
+    .describe(
+      'Browser: time to wait for the selector, in ms (default 15000). A ' +
+        'selector that matches no element fails with MM_TARGET_NOT_FOUND',
+    ),
   frame: frameTargetSchema
     .optional()
     .describe(

@@ -915,10 +915,12 @@ export async function routeCommand(
       const nameIdx = args.indexOf('--name');
       const name = nameIdx >= 0 ? args[nameIdx + 1] : undefined;
       const selector = parseStringFlag(args, '--selector');
+      const timeoutMs = parseIntFlag(args, '--timeout');
       const frame = resolveFrameFromArgs(args);
       await sendRequest(daemon, 'POST', '/tool/screenshot', {
         ...(name ? { name } : {}),
         ...(selector ? { selector } : {}),
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
         ...(frame ? { frame } : {}),
       });
       break;
@@ -2505,7 +2507,7 @@ Interaction:
                       The page tree includes visible iframes (refs f1e1, ...);
                       --frame lists only that iframe. --frame <iframe> on
                       actions targets a --testid or --selector inside it.
-  mm screenshot [--name <name>] [--selector <css>] [--frame <iframe>]
+  mm screenshot [--name <name>] [--selector <css>] [--timeout <ms>] [--frame <iframe>]
   mm wait-for <ref> [--timeout <ms>] [--selector <css>] [--testid <id>] [--within <scope>] [--frame <iframe>]
   mm wait-for-notification [--timeout <ms>]
   mm scroll-to-element <ref> [--selector <css>] [--testid <id>] [--timeout <ms>] [--within <scope>] [--direction up|down] [--maxAttempts <n>]

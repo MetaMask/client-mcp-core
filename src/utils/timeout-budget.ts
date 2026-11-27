@@ -32,6 +32,7 @@ const INTERACTION_TOOLS: ReadonlySet<string> = new Set([
   'hover',
   'wait_for',
   'scroll_to_element',
+  'screenshot',
 ]);
 
 /**
@@ -214,6 +215,14 @@ export function resolveActionTimeoutMs(
     typeof input === 'object' && input !== null
       ? (input as Record<string, unknown>)
       : undefined;
+  if (
+    toolName === 'screenshot' &&
+    record?.selector === undefined &&
+    record?.frame === undefined
+  ) {
+    // A full-page capture has no target to wait for: keep the queue default.
+    return undefined;
+  }
   const requested = record?.timeoutMs;
   if (typeof requested === 'number' && requested > 0) {
     return requested;

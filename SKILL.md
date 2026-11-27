@@ -318,10 +318,10 @@ mm accessibility-snapshot [--root <selector>]
 Captures a screenshot of the current page.
 
 ```
-mm screenshot [--name <name>] [--selector <css>] [--frame <iframe>]
+mm screenshot [--name <name>] [--selector <css>] [--timeout <ms>] [--frame <iframe>]
 ```
 
-`--selector` captures one element. `--frame` (browser) captures an iframe, or with `--selector` the element inside it.
+`--selector` captures one element and waits up to `--timeout` for it (default: 15s); a selector that matches no element fails fast with `MM_TARGET_NOT_FOUND`. `--frame` (browser) captures an iframe, or with `--selector` the element inside it.
 
 Returns: file path, dimensions.
 
