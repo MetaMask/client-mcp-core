@@ -356,6 +356,25 @@ describe('error-classification', () => {
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
       });
+
+      it.each([
+        [
+          'a frame wrapper with several iframes',
+          "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+        ],
+        [
+          'an ambiguous selector',
+          "locator.click: Error: strict mode violation: locator('button') resolved to 3 elements",
+        ],
+      ])('returns TARGET_NOT_FOUND for %s', (_label, message) => {
+        const result = classifyInteractionError(
+          new Error(message),
+          ErrorCodes.MM_CLICK_FAILED,
+        );
+
+        expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.message).toContain('strict mode violation');
+      });
     });
 
     describe('when error indicates timeout', () => {
@@ -619,6 +638,17 @@ describe('error-classification', () => {
       const result = classifyWaitError(error);
 
       expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+    });
+
+    it('returns TARGET_NOT_FOUND for an ambiguous selector', () => {
+      const error = new Error(
+        "locator.waitFor: Error: strict mode violation: locator('button') resolved to 3 elements",
+      );
+
+      const result = classifyWaitError(error);
+
+      expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+      expect(result.message).toContain('strict mode violation');
     });
 
     it('returns WAIT_TIMEOUT as fallback for unrecognized errors', () => {
@@ -897,6 +927,22 @@ describe('error-classification', () => {
         // Assert
         expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
         expect(result.message).toContain('matched 0 elements');
+      });
+
+      it.each([
+        [
+          'several matching iframes',
+          "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+        ],
+        [
+          'an ambiguous selector',
+          "locator.screenshot: Error: strict mode violation: locator('button') resolved to 3 elements",
+        ],
+      ])('returns TARGET_NOT_FOUND code for %s', (_label, message) => {
+        const result = classifyScreenshotError(new Error(message));
+
+        expect(result.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.message).toContain('strict mode violation');
       });
     });
 

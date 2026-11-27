@@ -464,9 +464,11 @@ export const frameTargetSchema = z
   )
   .describe(
     'Browser only: the iframe element (a11yRef, testId, or selector) whose ' +
-      'content the testId or selector target, and within, are in. Refs from ' +
-      'a snapshot (f1e3) already point into their frame: do not combine ' +
-      'frame with a ref target or a ref within.',
+      'content the testId or selector target, and within, are in. A testId ' +
+      'or selector that matches an element holding exactly one iframe (a ' +
+      'wrapper) resolves to that iframe. Refs from a snapshot (f1e3) already ' +
+      'point into their frame: do not combine frame with a ref target or a ' +
+      'ref within.',
   );
 
 export const listTestIdsInputSchema = z.object({

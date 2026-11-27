@@ -34,10 +34,41 @@ function createMockLocator() {
     textContent: vi.fn().mockResolvedValue('Hello World'),
     isEditable: vi.fn().mockResolvedValue(true),
     isDisabled: vi.fn().mockResolvedValue(false),
+    count: vi.fn().mockResolvedValue(0),
     boundingBox: vi
       .fn()
       .mockResolvedValue({ x: 0, y: 0, width: 100, height: 40 }),
+    first: vi.fn(),
   };
+}
+
+/**
+ * Builds a page whose frame target wait fails: no iframe at all, or a
+ * wrapper with several iframes.
+ *
+ * @param failure - How the frame target fails to resolve to one iframe.
+ * @returns The page.
+ */
+function createFrameTargetPage(failure: 'none' | 'several') {
+  const page = createMockPage();
+  const first = createMockLocator();
+  const locator = createMockLocator();
+  vi.mocked(locator.first).mockReturnValue(first);
+  if (failure === 'none') {
+    const timeout = createTimeoutError('Timeout 2000ms exceeded');
+    vi.mocked(first.waitFor).mockRejectedValue(timeout);
+    vi.mocked(locator.waitFor).mockRejectedValue(timeout);
+    vi.mocked(locator.count).mockResolvedValue(0);
+  } else {
+    vi.mocked(locator.waitFor).mockRejectedValue(
+      new Error(
+        "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+      ),
+    );
+    vi.mocked(locator.count).mockResolvedValue(2);
+  }
+  page.locator.mockReturnValue(locator as any);
+  return page;
 }
 
 function createMockPage() {
@@ -1820,6 +1851,8 @@ describe('interaction frame scope', () => {
 
   const CHART = '[data-testid="advanced-chart-iframe"]';
   const inChart = (selector: string): string =>
+    `${CHART} >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> ${selector}`;
+  const inChartByRef = (selector: string): string =>
     `${CHART} >> internal:control=enter-frame >> ${selector}`;
 
   it('moves a testId target into the iframe of frame', async () => {
@@ -1844,6 +1877,50 @@ describe('interaction frame scope', () => {
       undefined,
       { missingTargetWaitMs: 2000 },
     );
+  });
+
+  it.each([
+    ['click', 'holds no iframe', clickTool, 'none', 'matched 0 elements'],
+    [
+      'click',
+      'holds several iframes',
+      clickTool,
+      'several',
+      'strict mode violation',
+    ],
+    ['get_text', 'holds no iframe', getTextTool, 'none', 'matched 0 elements'],
+  ] as const)(
+    '%s returns MM_TARGET_NOT_FOUND when the frame target %s',
+    async (_name, _label, run, failure, message) => {
+      const page = createFrameTargetPage(failure);
+
+      const result = await run(
+        { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
+        createMockContext({ page }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+        expect(result.error.message).toContain(message);
+      }
+    },
+  );
+
+  it('returns MM_PAGE_CLOSED when the page closes while it waits for the frame target', async () => {
+    vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
+      new Error('Target page, context or browser has been closed'),
+    );
+
+    const result = await clickTool(
+      { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
+      createMockContext(),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_PAGE_CLOSED);
+    }
   });
 
   it('moves the within parent into the iframe and keeps the target relative to it', async () => {
@@ -1872,7 +1949,7 @@ describe('interaction frame scope', () => {
       {
         type: 'selector',
         value:
-          'iframe.chart >> internal:control=enter-frame >> [data-testid="chart-pane"]',
+          'iframe.chart >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> [data-testid="chart-pane"]',
       },
     );
   });
@@ -1896,7 +1973,7 @@ describe('interaction frame scope', () => {
     expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
       page,
       'selector',
-      inChart('text=No chart data'),
+      inChartByRef('text=No chart data'),
       context.refMap,
       15000,
       undefined,

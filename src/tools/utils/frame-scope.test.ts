@@ -1,13 +1,58 @@
-import { describe, expect, it } from 'vitest';
+import type { Page } from '@playwright/test';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  isFrameSelector,
   nextFrameRefPrefix,
+  resolveFrameElementSelector,
   resolveFrameSelector,
   resolveWithinScope,
   scopeTargetToFrame,
   selectorInFrame,
   testIdSelector,
 } from './frame-scope.js';
+
+/**
+ * Builds a page for `resolveFrameElementSelector`.
+ *
+ * @param base - The frame target selector without the iframe step.
+ * @param options - How the page answers.
+ * @param options.iframeCount - How many iframes the iframe step matches.
+ * @param options.directIframe - Whether the target itself is an iframe.
+ * @param options.waitError - The error of the wait, if it fails.
+ * @returns The page and the wait mock.
+ */
+function frameElementPage(
+  base: string,
+  options: {
+    iframeCount?: number;
+    directIframe?: boolean;
+    waitError?: Error;
+  } = {},
+): { page: Page; waitFor: ReturnType<typeof vi.fn> } {
+  const { iframeCount = 0, directIframe = false, waitError } = options;
+  const waitFor = waitError
+    ? vi.fn().mockRejectedValue(waitError)
+    : vi.fn().mockResolvedValue(undefined);
+  const page = {
+    locator: vi.fn((selector: string) => {
+      if (selector === `${base} >> xpath=descendant-or-self::iframe`) {
+        return {
+          first: vi.fn().mockReturnValue({ waitFor }),
+          count: vi.fn().mockResolvedValue(iframeCount),
+        };
+      }
+      return {
+        first: vi.fn().mockReturnValue({
+          and: vi.fn().mockReturnValue({
+            count: vi.fn().mockResolvedValue(directIframe ? 1 : 0),
+          }),
+        }),
+      };
+    }),
+  } as unknown as Page;
+  return { page, waitFor };
+}
 
 describe('testIdSelector', () => {
   it('selects the data-testid attribute', () => {
@@ -60,12 +105,35 @@ describe('selectorInFrame', () => {
   });
 });
 
+describe('isFrameSelector', () => {
+  it.each([
+    '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
+    'iframe.chart >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> button',
+  ])('is true for %s', (selector) => {
+    expect(isFrameSelector(selector)).toBe(true);
+  });
+
+  it.each([
+    '[data-testid="chart"]',
+    'css=#host >> css=iframe',
+    '[data-testid="chart"] >> internal:control=enter-frame >> button',
+  ])('is false for %s', (selector) => {
+    expect(isFrameSelector(selector)).toBe(false);
+  });
+});
+
 describe('resolveFrameSelector', () => {
   const refMap = new Map([['e7', 'css=#host >> css=iframe']]);
 
   it.each([
-    [{ type: 'testId', value: 'chart' }, '[data-testid="chart"]'],
-    [{ type: 'selector', value: 'iframe.chart' }, 'iframe.chart'],
+    [
+      { type: 'testId', value: 'chart' },
+      '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
+    ],
+    [
+      { type: 'selector', value: 'iframe.chart' },
+      'iframe.chart >> xpath=descendant-or-self::iframe',
+    ],
     [{ type: 'a11yRef', value: 'e7' }, 'css=#host >> css=iframe'],
   ] as const)('resolves %j', (frame, selector) => {
     expect(resolveFrameSelector(frame, refMap)).toBe(selector);
@@ -75,6 +143,95 @@ describe('resolveFrameSelector', () => {
     expect(() =>
       resolveFrameSelector({ type: 'a11yRef', value: 'e9' }, refMap),
     ).toThrowError('Unknown a11yRef: e9. Available refs: e7');
+  });
+});
+
+describe('resolveFrameElementSelector', () => {
+  const CHART = '[data-testid="advanced-chart-iframe"]';
+  const refMap = new Map([['e7', 'css=#host >> css=iframe']]);
+
+  it('waits for the only iframe of a wrapper and returns its selector', async () => {
+    const { page, waitFor } = frameElementPage(CHART, { iframeCount: 1 });
+
+    expect(
+      await resolveFrameElementSelector(
+        { type: 'testId', value: 'advanced-chart-iframe' },
+        refMap,
+        page,
+      ),
+    ).toBe(`${CHART} iframe`);
+    expect(waitFor).toHaveBeenCalledWith({
+      state: 'attached',
+      timeout: 5000,
+    });
+  });
+
+  it('keeps an element that is already an iframe', async () => {
+    const { page } = frameElementPage('iframe.chart', {
+      iframeCount: 1,
+      directIframe: true,
+    });
+
+    expect(
+      await resolveFrameElementSelector(
+        { type: 'selector', value: 'iframe.chart' },
+        refMap,
+        page,
+      ),
+    ).toBe('iframe.chart');
+  });
+
+  it('throws when no iframe matches before the timeout', async () => {
+    const timeout = new Error('Timeout 5000ms exceeded');
+    timeout.name = 'TimeoutError';
+    const { page } = frameElementPage(CHART, { waitError: timeout });
+
+    await expect(
+      resolveFrameElementSelector(
+        { type: 'testId', value: 'advanced-chart-iframe' },
+        refMap,
+        page,
+      ),
+    ).rejects.toThrowError(`Frame not found: no iframe matches ${CHART}`);
+  });
+
+  it('throws with the count when the wrapper holds several iframes', async () => {
+    const { page } = frameElementPage(CHART, { iframeCount: 2 });
+
+    await expect(
+      resolveFrameElementSelector(
+        { type: 'testId', value: 'advanced-chart-iframe' },
+        refMap,
+        page,
+      ),
+    ).rejects.toThrowError(`Frame not found: ${CHART} resolves to 2 iframes`);
+  });
+
+  it('keeps an error other than a timeout, such as a closed page', async () => {
+    const { page } = frameElementPage(CHART, {
+      waitError: new Error('Target page, context or browser has been closed'),
+    });
+
+    await expect(
+      resolveFrameElementSelector(
+        { type: 'testId', value: 'advanced-chart-iframe' },
+        refMap,
+        page,
+      ),
+    ).rejects.toThrowError('Target page, context or browser has been closed');
+  });
+
+  it('returns a ref unchanged without reading the page', async () => {
+    const page = { locator: vi.fn() } as unknown as Page;
+
+    expect(
+      await resolveFrameElementSelector(
+        { type: 'a11yRef', value: 'e7' },
+        refMap,
+        page,
+      ),
+    ).toBe('css=#host >> css=iframe');
+    expect(page.locator).not.toHaveBeenCalled();
   });
 });
 

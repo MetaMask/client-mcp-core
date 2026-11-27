@@ -17,6 +17,8 @@ const ERROR_PATTERNS = {
     'No element found',
     'Timeout waiting for selector',
     'matched 0 elements',
+    // An ambiguous selector: Playwright's strict mode found several elements.
+    'strict mode violation',
   ],
   timeout: ['Timeout', 'exceeded', 'timed out'],
   notEditable: ['element is not editable'],

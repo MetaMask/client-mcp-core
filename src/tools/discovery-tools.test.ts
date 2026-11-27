@@ -23,8 +23,17 @@ import { PlaywrightPlatformDriver } from '../platform/playwright-driver.js';
 import type { ToolContext } from '../types/http.js';
 
 function createMockPage(): Page {
+  const locator = {
+    count: vi.fn().mockResolvedValue(0),
+    waitFor: vi.fn().mockResolvedValue(undefined),
+    first: vi.fn(),
+    and: vi.fn(),
+  };
+  locator.first.mockReturnValue(locator);
+  locator.and.mockReturnValue({ count: vi.fn().mockResolvedValue(0) });
   return {
     url: vi.fn().mockReturnValue('chrome-extension://ext-123/home.html'),
+    locator: vi.fn(() => locator),
   } as unknown as Page;
 }
 
@@ -479,6 +488,29 @@ describe('discovery-tools', () => {
       await describeScreenTool({}, context);
 
       expect(context.sessionManager.setRefMap).toHaveBeenCalledWith(refMap);
+    });
+
+    it('describes the iframe inside a wrapper frame target', async () => {
+      const context = createMockContext();
+      vi.spyOn(discoveryModule, 'collectTestIds').mockResolvedValue([]);
+      vi.spyOn(discoveryModule, 'collectTrimmedA11ySnapshot').mockResolvedValue(
+        { nodes: [], refMap: new Map() },
+      );
+
+      const result = await describeScreenTool(
+        { frame: { testId: 'advanced-chart-iframe' } },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(discoveryModule.collectTrimmedA11ySnapshot).toHaveBeenCalledWith(
+        context.page,
+        undefined,
+        {
+          selector: '[data-testid="advanced-chart-iframe"] iframe',
+          refPrefix: 'f6',
+        },
+      );
     });
 
     it('returns MM_TARGET_NOT_FOUND when the iframe of frame is missing', async () => {

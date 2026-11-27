@@ -228,11 +228,15 @@ describe('screenshotTool', () => {
 
   describe('with frame scoping', () => {
     it.each([
-      ['the iframe', { frame: { testId: 'chart' } }, '[data-testid="chart"]'],
+      [
+        'the iframe',
+        { frame: { testId: 'chart' } },
+        '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
+      ],
       [
         'an element inside the iframe',
         { frame: { selector: 'iframe.chart' }, selector: '.legend' },
-        'iframe.chart >> internal:control=enter-frame >> .legend',
+        'iframe.chart >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> .legend',
       ],
     ])('captures %s', async (_label, input, selector) => {
       const context = createMockContext();
@@ -270,6 +274,46 @@ describe('screenshotTool', () => {
         );
       }
     });
+
+    it.each([
+      [
+        'holds no iframe',
+        Object.assign(new Error('locator.waitFor: Timeout 2000ms exceeded.'), {
+          name: 'TimeoutError',
+        }),
+        0,
+        'matched 0 elements',
+      ],
+      [
+        'holds several iframes',
+        new Error(
+          "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
+        ),
+        2,
+        'strict mode violation',
+      ],
+    ])(
+      'returns MM_TARGET_NOT_FOUND when the frame target %s',
+      async (_label, waitError, count, message) => {
+        const context = createMockContext();
+        const locator = createMockLocator();
+        vi.mocked(locator.first).mockReturnValue(locator);
+        vi.mocked(locator.waitFor).mockRejectedValue(waitError);
+        vi.mocked(locator.count).mockResolvedValue(count);
+        vi.mocked(context.page.locator).mockReturnValue(locator);
+
+        const result = await screenshotTool(
+          { frame: { testId: 'advanced-chart-iframe' } },
+          context,
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+          expect(result.error.message).toContain(message);
+        }
+      },
+    );
 
     it('returns MM_TARGET_NOT_FOUND for an unknown frame ref', async () => {
       const result = await screenshotTool(

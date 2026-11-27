@@ -1,4 +1,6 @@
-import { MAX_SNAPSHOT_FRAMES } from './constants.js';
+import type { Page } from '@playwright/test';
+
+import { FRAME_ATTACH_TIMEOUT_MS, MAX_SNAPSHOT_FRAMES } from './constants.js';
 import type { TargetType, WithinScope } from './discovery.js';
 import type { WithinTarget } from '../types';
 
@@ -92,9 +94,26 @@ function testIdOrSelector(type: 'testId' | 'selector', value: string): string {
 }
 
 /**
- * Resolves the iframe of a frame scope to a Playwright selector. A ref of
- * the iframe element (from a snapshot of its page) resolves through the
- * ref map.
+ * Playwright selector step that picks the target itself when it is an
+ * iframe, else the only iframe inside it (several fail in strict mode).
+ * Being in the selector, it lets the tools' waits wait for a late iframe.
+ */
+const IFRAME_OR_SELF_STEP = ' >> xpath=descendant-or-self::iframe';
+
+/**
+ * Whether a selector holds the iframe step of a test ID or selector frame.
+ *
+ * @param selector - A target or frame selector.
+ * @returns True when the selector holds the iframe step.
+ */
+export function isFrameSelector(selector: string): boolean {
+  return selector.includes(IFRAME_OR_SELF_STEP);
+}
+
+/**
+ * Resolves the iframe of a frame scope to a Playwright selector: a ref
+ * through the ref map, a test ID or selector to the element or the only
+ * iframe inside it.
  *
  * @param frame - The iframe, as a ref, test ID or selector.
  * @param refMap - Map of a11y refs to selectors.
@@ -104,17 +123,63 @@ export function resolveFrameSelector(
   frame: WithinScope,
   refMap: Map<string, string>,
 ): string {
-  if (frame.type !== 'a11yRef') {
-    return testIdOrSelector(frame.type, frame.value);
+  if (frame.type === 'a11yRef') {
+    const selector = refMap.get(frame.value);
+    if (!selector) {
+      throw new Error(
+        `Unknown a11yRef: ${frame.value}. ` +
+          `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
+      );
+    }
+    return selector;
   }
-  const selector = refMap.get(frame.value);
-  if (!selector) {
+
+  return `${testIdOrSelector(frame.type, frame.value)}${IFRAME_OR_SELF_STEP}`;
+}
+
+/**
+ * Resolves a frame scope to the plain CSS selector of its iframe, which the
+ * CDP read of `describe-screen` needs, after waiting for the iframe.
+ *
+ * @param frame - The iframe, as a ref, test ID or selector.
+ * @param refMap - Map of a11y refs to selectors.
+ * @param page - The Playwright page.
+ * @returns The plain CSS selector of the iframe element.
+ */
+export async function resolveFrameElementSelector(
+  frame: WithinScope,
+  refMap: Map<string, string>,
+  page: Page,
+): Promise<string> {
+  const selector = resolveFrameSelector(frame, refMap);
+  if (frame.type === 'a11yRef') {
+    return selector;
+  }
+
+  const base = testIdOrSelector(frame.type, frame.value);
+  const iframe = page.locator(selector);
+  try {
+    await iframe.first().waitFor({
+      state: 'attached',
+      timeout: FRAME_ATTACH_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error(`Frame not found: no iframe matches ${base}`);
+    }
+    throw error;
+  }
+  const iframeCount = await iframe.count();
+  if (iframeCount > 1) {
     throw new Error(
-      `Unknown a11yRef: ${frame.value}. ` +
-        `Available refs: ${Array.from(refMap.keys()).join(', ')}`,
+      `Frame not found: ${base} resolves to ${iframeCount} iframes; ` +
+        `target one by its ref from describe-screen, or with a selector ` +
+        `that matches one (for example selector:${base} iframe:nth-of-type(1))`,
     );
   }
-  return selector;
+  const target = page.locator(base).first();
+  const isIframe = (await target.and(page.locator('iframe')).count()) > 0;
+  return isIframe ? base : `${base} iframe`;
 }
 
 /**

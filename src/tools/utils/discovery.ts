@@ -7,12 +7,14 @@ import {
   withCdpSession,
 } from './cdp.js';
 import {
+  FRAME_ATTACH_TIMEOUT_MS,
   MAX_SNAPSHOT_FRAMES,
   TESTID_COLLECT_TIMEOUT_MS,
   TEXT_PREVIEW_MAX_LENGTH,
 } from './constants.js';
 import {
   ENTER_FRAME_SELECTOR,
+  isFrameSelector,
   selectorInFrame,
   testIdSelector,
 } from './frame-scope.js';
@@ -444,12 +446,6 @@ const MAX_SNAPSHOT_FRAMES_TRIED = MAX_SNAPSHOT_FRAMES * 2;
  * How long a snapshot waits for an iframe element, in milliseconds.
  */
 const FRAME_ELEMENT_TIMEOUT_MS = 2_000;
-
-/**
- * How long `describe_screen` with a frame waits for the iframe to be
- * attached, in milliseconds.
- */
-const FRAME_ATTACH_TIMEOUT_MS = 5_000;
 
 /**
  * Extracts the normalized ARIA role from a CDP accessibility node.
@@ -1861,6 +1857,30 @@ function describeTargetSelector(
 }
 
 /**
+ * Rethrows a failed wait's error, or reports a frame selector that matched
+ * nothing (no iframe) as a missing target.
+ *
+ * @param locator - The locator whose wait ended.
+ * @param selector - The selector to report.
+ * @param timeoutMs - The wait timeout, for the message.
+ * @param error - The wait error, rethrown when something matched.
+ * @throws When the frame selector matched nothing.
+ */
+async function throwIfFrameMatchedNothing(
+  locator: Locator,
+  selector: string,
+  timeoutMs: number,
+  error: unknown,
+): Promise<void> {
+  if (!isFrameSelector(selector) || (await locator.count()) !== 0) {
+    throw error;
+  }
+  throw new Error(
+    `Selector ${selector} matched 0 elements after ${timeoutMs}ms`,
+  );
+}
+
+/**
  * Wait for a target element to become visible, optionally scoped within a parent.
  *
  * @param page The Playwright page to search
@@ -1916,10 +1936,19 @@ export async function waitForTarget(
     if (parentRemaining <= 0) {
       throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
     }
-    await parentLocator.first().waitFor({
-      state: 'visible',
-      timeout: parentRemaining,
-    });
+    try {
+      await parentLocator.first().waitFor({
+        state: 'visible',
+        timeout: parentRemaining,
+      });
+    } catch (error) {
+      await throwIfFrameMatchedNothing(
+        parentLocator,
+        within.value,
+        timeoutMs,
+        error,
+      );
+    }
     // Use .first() to guarantee the child search is scoped to exactly one
     // parent element.  Without this, Playwright chains the child locator
     // across ALL matching parents, producing phantom multi-matches
@@ -1989,9 +2018,18 @@ export async function waitForTarget(
   if (childRemaining <= 0) {
     throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
   }
-  await locator.waitFor({
-    state: 'visible',
-    timeout: childRemaining,
-  });
+  try {
+    await locator.waitFor({
+      state: 'visible',
+      timeout: childRemaining,
+    });
+  } catch (error) {
+    await throwIfFrameMatchedNothing(
+      locator,
+      targetType === 'selector' ? targetValue : '',
+      timeoutMs,
+      error,
+    );
+  }
   return locator;
 }
