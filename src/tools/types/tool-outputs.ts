@@ -176,6 +176,7 @@ export type StepResult = {
   error?: {
     code: string;
     message: string;
+    hint?: string;
     details?: unknown;
   };
   meta: {

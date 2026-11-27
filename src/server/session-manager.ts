@@ -94,6 +94,10 @@ export type SessionLaunchResult = {
   sessionId: string;
   extensionId: string;
   state: ExtensionState;
+  /** Mobile: the Metro port the launch resolved. */
+  metroPort?: number;
+  /** Mobile: the device the launch resolved. */
+  deviceId?: string;
 };
 
 /**

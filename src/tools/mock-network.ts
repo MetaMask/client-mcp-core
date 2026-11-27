@@ -17,6 +17,7 @@ import type {
   NetworkMockSummary,
 } from './types';
 import { createToolSuccess, requireActiveSession } from './utils.js';
+import { redactText, redactUrl } from '../events/redact.js';
 import type {
   CdpEventListener,
   CdpEventSession,
@@ -716,7 +717,7 @@ export class NetworkMockRouteManager {
         });
       } catch (error) {
         delete record.status;
-        record.mockError = extractErrorMessage(error);
+        record.mockError = redactText(extractErrorMessage(error));
         throw error;
       }
     } catch (error) {
@@ -777,7 +778,7 @@ export class NetworkMockRouteManager {
     const record: NetworkMockRequestRecord = {
       timestamp: new Date().toISOString(),
       method: request.method,
-      url: request.url,
+      url: redactUrl(request.url),
       matched,
       ...(ruleId ? { ruleId } : {}),
       ...(status ? { status } : {}),

@@ -203,7 +203,7 @@ export async function clickTool(
         `Click timed out after ${timeoutMs}ms; state unknown${detail}. Run describe-screen to check the screen before retrying.`,
       );
     }
-    return createToolError(errorInfo.code, errorInfo.message);
+    return createToolError(errorInfo.code, errorInfo.message, errorInfo.hint);
   }
 }
 
@@ -249,7 +249,7 @@ export async function typeTool(
         `Type timed out after ${timeoutMs}ms; state unknown. Run describe-screen to check the field before retrying.`,
       );
     }
-    return createToolError(errorInfo.code, errorInfo.message);
+    return createToolError(errorInfo.code, errorInfo.message, errorInfo.hint);
   }
 }
 
@@ -286,7 +286,7 @@ export async function waitForTool(
     });
   } catch (error) {
     const errorInfo = classifyWaitError(error);
-    return createToolError(errorInfo.code, errorInfo.message);
+    return createToolError(errorInfo.code, errorInfo.message, errorInfo.hint);
   }
 }
 
@@ -326,7 +326,7 @@ export async function getTextTool(
         `GetText timed out after ${timeoutMs}ms.`,
       );
     }
-    return createToolError(errorInfo.code, errorInfo.message);
+    return createToolError(errorInfo.code, errorInfo.message, errorInfo.hint);
   }
 }
 

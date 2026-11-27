@@ -34,8 +34,8 @@ import { ErrorCodes } from '../tools/types/errors.js';
 import type { CdpInput } from '../tools/types/tool-inputs.js';
 import type { CdpOutcome } from '../tools/types/tool-outputs.js';
 import {
-  CLICK_MISSING_TARGET_WAIT_MS,
   DEFAULT_INTERACTION_TIMEOUT_MS,
+  MISSING_TARGET_WAIT_MS,
 } from '../tools/utils/constants.js';
 import {
   collectTestIds,
@@ -124,7 +124,7 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
       timeoutMs,
       within,
       options?.failFastWhenMissing
-        ? { missingTargetWaitMs: CLICK_MISSING_TARGET_WAIT_MS }
+        ? { missingTargetWaitMs: MISSING_TARGET_WAIT_MS }
         : undefined,
     );
 
@@ -457,12 +457,24 @@ export class PlaywrightPlatformDriver implements IPlatformDriver {
   /**
    * Capture a screenshot of the current page.
    *
-   * @param options - Screenshot options (name, fullPage, selector).
+   * @param options - Screenshot options (name, fullPage, selector, timeoutMs).
    * @returns Screenshot result with path and dimensions.
    */
   async screenshot(
     options: PlatformScreenshotOptions,
   ): Promise<ScreenshotResult> {
+    if (options.selector !== undefined) {
+      // Fail a missing selector as a target error before the capture.
+      await waitForTarget(
+        this.#getPage(),
+        'selector',
+        options.selector,
+        new Map(),
+        options.timeoutMs ?? DEFAULT_INTERACTION_TIMEOUT_MS,
+        undefined,
+        { missingTargetWaitMs: MISSING_TARGET_WAIT_MS },
+      );
+    }
     return this.#sessionManager.screenshot({
       name: options.name,
       fullPage: options.fullPage,

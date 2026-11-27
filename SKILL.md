@@ -261,7 +261,7 @@ On the browser, `path` lists the `role:name` of the dialogs and headings that co
 
 When 3+ consecutive identical nodes appear (same role, name, and path), they are collapsed into a summary like `… 3 more "maskicon" (refs e2–e4)` to reduce token waste. Individual refs still work for targeting.
 
-On mobile (iOS, Android), the tree is a flat list in screen order. A node is a native element: `role` is its type (`Button`, `StaticText`, `android.widget.Button`, `android.view.ViewGroup`), and `bounds` is its frame (`{ x, y, width, height }`). Layout-only elements are left out: elements with no label or text, no testId, and a type that is not a control (button, link, text field, switch, slider, checkbox and similar). Their children stay in the list. Containers with a testId stay. Plain unlabelled views of at least 24×24 with nothing kept inside also stay: they are often icon buttons (for example the iOS wallet home action buttons). Only a node with a testId, label or text has a ref you can click or type into. Nodes without one (unlabelled views, spinners, unnamed controls) are listed with their `bounds` but their ref cannot be targeted: use `mm tap-coordinates <x> <y>` with the center of `bounds`.
+On mobile (iOS, Android), the tree is a flat list in screen order. A node is a native element: `role` is its type (`Button`, `StaticText`, `android.widget.Button`, `android.view.ViewGroup`), and `bounds` is its frame (`{ x, y, width, height }`). Layout-only elements are left out: elements with no label or text, no testId, and a type that is not a control (button, link, text field, switch, slider, checkbox and similar). Their children stay in the list. Containers with a testId stay. Plain unlabelled views of at least 24×24 with nothing kept inside also stay: they are often icon buttons (for example the iOS wallet home action buttons). A node with a testId, label or text that no other node on the screen shares has a ref that every target command can use. Two kinds of ref only work with `mm click`, which taps the listed element at its `bounds`: refs of nodes without a testId, label or text (unlabelled views, spinners, unnamed controls), and refs marked `"ambiguous": true` (another node has the same testId, or the same label and type). The click result's `target` ends in ` (bounds)`. If the element is no longer at those bounds, the click fails with `MM_TARGET_NOT_FOUND` and taps nothing: run `mm describe-screen` again. `type`, `wait-for`, `get-text`, `scroll-to-element` and `long-press` refuse such a ref (`MM_TARGET_NOT_FOUND`, exit 4, nothing is sent to the device); the `hint` says what to use instead: a unique `--testid`, `mm click <ref>`, or `mm tap-coordinates <x> <y>` at the center of `bounds`.
 
 Use the `ref` value (`e3`) for click/type/get-text/wait-for commands. On the browser, each ref resolves to exactly one element, or the action fails instead of acting on another element. The snapshot stamps each element with a token in its `data-mm-ref` attribute, and the ref selects that token, so two "Send" buttons get two refs that each click their own button, and a price in the name can change without breaking the ref. A ref fails at once with `MM_TARGET_NOT_FOUND` when its element was removed or re-mounted, or when the element now shows other text (a "Next" button became "Confirm"); changing numbers such as `$2.42`, `3.92%` or `00:59` do not count, plain integers (`Account 1`) do. Take a new snapshot when that happens. An element that could not be stamped gets a `role=`/`text=` ref with the exact, case-sensitive name; if a click on it fails with a strict mode violation, target the element by `--testid` or `--selector` instead.
 
@@ -320,10 +320,10 @@ mm accessibility-snapshot [--root <selector>]
 Captures a screenshot of the current page.
 
 ```
-mm screenshot [--name <name>] [--selector <css>] [--frame <iframe>]
+mm screenshot [--name <name>] [--selector <css>] [--timeout <ms>] [--frame <iframe>]
 ```
 
-`--selector` captures one element. `--frame` (browser) captures an iframe, or with `--selector` the element inside it.
+`--selector` captures one element and waits up to `--timeout` for it (default: 15s); a selector that matches no element fails fast with `MM_TARGET_NOT_FOUND`. `--frame` (browser) captures an iframe, or with `--selector` the element inside it.
 
 Returns: file path, dimensions.
 
@@ -696,7 +696,7 @@ mm mock-network list
 
 #### `mm mock-network requests`
 
-Shows recorded matched and missed requests.
+Shows recorded matched and missed requests. URLs are redacted the same way as `mm network` records: credentials, key-like path segments (such as an Infura project ID) and sensitive query values are replaced with `[REDACTED]`, so a key never reaches the output.
 
 ```bash
 mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
@@ -708,7 +708,7 @@ mm mock-network requests [--limit <n>] [--url <glob-or-text>] [--bodies]
 | `--url <glob-or-text>` | Only return requests whose URL matches this glob (`*`, `**`) or, without `*`, contains this text |
 | `--bodies`             | Include recorded bodies and headers. Only rules with `record` store them                         |
 
-Without `--bodies` the output is the same as before: no bodies or headers. Each record has `context` (`page`, `sw`, `offscreen` or `iframe`: where the request came from), and `"serviceWorker": true` when the Extension's background service worker sent the request.
+`--url` matches against the recorded (redacted) URL, as `mm network --url` does, so filter on a non-secret part of the URL (for example `esplora`); a filter that names a secret does not match. Without `--bodies` the output is the same as before: no bodies or headers. Each record has `context` (`page`, `sw`, `offscreen` or `iframe`: where the request came from), and `"serviceWorker": true` when the Extension's background service worker sent the request.
 
 #### `mm cdp <method> [params-json] [--timeout <ms>] [--target page|sw|hermes|android-webview] [--fresh] [--url-filter <substr>] [--metro-port <p>] [--app-id <id>]`
 
@@ -760,13 +760,13 @@ mm cdp Runtime.evaluate '{"expression":"document.querySelector(\'#personalSign\'
 
 Browser commands share one persistent CDP session per target, so a domain enabled by one call (e.g. `Network.enable`) stays enabled for the next calls on the same target. An event subscription owns the domains it enables on a target. While it holds one, `<Domain>.enable` with no params (or the subscription's own params) succeeds without sending anything, since the domain is already enabled, and returns `{}`; `<Domain>.enable` with other params and `<Domain>.disable` are refused with `MM_CDP_BLOCKED`, because they would change or stop the subscription's events. Use `--fresh` for a command that must run on its own session, detached afterwards. After an Extension service-worker restart the stale session is dropped and the next call re-attaches.
 
-On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
+On mobile, `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`, else the port the consumer's launch resolved), then the `HERMES_METRO_PORT` env var, then 8081. A per-call `--metro-port` / `--app-id` overrides it for that call only. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls. A mobile failure names the Metro port it used.
 
 Blocked methods return `MM_CDP_BLOCKED` on either platform; other failures return `MM_CDP_FAILED` (on mobile the underlying `HERMES_*` code is preserved in the message). Each platform rejects the other platform's `--target` values with `MM_INVALID_INPUT`. The tool returns no observation by default — pass `--observe full` (or run `describe-screen`) to re-sync if the call changed runtime/page state.
 
 #### `mm hermes-targets [--all] [--metro-port <p>] [--app-id <id>]`
 
-**Mobile only.** Lists and diagnoses the debuggable Hermes targets Metro currently exposes, reporting which target would be chosen or why selection is ambiguous. Use it to confirm Metro is running and the app is registered. Pass `--all` to bypass the appId filter and discover the real appId. It uses the session's Metro port (the launch `--metro-port`) unless `--metro-port` overrides it, and reports `sessionMetroPort`, the pinned `logicalDeviceId` (`pinnedDeviceId`), whether the persistent connection is open (`connected`), and the session `deviceId`.
+**Mobile only.** Lists and diagnoses the debuggable Hermes targets Metro currently exposes, reporting which target would be chosen or why selection is ambiguous. Use it to confirm Metro is running and the app is registered. Pass `--all` to bypass the appId filter and discover the real appId. It uses the session's Metro port (the launch `--metro-port` or the consumer's) unless `--metro-port` overrides it, and reports `sessionMetroPort`, the pinned `logicalDeviceId` (`pinnedDeviceId`), whether the persistent connection is open (`connected`), and the session `deviceId`.
 
 ```bash
 mm hermes-targets

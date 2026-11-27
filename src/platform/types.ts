@@ -94,6 +94,8 @@ export type PlatformScreenshotOptions = {
   fullPage?: boolean;
   selector?: string;
   includeBase64?: boolean;
+  /** Browser: how long to wait for `selector`, in ms. */
+  timeoutMs?: number;
 };
 
 export type WithinScope = {

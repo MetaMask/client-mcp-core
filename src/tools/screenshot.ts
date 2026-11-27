@@ -62,6 +62,9 @@ export async function screenshotTool(
       fullPage: input.fullPage ?? true,
       selector,
       includeBase64: input.includeBase64,
+      ...(selector !== undefined && input.timeoutMs !== undefined
+        ? { timeoutMs: input.timeoutMs }
+        : {}),
     });
 
     const response: ScreenshotToolResult = {

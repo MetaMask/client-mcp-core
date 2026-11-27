@@ -61,6 +61,7 @@ describe('computeTimeoutBudget', () => {
     ['hover', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['wait_for', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['scroll_to_element', {}, DEFAULT_INTERACTION_TIMEOUT_MS],
+    ['screenshot', { selector: '.modal' }, DEFAULT_INTERACTION_TIMEOUT_MS],
     ['cdp', {}, DEFAULT_CDP_TIMEOUT_MS],
     ['wait_for_notification', {}, DEFAULT_WAIT_FOR_NOTIFICATION_TIMEOUT_MS],
   ] as const)(
@@ -169,6 +170,29 @@ describe('resolveActionTimeoutMs', () => {
     ]) {
       expect(resolveActionTimeoutMs(tool, {})).toBeUndefined();
     }
+  });
+
+  it('gives a selector screenshot the interaction budget', () => {
+    expect(resolveActionTimeoutMs('screenshot', { selector: '.modal' })).toBe(
+      DEFAULT_INTERACTION_TIMEOUT_MS,
+    );
+    expect(
+      resolveActionTimeoutMs('screenshot', { frame: { testId: 'chart' } }),
+    ).toBe(DEFAULT_INTERACTION_TIMEOUT_MS);
+    expect(
+      resolveActionTimeoutMs('screenshot', {
+        selector: '.modal',
+        timeoutMs: 5_000,
+      }),
+    ).toBe(5_000);
+  });
+
+  it('keeps the queue default for a full-page screenshot', () => {
+    expect(resolveActionTimeoutMs('screenshot', {})).toBeUndefined();
+    // The capture itself is bounded by the queue, not by an action budget.
+    expect(
+      resolveActionTimeoutMs('screenshot', { timeoutMs: 5_000 }),
+    ).toBeUndefined();
   });
 
   it('keeps the queue default for a mobile scroll_to_element', () => {

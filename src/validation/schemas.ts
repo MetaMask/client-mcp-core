@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
 import { A11Y_REF_PATTERN } from './a11y-ref.js';
+import {
+  LAUNCH_CONTEXTS,
+  LAUNCH_PLATFORMS,
+  LAUNCH_STATE_MODES,
+} from './launch-options.js';
 import { OBSERVE_LEVELS } from './observe-level.js';
 import { SMART_CONTRACT_NAMES, HARDFORKS } from '../tools/types/seeding.js';
 import {
@@ -219,7 +224,7 @@ export const launchInputSchema = z
       .default(true)
       .describe('Automatically run build if extension is not found'),
     context: z
-      .enum(['e2e', 'prod'])
+      .enum(LAUNCH_CONTEXTS)
       .describe(
         'Environment context to use for this session. ' +
           'Sets the context before launching so you can start in prod mode directly: ' +
@@ -227,7 +232,7 @@ export const launchInputSchema = z
       )
       .optional(),
     stateMode: z
-      .enum(['default', 'onboarding', 'custom'])
+      .enum(LAUNCH_STATE_MODES)
       .default('default')
       .describe(
         'Wallet state mode: ' +
@@ -293,7 +298,7 @@ export const launchInputSchema = z
         'Force replace an existing active session (runs cleanup first)',
       ),
     platform: z
-      .enum(['browser', 'ios', 'android'])
+      .enum(LAUNCH_PLATFORMS)
       .default('browser')
       .describe(
         'Target platform: browser (default), ios, or android. ' +
@@ -529,6 +534,16 @@ export const screenshotInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Include base64-encoded image in response'),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(60000)
+    .optional()
+    .describe(
+      'Browser: time to wait for the selector, in ms (default 15000). A ' +
+        'selector that matches no element fails with MM_TARGET_NOT_FOUND',
+    ),
   frame: frameTargetSchema
     .optional()
     .describe(
