@@ -25,6 +25,11 @@ import { BEST_EFFORT_CLEANUP_TIMEOUT_MS } from '../tools/utils/constants.js';
 import type { DaemonEndpoint, DaemonState } from '../types/http.js';
 import { resolveCliHttpTimeoutMs } from '../utils/timeout-budget.js';
 import { A11Y_REF_PATTERN } from '../validation/a11y-ref.js';
+import {
+  LAUNCH_CONTEXTS,
+  LAUNCH_PLATFORMS,
+  LAUNCH_STATE_MODES,
+} from '../validation/launch-options.js';
 import { OBSERVE_LEVELS } from '../validation/observe-level.js';
 import type { ObserveLevel } from '../validation/observe-level.js';
 
@@ -39,6 +44,82 @@ const COMMAND_TIMEOUTS_MS: Record<string, number> = {
 };
 
 const AUTO_START_COMMANDS = new Set(['launch', 'serve']);
+
+/** Commands handled by `routeCommand`; its switch is exhaustive over this list. */
+const ROUTED_COMMANDS = [
+  'status',
+  'click',
+  'type',
+  'get-text',
+  'inspect',
+  'hover',
+  'unhover',
+  'set-viewport',
+  'reset-viewport',
+  'describe-screen',
+  'screenshot',
+  'wait-for',
+  'navigate',
+  'navigate-home',
+  'reload',
+  'navigate-settings',
+  'get-state',
+  'get-context',
+  'set-context',
+  'build',
+  'wait-for-notification',
+  'switch-to-tab',
+  'close-tab',
+  'clipboard',
+  'seed-contract',
+  'seed-contracts',
+  'get-contract-address',
+  'list-contracts',
+  'list-testids',
+  'accessibility-snapshot',
+  'run-steps',
+  'mock-network',
+  'events',
+  'logs',
+  'network',
+  'cdp',
+  'hermes-targets',
+  'scroll-to-element',
+  'device-swipe',
+  'long-press',
+  'tap-coordinates',
+  'dismiss-keyboard',
+  'dismiss-alert',
+  'get-alert-text',
+  'open-app',
+  'close-app',
+  'press-button',
+  'device-context',
+  'device-clipboard',
+  'screen-recording',
+  'device-logs',
+  'generate-locators',
+] as const;
+
+/** A command routed by `routeCommand`. */
+export type RoutedCommand = (typeof ROUTED_COMMANDS)[number];
+
+const LIFECYCLE_COMMANDS = ['serve', 'stop', 'launch', 'cleanup'] as const;
+
+/**
+ * Whether `main` handles the command: a lifecycle command or a routed one.
+ *
+ * @param command - The first CLI argument.
+ * @returns True for a known command.
+ */
+function isKnownCommand(
+  command: string,
+): command is RoutedCommand | (typeof LIFECYCLE_COMMANDS)[number] {
+  return (
+    (LIFECYCLE_COMMANDS as readonly string[]).includes(command) ||
+    (ROUTED_COMMANDS as readonly string[]).includes(command)
+  );
+}
 
 const DAEMON_POLL_INTERVAL_MS = 200;
 const DAEMON_START_TIMEOUT_MS = 30_000;
@@ -427,6 +508,10 @@ export async function main(): Promise<void> {
   const args = remainingArgs;
   const command = args[0];
 
+  if (!isKnownCommand(command)) {
+    failUsage(`unknown command '${command}'. Run 'mm --help' for usage.`);
+  }
+
   if (command === 'serve') {
     const background = args.includes('--background');
     await handleServe(worktreeRoot, background);
@@ -439,10 +524,11 @@ export async function main(): Promise<void> {
     return;
   }
 
-  const daemonState = await discoverDaemon(worktreeRoot, command);
-
   if (command === 'launch') {
+    // Parse and validate before discovery: a bad value must start no daemon.
     const launchArgs = parseLaunchArgs(args.slice(1));
+    validateLaunchArgs(launchArgs);
+    const daemonState = await discoverDaemon(worktreeRoot, command);
     if (typeof launchArgs.extensionPath === 'string') {
       launchArgs.extensionPath = path.resolve(
         worktreeRoot,
@@ -455,6 +541,8 @@ export async function main(): Promise<void> {
     await sendRequest(daemonState, 'POST', '/launch', launchArgs);
     return;
   }
+
+  const daemonState = await discoverDaemon(worktreeRoot, command);
 
   if (command === 'cleanup') {
     const shutdown = args.includes('--shutdown');
@@ -683,7 +771,7 @@ async function sendInteractionRequest(
  * @param daemon - The daemon endpoint (a port or the daemon state).
  */
 export async function routeCommand(
-  command: string,
+  command: RoutedCommand,
   args: string[],
   daemon: DaemonEndpoint,
 ): Promise<void> {
@@ -1269,8 +1357,13 @@ export async function routeCommand(
     case 'generate-locators':
       await sendRequest(daemon, 'POST', '/tool/generate_locators', {});
       break;
-    default:
-      failUsage(`unknown command '${command}'. Run 'mm --help' for usage.`);
+    default: {
+      // A name in ROUTED_COMMANDS without a case narrows to a literal here.
+      const exhaustive: never = command;
+      failUsage(
+        `unknown command '${String(exhaustive)}'. Run 'mm --help' for usage.`,
+      );
+    }
   }
 }
 
@@ -2108,19 +2201,30 @@ export async function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Parses a numeric flag value from a CLI argument list.
+ * Parses a numeric flag value from a CLI argument list. A present flag with a
+ * missing or non-integer value is a usage error (exit 2): silently using the
+ * default hides the mistake. 0 and negative integers stay valid; per-flag
+ * ranges belong to the tool schemas.
  *
  * @param args - The raw CLI arguments to search.
  * @param flag - The flag name to look for (e.g., '--timeout').
- * @returns The parsed integer value, or undefined if the flag is absent or invalid.
+ * @returns The parsed integer value, or undefined if the flag is absent.
  */
 export function parseIntFlag(args: string[], flag: string): number | undefined {
   const idx = args.indexOf(flag);
   if (idx < 0) {
     return undefined;
   }
-  const parsed = parseInt(args[idx + 1], 10);
-  return isNaN(parsed) ? undefined : parsed;
+  const raw = args[idx + 1];
+  if (
+    raw === undefined ||
+    raw.startsWith('--') ||
+    !/^[+-]?\d+$/u.test(raw) ||
+    !Number.isSafeInteger(Number(raw))
+  ) {
+    failUsage(`${flag} expects an integer, got "${raw ?? ''}"`);
+  }
+  return Number(raw);
 }
 
 /**
@@ -2231,6 +2335,39 @@ export async function readSelfOnboardingInput(
     );
   }
   return { srp, password };
+}
+
+/**
+ * Validates a parsed launch flag against its allowed values.
+ *
+ * @param flag - The CLI flag name, for the error message.
+ * @param value - The parsed value (undefined when the flag was absent).
+ * @param allowed - The zod-free allowed values (shared with the schema).
+ */
+function validateLaunchEnumFlag(
+  flag: string,
+  value: unknown,
+  allowed: readonly string[],
+): void {
+  if (value !== undefined && !allowed.includes(value as string)) {
+    failUsage(
+      `${flag} expects one of: ${allowed.join(', ')}, got ${JSON.stringify(value)}`,
+    );
+  }
+}
+
+/**
+ * Validates parsed launch args against the launch input schema's allowed
+ * values before any daemon work. The allowed values come from
+ * `launch-options.ts`, which `launchInputSchema` is also built from; this
+ * module never imports zod or the schemas (the CLI cold start avoids them).
+ *
+ * @param launchArgs - The object returned by {@link parseLaunchArgs}.
+ */
+export function validateLaunchArgs(launchArgs: Record<string, unknown>): void {
+  validateLaunchEnumFlag('--context', launchArgs.context, LAUNCH_CONTEXTS);
+  validateLaunchEnumFlag('--state', launchArgs.stateMode, LAUNCH_STATE_MODES);
+  validateLaunchEnumFlag('--platform', launchArgs.platform, LAUNCH_PLATFORMS);
 }
 
 /**
