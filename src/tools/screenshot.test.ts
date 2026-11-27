@@ -275,74 +275,45 @@ describe('screenshotTool', () => {
       }
     });
 
-    it('captures the iframe inside a wrapper frame target', async () => {
-      const context = createMockContext();
-      vi.spyOn(context.sessionManager, 'screenshot').mockResolvedValue({
-        path: '/path/to/frame.png',
-        width: 400,
-        height: 300,
-        base64: 'mock-base64',
-      });
-
-      const result = await screenshotTool(
-        { name: 'frame', frame: { testId: 'advanced-chart-iframe' } },
-        context,
-      );
-
-      expect(result.ok).toBe(true);
-      expect(context.sessionManager.screenshot).toHaveBeenCalledWith({
-        name: 'frame',
-        fullPage: true,
-        selector:
-          '[data-testid="advanced-chart-iframe"] >> xpath=descendant-or-self::iframe',
-      });
-    });
-
-    it('returns MM_TARGET_NOT_FOUND when the frame target holds no iframe', async () => {
-      const context = createMockContext();
-      const locator = createMockLocator();
-      vi.mocked(locator.first).mockReturnValue(locator);
-      const timeout = new Error('locator.waitFor: Timeout 2000ms exceeded.');
-      timeout.name = 'TimeoutError';
-      vi.mocked(locator.waitFor).mockRejectedValue(timeout);
-      vi.mocked(locator.count).mockResolvedValue(0);
-      vi.mocked(context.page.locator).mockReturnValue(locator);
-
-      const result = await screenshotTool(
-        { frame: { testId: 'advanced-chart-iframe' } },
-        context,
-      );
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
-        expect(result.error.message).toContain('matched 0 elements');
-      }
-    });
-
-    it('returns MM_TARGET_NOT_FOUND when the frame target holds several iframes', async () => {
-      const context = createMockContext();
-      const first = createMockLocator();
-      const locator = createMockLocator();
-      vi.mocked(locator.first).mockReturnValue(first);
-      vi.mocked(locator.waitFor).mockRejectedValue(
+    it.each([
+      [
+        'holds no iframe',
+        Object.assign(new Error('locator.waitFor: Timeout 2000ms exceeded.'), {
+          name: 'TimeoutError',
+        }),
+        0,
+        'matched 0 elements',
+      ],
+      [
+        'holds several iframes',
         new Error(
           "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
         ),
-      );
-      vi.mocked(context.page.locator).mockReturnValue(locator);
+        2,
+        'strict mode violation',
+      ],
+    ])(
+      'returns MM_TARGET_NOT_FOUND when the frame target %s',
+      async (_label, waitError, count, message) => {
+        const context = createMockContext();
+        const locator = createMockLocator();
+        vi.mocked(locator.first).mockReturnValue(locator);
+        vi.mocked(locator.waitFor).mockRejectedValue(waitError);
+        vi.mocked(locator.count).mockResolvedValue(count);
+        vi.mocked(context.page.locator).mockReturnValue(locator);
 
-      const result = await screenshotTool(
-        { frame: { testId: 'advanced-chart-iframe' } },
-        context,
-      );
+        const result = await screenshotTool(
+          { frame: { testId: 'advanced-chart-iframe' } },
+          context,
+        );
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
-        expect(result.error.message).toContain('strict mode violation');
-      }
-    });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+          expect(result.error.message).toContain(message);
+        }
+      },
+    );
 
     it('returns MM_TARGET_NOT_FOUND for an unknown frame ref', async () => {
       const result = await screenshotTool(

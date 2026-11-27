@@ -1857,10 +1857,8 @@ function describeTargetSelector(
 }
 
 /**
- * Reports a frame selector that matched nothing as a missing target.
- *
- * The iframe step is part of the selector, so a frame with no iframe is an
- * ordinary missing target; only the end of the wait tells the two apart.
+ * Rethrows a failed wait's error, or reports a frame selector that matched
+ * nothing (no iframe) as a missing target.
  *
  * @param locator - The locator whose wait ended.
  * @param selector - The selector to report.

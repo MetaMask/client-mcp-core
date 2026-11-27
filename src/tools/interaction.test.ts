@@ -1856,31 +1856,7 @@ describe('interaction frame scope', () => {
     `${CHART} >> internal:control=enter-frame >> ${selector}`;
 
   it('moves a testId target into the iframe of frame', async () => {
-    const page = createMockPage();
-    const context = createMockContext({ page });
-    vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
-      createMockLocator() as any,
-    );
-
-    const result = await clickTool(
-      { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
-      context,
-    );
-
-    expect(result.ok).toBe(true);
-    expect(discoveryModule.waitForTarget).toHaveBeenCalledWith(
-      page,
-      'selector',
-      inChart('[data-testid="zoom-in"]'),
-      context.refMap,
-      15000,
-      undefined,
-      { missingTargetWaitMs: 2000 },
-    );
-  });
-
-  it('waits for the iframe inside a wrapper as part of the target', async () => {
-    const page = createMockPage();
+    const page = {};
     const context = createMockContext({ page });
     vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
       createMockLocator() as any,
@@ -1904,14 +1880,21 @@ describe('interaction frame scope', () => {
   });
 
   it.each([
-    ['holds no iframe', 'none', 'matched 0 elements'],
-    ['holds several iframes', 'several', 'strict mode violation'],
+    ['click', 'holds no iframe', clickTool, 'none', 'matched 0 elements'],
+    [
+      'click',
+      'holds several iframes',
+      clickTool,
+      'several',
+      'strict mode violation',
+    ],
+    ['get_text', 'holds no iframe', getTextTool, 'none', 'matched 0 elements'],
   ] as const)(
-    'returns MM_TARGET_NOT_FOUND when the frame target %s',
-    async (_label, failure, message) => {
+    '%s returns MM_TARGET_NOT_FOUND when the frame target %s',
+    async (_name, _label, run, failure, message) => {
       const page = createFrameTargetPage(failure);
 
-      const result = await clickTool(
+      const result = await run(
         { testId: 'zoom-in', frame: { testId: 'advanced-chart-iframe' } },
         createMockContext({ page }),
       );
@@ -1923,21 +1906,6 @@ describe('interaction frame scope', () => {
       }
     },
   );
-
-  it('returns MM_TARGET_NOT_FOUND when get-text finds no iframe after the wait', async () => {
-    const page = createFrameTargetPage('none');
-
-    const result = await getTextTool(
-      { testId: 'chart-title', frame: { testId: 'advanced-chart-iframe' } },
-      createMockContext({ page }),
-    );
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
-      expect(result.error.message).toContain('matched 0 elements');
-    }
-  });
 
   it('returns MM_PAGE_CLOSED when the page closes while it waits for the frame target', async () => {
     vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(
@@ -1956,7 +1924,7 @@ describe('interaction frame scope', () => {
   });
 
   it('moves the within parent into the iframe and keeps the target relative to it', async () => {
-    const page = createMockPage();
+    const page = {};
     const context = createMockContext({ page });
     vi.spyOn(discoveryModule, 'waitForTarget').mockResolvedValue(
       createMockLocator() as any,

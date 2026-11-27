@@ -2,7 +2,6 @@ import type { Page } from '@playwright/test';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  frameSelectorBase,
   isFrameSelector,
   nextFrameRefPrefix,
   resolveFrameElementSelector,
@@ -14,12 +13,10 @@ import {
 } from './frame-scope.js';
 
 /**
- * Builds a page for `resolveFrameElementSelector`: the iframe step of
- * `base` resolves after the wait to the given number of iframes.
+ * Builds a page for `resolveFrameElementSelector`.
  *
  * @param base - The frame target selector without the iframe step.
- * @param options - The iframe count, whether the target is an iframe, or
- * the error of the wait.
+ * @param options - How the page answers.
  * @param options.iframeCount - How many iframes the iframe step matches.
  * @param options.directIframe - Whether the target itself is an iframe.
  * @param options.waitError - The error of the wait, if it fails.
@@ -105,22 +102,6 @@ describe('selectorInFrame', () => {
     expect(selectorInFrame('iframe.chart', 'role=button')).toBe(
       'iframe.chart >> internal:control=enter-frame >> role=button',
     );
-  });
-});
-
-describe('frameSelectorBase', () => {
-  it('keeps a selector without the iframe step', () => {
-    expect(frameSelectorBase('[data-testid="chart"]')).toBe(
-      '[data-testid="chart"]',
-    );
-  });
-
-  it('removes the iframe step of a resolved frame selector', () => {
-    expect(
-      frameSelectorBase(
-        '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
-      ),
-    ).toBe('[data-testid="chart"]');
   });
 });
 

@@ -95,55 +95,25 @@ function testIdOrSelector(type: 'testId' | 'selector', value: string): string {
 
 /**
  * Playwright selector step that picks the target itself when it is an
- * iframe, else the only iframe inside it. It is part of the frame selector
- * so that the tools' waits wait for an iframe that renders after a
- * navigation; several iframes fail in strict mode.
+ * iframe, else the only iframe inside it (several fail in strict mode).
+ * Being in the selector, it lets the tools' waits wait for a late iframe.
  */
-const IFRAME_OR_SELF_SELECTOR = 'xpath=descendant-or-self::iframe';
+const IFRAME_OR_SELF_STEP = ' >> xpath=descendant-or-self::iframe';
 
 /**
- * Builds the Playwright selector of an iframe from the target element.
- *
- * @param selector - The selector of the iframe or of its wrapper.
- * @returns The selector, followed by the iframe step.
- */
-function iframeOrSelf(selector: string): string {
-  return `${selector} >> ${IFRAME_OR_SELF_SELECTOR}`;
-}
-
-/**
- * Returns the selector before the iframe step, when it has one.
- *
- * `describe-screen` reads the frame through CDP, which takes a plain CSS
- * selector, not the Playwright chain that `resolveFrameSelector` builds.
- *
- * @param selector - A frame selector.
- * @returns The selector without the iframe step.
- */
-export function frameSelectorBase(selector: string): string {
-  const suffix = ` >> ${IFRAME_OR_SELF_SELECTOR}`;
-  return selector.endsWith(suffix)
-    ? selector.slice(0, -suffix.length)
-    : selector;
-}
-
-/**
- * Whether a selector carries the iframe step of a frame scope.
+ * Whether a selector holds the iframe step of a test ID or selector frame.
  *
  * @param selector - A target or frame selector.
- * @returns True when `resolveFrameSelector` or `selectorInFrame` built it.
+ * @returns True when the selector holds the iframe step.
  */
 export function isFrameSelector(selector: string): boolean {
-  return selector.includes(` >> ${IFRAME_OR_SELF_SELECTOR}`);
+  return selector.includes(IFRAME_OR_SELF_STEP);
 }
 
 /**
- * Resolves the iframe of a frame scope to a Playwright selector. A ref of
- * the iframe element (from a snapshot of its page) resolves through the
- * ref map. A test ID or selector resolves to the element itself when it is
- * an iframe, or to the only iframe inside it, as on the MetaMask Extension
- * chart. The iframe step is part of the selector, so the caller's wait
- * covers an iframe that renders after a navigation.
+ * Resolves the iframe of a frame scope to a Playwright selector: a ref
+ * through the ref map, a test ID or selector to the element or the only
+ * iframe inside it.
  *
  * @param frame - The iframe, as a ref, test ID or selector.
  * @param refMap - Map of a11y refs to selectors.
@@ -164,18 +134,16 @@ export function resolveFrameSelector(
     return selector;
   }
 
-  return iframeOrSelf(testIdOrSelector(frame.type, frame.value));
+  return `${testIdOrSelector(frame.type, frame.value)}${IFRAME_OR_SELF_STEP}`;
 }
 
 /**
- * Resolves a frame scope to the plain CSS selector of its iframe, for
- * `describe-screen`, which reads the frame through CDP. A test ID or
- * selector that is a wrapper around one iframe is waited for, so an iframe
- * that renders late is found.
+ * Resolves a frame scope to the plain CSS selector of its iframe, which the
+ * CDP read of `describe-screen` needs, after waiting for the iframe.
  *
  * @param frame - The iframe, as a ref, test ID or selector.
  * @param refMap - Map of a11y refs to selectors.
- * @param page - The Playwright page, to find the iframe inside a wrapper.
+ * @param page - The Playwright page.
  * @returns The plain CSS selector of the iframe element.
  */
 export async function resolveFrameElementSelector(
@@ -184,11 +152,11 @@ export async function resolveFrameElementSelector(
   page: Page,
 ): Promise<string> {
   const selector = resolveFrameSelector(frame, refMap);
-  const base = frameSelectorBase(selector);
-  if (base === selector) {
+  if (frame.type === 'a11yRef') {
     return selector;
   }
 
+  const base = testIdOrSelector(frame.type, frame.value);
   const iframe = page.locator(selector);
   try {
     await iframe.first().waitFor({
