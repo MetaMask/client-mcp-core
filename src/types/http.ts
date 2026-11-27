@@ -50,7 +50,11 @@ export type ToolContext = {
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export type ToolResponse<T = unknown> =
   | { ok: true; result: T }
-  | { ok: false; error: { code: string; message: string } };
+  | {
+      ok: false;
+      /** `hint` replaces the CLI's default hint for the code. */
+      error: { code: string; message: string; hint?: string };
+    };
 
 /**
  * Server-side timing of one tool request, in whole milliseconds.
