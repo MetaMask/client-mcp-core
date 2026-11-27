@@ -324,6 +324,17 @@ describe('launchTool', () => {
   });
 
   describe('hermes session defaults', () => {
+    function mobileLaunchResult(
+      resolved: Pick<SessionLaunchResult, 'metroPort' | 'deviceId'> = {},
+    ): SessionLaunchResult {
+      return {
+        sessionId: 'mobile-session',
+        extensionId: 'io.metamask',
+        state: { isLoaded: true, extensionId: 'io.metamask', source: 'stub' },
+        ...resolved,
+      };
+    }
+
     it('keeps the launch metroPort and device on the session driver', async () => {
       const context = createMockContext({ hasActive: false });
       const setHermesDefaults = vi.fn();
@@ -341,6 +352,78 @@ describe('launchTool', () => {
       expect(setHermesDefaults).toHaveBeenCalledWith({
         metroPort: 8085,
         deviceId: 'UDID-1',
+      });
+    });
+
+    it('keeps the metroPort and device the consumer resolved when the launch has no flags', async () => {
+      const context = createMockContext({
+        hasActive: false,
+        launchResult: mobileLaunchResult({
+          metroPort: 8085,
+          deviceId: 'RESOLVED-UDID',
+        }),
+      });
+      const setHermesDefaults = vi.fn();
+      context.sessionManager.getPlatformDriver = () =>
+        ({ setHermesDefaults }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+
+      const result = await launchTool({ platform: 'ios' }, context);
+
+      expect(result.ok).toBe(true);
+      expect(setHermesDefaults).toHaveBeenCalledWith({
+        metroPort: 8085,
+        deviceId: 'RESOLVED-UDID',
+      });
+    });
+
+    it('prefers the launch flags over the values the consumer resolved', async () => {
+      const context = createMockContext({
+        hasActive: false,
+        launchResult: mobileLaunchResult({
+          metroPort: 8085,
+          deviceId: 'RESOLVED-UDID',
+        }),
+      });
+      const setHermesDefaults = vi.fn();
+      context.sessionManager.getPlatformDriver = () =>
+        ({ setHermesDefaults }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+
+      const result = await launchTool(
+        { platform: 'ios', metroPort: 8086, deviceId: 'FLAG-UDID' },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(setHermesDefaults).toHaveBeenCalledWith({
+        metroPort: 8086,
+        deviceId: 'FLAG-UDID',
+      });
+    });
+
+    it('fills each missing flag from the value the consumer resolved', async () => {
+      const context = createMockContext({
+        hasActive: false,
+        launchResult: mobileLaunchResult({ metroPort: 8085 }),
+      });
+      const setHermesDefaults = vi.fn();
+      context.sessionManager.getPlatformDriver = () =>
+        ({ setHermesDefaults }) as unknown as NonNullable<
+          ToolContext['driver']
+        >;
+
+      const result = await launchTool(
+        { platform: 'ios', deviceId: 'FLAG-UDID' },
+        context,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(setHermesDefaults).toHaveBeenCalledWith({
+        metroPort: 8085,
+        deviceId: 'FLAG-UDID',
       });
     });
 

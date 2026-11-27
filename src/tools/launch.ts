@@ -3,7 +3,10 @@ import { ErrorCodes } from './types';
 import { createToolError, createToolSuccess } from './utils.js';
 import { getSessionEvents } from '../events/session-events.js';
 import { cleanupSession } from '../server/cleanup-session.js';
-import type { ISessionManager } from '../server/session-manager.js';
+import type {
+  ISessionManager,
+  SessionLaunchResult,
+} from '../server/session-manager.js';
 import type { ToolContext, ToolResponse } from '../types/http.js';
 import { debugWarn, extractErrorMessage } from '../utils';
 
@@ -28,22 +31,27 @@ const PROD_MODE_PREREQUISITES: LaunchPrerequisite[] = [
 /**
  * Keeps the launch Metro port and device on the session's driver, so later
  * `cdp` and `hermes-targets` calls use the launched target without passing a
- * per-call flag (B5). Drivers that do not implement `setHermesDefaults` (the
- * browser driver) are left alone.
+ * per-call flag (B5). The launch flags win over the values the consumer
+ * resolved. Drivers that do not implement `setHermesDefaults` (the browser
+ * driver) are left alone.
  *
  * @param sessionManager - The session manager that owns the driver.
  * @param input - The launch input.
+ * @param result - The values the consumer's launch resolved.
  */
 function applyHermesDefaults(
   sessionManager: ISessionManager,
   input: LaunchInput,
+  result: Pick<SessionLaunchResult, 'metroPort' | 'deviceId'>,
 ): void {
-  if (input.metroPort === undefined && input.deviceId === undefined) {
+  const metroPort = input.metroPort ?? result.metroPort;
+  const deviceId = input.deviceId ?? result.deviceId;
+  if (metroPort === undefined && deviceId === undefined) {
     return;
   }
   sessionManager.getPlatformDriver?.()?.setHermesDefaults?.({
-    ...(input.metroPort === undefined ? {} : { metroPort: input.metroPort }),
-    ...(input.deviceId === undefined ? {} : { deviceId: input.deviceId }),
+    ...(metroPort === undefined ? {} : { metroPort }),
+    ...(deviceId === undefined ? {} : { deviceId }),
   });
 }
 
@@ -124,12 +132,13 @@ export async function launchTool(
         }
         throw error;
       });
-    applyHermesDefaults(sessionManager, input);
+    const { metroPort, deviceId, ...launchResult } = result;
+    applyHermesDefaults(sessionManager, input, { metroPort, deviceId });
     await startSessionEvents(context, input);
     const isProdMode = sessionManager.getEnvironmentMode() === 'prod';
 
     return createToolSuccess({
-      ...result,
+      ...launchResult,
       ...(isProdMode &&
         input.selfOnboarding !== true && {
           prerequisites: PROD_MODE_PREREQUISITES,

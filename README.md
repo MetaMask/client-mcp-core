@@ -241,6 +241,11 @@ type ISessionManager = {
 };
 ```
 
+A mobile `launch()` may also return the `metroPort` and `deviceId` it resolved.
+Core keeps them as the session's Hermes defaults when the launch flags do not
+set them, so later `mm cdp` and `mm hermes-targets` calls use them. Without
+either, those tools fall back to `HERMES_METRO_PORT`, then `8081`.
+
 ### Session-scoped device teardown
 
 Core captures `sessionManager.getPlatformDriver?.()` before calling the consumer's `cleanup()`, then calls the driver's optional `dispose()` hook. Disposal runs even when consumer cleanup fails. This applies to `mm cleanup`, forced relaunch, failed launch, daemon shutdown, and server startup rollback. A failed disposal fails that cleanup call and is retained for a later attempt. The daemon owns that retention (one per `createServer` instance), so a later `mm cleanup`, forced relaunch, or daemon stop retries it, whatever wrapper of the session manager a tool receives. Only the current session's cleanup and disposal can fail a call. Drivers retained from earlier sessions are retried best-effort and in parallel. When they fail again, the daemon writes a `[WARN]` line to its log, and the current cleanup or launch continues. Tools reach this retention through `ToolContext.cleanupSession()`; without it (a context built outside the daemon), the tools fall back to retention per session-manager object.
@@ -721,7 +726,7 @@ The `params-json` argument must be a valid JSON object. The `--timeout` flag set
 | Prerequisite        | An active browser session                                                                        | An active mobile session with a DEBUG build and Metro running                                                                                                                                       |
 | Errors              | `MM_CDP_BLOCKED` / `MM_CDP_FAILED`; `MM_INVALID_INPUT` for a mobile-only target                  | `MM_CDP_BLOCKED` / `MM_CDP_FAILED` (the underlying `HERMES_*` code is preserved in the message, with the Metro port used); `MM_INVALID_INPUT` for a browser-only target                             |
 
-On mobile, `Runtime.evaluate` nests its value at `result.result.value`. `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port`), then the `HERMES_METRO_PORT` env var, then `8081`; `--metro-port` / `--app-id` on a call only override it for that call, and such a call opens a one-shot connection. The app id defaults to `HERMES_APP_ID`, else the platform default. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls.
+On mobile, `Runtime.evaluate` nests its value at `result.result.value`. `cdp` and `hermes-targets` use the Metro port the session was launched with (`mm launch --metro-port` or the consumer's), then the `HERMES_METRO_PORT` env var, then `8081`; `--metro-port` / `--app-id` on a call only override it for that call, and such a call opens a one-shot connection. The app id defaults to `HERMES_APP_ID`, else the platform default. The session keeps one Hermes connection for its Metro port and app id and reuses it across calls.
 
 ```bash
 # Mobile (Hermes) — the session keeps the launch Metro port
