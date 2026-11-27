@@ -385,7 +385,12 @@ export function createServer(config: ServerConfig): ServerInstance {
       appendLog(
         config.logFilePath,
         formatRequestLogLine(
-          { method: req.method, path: req.path, status: res.statusCode },
+          {
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            input: req.body,
+          },
           responseBody,
           Date.now() - requestStartedAt,
         ),
