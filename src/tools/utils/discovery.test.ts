@@ -330,6 +330,7 @@ function createMockPage(
           }
         },
       ),
+    on: vi.fn(),
     detach: vi.fn().mockResolvedValue(undefined),
   };
 

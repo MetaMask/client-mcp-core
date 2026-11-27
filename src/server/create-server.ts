@@ -61,6 +61,7 @@ import {
   MOBILE_SETTLE_SLOW_CAPTURE_MS,
   MOBILE_SETTLE_TRANSITION_RETRIES,
   MOBILE_SETTLE_UNCHANGED_RETRIES,
+  NAVIGATION_SETTLE_MIN_MS,
   OBSERVATION_TESTID_LIMIT,
   OBSERVATION_TIMEOUT_MS,
 } from '../tools/utils/constants.js';
@@ -97,6 +98,12 @@ type ObservedTree = {
   nodes: A11yNodeTrimmed[];
   refMap: Map<string, string>;
   animationsSettled?: boolean;
+};
+
+/** A tool's start time and browser page URL (undefined without one). */
+type PageBeforeTool = {
+  url: string | undefined;
+  startedAt: number;
 };
 
 /**
@@ -455,6 +462,22 @@ export function createServer(config: ServerConfig): ServerInstance {
     };
   }
 
+  /** @returns The URL of the active browser page, if there is one. */
+  function browserPageUrl(): string | undefined {
+    if (
+      !config.sessionManager.hasActiveSession() ||
+      (config.sessionManager.getPlatformDriver?.()?.getPlatform() ??
+        'browser') !== 'browser'
+    ) {
+      return undefined;
+    }
+    try {
+      return config.sessionManager.getPage().url();
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * Takes one mobile snapshot: one device snapshot when the driver has
    * `captureScreen` (`MobilePlatformDriver`), else the tree and the test IDs
@@ -563,14 +586,17 @@ export function createServer(config: ServerConfig): ServerInstance {
   /**
    * Takes the browser test IDs and accessibility tree. Tools that may change
    * the screen (mutating, batch, and a cdp call that asked for an
-   * observation) wait for the page to settle first.
+   * observation) wait for the page to settle first, and, when the page URL
+   * changed, until `NAVIGATION_SETTLE_MIN_MS` after the tool started.
    *
    * @param category - The tool category.
+   * @param before - The page when the tool started.
    * @param signal - Aborted when the request or the observation times out.
    * @returns The test IDs, nodes and refMap.
    */
   async function snapshotBrowser(
     category: ToolCategory,
+    before: PageBeforeTool,
     signal: AbortSignal,
   ): Promise<ObservedTree> {
     const page = config.sessionManager.getPage();
@@ -586,6 +612,15 @@ export function createServer(config: ServerConfig): ServerInstance {
         ANIMATION_SETTLE_GRACE_MS,
       );
       signal.throwIfAborted();
+      // A new route can render after the animation wait has ended.
+      const waitMs = NAVIGATION_SETTLE_MIN_MS - (Date.now() - before.startedAt);
+      if (
+        waitMs > 0 &&
+        before.url !== undefined &&
+        browserPageUrl() !== before.url
+      ) {
+        await delay(waitMs, undefined, { signal });
+      }
     }
     const testIds = await collectTestIds(page, OBSERVATION_TESTID_LIMIT);
     signal.throwIfAborted();
@@ -608,6 +643,7 @@ export function createServer(config: ServerConfig): ServerInstance {
    * @param toolName - The tool name.
    * @param category - The tool category.
    * @param refs - The request's RefStore handle.
+   * @param before - The browser page when the tool started.
    * @param signal - Aborted when the request or the observation times out.
    * @returns The observation.
    */
@@ -616,6 +652,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     toolName: string,
     category: ToolCategory,
     refs: RefHandle,
+    before: PageBeforeTool,
     signal: AbortSignal,
   ): Promise<StepRecordObservation> {
     // Re-read the driver from the session manager rather than using
@@ -635,7 +672,7 @@ export function createServer(config: ServerConfig): ServerInstance {
       !(refs.toolSetRefs && category !== 'batch');
     const tree = mobile
       ? await snapshotMobile(driver, settle, signal)
-      : await snapshotBrowser(category, signal);
+      : await snapshotBrowser(category, before, signal);
     signal.throwIfAborted();
 
     refs.set(tree.refMap, 'observation');
@@ -656,6 +693,7 @@ export function createServer(config: ServerConfig): ServerInstance {
    * @param toolName - The tool name.
    * @param category - The tool category.
    * @param refs - The request's RefStore handle.
+   * @param before - The browser page when the tool started.
    * @param requestSignal - The request's abort signal.
    * @returns The observation, the timeout marker, or undefined on failure.
    */
@@ -664,6 +702,7 @@ export function createServer(config: ServerConfig): ServerInstance {
     toolName: string,
     category: ToolCategory,
     refs: RefHandle,
+    before: PageBeforeTool,
     requestSignal: AbortSignal,
   ): Promise<DeliveredObservation | undefined> {
     const controller = new AbortController();
@@ -677,6 +716,7 @@ export function createServer(config: ServerConfig): ServerInstance {
           toolName,
           category,
           refs,
+          before,
           controller.signal,
         ),
         new Promise<DeliveredObservation>((resolve) => {
@@ -819,6 +859,7 @@ export function createServer(config: ServerConfig): ServerInstance {
             signal,
             refs,
           );
+          const before = { url: browserPageUrl(), startedAt: Date.now() };
           const result = await tool(omitObserve(validatedInput), context);
           timer.markToolEnd();
 
@@ -838,6 +879,7 @@ export function createServer(config: ServerConfig): ServerInstance {
               toolName,
               category,
               refs,
+              before,
               signal,
             );
             timer.markObservationEnd();

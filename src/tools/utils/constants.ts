@@ -48,6 +48,12 @@ export const ANIMATION_SETTLE_TIMEOUT_MS = 1_000;
 export const ANIMATION_SETTLE_GRACE_MS = 250;
 
 /**
+ * A browser tool that changed the page URL observes no earlier than this
+ * after it started: a new route can render after the animation wait.
+ */
+export const NAVIGATION_SETTLE_MIN_MS = 200;
+
+/**
  * Cap on the in-page testId collection call. After it, collection falls
  * back to per-element locator calls.
  */

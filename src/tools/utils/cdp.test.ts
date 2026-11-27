@@ -11,12 +11,17 @@ import {
 
 type Send = ReturnType<typeof vi.fn>;
 
+type FrameNavigatedListener = (event: {
+  frame: { id: string; parentId?: string };
+}) => void;
+
 /**
  * Builds a page whose CDP sessions answer with `respond`.
  *
  * @param respond - Answers `Runtime.callFunctionOn`.
  * @param resolveNode - Answers `DOM.resolveNode` (default: an object id).
- * @returns The page, the sessions it opened and their send mocks.
+ * @returns The page, the sessions it opened, their send mocks and their
+ * `Page.frameNavigated` listeners.
  */
 function createPage(
   respond: (params: Record<string, unknown>, sessionIndex: number) => unknown,
@@ -27,13 +32,26 @@ function createPage(
     object: { objectId: `obj-${String(params.backendNodeId)}` },
   }),
 ) {
-  const sessions: { send: Send; detach: Send }[] = [];
+  const sessions: {
+    send: Send;
+    detach: Send;
+    frameNavigated: FrameNavigatedListener[];
+  }[] = [];
   let contextCounter = 0;
   const newCDPSession = vi.fn(async () => {
     const sessionIndex = sessions.length;
+    const frameNavigated: FrameNavigatedListener[] = [];
     const session = {
+      frameNavigated,
+      on: vi.fn((event: string, listener: FrameNavigatedListener) => {
+        if (event === 'Page.frameNavigated') {
+          frameNavigated.push(listener);
+        }
+      }),
       send: vi.fn(async (method: string, params: Record<string, unknown>) => {
         switch (method) {
+          case 'Page.enable':
+            return {};
           case 'Page.getFrameTree':
             return { frameTree: { frame: { id: 'main' } } };
           case 'Page.createIsolatedWorld':
@@ -216,6 +234,32 @@ describe('callInIsolatedWorld', () => {
     expect(newCDPSession).toHaveBeenCalledTimes(2);
   });
 
+  it('starts over when the main frame loads a new document', async () => {
+    const { page, sessions, newCDPSession } = createPage(() => ({
+      result: { value: 1 },
+    }));
+
+    await callInIsolatedWorld(page, '() => 1');
+    // A subframe navigation keeps the world.
+    sessions[0].frameNavigated.forEach((listener) =>
+      listener({ frame: { id: 'child', parentId: 'main' } }),
+    );
+    await callInIsolatedWorld(page, '() => 1');
+    expect(newCDPSession).toHaveBeenCalledTimes(1);
+
+    sessions[0].frameNavigated.forEach((listener) =>
+      listener({ frame: { id: 'main' } }),
+    );
+    await callInIsolatedWorld(page, '() => 1');
+
+    expect(newCDPSession).toHaveBeenCalledTimes(2);
+    expect(sessions[0].detach).toHaveBeenCalled();
+    expect(sessions[1].send).toHaveBeenCalledWith(
+      'Page.createIsolatedWorld',
+      expect.anything(),
+    );
+  });
+
   it('rejects after timeoutMs while the page call is pending', async () => {
     vi.useFakeTimers();
     try {
@@ -340,6 +384,30 @@ describe('callOnNodeInIsolatedWorld', () => {
       'DOM.resolveNode',
       expect.objectContaining({ executionContextId: 2 }),
     );
+  });
+
+  it('starts over once on a new world when the node is from a newer document', async () => {
+    const { page, newCDPSession, sessions } = createPage(
+      () => ({ result: { value: 'fresh' } }),
+      (params, index) => {
+        if (index === 0) {
+          throw new Error(
+            'Protocol error (DOM.resolveNode): Node with given id does not belong to the document',
+          );
+        }
+        return { object: { objectId: `obj-${String(params.backendNodeId)}` } };
+      },
+    );
+
+    const result = await callOnNodeInIsolatedWorld(
+      page,
+      3,
+      'function () { return 1; }',
+    );
+
+    expect(result).toBe('fresh');
+    expect(newCDPSession).toHaveBeenCalledTimes(2);
+    expect(sessions[0].detach).toHaveBeenCalled();
   });
 
   it('rejects without retrying when the function throws in the page', async () => {

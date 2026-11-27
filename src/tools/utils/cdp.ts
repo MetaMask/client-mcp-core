@@ -58,15 +58,16 @@ function resetIsolatedWorld(page: Page, world: IsolatedWorld): void {
 }
 
 /**
- * Error thrown when the node of a backend node id cannot be resolved (it
- * left the DOM, or the page navigated). The session and world stay valid.
+ * Error thrown when the node of a backend node id cannot be resolved. The
+ * session and world stay valid.
  */
 class NodeNotFoundError extends Error {}
 
 /**
  * Runs a step on the page's cached session and isolated world, creating
- * them on first use. On a session or world failure (closed session, world
- * gone after a navigation), drops them so the next call starts over.
+ * them on first use. Drops them when the main frame loads a new document,
+ * and on a session or world failure (closed session, world gone after a
+ * navigation), so the next call starts over.
  * Errors from the page function (`InPageError`) and unresolvable nodes
  * (`NodeNotFoundError`) keep them.
  *
@@ -87,6 +88,13 @@ async function inIsolatedWorld<TResult>(
   try {
     const session = await current.session;
     current.contextId ??= (async (): Promise<number> => {
+      // Cross-document only: hash routes keep the document and the world.
+      session.on('Page.frameNavigated', ({ frame }) => {
+        if (frame.parentId === undefined) {
+          resetIsolatedWorld(page, current);
+        }
+      });
+      await session.send('Page.enable');
       const { frameTree } = await session.send('Page.getFrameTree');
       const { executionContextId } = await session.send(
         'Page.createIsolatedWorld',
@@ -269,7 +277,12 @@ export async function callOnNodeInIsolatedWorld<TResult>(
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/\bnode\b/iu.test(message)) {
+      // "Node ... does not belong to the document": the world is from an
+      // older document, so this is a world failure (reset and retry).
+      if (
+        /\bnode\b/iu.test(message) &&
+        !message.includes('does not belong to the document')
+      ) {
         throw new NodeNotFoundError(message);
       }
       throw error;
