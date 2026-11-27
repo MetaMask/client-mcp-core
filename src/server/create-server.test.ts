@@ -1544,7 +1544,7 @@ describe('createServer with logging', () => {
     await vi.waitFor(async () => {
       const log = await fs.readFile(path.join(tmpDir, 'daemon.log'), 'utf-8');
       expect(log).toMatch(
-        /\[INFO\] POST \/tool\/click 200 ok=false code=MM_NO_ACTIVE_SESSION \d+ms/u,
+        /\[INFO\] POST \/tool\/click 200 ok=false code=MM_NO_ACTIVE_SESSION testid=confirm \d+ms/u,
       );
       expect(log).toMatch(
         /\[INFO\] POST \/tool\/click 400 ok=false code=VALIDATION_ERROR \d+ms/u,
