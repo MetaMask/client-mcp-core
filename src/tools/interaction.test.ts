@@ -55,9 +55,9 @@ function createFrameTargetPage(failure: 'none' | 'several') {
   const locator = createMockLocator();
   vi.mocked(locator.first).mockReturnValue(first);
   if (failure === 'none') {
-    vi.mocked(first.waitFor).mockRejectedValue(
-      createTimeoutError('Timeout 2000ms exceeded'),
-    );
+    const timeout = createTimeoutError('Timeout 2000ms exceeded');
+    vi.mocked(first.waitFor).mockRejectedValue(timeout);
+    vi.mocked(locator.waitFor).mockRejectedValue(timeout);
     vi.mocked(locator.count).mockResolvedValue(0);
   } else {
     vi.mocked(locator.waitFor).mockRejectedValue(
@@ -65,6 +65,7 @@ function createFrameTargetPage(failure: 'none' | 'several') {
         "locator.waitFor: Error: strict mode violation: locator('div').locator('xpath=descendant-or-self::iframe') resolved to 2 elements",
       ),
     );
+    vi.mocked(locator.count).mockResolvedValue(2);
   }
   page.locator.mockReturnValue(locator as any);
   return page;
@@ -1922,6 +1923,21 @@ describe('interaction frame scope', () => {
       }
     },
   );
+
+  it('returns MM_TARGET_NOT_FOUND when get-text finds no iframe after the wait', async () => {
+    const page = createFrameTargetPage('none');
+
+    const result = await getTextTool(
+      { testId: 'chart-title', frame: { testId: 'advanced-chart-iframe' } },
+      createMockContext({ page }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCodes.MM_TARGET_NOT_FOUND);
+      expect(result.error.message).toContain('matched 0 elements');
+    }
+  });
 
   it('returns MM_PAGE_CLOSED when the page closes while it waits for the frame target', async () => {
     vi.spyOn(discoveryModule, 'waitForTarget').mockRejectedValue(

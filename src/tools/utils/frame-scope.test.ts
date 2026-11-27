@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   frameSelectorBase,
+  isFrameSelector,
   nextFrameRefPrefix,
   resolveFrameElementSelector,
   resolveFrameSelector,
@@ -120,6 +121,23 @@ describe('frameSelectorBase', () => {
         '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
       ),
     ).toBe('[data-testid="chart"]');
+  });
+});
+
+describe('isFrameSelector', () => {
+  it.each([
+    '[data-testid="chart"] >> xpath=descendant-or-self::iframe',
+    'iframe.chart >> xpath=descendant-or-self::iframe >> internal:control=enter-frame >> button',
+  ])('is true for %s', (selector) => {
+    expect(isFrameSelector(selector)).toBe(true);
+  });
+
+  it.each([
+    '[data-testid="chart"]',
+    'css=#host >> css=iframe',
+    '[data-testid="chart"] >> internal:control=enter-frame >> button',
+  ])('is false for %s', (selector) => {
+    expect(isFrameSelector(selector)).toBe(false);
   });
 });
 

@@ -14,6 +14,7 @@ import {
 } from './constants.js';
 import {
   ENTER_FRAME_SELECTOR,
+  isFrameSelector,
   selectorInFrame,
   testIdSelector,
 } from './frame-scope.js';
@@ -1856,6 +1857,32 @@ function describeTargetSelector(
 }
 
 /**
+ * Reports a frame selector that matched nothing as a missing target.
+ *
+ * The iframe step is part of the selector, so a frame with no iframe is an
+ * ordinary missing target; only the end of the wait tells the two apart.
+ *
+ * @param locator - The locator whose wait ended.
+ * @param selector - The selector to report.
+ * @param timeoutMs - The wait timeout, for the message.
+ * @param error - The wait error, rethrown when something matched.
+ * @throws When the frame selector matched nothing.
+ */
+async function throwIfFrameMatchedNothing(
+  locator: Locator,
+  selector: string,
+  timeoutMs: number,
+  error: unknown,
+): Promise<void> {
+  if (!isFrameSelector(selector) || (await locator.count()) !== 0) {
+    throw error;
+  }
+  throw new Error(
+    `Selector ${selector} matched 0 elements after ${timeoutMs}ms`,
+  );
+}
+
+/**
  * Wait for a target element to become visible, optionally scoped within a parent.
  *
  * @param page The Playwright page to search
@@ -1911,10 +1938,19 @@ export async function waitForTarget(
     if (parentRemaining <= 0) {
       throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
     }
-    await parentLocator.first().waitFor({
-      state: 'visible',
-      timeout: parentRemaining,
-    });
+    try {
+      await parentLocator.first().waitFor({
+        state: 'visible',
+        timeout: parentRemaining,
+      });
+    } catch (error) {
+      await throwIfFrameMatchedNothing(
+        parentLocator,
+        within.value,
+        timeoutMs,
+        error,
+      );
+    }
     // Use .first() to guarantee the child search is scoped to exactly one
     // parent element.  Without this, Playwright chains the child locator
     // across ALL matching parents, producing phantom multi-matches
@@ -1984,9 +2020,18 @@ export async function waitForTarget(
   if (childRemaining <= 0) {
     throw new Error(`Timeout ${timeoutMs}ms exceeded waiting for element`);
   }
-  await locator.waitFor({
-    state: 'visible',
-    timeout: childRemaining,
-  });
+  try {
+    await locator.waitFor({
+      state: 'visible',
+      timeout: childRemaining,
+    });
+  } catch (error) {
+    await throwIfFrameMatchedNothing(
+      locator,
+      targetType === 'selector' ? targetValue : '',
+      timeoutMs,
+      error,
+    );
+  }
   return locator;
 }

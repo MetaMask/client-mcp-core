@@ -128,6 +128,16 @@ export function frameSelectorBase(selector: string): string {
 }
 
 /**
+ * Whether a selector carries the iframe step of a frame scope.
+ *
+ * @param selector - A target or frame selector.
+ * @returns True when `resolveFrameSelector` or `selectorInFrame` built it.
+ */
+export function isFrameSelector(selector: string): boolean {
+  return selector.includes(` >> ${IFRAME_OR_SELF_SELECTOR}`);
+}
+
+/**
  * Resolves the iframe of a frame scope to a Playwright selector. A ref of
  * the iframe element (from a snapshot of its page) resolves through the
  * ref map. A test ID or selector resolves to the element itself when it is
